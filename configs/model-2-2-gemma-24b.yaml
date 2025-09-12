@@ -1,0 +1,24 @@
+# Benchy Configuration - Gemma Model
+model:
+  name: "google/gemma-3n-E4B-it"
+  dtype: "float16" 
+  max_length: 8192
+
+evaluation:
+  tasks: "latam"
+  device: "cuda"
+  batch_size: "auto:4"
+  output_path: "/home/mauro/dev/lm-evaluation-harness/output"
+  log_samples: true
+
+wandb:
+  entity: "surus-lat"
+  project: "LATAM-leaderboard"
+
+upload:
+  script_path: "/home/mauro/dev/leaderboard"
+  script_name: "run_pipeline.py"
+
+venvs:
+  lm_eval: "/home/mauro/dev/lm-evaluation-harness"
+  leaderboard: "/home/mauro/dev/leaderboard"

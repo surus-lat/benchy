@@ -1,0 +1,12 @@
+[project]
+name = "benchy"
+version = "0.1.0"
+description = "ZenML-powered ML model benchmarking system"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "zenml[server]>=0.84.3",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "typing-extensions>=4.0.0",
+]
