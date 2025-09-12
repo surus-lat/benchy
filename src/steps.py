@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import logging
 from typing import Dict, Any
 from zenml import step
 from zenml.logger import get_logger
@@ -42,6 +43,16 @@ def run_lm_evaluation(
     """
     logger.info(f"Starting evaluation for model: {model_name}")
     
+    # Get Python logger for detailed file logging
+    file_logger = logging.getLogger('benchy.lm_eval')
+    file_logger.info(f"=== Starting LM Evaluation ===")
+    file_logger.info(f"Model: {model_name}")
+    file_logger.info(f"Tasks: {tasks}")
+    file_logger.info(f"Device: {device}")
+    file_logger.info(f"Batch size: {batch_size}")
+    if limit:
+        file_logger.info(f"Limit: {limit} (testing mode)")
+    
     # Build the lm_eval command
     cmd_parts = [
         "lm_eval",
@@ -64,6 +75,7 @@ def run_lm_evaluation(
     
     cmd = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd}")
+    file_logger.info(f"Full command: {cmd}")
     
     try:
         # Explicitly activate the lm-eval venv and run command
@@ -90,6 +102,7 @@ def run_lm_evaluation(
             line = line.rstrip()
             if line:  # Only log non-empty lines
                 logger.info(f"[lm_eval] {line}")
+                file_logger.info(f"[lm_eval] {line}")
                 output_lines.append(line)
         
         # Wait for process to complete
@@ -98,9 +111,13 @@ def run_lm_evaluation(
         
         if return_code != 0:
             logger.error(f"lm_eval failed with return code {return_code}")
+            file_logger.error(f"lm_eval failed with return code {return_code}")
+            file_logger.error("=== LM Evaluation FAILED ===")
             raise RuntimeError(f"lm_eval execution failed with return code {return_code}")
             
         logger.info("lm_eval completed successfully")
+        file_logger.info("=== LM Evaluation COMPLETED SUCCESSFULLY ===")
+        file_logger.info(f"Output saved to: {output_path}")
         
         return {
             "model_name": model_name,
@@ -136,9 +153,17 @@ def upload_results(
     """
     logger.info(f"Starting upload for model: {eval_results['model_name']}")
     
+    # Get Python logger for detailed file logging
+    file_logger = logging.getLogger('benchy.upload')
+    file_logger.info(f"=== Starting Upload ===")
+    file_logger.info(f"Model: {eval_results['model_name']}")
+    file_logger.info(f"Script path: {script_path}")
+    file_logger.info(f"Script name: {script_name}")
+    
     # Build the upload command using uv
     cmd = f"uv run {script_name}"
     logger.info(f"Executing command: {cmd}")
+    file_logger.info(f"Upload command: {cmd}")
     
     try:
         # Run upload script using uv (which manages its own venv)
@@ -163,6 +188,7 @@ def upload_results(
             line = line.rstrip()
             if line:  # Only log non-empty lines
                 logger.info(f"[upload] {line}")
+                file_logger.info(f"[upload] {line}")
                 output_lines.append(line)
         
         # Wait for process to complete
@@ -171,9 +197,12 @@ def upload_results(
         
         if return_code != 0:
             logger.error(f"Upload script failed with return code {return_code}")
+            file_logger.error(f"Upload script failed with return code {return_code}")
+            file_logger.error("=== Upload FAILED ===")
             raise RuntimeError(f"Upload script execution failed with return code {return_code}")
             
         logger.info("Upload completed successfully")
+        file_logger.info("=== Upload COMPLETED SUCCESSFULLY ===")
         
         return {
             "model_name": eval_results["model_name"],

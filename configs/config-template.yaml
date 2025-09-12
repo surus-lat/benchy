@@ -2,7 +2,7 @@
 # Configuration for ML model benchmarking with ZenML
 
 model:
-  name: "google/gemma-3n-E2B"
+  name: "google/gemma-3-270m"
   dtype: "float16" 
   max_length: 8192
 
@@ -21,6 +21,11 @@ wandb:
 upload:
   script_path: "/home/mauro/dev/leaderboard"
   script_name: "run_pipeline.py"
+
+# Logging configuration
+logging:
+  log_dir: "logs"  # Directory to store log files
+  # Log files are automatically named: benchy_{model_name}_{timestamp}.log
 
 # Virtual environment paths
 venvs:

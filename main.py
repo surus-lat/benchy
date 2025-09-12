@@ -1,19 +1,37 @@
 """Main entry point for benchy - ZenML-powered ML benchmarking."""
 
 import os
+import sys
+import argparse
 import yaml
 from dotenv import load_dotenv
 from zenml.logger import get_logger
 from src.pipeline import benchmark_pipeline
+from src.logging_utils import setup_file_logging
 
 logger = get_logger(__name__)
 
 
 def load_config(config_path: str = None) -> dict:
     """Load configuration from YAML file."""
-    # Check for environment variable first (used by batch runner)
+    # Priority order: 1) Explicit path, 2) Environment variable, 3) Default
     if config_path is None:
         config_path = os.environ.get('BENCHY_CONFIG', 'config.yaml')
+    
+    # Check if file exists
+    if not os.path.exists(config_path):
+        available_configs = []
+        if os.path.exists('configs'):
+            available_configs = [f"configs/{f}" for f in os.listdir('configs') if f.endswith('.yaml')]
+        
+        error_msg = f"Configuration file '{config_path}' not found."
+        if available_configs:
+            error_msg += f"\n\nAvailable configurations:\n" + "\n".join(f"  - {cfg}" for cfg in available_configs[:5])
+            if len(available_configs) > 5:
+                error_msg += f"\n  ... and {len(available_configs) - 5} more in configs/"
+        error_msg += f"\n\nTry: python main.py --config <path-to-config.yaml>"
+        
+        raise FileNotFoundError(error_msg)
     
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
@@ -48,9 +66,46 @@ def build_wandb_args(config: dict) -> str:
     return ",".join(args)
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Benchy - ZenML-powered ML model benchmarking",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                                    # Use default config.yaml
+  python main.py --config configs/my-model.yaml    # Use specific config
+  python main.py -c configs/example-with-limit.yaml # Short form
+        """
+    )
+    
+    parser.add_argument(
+        '--config', '-c',
+        type=str,
+        default=None,
+        help='Path to configuration YAML file (default: config.yaml or BENCHY_CONFIG env var)'
+    )
+    
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Enable verbose logging'
+    )
+    
+    return parser.parse_args()
+
+
 def main():
-    """Run the benchmark pipeline with configuration from config.yaml."""
+    """Run the benchmark pipeline with configuration from specified file."""
+    # Parse command line arguments
+    args = parse_args()
+    
     logger.info("Starting benchy - ML model benchmarking with ZenML")
+    
+    if args.verbose:
+        logger.info(f"Command line arguments: {args}")
+        logger.info(f"Python path: {sys.executable}")
+        logger.info(f"Working directory: {os.getcwd()}")
     
     # Load environment variables
     if os.path.exists('.env'):
@@ -59,15 +114,27 @@ def main():
     
     # Load configuration
     try:
-        config_path = os.environ.get('BENCHY_CONFIG', 'config.yaml')
-        config = load_config()
+        # Use command line config if provided, otherwise fall back to env var or default
+        config_path = args.config or os.environ.get('BENCHY_CONFIG', 'config.yaml')
+        config = load_config(config_path)
         logger.info(f"Loaded configuration from {config_path}")
-    except FileNotFoundError:
-        logger.error("config.yaml not found. Please create it based on the template.")
+    except FileNotFoundError as e:
+        logger.error(str(e))
         return
     except Exception as e:
-        logger.error(f"Error loading config.yaml: {e}")
+        logger.error(f"Error loading configuration: {e}")
         return
+    
+    # Setup file logging
+    logging_config = config.get('logging', {})
+    log_dir = logging_config.get('log_dir', 'logs')
+    
+    # Initialize logging system
+    log_setup = setup_file_logging(config, log_dir)
+    logger.info(f"File logging enabled - log file: {log_setup.get_log_filepath()}")
+    
+    # Log complete configuration
+    log_setup.log_config()
     
     # Build arguments from config
     model_args = build_model_args(config)
@@ -102,8 +169,19 @@ def main():
         logger.info("Benchmark pipeline completed successfully!")
         logger.info(f"Results: {result}")
         
+        # Log summary
+        log_setup.log_summary(result)
+        
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
+        
+        # Log failure summary - create a simple dict for error cases
+        error_result = {
+            'model_name': config['model']['name'],
+            'return_code': 1,
+            'error': str(e)
+        }
+        log_setup.log_summary(error_result)
         raise
 
 
