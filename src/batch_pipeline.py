@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 from zenml import pipeline, step
 from zenml.logger import get_logger
 from .steps import run_lm_evaluation, upload_results
+from .pipeline import create_run_name
 
 logger = get_logger(__name__)
 

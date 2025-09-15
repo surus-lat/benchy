@@ -1,10 +1,40 @@
 """Main ZenML pipeline for ML model benchmarking."""
 
+from datetime import datetime
 from zenml import pipeline
 from zenml.logger import get_logger
 from .steps import run_lm_evaluation, upload_results
 
 logger = get_logger(__name__)
+
+
+def create_run_name(model_name: str, limit: int = None) -> str:
+    """
+    Create a custom run name based on model name and timestamp.
+    
+    Args:
+        model_name: Full model name (e.g., "google/gemma-3n-E4B-it")
+        limit: Optional limit parameter - if set, adds TEST prefix
+        
+    Returns:
+        Custom run name in format: [TEST_]model_name_YYYY_MM_DD_HH_MM_SS
+    """
+    # Extract just the model name part (after the slash if present)
+    if "/" in model_name:
+        clean_model_name = model_name.split("/")[-1]
+    else:
+        clean_model_name = model_name
+    
+    # Replace any remaining problematic characters
+    clean_model_name = clean_model_name.replace("-", "_").replace(".", "_")
+    
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    
+    # Add TEST prefix if limit is used
+    prefix = "TEST_" if limit is not None else ""
+    
+    return f"{prefix}{clean_model_name}_{timestamp}"
 
 
 @pipeline

@@ -9,7 +9,7 @@ import time
 import requests
 from dotenv import load_dotenv
 from zenml.logger import get_logger
-from src.pipeline import benchmark_pipeline
+from src.pipeline import benchmark_pipeline, create_run_name
 from src.logging_utils import setup_file_logging
 
 logger = get_logger(__name__)
@@ -219,9 +219,19 @@ def main():
         # Extract performance configuration
         performance_config = config.get('performance', {})
         
-        # Run the pipeline
-        result = benchmark_pipeline(
-            model_name=config['model']['name'],
+        # Create custom run name based on model
+        model_name = config['model']['name']
+        limit = eval_config.get('limit')
+        custom_run_name = create_run_name(model_name, limit)
+        logger.info(f"Running pipeline with custom name: {custom_run_name}")
+        if limit is not None:
+            logger.info(f"TEST run detected - limit set to {limit} examples per task")
+        
+        # Run the pipeline with custom run name
+        result = benchmark_pipeline.with_options(
+            run_name=custom_run_name
+        )(
+            model_name=model_name,
             model_args=model_args,
             tasks=eval_config['tasks'],
             device=eval_config['device'],

@@ -1,0 +1,37 @@
+# Benchy Configuration
+model:
+  name: "openai/gpt-oss-20b"
+  dtype: "float16" 
+  max_length: 16384
+
+evaluation:
+  tasks: "aquas"
+  device: "cuda"  # Ignored if performance.use_accelerate=true
+  batch_size: "auto:4"
+  output_path: "/home/mauro/dev/lm-evaluation-harness/output"
+  log_samples: true
+  cache_requests: true  # Enable request caching for speedup
+  limit: 10  # Limit number of examples per task (useful for testing, remove for full eval)
+
+# Performance optimizations
+performance:
+  use_accelerate: true  # Set to true for multi-GPU acceleration
+  num_gpus: 2           # Number of GPUs to use (when use_accelerate=true)
+  mixed_precision: "no" # Options: "no", "fp16", "bf16"
+
+wandb:
+  entity: "surus-lat"
+  project: "LATAM-leaderboard"
+
+upload:
+  script_path: "/home/mauro/dev/leaderboard"
+  script_name: "run_pipeline.py"
+
+# Logging configuration
+logging:
+  log_dir: "logs"  # Directory to store log files
+
+# Virtual environment paths
+venvs:
+  lm_eval: "/home/mauro/dev/lm-evaluation-harness"  # Path to lm-eval repo (venv activated explicitly)
+  leaderboard: "/home/mauro/dev/leaderboard"  # Path to leaderboard repo (uv manages venv automatically)
