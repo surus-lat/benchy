@@ -3,7 +3,7 @@
 from datetime import datetime
 from zenml import pipeline
 from zenml.logger import get_logger
-from .steps import run_lm_evaluation, upload_results
+from .steps import test_model_download, run_lm_evaluation, upload_results
 
 logger = get_logger(__name__)
 
@@ -79,7 +79,17 @@ def benchmark_pipeline(
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
     
-    # Step 1: Run evaluation
+    # Step 1: Test model download and functionality
+    test_results = test_model_download(
+        model_name=model_name,
+        model_args=model_args,
+        use_accelerate=use_accelerate,
+        num_gpus=num_gpus,
+        mixed_precision=mixed_precision,
+        lm_eval_path=lm_eval_path
+    )
+    
+    # Step 2: Run evaluation
     eval_results = run_lm_evaluation(
         model_name=model_name,
         model_args=model_args,
@@ -94,10 +104,11 @@ def benchmark_pipeline(
         use_accelerate=use_accelerate,
         num_gpus=num_gpus,
         mixed_precision=mixed_precision,
-        cache_requests=cache_requests
+        cache_requests=cache_requests,
+        model_test_results=test_results
     )
     
-    # Step 2: Upload results
+    # Step 3: Upload results
     upload_result = upload_results(
         eval_results=eval_results,
         script_path=upload_script_path,

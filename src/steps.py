@@ -11,6 +11,136 @@ logger = get_logger(__name__)
 
 
 @step
+def test_model_download(
+    model_name: str,
+    model_args: str,
+    use_accelerate: bool = False,
+    num_gpus: int = 1,
+    mixed_precision: str = "no",
+    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness"
+) -> Dict[str, Any]:
+    """
+    Test model download and basic functionality before running full evaluation.
+    
+    This step downloads the model and runs a simple test to ensure it works correctly.
+    It helps separate model download time from evaluation time and catches errors early.
+    
+    Args:
+        model_name: The model to test
+        model_args: Model arguments string
+        use_accelerate: Whether accelerate will be used for evaluation
+        num_gpus: Number of GPUs that will be used
+        mixed_precision: Mixed precision mode
+        lm_eval_path: Path to lm-evaluation-harness installation
+        
+    Returns:
+        Dictionary with test results and model metadata
+    """
+    logger.info(f"Testing model download and functionality: {model_name}")
+    
+    # Get Python logger for detailed file logging
+    file_logger = logging.getLogger('benchy.model_test')
+    file_logger.info(f"=== Starting Model Test ===")
+    file_logger.info(f"Model: {model_name}")
+    file_logger.info(f"Model args: {model_args}")
+    if use_accelerate:
+        file_logger.info(f"Multi-GPU: {num_gpus} GPUs with accelerate")
+        file_logger.info(f"Mixed precision: {mixed_precision}")
+    file_logger.info(f"LM eval path: {lm_eval_path}")
+    
+    # Build the test command
+    cmd_parts = [
+        "python", "scripts/test_model.py",
+        "--model_name", model_name,
+        "--model_args", model_args
+    ]
+    
+    if use_accelerate:
+        cmd_parts.extend(["--use_accelerate"])
+        cmd_parts.extend(["--num_gpus", str(num_gpus)])
+        cmd_parts.extend(["--mixed_precision", mixed_precision])
+    
+    cmd = " ".join(cmd_parts)
+    logger.info(f"Executing test command: {cmd}")
+    file_logger.info(f"Test command: {cmd}")
+    
+    try:
+        # Explicitly activate the lm-eval venv and run test
+        venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd}"
+        
+        # Stream output in real-time
+        process = subprocess.Popen(
+            venv_cmd,
+            shell=True,
+            cwd=lm_eval_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            text=True,
+            env=os.environ.copy(),
+            executable="/bin/bash",
+            bufsize=1,  # Line buffered
+            universal_newlines=True
+        )
+        
+        # Collect output while streaming it
+        output_lines = []
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:  # Only log non-empty lines
+                logger.info(f"[model_test] {line}")
+                file_logger.info(f"[model_test] {line}")
+                output_lines.append(line)
+        
+        # Wait for process to complete
+        return_code = process.wait()
+        stdout = "\n".join(output_lines)
+        
+        if return_code != 0:
+            logger.error(f"Model test failed with return code {return_code}")
+            file_logger.error(f"Model test failed with return code {return_code}")
+            file_logger.error("=== Model Test FAILED ===")
+            raise RuntimeError(f"Model test execution failed with return code {return_code}")
+            
+        logger.info("Model test completed successfully")
+        file_logger.info("=== Model Test COMPLETED SUCCESSFULLY ===")
+        
+        # Extract key information from output for metadata
+        test_result = {
+            "model_name": model_name,
+            "model_args": model_args,
+            "test_stdout": stdout,
+            "test_return_code": return_code,
+            "test_command": cmd,
+            "use_accelerate": use_accelerate,
+            "num_gpus": num_gpus,
+            "mixed_precision": mixed_precision
+        }
+        
+        # Try to extract model size info from output
+        for line in output_lines:
+            if "Parameters:" in line:
+                try:
+                    params_str = line.split("Parameters:")[-1].strip().replace(",", "")
+                    test_result["num_parameters"] = int(params_str)
+                except (ValueError, IndexError):
+                    pass
+            elif "Size:" in line and "GB" in line:
+                try:
+                    size_str = line.split("Size:")[-1].split("GB")[0].strip()
+                    test_result["model_size_gb"] = float(size_str)
+                except (ValueError, IndexError):
+                    pass
+        
+        return test_result
+        
+    except Exception as e:
+        logger.error(f"Error running model test: {str(e)}")
+        file_logger.error(f"Error running model test: {str(e)}")
+        file_logger.error("=== Model Test FAILED ===")
+        raise
+
+
+@step
 def run_lm_evaluation(
     model_name: str,
     model_args: str,
@@ -25,7 +155,8 @@ def run_lm_evaluation(
     use_accelerate: bool = False,
     num_gpus: int = 1,
     mixed_precision: str = "no",
-    cache_requests: bool = True
+    cache_requests: bool = True,
+    model_test_results: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Run lm-evaluation-harness in its own virtual environment.

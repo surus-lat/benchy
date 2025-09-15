@@ -1,6 +1,6 @@
 # Benchy Configuration
 model:
-  name: "openai/gpt-oss-20b"
+  name: "google/gemma-3-270m"
   dtype: "float16" 
   max_length: 16384
 
