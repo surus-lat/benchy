@@ -20,7 +20,11 @@ def benchmark_pipeline(
     limit: int = None,
     lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
     upload_script_path: str = "/home/mauro/dev/leaderboard",
-    upload_script_name: str = "run_pipeline.py"
+    upload_script_name: str = "run_pipeline.py",
+    use_accelerate: bool = False,
+    num_gpus: int = 1,
+    mixed_precision: str = "no",
+    cache_requests: bool = True
 ):
     """
     Complete benchmarking pipeline that runs evaluation and uploads results.
@@ -29,7 +33,7 @@ def benchmark_pipeline(
         model_name: The model to evaluate
         model_args: Model arguments string
         tasks: Tasks to run
-        device: Device to use
+        device: Device to use (ignored if use_accelerate=True)
         batch_size: Batch size configuration  
         output_path: Output path for results
         wandb_args: Weights & Biases arguments
@@ -38,6 +42,10 @@ def benchmark_pipeline(
         lm_eval_path: Path to lm-evaluation-harness installation
         upload_script_path: Path to upload script directory
         upload_script_name: Name of upload script
+        use_accelerate: Whether to use accelerate for multi-GPU
+        num_gpus: Number of GPUs to use (when use_accelerate=True)
+        mixed_precision: Mixed precision mode ("no", "fp16", "bf16")
+        cache_requests: Whether to enable request caching
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
     
@@ -52,7 +60,11 @@ def benchmark_pipeline(
         wandb_args=wandb_args,
         log_samples=log_samples,
         limit=limit,
-        lm_eval_path=lm_eval_path
+        lm_eval_path=lm_eval_path,
+        use_accelerate=use_accelerate,
+        num_gpus=num_gpus,
+        mixed_precision=mixed_precision,
+        cache_requests=cache_requests
     )
     
     # Step 2: Upload results

@@ -21,7 +21,11 @@ def run_lm_evaluation(
     wandb_args: str = "",
     log_samples: bool = True,
     limit: int = None,
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness"
+    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
+    use_accelerate: bool = False,
+    num_gpus: int = 1,
+    mixed_precision: str = "no",
+    cache_requests: bool = True
 ) -> Dict[str, Any]:
     """
     Run lm-evaluation-harness in its own virtual environment.
@@ -30,13 +34,17 @@ def run_lm_evaluation(
         model_name: The model to evaluate
         model_args: Model arguments string
         tasks: Tasks to run
-        device: Device to use
+        device: Device to use (ignored if use_accelerate=True)
         batch_size: Batch size configuration
         output_path: Output path for results
         wandb_args: Weights & Biases arguments
         log_samples: Whether to log samples
         limit: Limit number of examples per task (useful for testing)
         lm_eval_path: Path to lm-evaluation-harness installation
+        use_accelerate: Whether to use accelerate for multi-GPU
+        num_gpus: Number of GPUs to use (when use_accelerate=True)
+        mixed_precision: Mixed precision mode ("no", "fp16", "bf16")
+        cache_requests: Whether to enable request caching
         
     Returns:
         Dictionary with execution results and metadata
@@ -48,21 +56,44 @@ def run_lm_evaluation(
     file_logger.info(f"=== Starting LM Evaluation ===")
     file_logger.info(f"Model: {model_name}")
     file_logger.info(f"Tasks: {tasks}")
-    file_logger.info(f"Device: {device}")
+    if use_accelerate:
+        file_logger.info(f"Multi-GPU: {num_gpus} GPUs with accelerate")
+        file_logger.info(f"Mixed precision: {mixed_precision}")
+    else:
+        file_logger.info(f"Device: {device}")
     file_logger.info(f"Batch size: {batch_size}")
+    file_logger.info(f"Cache requests: {cache_requests}")
     if limit:
         file_logger.info(f"Limit: {limit} (testing mode)")
     
     # Build the lm_eval command
-    cmd_parts = [
-        "lm_eval",
-        "--model", "hf",
-        "--model_args", model_args,
-        "--tasks", tasks,
-        "--device", device,
-        "--batch_size", batch_size,
-        "--output_path", output_path
-    ]
+    if use_accelerate:
+        # Use accelerate launch for multi-GPU (with debugging info)
+        cmd_parts = [
+            "accelerate", "launch",
+            "--multi_gpu",
+            f"--num_processes={num_gpus}",
+            "--num_machines=1",
+            f"--mixed_precision={mixed_precision}",
+            "--dynamo_backend=no",
+            "-m", "lm_eval",
+            "--model", "hf",
+            "--model_args", model_args,
+            "--tasks", tasks,
+            "--batch_size", batch_size,
+            "--output_path", output_path
+        ]
+    else:
+        # Single GPU mode
+        cmd_parts = [
+            "lm_eval",
+            "--model", "hf",
+            "--model_args", model_args,
+            "--tasks", tasks,
+            "--device", device,
+            "--batch_size", batch_size,
+            "--output_path", output_path
+        ]
     
     if log_samples:
         cmd_parts.append("--log_samples")
@@ -72,6 +103,9 @@ def run_lm_evaluation(
         
     if wandb_args:
         cmd_parts.extend(["--wandb_args", wandb_args])
+        
+    if cache_requests:
+        cmd_parts.extend(["--cache_requests", "true"])
     
     cmd = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd}")

@@ -1,18 +1,23 @@
-# Example Configuration with Limit for Testing
-# This config uses --limit 10 for fast testing runs
-
+# Benchy Configuration - Gemma Model
 model:
-  name: "google/gemma-3-270m"
+  name: "moonshotai/Kimi-VL-A3B-Instruct"
   dtype: "float16" 
   max_length: 16384
 
 evaluation:
-  tasks: "belebele_spa_Latn"
-  device: "cuda:3"
+  tasks: "latam"
+  device: "cuda"
   batch_size: "auto:4"
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
+  cache_requests: true  # Enable request caching for speedup
   limit: 10  # Only evaluate 10 examples per task for quick testing
+
+# Performance optimizations
+performance:
+  use_accelerate: true  # Set to true for multi-GPU acceleration
+  num_gpus: 2           # Number of GPUs to use (when use_accelerate=true)
+  mixed_precision: "no" # Options: "no", "fp16", "bf16"
 
 wandb:
   entity: "surus-lat"
@@ -25,7 +30,7 @@ upload:
 # Logging configuration
 logging:
   log_dir: "logs"  # Directory to store log files
-
+  
 venvs:
   lm_eval: "/home/mauro/dev/lm-evaluation-harness"
   leaderboard: "/home/mauro/dev/leaderboard"

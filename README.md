@@ -16,7 +16,10 @@ A minimal ZenML-powered system for benchmarking ML models using lm-evaluation-ha
    ```
 
 3. Configure your benchmark in a YAML config file
+4. Guarantee zenml docker is running
 
+  sudo docker run -it -d -p 8080:8080 --name zenml zenmldocker/zenml-server
+sudo
 ## Usage
 
 ### Single Model Runs
@@ -91,8 +94,9 @@ venvs:
 
 ### Available Examples
 
-- `configs/config-template.yaml` - Base template
-- `configs/example-with-limit.yaml` - Quick testing with limit
+- `configs/config-template.yaml` - Base template with performance options
+- `configs/pipeline_test.yaml` - Multi-GPU testing with limit
+- `configs/multi-gpu-production.yaml` - Production multi-GPU config
 - `configs/model-*.yaml` - Specific model configurations
 
 ## Features
@@ -113,15 +117,38 @@ Examples:
   python main.py -c configs/example-with-limit.yaml # Short form
 ```
 
-### Testing vs Production
+### Performance Optimizations
 
-**Quick Testing (with `--limit`):**
+**Multi-GPU Acceleration (Recommended):**
+```yaml
+performance:
+  use_accelerate: true  # Enable multi-GPU with accelerate
+  num_gpus: 4          # Use all available GPUs
+  mixed_precision: "fp16"  # Use mixed precision for speed
+
+evaluation:
+  cache_requests: true  # Cache requests between model runs
+  batch_size: "auto:4" # Auto-optimize batch size
+```
+
+**Single GPU Mode:**
+```yaml
+performance:
+  use_accelerate: false  # Disable multi-GPU
+  
+evaluation:
+  device: "cuda:0"  # Specify single GPU
+```
+
+**Testing vs Production:**
+
+*Quick Testing:*
 ```yaml
 evaluation:
   limit: 10  # Only evaluate 10 examples per task
 ```
 
-**Full Evaluation:**
+*Full Evaluation:*
 ```yaml
 evaluation:
   # limit: 10  # Comment out or remove for full evaluation

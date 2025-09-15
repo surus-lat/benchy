@@ -4,12 +4,75 @@ import os
 import sys
 import argparse
 import yaml
+import subprocess
+import time
+import requests
 from dotenv import load_dotenv
 from zenml.logger import get_logger
 from src.pipeline import benchmark_pipeline
 from src.logging_utils import setup_file_logging
 
 logger = get_logger(__name__)
+
+
+def ensure_zenml_server():
+    """Ensure ZenML server is running."""
+    # Check if ZenML server is already running
+    try:
+        response = requests.get("http://localhost:8080/health", timeout=5)
+        if response.status_code == 200:
+            logger.info("✅ ZenML server is already running")
+            return
+    except requests.exceptions.RequestException:
+        pass
+    
+    logger.info("🚀 Starting ZenML server...")
+    
+    # Check if we need sudo for docker commands
+    needs_sudo = False
+    try:
+        subprocess.run("docker ps", shell=True, check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        needs_sudo = True
+        logger.info("🔐 Docker requires sudo permissions")
+    
+    # Try docker-compose first, then docker compose
+    compose_commands = ["docker-compose", "docker compose"]
+    
+    for cmd in compose_commands:
+        try:
+            # Check if command exists
+            test_cmd = f"sudo {cmd}" if needs_sudo else cmd
+            subprocess.run(f"{test_cmd} --version", shell=True, check=True, 
+                         capture_output=True, text=True)
+            
+            # Remove existing container and start the service
+            subprocess.run(f"{test_cmd} rm -f zenml", shell=True, capture_output=True)
+            subprocess.run(f"{test_cmd} up -d zenml", shell=True, check=True)
+            
+            # Wait and verify
+            time.sleep(15)
+            response = requests.get("http://localhost:8080/health", timeout=5)
+            if response.status_code == 200:
+                logger.info("✅ ZenML server started successfully")
+                return
+            
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+    
+    # Fallback to manual docker command
+    try:
+        docker_cmd = "sudo docker" if needs_sudo else "docker"
+        subprocess.run(f"{docker_cmd} rm -f zenml", shell=True, capture_output=True)
+        subprocess.run(
+            f"{docker_cmd} run -d -p 8080:8080 --name zenml zenmldocker/zenml-server",
+            shell=True, check=True
+        )
+        time.sleep(15)
+        logger.info("✅ ZenML server started with docker command")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ Failed to start ZenML server: {e}")
+        raise RuntimeError("Could not start ZenML server. Please start it manually.")
 
 
 def load_config(config_path: str = None) -> dict:
@@ -125,6 +188,9 @@ def main():
         logger.error(f"Error loading configuration: {e}")
         return
     
+    # Ensure ZenML server is running
+    ensure_zenml_server()
+    
     # Setup file logging
     logging_config = config.get('logging', {})
     log_dir = logging_config.get('log_dir', 'logs')
@@ -150,6 +216,9 @@ def main():
     logger.info(f"Device: {eval_config['device']}")
     
     try:
+        # Extract performance configuration
+        performance_config = config.get('performance', {})
+        
         # Run the pipeline
         result = benchmark_pipeline(
             model_name=config['model']['name'],
@@ -163,7 +232,11 @@ def main():
             limit=eval_config.get('limit'),
             lm_eval_path=venv_config.get('lm_eval', '/home/mauro/dev/lm-evaluation-harness'),
             upload_script_path=upload_config.get('script_path', '/home/mauro/dev/leaderboard'),
-            upload_script_name=upload_config.get('script_name', 'run_pipeline.py')
+            upload_script_name=upload_config.get('script_name', 'run_pipeline.py'),
+            use_accelerate=performance_config.get('use_accelerate', False),
+            num_gpus=performance_config.get('num_gpus', 1),
+            mixed_precision=performance_config.get('mixed_precision', 'no'),
+            cache_requests=eval_config.get('cache_requests', True)
         )
         
         logger.info("Benchmark pipeline completed successfully!")

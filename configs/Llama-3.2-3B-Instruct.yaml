@@ -1,6 +1,6 @@
 # Benchy Configuration - Gemma Model
 model:
-  name: "google/gemma-3n-E2B-it"
+  name: "meta-llama/Llama-3.2-3B-Instruct"
   dtype: "float16" 
   max_length: 16384
 

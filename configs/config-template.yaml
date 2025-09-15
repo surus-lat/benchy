@@ -1,18 +1,23 @@
 # Benchy Configuration
-# Configuration for ML model benchmarking with ZenML
-
 model:
   name: "google/gemma-3-270m"
   dtype: "float16" 
-  max_length: 8192
+  max_length: 16384
 
 evaluation:
   tasks: "latam"
-  device: "cuda"
+  device: "cuda"  # Ignored if performance.use_accelerate=true
   batch_size: "auto:4"
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
+  cache_requests: true  # Enable request caching for speedup
   limit: 10  # Limit number of examples per task (useful for testing, remove for full eval)
+
+# Performance optimizations
+performance:
+  use_accelerate: false  # Set to true for multi-GPU acceleration
+  num_gpus: 2           # Number of GPUs to use (when use_accelerate=true)
+  mixed_precision: "no" # Options: "no", "fp16", "bf16"
 
 wandb:
   entity: "surus-lat"
@@ -25,7 +30,6 @@ upload:
 # Logging configuration
 logging:
   log_dir: "logs"  # Directory to store log files
-  # Log files are automatically named: benchy_{model_name}_{timestamp}.log
 
 # Virtual environment paths
 venvs:
