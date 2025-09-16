@@ -33,21 +33,14 @@ class BenchyLoggingSetup:
     def setup_python_logging(self):
         """Setup Python standard logging to both file and console."""
         
+        # Skip file logging if explicitly disabled (for multiprocessing safety)
+        disable_file_logging = os.environ.get('DISABLE_FILE_LOGGING', '').lower() in ('1', 'true', 'yes')
+        
         # Create formatter
         formatter = logging.Formatter(
             fmt='%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        
-        # Create file handler
-        file_handler = logging.FileHandler(self.log_filepath, mode='w', encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(formatter)
-        
-        # Create console handler
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(formatter)
         
         # Configure root logger
         root_logger = logging.getLogger()
@@ -56,15 +49,32 @@ class BenchyLoggingSetup:
         # Clear existing handlers to avoid duplicates
         root_logger.handlers.clear()
         
-        # Add our handlers
-        root_logger.addHandler(file_handler)
+        # Create console handler (always enabled)
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
         
-        # Log the setup
-        logger = logging.getLogger('benchy.logging')
-        logger.info(f"Logging initialized - log file: {self.log_filepath}")
-        logger.info(f"Model: {self.config.get('model', {}).get('name', 'unknown')}")
-        logger.info(f"Tasks: {self.config.get('evaluation', {}).get('tasks', 'unknown')}")
+        # Create file handler only if not disabled
+        if not disable_file_logging:
+            try:
+                file_handler = logging.FileHandler(self.log_filepath, mode='w', encoding='utf-8')
+                file_handler.setLevel(logging.DEBUG)
+                file_handler.setFormatter(formatter)
+                root_logger.addHandler(file_handler)
+                
+                # Log the setup
+                logger = logging.getLogger('benchy.logging')
+                logger.info(f"Logging initialized - log file: {self.log_filepath}")
+                logger.info(f"Model: {self.config.get('model', {}).get('name', 'unknown')}")
+                logger.info(f"Tasks: {self.config.get('evaluation', {}).get('tasks', 'unknown')}")
+            except (OSError, IOError) as e:
+                # If file logging fails, continue with console only
+                logger = logging.getLogger('benchy.logging')
+                logger.warning(f"File logging disabled due to error: {e}")
+        else:
+            logger = logging.getLogger('benchy.logging')
+            logger.info("File logging disabled for multiprocessing compatibility")
         
     def log_config(self):
         """Log the complete configuration."""

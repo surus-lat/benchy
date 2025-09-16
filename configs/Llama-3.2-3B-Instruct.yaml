@@ -1,17 +1,17 @@
 # Benchy Configuration - Gemma Model
 model:
   name: "meta-llama/Llama-3.2-3B-Instruct"
-  dtype: "float16" 
+  dtype: "bfloat16" 
   max_length: 16384
 
 evaluation:
   tasks: "latam"
-  device: "cuda"
+  device: " "
   batch_size: "auto:4"
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
   cache_requests: true  # Enable request caching for speedup
-  limit: 10  # Only evaluate 10 examples per task for quick testing
+  trust_remote_code: true
 
 # Performance optimizations
 performance:

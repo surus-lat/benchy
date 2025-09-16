@@ -6,12 +6,13 @@ echo "=============================================="
 
 # Array of config files
 configs=(
-    "configs/model-1-qwen.yaml"
-    "configs/model-2-gemma.yaml" 
-    "configs/model-3-llama.yaml"
+    "./configs/Llama-3.2-3B-Instruct.yaml"
+    "./configs/Llama-3.1-8B-Instruct.yaml" 
+    "./configs/gemma-e4b.yaml"
+    "./configs/gemma-e2b.yaml"
     # Add more config files here
 )
-
+echo "Current virtual environment: $VIRTUAL_ENV"
 # Track results
 total=${#configs[@]}
 successful=0
@@ -19,11 +20,15 @@ failed=0
 
 echo "Planning to evaluate $total models:"
 for config in "${configs[@]}"; do
-    model_name=$(grep "name:" "$config" | cut -d'"' -f2)
-    echo "  - $model_name ($config)"
+    if [[ -f "$config" ]]; then
+        model_name=$(grep "name:" "$config" | head -1 | cut -d'"' -f2)
+        echo "  - $model_name ($config)"
+    else
+        echo "  - Config not found ($config)"
+    fi
 done
 echo ""
-
+ 
 # Run each model
 for i in "${!configs[@]}"; do
     config="${configs[$i]}"
@@ -35,7 +40,7 @@ for i in "${!configs[@]}"; do
         continue
     fi
     
-    model_name=$(grep "name:" "$config" | cut -d'"' -f2)
+    model_name=$(grep "name:" "$config" | head -1 | cut -d'"' -f2)
     echo "🔄 Running model $model_num/$total: $model_name"
     echo "   Config: $config"
     echo "   Started at: $(date)"

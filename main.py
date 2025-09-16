@@ -102,15 +102,42 @@ def load_config(config_path: str = None) -> dict:
 
 def build_model_args(config: dict) -> str:
     """Build model arguments string from config."""
-    model = config['model']
-    args = [f"pretrained={model['name']}"]
+    import json
     
-    if 'dtype' in model:
-        args.append(f"dtype={model['dtype']}")
-    if 'max_length' in model:
-        args.append(f"max_length={model['max_length']}")
+    model = config['model']
+    performance = config.get('performance', {})
+    use_vllm = performance.get('use_vllm', False)
+    
+    # Build arguments as a dictionary first
+    args_dict = {"pretrained": model['name']}
+    
+    if use_vllm:
+        # VLLM-specific arguments
+        gpus_per_model = performance.get('gpus_per_model', 1)
+        model_replicas = performance.get('model_replicas', 2)
+        max_model_len = performance.get('max_model_len', 4096)
+        gpu_memory_utilization = performance.get('gpu_memory_utilization', 0.8)
         
-    return ",".join(args)
+        args_dict["tensor_parallel_size"] = gpus_per_model
+        # For VLLM, use the original dtype if specified, otherwise auto
+        if 'dtype' in model:
+            args_dict["dtype"] = model['dtype']
+        else:
+            args_dict["dtype"] = "auto"
+        args_dict["gpu_memory_utilization"] = gpu_memory_utilization
+        args_dict["data_parallel_size"] = model_replicas
+        args_dict["max_model_len"] = max_model_len
+        args_dict["enforce_eager"] = True  # Disable CUDA graphs for better compatibility
+        args_dict["limit_mm_per_prompt"] = {"image": 0,"audio": 0}  # Limit multimodal processing
+    else:
+        # HF-specific arguments
+        if 'dtype' in model:
+            args_dict["dtype"] = model['dtype']
+        if 'max_length' in model:
+            args_dict["max_length"] = model['max_length']
+    
+    # Convert to JSON string
+    return json.dumps(args_dict)
 
 
 def build_wandb_args(config: dict) -> str:
@@ -219,6 +246,14 @@ def main():
         # Extract performance configuration
         performance_config = config.get('performance', {})
         
+        # Validate mutually exclusive options
+        use_accelerate = performance_config.get('use_accelerate', False)
+        use_vllm = performance_config.get('use_vllm', False)
+        
+        if use_accelerate and use_vllm:
+            logger.error("Error: use_accelerate and use_vllm cannot both be true. They are mutually exclusive.")
+            return
+        
         # Create custom run name based on model
         model_name = config['model']['name']
         limit = eval_config.get('limit')
@@ -246,7 +281,14 @@ def main():
             use_accelerate=performance_config.get('use_accelerate', False),
             num_gpus=performance_config.get('num_gpus', 1),
             mixed_precision=performance_config.get('mixed_precision', 'no'),
-            cache_requests=eval_config.get('cache_requests', True)
+            cache_requests=eval_config.get('cache_requests', True),
+            trust_remote_code=eval_config.get('trust_remote_code', False),
+            use_vllm=performance_config.get('use_vllm', False),
+            gpus_per_model=performance_config.get('gpus_per_model', 1),
+            model_replicas=performance_config.get('model_replicas', 2),
+            use_local_api=performance_config.get('use_local_api', False),
+            local_api_base_url=performance_config.get('local_api_base_url', 'http://localhost:8000/v1/completions'),
+            num_concurrent=performance_config.get('num_concurrent', 8)
         )
         
         logger.info("Benchmark pipeline completed successfully!")

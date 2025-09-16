@@ -1,6 +1,7 @@
 """Main ZenML pipeline for ML model benchmarking."""
 
 from datetime import datetime
+from typing import Optional
 from zenml import pipeline
 from zenml.logger import get_logger
 from .steps import test_model_download, run_lm_evaluation, upload_results
@@ -8,7 +9,7 @@ from .steps import test_model_download, run_lm_evaluation, upload_results
 logger = get_logger(__name__)
 
 
-def create_run_name(model_name: str, limit: int = None) -> str:
+def create_run_name(model_name: str, limit: Optional[int] = None) -> str:
     """
     Create a custom run name based on model name and timestamp.
     
@@ -47,14 +48,21 @@ def benchmark_pipeline(
     output_path: str,
     wandb_args: str = "",
     log_samples: bool = True,
-    limit: int = None,
+    limit: Optional[int] = None,
     lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
     upload_script_path: str = "/home/mauro/dev/leaderboard",
     upload_script_name: str = "run_pipeline.py",
     use_accelerate: bool = False,
     num_gpus: int = 1,
     mixed_precision: str = "no",
-    cache_requests: bool = True
+    cache_requests: bool = True,
+    trust_remote_code: bool = False,
+    use_vllm: bool = False,
+    gpus_per_model: int = 1,
+    model_replicas: int = 2,
+    use_local_api: bool = False,
+    local_api_base_url: str = "http://localhost:8000/v1/completions",
+    num_concurrent: int = 8
 ):
     """
     Complete benchmarking pipeline that runs evaluation and uploads results.
@@ -63,7 +71,7 @@ def benchmark_pipeline(
         model_name: The model to evaluate
         model_args: Model arguments string
         tasks: Tasks to run
-        device: Device to use (ignored if use_accelerate=True)
+        device: Device to use (ignored if use_accelerate=True or use_vllm=True)
         batch_size: Batch size configuration  
         output_path: Output path for results
         wandb_args: Weights & Biases arguments
@@ -72,10 +80,17 @@ def benchmark_pipeline(
         lm_eval_path: Path to lm-evaluation-harness installation
         upload_script_path: Path to upload script directory
         upload_script_name: Name of upload script
-        use_accelerate: Whether to use accelerate for multi-GPU
+        use_accelerate: Whether to use accelerate for multi-GPU (mutually exclusive with use_vllm)
         num_gpus: Number of GPUs to use (when use_accelerate=True)
         mixed_precision: Mixed precision mode ("no", "fp16", "bf16")
         cache_requests: Whether to enable request caching
+        trust_remote_code: Whether to trust remote code when loading models
+        use_vllm: Whether to use VLLM backend (mutually exclusive with use_accelerate)
+        gpus_per_model: Number of GPUs per model instance for VLLM (tensor parallel)
+        model_replicas: Number of model replicas for VLLM (data parallel)
+        use_local_api: Whether to use local API mode instead of direct vLLM
+        local_api_base_url: Base URL for the local API server
+        num_concurrent: Number of concurrent API requests (only used in API mode)
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
     
@@ -86,7 +101,13 @@ def benchmark_pipeline(
         use_accelerate=use_accelerate,
         num_gpus=num_gpus,
         mixed_precision=mixed_precision,
-        lm_eval_path=lm_eval_path
+        lm_eval_path=lm_eval_path,
+        use_vllm=use_vllm,
+        gpus_per_model=gpus_per_model,
+        model_replicas=model_replicas,
+        use_local_api=use_local_api,
+        local_api_base_url=local_api_base_url,
+        num_concurrent=num_concurrent
     )
     
     # Step 2: Run evaluation
@@ -105,7 +126,14 @@ def benchmark_pipeline(
         num_gpus=num_gpus,
         mixed_precision=mixed_precision,
         cache_requests=cache_requests,
-        model_test_results=test_results
+        trust_remote_code=trust_remote_code,
+        model_test_results=test_results,
+        use_vllm=use_vllm,
+        gpus_per_model=gpus_per_model,
+        model_replicas=model_replicas,
+        use_local_api=use_local_api,
+        local_api_base_url=local_api_base_url,
+        num_concurrent=num_concurrent
     )
     
     # Step 3: Upload results

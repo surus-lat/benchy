@@ -1,23 +1,33 @@
 # Benchy Configuration - Gemma Model
 model:
   name: "google/gemma-3n-E4B-it"
-  dtype: "float16" 
+  dtype: "bfloat16" 
   max_length: 16384
 
 evaluation:
   tasks: "latam"
   device: "cuda"
-  batch_size: "auto:4"
+  batch_size: "20" # auto:4 is the default batch size for lm-evaluation-harness. Use a number like 8 for API mode.
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
   cache_requests: true  # Enable request caching for speedup
-  limit: 10  # Only evaluate 10 examples per task for quick testing
+  trust_remote_code: true
 
 # Performance optimizations
 performance:
-  use_accelerate: true  # Set to true for multi-GPU acceleration
+  use_accelerate: false # Set to true for multi-GPU acceleration
   num_gpus: 2           # Number of GPUs to use (when use_accelerate=true)
   mixed_precision: "no" # Options: "no", "fp16", "bf16"
+  
+  # VLLM configuration (mutually exclusive with accelerate)
+  use_vllm: true        # Set to true to use VLLM backend
+  use_local_api: true   # Use local API server instead of direct vLLM (fixes Gemma3n multimodal issues)
+  local_api_base_url: "http://localhost:8000/v1/completions"
+  num_concurrent: 20     # Number of concurrent API requests (only for API mode)
+  gpus_per_model: 1     # Number of GPUs per model instance (tensor parallel)
+  model_replicas: 1     # Number of model replicas (data parallel) - reduced to fit in memory
+  max_model_len: 8192   # Reduced to fit in single GPU memory
+  gpu_memory_utilization: 0.6  # Further reduced to ensure model fits
 
 wandb:
   entity: "surus-lat"

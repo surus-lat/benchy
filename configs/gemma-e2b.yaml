@@ -1,7 +1,7 @@
 # Benchy Configuration - Gemma Model
 model:
   name: "google/gemma-3n-E2B-it"
-  dtype: "float16" 
+  dtype: "bfloat16" 
   max_length: 16384
 
 evaluation:
@@ -11,7 +11,7 @@ evaluation:
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
   cache_requests: true  # Enable request caching for speedup
-  limit: 10  # Only evaluate 10 examples per task for quick testing
+  trust_remote_code: true
 
 # Performance optimizations
 performance:
