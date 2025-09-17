@@ -1,6 +1,16 @@
-# Benchy - ZenML-Powered ML Benchmarking
+# Benchy - vLLM-Powered ML Benchmarking
 
-A minimal ZenML-powered system for benchmarking ML models using lm-evaluation-harness and uploading results to datasets.
+A streamlined ZenML-powered system for benchmarking ML models using vLLM API server and lm-evaluation-harness, with automatic results upload.
+
+## Overview
+
+Benchy runs a complete evaluation pipeline:
+1. **Start vLLM server** with the specified model and configuration
+2. **Test API connectivity** to ensure the server is working
+3. **Run Spanish evaluation** tasks sequentially 
+4. **Run Portuguese evaluation** tasks sequentially
+5. **Upload results** to the leaderboard
+6. **Clean up** - always stops the vLLM server
 
 ## Setup
 
@@ -12,14 +22,16 @@ A minimal ZenML-powered system for benchmarking ML models using lm-evaluation-ha
 2. Copy environment template and fill in your values:
    ```bash
    cp env.template .env
-   # Edit .env with your tokens
+   # Edit .env with your HF_TOKEN if needed
    ```
 
-3. Configure your benchmark in a YAML config file
-4. Guarantee zenml docker is running
+3. Configure your benchmark in a YAML config file (see `configs/` directory)
 
-  sudo docker run -it -d -p 8080:8080 --name zenml zenmldocker/zenml-server
-sudo
+4. Ensure ZenML server is running:
+   ```bash
+   sudo docker run -it -d -p 8080:8080 --name zenml zenmldocker/zenml-server
+   ```
+
 ## Usage
 
 ### Single Model Runs
@@ -31,8 +43,8 @@ python main.py
 
 Run with specific configuration:
 ```bash
-python main.py --config configs/example-with-limit.yaml
-python main.py -c configs/model-1-qwen-4b-instruct-2507.yaml
+python main.py --config configs/gemma-e4b.yaml
+python main.py -c configs/test-gemma.yaml
 ```
 
 Show help:
@@ -40,44 +52,37 @@ Show help:
 python main.py --help
 ```
 
-### Batch Runs
+### Configuration
 
-Run multiple models sequentially:
-```bash
-# Simple shell script (recommended)
-./run_models.sh
-
-# Python batch runner
-python run_batch.py
-
-# Advanced ZenML pipeline
-python batch_runner.py
-```
-
-## Configuration
-
-### Single Model Config Files
-
-Create or modify YAML files in the `configs/` directory:
+Create YAML config files in the `configs/` directory. Example configuration:
 
 ```yaml
 # configs/my-model.yaml
 model:
   name: "google/gemma-3n-E4B-it"
-  dtype: "float16" 
-  max_length: 16384
 
 evaluation:
-  tasks: "latam"
-  device: "cuda"
-  batch_size: "auto:4"
+  tasks_spanish: "latam_es"      # Spanish evaluation tasks
+  tasks_portuguese: "latam_pt"   # Portuguese evaluation tasks  
+  batch_size: "20"
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
-  limit: 10  # Optional: limit examples for testing
+  cache_requests: true
+  trust_remote_code: true
+  num_concurrent: 20
+  # limit: 5                     # Uncomment for testing (TEST mode)
 
-# Logging configuration
-logging:
-  log_dir: "logs"  # Directory to store log files
+# vLLM server configuration
+vllm:
+  host: "0.0.0.0"
+  port: 8000
+  tensor_parallel_size: 1        # Number of GPUs (-tp parameter)
+  max_model_len: 8192
+  gpu_memory_utilization: 0.6
+  enforce_eager: true            # Better compatibility
+  limit_mm_per_prompt: '{"images": 0, "audios": 0}'  # Disable multimodal
+  hf_cache: "/home/mauro/.cache/huggingface"
+  # hf_token: "hf_..."           # Set if needed
 
 wandb:
   entity: "surus-lat"
@@ -87,112 +92,86 @@ upload:
   script_path: "/home/mauro/dev/leaderboard"
   script_name: "run_pipeline.py"
 
+logging:
+  log_dir: "logs"
+
 venvs:
   lm_eval: "/home/mauro/dev/lm-evaluation-harness"
   leaderboard: "/home/mauro/dev/leaderboard"
 ```
 
-### Available Examples
+### Available Configurations
 
-- `configs/config-template.yaml` - Base template with performance options
-- `configs/pipeline_test.yaml` - Multi-GPU testing with limit
-- `configs/multi-gpu-production.yaml` - Production multi-GPU config
-- `configs/model-*.yaml` - Specific model configurations
+- `configs/gemma-e4b.yaml` - Production Gemma model configuration
+- `configs/test-gemma.yaml` - Test configuration with limited samples
+
+### Test Mode
+
+Add `limit: N` to the evaluation section to run in TEST mode:
+- Only evaluates N examples per task
+- Adds "TEST_" prefix to the run name
+- Useful for validating configuration before full runs
+
+## Pipeline Steps
+
+The pipeline executes these steps in order:
+
+1. **start_vllm_server** - Starts vLLM API server with model
+2. **test_vllm_api** - Validates server is responding
+3. **run_lm_evaluation** (Spanish) - Runs Spanish language tasks
+4. **run_lm_evaluation** (Portuguese) - Runs Portuguese language tasks  
+5. **upload_results** - Uploads combined results
+6. **stop_vllm_server** - Always stops server (guaranteed cleanup)
 
 ## Features
 
-### Command Line Interface
+- **Automatic server management** - vLLM server is always cleaned up
+- **Sequential task execution** - Spanish and Portuguese tasks run separately
+- **Safe logging** - Handles parallel logging conflicts gracefully
+- **Configurable vLLM settings** - Full control over server parameters
+- **Error resilience** - Server cleanup happens even if pipeline fails
+- **Test mode support** - Quick validation with limited samples
 
+## Logging
+
+All runs generate detailed logs in the `logs/` directory:
+- Console output with real-time progress
+- File logs with complete execution details
+- Separate logs for each pipeline step
+- Safe error handling for logging conflicts
+
+## Environment Variables
+
+Set in `.env` file:
+- `HF_TOKEN` - Hugging Face token (if needed for model access)
+- `BENCHY_CONFIG` - Default config file path (optional)
+
+## Troubleshooting
+
+### vLLM Server Issues
+- Check GPU memory usage
+- Reduce `gpu_memory_utilization` in config
+- Verify model fits in available memory
+- Check logs for CUDA errors
+
+### Evaluation Failures
+- Verify lm-evaluation-harness virtual environment is set up
+- Check task names are correct
+- Ensure API server is responding
+- Review batch size settings
+
+### Server Cleanup
+The pipeline guarantees vLLM server cleanup. If you see warnings about manual cleanup, check running processes:
 ```bash
-python main.py [OPTIONS]
-
-Options:
-  -c, --config PATH    Path to configuration YAML file
-  -v, --verbose        Enable verbose logging  
-  -h, --help          Show help message
-
-Examples:
-  python main.py                                    # Use default config.yaml
-  python main.py --config configs/my-model.yaml    # Use specific config
-  python main.py -c configs/example-with-limit.yaml # Short form
+ps aux | grep vllm
+# Kill any remaining vLLM processes if needed
 ```
 
-### Performance Optimizations
+## Development
 
-**Multi-GPU Acceleration (Recommended):**
-```yaml
-performance:
-  use_accelerate: true  # Enable multi-GPU with accelerate
-  num_gpus: 4          # Use all available GPUs
-  mixed_precision: "fp16"  # Use mixed precision for speed
-
-evaluation:
-  cache_requests: true  # Cache requests between model runs
-  batch_size: "auto:4" # Auto-optimize batch size
-```
-
-**Single GPU Mode:**
-```yaml
-performance:
-  use_accelerate: false  # Disable multi-GPU
-  
-evaluation:
-  device: "cuda:0"  # Specify single GPU
-```
-
-**Testing vs Production:**
-
-*Quick Testing:*
-```yaml
-evaluation:
-  limit: 10  # Only evaluate 10 examples per task
-```
-
-*Full Evaluation:*
-```yaml
-evaluation:
-  # limit: 10  # Comment out or remove for full evaluation
-```
-
-### Real-time Output & Logging
-
-The system streams lm-evaluation-harness output in real-time and saves everything to log files:
-
-**Console Output:**
-```
-[run_lm_evaluation] [lm_eval] Loading model...
-[run_lm_evaluation] [lm_eval] Running task: latam
-[run_lm_evaluation] [lm_eval] Progress: 5/10 samples
-```
-
-**Automatic File Logging:**
-- **Single runs**: `logs/benchy_{model_name}_{timestamp}.log`
-- **Batch runs**: `logs/batch_run_{timestamp}.log` + individual model logs
-- **Complete logs**: All command output, errors, timing, and configuration
-
-**Log Location:**
-```bash
-logs/
-├── benchy_google_gemma-3n-E4B-it_20250112_143022.log
-├── benchy_Qwen_Qwen3-4B-Instruct-2507_20250112_144155.log
-└── batch_run_20250112_140000.log
-```
-
-## Architecture
-
-- `src/steps.py`: ZenML steps for evaluation and upload
-- `src/pipeline.py`: Main ZenML pipeline connecting the steps
-- `src/batch_pipeline.py`: Multi-model batch processing pipeline
-- `main.py`: CLI entry point for single model runs
-- `*_runner.py`: Different batch execution approaches
-- `configs/`: Configuration files for different models
-
-## Requirements
-
-- Both lm-evaluation-harness and leaderboard repos set up with their respective virtual environments
-- Environment variables for HF_TOKEN and WANDB_API_KEY (if needed)
-- ZenML initialized in the project
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on extending the system, adding new lm-evaluation-harness parameters, and best practices.
+The codebase is intentionally minimal and focused:
+- `main.py` - Entry point and configuration handling
+- `src/pipeline.py` - Main ZenML pipeline definition
+- `src/steps.py` - Individual pipeline steps
+- `src/logging_utils.py` - Logging utilities
+- `configs/` - Configuration files

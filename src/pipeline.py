@@ -1,10 +1,10 @@
-"""Main ZenML pipeline for ML model benchmarking."""
+"""Main ZenML pipeline for vLLM-based ML model benchmarking."""
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from zenml import pipeline
 from zenml.logger import get_logger
-from .steps import test_model_download, run_lm_evaluation, upload_results
+from .steps import start_vllm_server, test_vllm_api, run_lm_evaluation, stop_vllm_server, upload_results
 
 logger = get_logger(__name__)
 
@@ -41,9 +41,8 @@ def create_run_name(model_name: str, limit: Optional[int] = None) -> str:
 @pipeline
 def benchmark_pipeline(
     model_name: str,
-    model_args: str, 
-    tasks: str,
-    device: str,
+    tasks_spanish: str,
+    tasks_portuguese: str,
     batch_size: str,
     output_path: str,
     wandb_args: str = "",
@@ -52,26 +51,35 @@ def benchmark_pipeline(
     lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
     upload_script_path: str = "/home/mauro/dev/leaderboard",
     upload_script_name: str = "run_pipeline.py",
-    use_accelerate: bool = False,
-    num_gpus: int = 1,
-    mixed_precision: str = "no",
     cache_requests: bool = True,
     trust_remote_code: bool = False,
-    use_vllm: bool = False,
-    gpus_per_model: int = 1,
-    model_replicas: int = 2,
-    use_local_api: bool = False,
-    local_api_base_url: str = "http://localhost:8000/v1/completions",
+    # vLLM server configuration
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    tensor_parallel_size: int = 1,
+    max_model_len: int = 8192,
+    gpu_memory_utilization: float = 0.6,
+    enforce_eager: bool = True,
+    limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
+    hf_cache: str = "/home/mauro/.cache/huggingface",
+    hf_token: str = None,
     num_concurrent: int = 8
-):
+) -> Dict[str, Any]:
     """
-    Complete benchmarking pipeline that runs evaluation and uploads results.
+    Complete vLLM-based benchmarking pipeline.
+    
+    The pipeline:
+    1. Starts a vLLM server with the specified model
+    2. Tests the API server to ensure it's working
+    3. Runs Spanish language evaluation tasks
+    4. Runs Portuguese language evaluation tasks  
+    5. Uploads results
+    6. Stops the vLLM server (guaranteed cleanup)
     
     Args:
         model_name: The model to evaluate
-        model_args: Model arguments string
-        tasks: Tasks to run
-        device: Device to use (ignored if use_accelerate=True or use_vllm=True)
+        tasks_spanish: Spanish tasks to run (e.g., "latam_es")
+        tasks_portuguese: Portuguese tasks to run (e.g., "latam_pt")
         batch_size: Batch size configuration  
         output_path: Output path for results
         wandb_args: Weights & Biases arguments
@@ -80,68 +88,116 @@ def benchmark_pipeline(
         lm_eval_path: Path to lm-evaluation-harness installation
         upload_script_path: Path to upload script directory
         upload_script_name: Name of upload script
-        use_accelerate: Whether to use accelerate for multi-GPU (mutually exclusive with use_vllm)
-        num_gpus: Number of GPUs to use (when use_accelerate=True)
-        mixed_precision: Mixed precision mode ("no", "fp16", "bf16")
         cache_requests: Whether to enable request caching
         trust_remote_code: Whether to trust remote code when loading models
-        use_vllm: Whether to use VLLM backend (mutually exclusive with use_accelerate)
-        gpus_per_model: Number of GPUs per model instance for VLLM (tensor parallel)
-        model_replicas: Number of model replicas for VLLM (data parallel)
-        use_local_api: Whether to use local API mode instead of direct vLLM
-        local_api_base_url: Base URL for the local API server
-        num_concurrent: Number of concurrent API requests (only used in API mode)
+        # vLLM server configuration
+        host: Host to bind vLLM server to
+        port: Port for vLLM server
+        tensor_parallel_size: Number of GPUs for tensor parallelism
+        max_model_len: Maximum model length
+        gpu_memory_utilization: GPU memory utilization
+        enforce_eager: Whether to enforce eager execution
+        limit_mm_per_prompt: Multimodal limits as JSON string
+        hf_cache: Hugging Face cache directory
+        hf_token: Hugging Face token
+        num_concurrent: Number of concurrent API requests
     """
-    logger.info(f"Starting benchmark pipeline for model: {model_name}")
+    logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
     
-    # Step 1: Test model download and functionality
-    test_results = test_model_download(
-        model_name=model_name,
-        model_args=model_args,
-        use_accelerate=use_accelerate,
-        num_gpus=num_gpus,
-        mixed_precision=mixed_precision,
-        lm_eval_path=lm_eval_path,
-        use_vllm=use_vllm,
-        gpus_per_model=gpus_per_model,
-        model_replicas=model_replicas,
-        use_local_api=use_local_api,
-        local_api_base_url=local_api_base_url,
-        num_concurrent=num_concurrent
-    )
+    # Initialize variables for cleanup
+    server_pid = None
+    server_url = None
+    server_port = None
     
-    # Step 2: Run evaluation
-    eval_results = run_lm_evaluation(
-        model_name=model_name,
-        model_args=model_args,
-        tasks=tasks,
-        device=device,
-        batch_size=batch_size,
-        output_path=output_path,
-        wandb_args=wandb_args,
-        log_samples=log_samples,
-        limit=limit,
-        lm_eval_path=lm_eval_path,
-        use_accelerate=use_accelerate,
-        num_gpus=num_gpus,
-        mixed_precision=mixed_precision,
-        cache_requests=cache_requests,
-        trust_remote_code=trust_remote_code,
-        model_test_results=test_results,
-        use_vllm=use_vllm,
-        gpus_per_model=gpus_per_model,
-        model_replicas=model_replicas,
-        use_local_api=use_local_api,
-        local_api_base_url=local_api_base_url,
-        num_concurrent=num_concurrent
-    )
-    
-    # Step 3: Upload results
-    upload_result = upload_results(
-        eval_results=eval_results,
-        script_path=upload_script_path,
-        script_name=upload_script_name
-    )
-    
-    logger.info("Benchmark pipeline completed successfully")
-    return upload_result
+    try:
+        # Step 1: Start vLLM server
+        server_pid, server_url, server_port = start_vllm_server(
+            model_name=model_name,
+            host=host,
+            port=port,
+            tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
+            limit_mm_per_prompt=limit_mm_per_prompt,
+            hf_cache=hf_cache,
+            hf_token=hf_token
+        )
+        
+        # Step 2: Test vLLM API
+        api_test_result = test_vllm_api(
+            server_url=server_url,
+            model_name=model_name,
+            port=server_port
+        )
+        
+        # Step 3: Run Spanish evaluation
+        logger.info("Running Spanish language evaluation...")
+        spanish_results = run_lm_evaluation(
+            model_name=model_name,
+            tasks=tasks_spanish,
+            batch_size=batch_size,
+            output_path=f"{output_path}/spanish",
+            server_url=server_url,
+            port=server_port,
+            wandb_args=wandb_args,
+            log_samples=log_samples,
+            limit=limit,
+            lm_eval_path=lm_eval_path,
+            cache_requests=cache_requests,
+            trust_remote_code=trust_remote_code,
+            num_concurrent=num_concurrent
+        )
+        
+        # Step 4: Run Portuguese evaluation  
+        logger.info("Running Portuguese language evaluation...")
+        portuguese_results = run_lm_evaluation(
+            model_name=model_name,
+            tasks=tasks_portuguese,
+            batch_size=batch_size,
+            output_path=f"{output_path}/portuguese",
+            server_url=server_url,
+            port=server_port,
+            wandb_args=wandb_args,
+            log_samples=log_samples,
+            limit=limit,
+            lm_eval_path=lm_eval_path,
+            cache_requests=cache_requests,
+            trust_remote_code=trust_remote_code,
+            num_concurrent=num_concurrent
+        )
+        
+        # Combine results for upload
+        combined_results = {
+            "model_name": model_name,
+            "spanish_results": spanish_results,
+            "portuguese_results": portuguese_results,
+            "api_test": api_test_result,
+            "tasks": f"{tasks_spanish},{tasks_portuguese}",
+            "output_path": output_path
+        }
+        
+        # Step 5: Upload results
+        upload_result = upload_results(
+            eval_results=combined_results,
+            script_path=upload_script_path,
+            script_name=upload_script_name
+        )
+        
+        logger.info("Benchmark pipeline completed successfully")
+        return upload_result
+        
+    finally:
+        # Step 6: Always stop vLLM server (guaranteed cleanup)
+        if server_pid is not None:
+            try:
+                cleanup_result = stop_vllm_server(server_pid)
+                if cleanup_result["status"] != "success":
+                    logger.warning(f"⚠️ vLLM server cleanup had issues: {cleanup_result}")
+                else:
+                    logger.info("✅ vLLM server cleanup completed successfully")
+            except Exception as cleanup_error:
+                logger.error(f"❌ Critical: Failed to stop vLLM server (PID: {server_pid}): {cleanup_error}")
+                logger.error("⚠️ WARNING: vLLM server may still be running. Please check and stop manually if needed.")
+        else:
+            logger.warning("⚠️ No vLLM server PID available for cleanup - server may not have started")

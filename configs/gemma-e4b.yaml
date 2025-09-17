@@ -1,33 +1,29 @@
-# Benchy Configuration - Gemma Model
+# Benchy Configuration - vLLM-based Gemma Model Evaluation
 model:
   name: "google/gemma-3n-E4B-it"
-  dtype: "bfloat16" 
-  max_length: 16384
 
 evaluation:
-  tasks: "latam"
-  device: "cuda"
-  batch_size: "20" # auto:4 is the default batch size for lm-evaluation-harness. Use a number like 8 for API mode.
+  tasks_spanish: "latam_es"      # Spanish evaluation tasks
+  tasks_portuguese: "latam_pt"   # Portuguese evaluation tasks
+  batch_size: "20"               # Batch size for API mode
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
-  cache_requests: true  # Enable request caching for speedup
+  cache_requests: true           # Enable request caching for speedup
   trust_remote_code: true
+  num_concurrent: 20             # Number of concurrent API requests
+  limit: 5                     # Uncomment for testing (TEST mode)
 
-# Performance optimizations
-performance:
-  use_accelerate: false # Set to true for multi-GPU acceleration
-  num_gpus: 2           # Number of GPUs to use (when use_accelerate=true)
-  mixed_precision: "no" # Options: "no", "fp16", "bf16"
-  
-  # VLLM configuration (mutually exclusive with accelerate)
-  use_vllm: true        # Set to true to use VLLM backend
-  use_local_api: true   # Use local API server instead of direct vLLM (fixes Gemma3n multimodal issues)
-  local_api_base_url: "http://localhost:8000/v1/completions"
-  num_concurrent: 20     # Number of concurrent API requests (only for API mode)
-  gpus_per_model: 1     # Number of GPUs per model instance (tensor parallel)
-  model_replicas: 1     # Number of model replicas (data parallel) - reduced to fit in memory
-  max_model_len: 8192   # Reduced to fit in single GPU memory
-  gpu_memory_utilization: 0.6  # Further reduced to ensure model fits
+# vLLM server configuration
+vllm:
+  host: "0.0.0.0"                # Host to bind server to
+  port: 8000                     # Port for vLLM server
+  tensor_parallel_size: 1        # Number of GPUs for tensor parallelism (-tp)
+  max_model_len: 8192           # Maximum model length
+  gpu_memory_utilization: 0.6    # GPU memory utilization
+  enforce_eager: true            # Enforce eager execution (better compatibility)
+  limit_mm_per_prompt: '{"images": 0, "audios": 0}'  # Disable multimodal
+  hf_cache: "/home/mauro/.cache/huggingface"          # HF cache directory
+  # hf_token: "hf_..."           # Uncomment and set your HF token if needed
 
 wandb:
   entity: "surus-lat"
@@ -39,8 +35,9 @@ upload:
 
 # Logging configuration
 logging:
-  log_dir: "logs"  # Directory to store log files
-  
+  log_dir: "logs"
+
+# Virtual environment paths
 venvs:
   lm_eval: "/home/mauro/dev/lm-evaluation-harness"
   leaderboard: "/home/mauro/dev/leaderboard"

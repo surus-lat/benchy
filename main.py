@@ -1,4 +1,4 @@
-"""Main entry point for benchy - ZenML-powered ML benchmarking."""
+"""Main entry point for benchy - vLLM-powered ML benchmarking."""
 
 import os
 import sys
@@ -100,46 +100,6 @@ def load_config(config_path: str = None) -> dict:
         return yaml.safe_load(f)
 
 
-def build_model_args(config: dict) -> str:
-    """Build model arguments string from config."""
-    import json
-    
-    model = config['model']
-    performance = config.get('performance', {})
-    use_vllm = performance.get('use_vllm', False)
-    
-    # Build arguments as a dictionary first
-    args_dict = {"pretrained": model['name']}
-    
-    if use_vllm:
-        # VLLM-specific arguments
-        gpus_per_model = performance.get('gpus_per_model', 1)
-        model_replicas = performance.get('model_replicas', 2)
-        max_model_len = performance.get('max_model_len', 4096)
-        gpu_memory_utilization = performance.get('gpu_memory_utilization', 0.8)
-        
-        args_dict["tensor_parallel_size"] = gpus_per_model
-        # For VLLM, use the original dtype if specified, otherwise auto
-        if 'dtype' in model:
-            args_dict["dtype"] = model['dtype']
-        else:
-            args_dict["dtype"] = "auto"
-        args_dict["gpu_memory_utilization"] = gpu_memory_utilization
-        args_dict["data_parallel_size"] = model_replicas
-        args_dict["max_model_len"] = max_model_len
-        args_dict["enforce_eager"] = True  # Disable CUDA graphs for better compatibility
-        args_dict["limit_mm_per_prompt"] = {"image": 0,"audio": 0}  # Limit multimodal processing
-    else:
-        # HF-specific arguments
-        if 'dtype' in model:
-            args_dict["dtype"] = model['dtype']
-        if 'max_length' in model:
-            args_dict["max_length"] = model['max_length']
-    
-    # Convert to JSON string
-    return json.dumps(args_dict)
-
-
 def build_wandb_args(config: dict) -> str:
     """Build wandb arguments string from config."""
     if 'wandb' not in config:
@@ -159,13 +119,13 @@ def build_wandb_args(config: dict) -> str:
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Benchy - ZenML-powered ML model benchmarking",
+        description="Benchy - vLLM-powered ML model benchmarking",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python main.py                                    # Use default config.yaml
   python main.py --config configs/my-model.yaml    # Use specific config
-  python main.py -c configs/example-with-limit.yaml # Short form
+  python main.py -c configs/gemma-e4b.yaml         # Short form
         """
     )
     
@@ -186,11 +146,11 @@ Examples:
 
 
 def main():
-    """Run the benchmark pipeline with configuration from specified file."""
+    """Run the vLLM benchmark pipeline with configuration from specified file."""
     # Parse command line arguments
     args = parse_args()
     
-    logger.info("Starting benchy - ML model benchmarking with ZenML")
+    logger.info("Starting benchy - vLLM-powered ML model benchmarking")
     
     if args.verbose:
         logger.info(f"Command line arguments: {args}")
@@ -229,33 +189,21 @@ def main():
     # Log complete configuration
     log_setup.log_config()
     
-    # Build arguments from config
-    model_args = build_model_args(config)
-    wandb_args = build_wandb_args(config)
-    
-    # Extract other config values
+    # Extract configuration values
+    model_name = config['model']['name']
     eval_config = config['evaluation']
+    vllm_config = config['vllm']
     upload_config = config.get('upload', {})
     venv_config = config.get('venvs', {})
+    wandb_args = build_wandb_args(config)
     
-    logger.info(f"Model: {config['model']['name']}")
-    logger.info(f"Tasks: {eval_config['tasks']}")
-    logger.info(f"Device: {eval_config['device']}")
+    logger.info(f"Model: {model_name}")
+    logger.info(f"Spanish tasks: {eval_config['tasks_spanish']}")
+    logger.info(f"Portuguese tasks: {eval_config['tasks_portuguese']}")
+    logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
     
     try:
-        # Extract performance configuration
-        performance_config = config.get('performance', {})
-        
-        # Validate mutually exclusive options
-        use_accelerate = performance_config.get('use_accelerate', False)
-        use_vllm = performance_config.get('use_vllm', False)
-        
-        if use_accelerate and use_vllm:
-            logger.error("Error: use_accelerate and use_vllm cannot both be true. They are mutually exclusive.")
-            return
-        
         # Create custom run name based on model
-        model_name = config['model']['name']
         limit = eval_config.get('limit')
         custom_run_name = create_run_name(model_name, limit)
         logger.info(f"Running pipeline with custom name: {custom_run_name}")
@@ -267,9 +215,8 @@ def main():
             run_name=custom_run_name
         )(
             model_name=model_name,
-            model_args=model_args,
-            tasks=eval_config['tasks'],
-            device=eval_config['device'],
+            tasks_spanish=eval_config['tasks_spanish'],
+            tasks_portuguese=eval_config['tasks_portuguese'],
             batch_size=eval_config['batch_size'],
             output_path=eval_config['output_path'],
             wandb_args=wandb_args,
@@ -278,17 +225,19 @@ def main():
             lm_eval_path=venv_config.get('lm_eval', '/home/mauro/dev/lm-evaluation-harness'),
             upload_script_path=upload_config.get('script_path', '/home/mauro/dev/leaderboard'),
             upload_script_name=upload_config.get('script_name', 'run_pipeline.py'),
-            use_accelerate=performance_config.get('use_accelerate', False),
-            num_gpus=performance_config.get('num_gpus', 1),
-            mixed_precision=performance_config.get('mixed_precision', 'no'),
             cache_requests=eval_config.get('cache_requests', True),
             trust_remote_code=eval_config.get('trust_remote_code', False),
-            use_vllm=performance_config.get('use_vllm', False),
-            gpus_per_model=performance_config.get('gpus_per_model', 1),
-            model_replicas=performance_config.get('model_replicas', 2),
-            use_local_api=performance_config.get('use_local_api', False),
-            local_api_base_url=performance_config.get('local_api_base_url', 'http://localhost:8000/v1/completions'),
-            num_concurrent=performance_config.get('num_concurrent', 8)
+            # vLLM server configuration
+            host=vllm_config.get('host', '0.0.0.0'),
+            port=vllm_config.get('port', 8000),
+            tensor_parallel_size=vllm_config.get('tensor_parallel_size', 1),
+            max_model_len=vllm_config.get('max_model_len', 8192),
+            gpu_memory_utilization=vllm_config.get('gpu_memory_utilization', 0.6),
+            enforce_eager=vllm_config.get('enforce_eager', True),
+            limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
+            hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
+            hf_token=vllm_config.get('hf_token'),
+            num_concurrent=eval_config.get('num_concurrent', 8)
         )
         
         logger.info("Benchmark pipeline completed successfully!")
@@ -302,7 +251,7 @@ def main():
         
         # Log failure summary - create a simple dict for error cases
         error_result = {
-            'model_name': config['model']['name'],
+            'model_name': model_name,
             'return_code': 1,
             'error': str(e)
         }

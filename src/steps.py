@@ -1,9 +1,12 @@
-"""ZenML steps for ML model benchmarking."""
+"""ZenML steps for vLLM-based ML model benchmarking."""
 
 import os
 import subprocess
 import logging
-from typing import Dict, Any, Optional
+import time
+import requests
+import atexit
+from typing import Dict, Any, Tuple
 from zenml import step
 from zenml.logger import get_logger
 
@@ -11,186 +14,181 @@ logger = get_logger(__name__)
 
 
 @step
-def test_model_download(
+def start_vllm_server(
     model_name: str,
-    model_args: str,
-    use_accelerate: bool = False,
-    num_gpus: int = 1,
-    mixed_precision: str = "no",
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
-    use_vllm: bool = False,
-    gpus_per_model: int = 1,
-    model_replicas: int = 2,
-    use_local_api: bool = False,
-    local_api_base_url: str = "http://localhost:8000/v1/completions",
-    num_concurrent: int = 8
-) -> Dict[str, Any]:
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    tensor_parallel_size: int = 1,
+    max_model_len: int = 8192,
+    gpu_memory_utilization: float = 0.6,
+    enforce_eager: bool = True,
+    limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
+    hf_cache: str = "/home/mauro/.cache/huggingface",
+    hf_token: str = None
+) -> Tuple[int, str, int]:
     """
-    Test model download and basic functionality before running full evaluation.
-    
-    This step downloads the model and runs a simple test to ensure it works correctly.
-    It helps separate model download time from evaluation time and catches errors early.
-    
-    For API mode, this step skips the actual model testing and just validates the configuration.
+    Start vLLM server with configurable parameters.
     
     Args:
-        model_name: The model to test
-        model_args: Model arguments string
-        use_accelerate: Whether accelerate will be used for evaluation
-        num_gpus: Number of GPUs that will be used
-        mixed_precision: Mixed precision mode
-        lm_eval_path: Path to lm-evaluation-harness installation
-        use_vllm: Whether VLLM will be used for evaluation
-        gpus_per_model: Number of GPUs per model instance for VLLM
-        model_replicas: Number of model replicas for VLLM
-        use_local_api: Whether to use local API mode instead of direct model loading
-        local_api_base_url: Base URL for the local API server
+        model_name: The model to serve
+        host: Host to bind to
+        port: Port to use
+        tensor_parallel_size: Number of GPUs for tensor parallelism (-tp)
+        max_model_len: Maximum model length
+        gpu_memory_utilization: GPU memory utilization
+        enforce_eager: Whether to enforce eager execution
+        limit_mm_per_prompt: Multimodal limits as JSON string
+        hf_cache: Hugging Face cache directory
+        hf_token: Hugging Face token
         
     Returns:
-        Dictionary with test results and model metadata
+        Tuple of (process_pid, server_url, port)
     """
-    logger.info(f"Testing model download and functionality: {model_name}")
+    logger.info(f"Starting vLLM server for model: {model_name}")
     
-    # Get Python logger for detailed file logging
-    file_logger = logging.getLogger('benchy.model_test')
-    file_logger.info(f"=== Starting Model Test ===")
-    file_logger.info(f"Model: {model_name}")
-    file_logger.info(f"Model args: {model_args}")
+    # Get Python logger for detailed file logging with safe error handling
+    file_logger = logging.getLogger('benchy.vllm_server')
+    try:
+        file_logger.info(f"=== Starting vLLM Server ===")
+        file_logger.info(f"Model: {model_name}")
+        file_logger.info(f"Host: {host}, Port: {port}")
+        file_logger.info(f"Tensor parallel size: {tensor_parallel_size}")
+        file_logger.info(f"Max model length: {max_model_len}")
+    except (RuntimeError, OSError):
+        # Continue if file logging fails
+        pass
     
-    # For local API mode, skip the actual model testing since the API server handles the model
-    if use_vllm and use_local_api:
-        logger.info("Local API mode detected - skipping direct model testing")
-        file_logger.info("Local API mode: model will be served via API, skipping direct testing")
-        file_logger.info(f"API URL: {local_api_base_url}")
-        return {
-            "model_name": model_name,
-            "test_status": "skipped_api_mode",
-            "message": "Model testing skipped - using local API mode",
-            "api_url": local_api_base_url,
-            "model_size_gb": "unknown_api_mode",
-            "peak_memory_gb": "unknown_api_mode"
-        }
-    
-    if use_accelerate:
-        file_logger.info(f"Multi-GPU: {num_gpus} GPUs with accelerate")
-        file_logger.info(f"Mixed precision: {mixed_precision}")
-    elif use_vllm:
-        file_logger.info(f"VLLM mode: {gpus_per_model} GPUs per model, {model_replicas} replicas")
-    file_logger.info(f"LM eval path: {lm_eval_path}")
-    
-    # Build the test command
-    cmd_parts = [
-        "python", "scripts/test_model.py",
-        "--model_name", model_name,
-        "--model_args", model_args
+    # Build command
+    cmd = [
+        "python", "-m", "vllm.entrypoints.openai.api_server",
+        "--host", host,
+        "--model", model_name,
+        "--port", str(port),
+        "-tp", str(tensor_parallel_size),
+        "--max-model-len", str(max_model_len),
+        "--gpu-memory-utilization", str(gpu_memory_utilization),
+        "--limit-mm-per-prompt", limit_mm_per_prompt
     ]
     
-    if use_accelerate:
-        cmd_parts.extend(["--use_accelerate"])
-        cmd_parts.extend(["--num_gpus", str(num_gpus)])
-        cmd_parts.extend(["--mixed_precision", mixed_precision])
-    elif use_vllm:
-        cmd_parts.extend(["--use_vllm"])
-        cmd_parts.extend(["--gpus_per_model", str(gpus_per_model)])
-        cmd_parts.extend(["--model_replicas", str(model_replicas)])
+    if enforce_eager:
+        cmd.append("--enforce-eager")
     
-    # Properly quote the model_args if it contains JSON
-    for i, part in enumerate(cmd_parts):
-        if i > 0 and cmd_parts[i-1] == "--model_args" and "{" in part:
-            cmd_parts[i] = f"'{part}'"  # Single quote to prevent shell parsing
+    # Set up environment
+    env = os.environ.copy()
+    if hf_cache:
+        env["HF_CACHE"] = hf_cache
+    if hf_token:
+        env["HF_TOKEN"] = hf_token
     
-    cmd = " ".join(cmd_parts)
-    logger.info(f"Executing test command: {cmd}")
-    file_logger.info(f"Test command: {cmd}")
+    cmd_str = " ".join(cmd)
+    logger.info(f"Executing command: {cmd_str}")
+    try:
+        file_logger.info(f"Command: {cmd_str}")
+    except (RuntimeError, OSError):
+        pass
+    
+    # Start the server
+    process = subprocess.Popen(cmd, env=env)
+    
+    # Wait for server to be ready
+    server_url = f"http://{host}:{port}"
+    start_time = time.time()
+    timeout = 300  # 5 minutes
+    
+    logger.info(f"Waiting for vLLM server to start at {server_url}...")
+    
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(f"{server_url}/health", timeout=5)
+            if response.status_code == 200:
+                logger.info("✅ vLLM server is ready!")
+                try:
+                    file_logger.info("vLLM server started successfully")
+                except (RuntimeError, OSError):
+                    pass
+                return process.pid, server_url, port
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(2)
+    
+    # Server failed to start
+    process.kill()
+    error_msg = f"vLLM server failed to start within {timeout} seconds"
+    logger.error(error_msg)
+    try:
+        file_logger.error(error_msg)
+    except (RuntimeError, OSError):
+        pass
+    raise TimeoutError(error_msg)
+
+
+@step
+def test_vllm_api(server_url: str, model_name: str, port: int) -> Dict[str, Any]:
+    """
+    Test vLLM API server with a simple completion request.
+    
+    Args:
+        server_url: URL of the vLLM server
+        model_name: Model name to test
+        port: Port number for reference
+        
+    Returns:
+        Dictionary with test results
+    """
+    logger.info(f"Testing vLLM API at {server_url}")
+    
+    file_logger = logging.getLogger('benchy.api_test')
+    try:
+        file_logger.info(f"=== Testing vLLM API ===")
+        file_logger.info(f"Server URL: {server_url}")
+        file_logger.info(f"Model: {model_name}")
+    except (RuntimeError, OSError):
+        pass
+    
+    test_payload = {
+        "model": model_name,
+        "prompt": "Hello, how are you?",
+        "max_tokens": 50,
+        "temperature": 0.7
+    }
     
     try:
-        # Explicitly activate the lm-eval venv and run test
-        venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd}"
-        
-        # Stream output in real-time
-        process = subprocess.Popen(
-            venv_cmd,
-            shell=True,
-            cwd=lm_eval_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Merge stderr into stdout
-            text=True,
-            env=os.environ.copy(),
-            executable="/bin/bash",
-            bufsize=1,  # Line buffered
-            universal_newlines=True
+        response = requests.post(
+            f"{server_url}/v1/completions",
+            json=test_payload,
+            timeout=30
         )
         
-        # Collect output while streaming it
-        output_lines = []
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:  # Only log non-empty lines
-                logger.info(f"[model_test] {line}")
-                # Add error handling for file logging to prevent lock issues
-                try:
-                    file_logger.info(f"[model_test] {line}")
-                except (RuntimeError, OSError) as log_err:
-                    # If file logging fails due to lock conflict, continue with console only
-                    pass
-                output_lines.append(line)
-        
-        # Wait for process to complete
-        return_code = process.wait()
-        stdout = "\n".join(output_lines)
-        
-        if return_code != 0:
-            logger.error(f"Model test failed with return code {return_code}")
+        if response.status_code == 200:
+            result = response.json()
+            logger.info("✅ API test successful!")
             try:
-                file_logger.error(f"Model test failed with return code {return_code}")
-                file_logger.error("=== Model Test FAILED ===")
+                file_logger.info("API test completed successfully")
+                file_logger.info(f"Response: {result}")
             except (RuntimeError, OSError):
                 pass
-            raise RuntimeError(f"Model test execution failed with return code {return_code}")
             
-        logger.info("Model test completed successfully")
-        try:
-            file_logger.info("=== Model Test COMPLETED SUCCESSFULLY ===")
-        except (RuntimeError, OSError):
-            pass
-        
-        # Extract key information from output for metadata
-        test_result = {
-            "model_name": model_name,
-            "model_args": model_args,
-            "test_stdout": stdout,
-            "test_return_code": return_code,
-            "test_command": cmd,
-            "use_accelerate": use_accelerate,
-            "num_gpus": num_gpus,
-            "mixed_precision": mixed_precision,
-            "use_vllm": use_vllm,
-            "gpus_per_model": gpus_per_model,
-            "model_replicas": model_replicas
-        }
-        
-        # Try to extract model size info from output
-        for line in output_lines:
-            if "Parameters:" in line:
-                try:
-                    params_str = line.split("Parameters:")[-1].strip().replace(",", "")
-                    test_result["num_parameters"] = int(params_str)
-                except (ValueError, IndexError):
-                    pass
-            elif "Size:" in line and "GB" in line:
-                try:
-                    size_str = line.split("Size:")[-1].split("GB")[0].strip()
-                    test_result["model_size_gb"] = float(size_str)
-                except (ValueError, IndexError):
-                    pass
-        
-        return test_result
-        
+            return {
+                "status": "success",
+                "server_url": server_url,
+                "port": port,
+                "model_name": model_name,
+                "response": result
+            }
+        else:
+            error_msg = f"API test failed with status {response.status_code}: {response.text}"
+            logger.error(error_msg)
+            try:
+                file_logger.error(error_msg)
+            except (RuntimeError, OSError):
+                pass
+            raise RuntimeError(error_msg)
+            
     except Exception as e:
-        logger.error(f"Error running model test: {str(e)}")
+        error_msg = f"API test failed: {str(e)}"
+        logger.error(error_msg)
         try:
-            file_logger.error(f"Error running model test: {str(e)}")
-            file_logger.error("=== Model Test FAILED ===")
+            file_logger.error(error_msg)
         except (RuntimeError, OSError):
             pass
         raise
@@ -199,124 +197,64 @@ def test_model_download(
 @step
 def run_lm_evaluation(
     model_name: str,
-    model_args: str,
     tasks: str,
-    device: str,
     batch_size: str,
     output_path: str,
+    server_url: str,
+    port: int,
     wandb_args: str = "",
     log_samples: bool = True,
-    limit: Optional[int] = None,
+    limit: int = None,
     lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
-    use_accelerate: bool = False,
-    num_gpus: int = 1,
-    mixed_precision: str = "no",
     cache_requests: bool = True,
     trust_remote_code: bool = False,
-    model_test_results: Dict[str, Any] = None,
-    use_vllm: bool = False,
-    gpus_per_model: int = 1,
-    model_replicas: int = 2,
-    use_local_api: bool = False,
-    local_api_base_url: str = "http://localhost:8000/v1/completions",
     num_concurrent: int = 8
 ) -> Dict[str, Any]:
     """
-    Run lm-evaluation-harness in its own virtual environment.
+    Run lm-evaluation-harness using vLLM API server.
     
     Args:
         model_name: The model to evaluate
-        model_args: Model arguments string
-        tasks: Tasks to run
-        device: Device to use (ignored if use_accelerate=True or use_vllm=True)
+        tasks: Tasks to run (e.g., "latam_es" or "latam_pt")
         batch_size: Batch size configuration
         output_path: Output path for results
+        server_url: URL of the vLLM server
+        port: Port number
         wandb_args: Weights & Biases arguments
         log_samples: Whether to log samples
         limit: Limit number of examples per task (useful for testing)
         lm_eval_path: Path to lm-evaluation-harness installation
-        use_accelerate: Whether to use accelerate for multi-GPU (mutually exclusive with use_vllm)
-        num_gpus: Number of GPUs to use (when use_accelerate=True)
-        mixed_precision: Mixed precision mode ("no", "fp16", "bf16")
         cache_requests: Whether to enable request caching
         trust_remote_code: Whether to trust remote code when loading models
-        use_vllm: Whether to use VLLM backend (mutually exclusive with use_accelerate)
-        gpus_per_model: Number of GPUs per model instance for VLLM
-        model_replicas: Number of model replicas for VLLM
+        num_concurrent: Number of concurrent API requests
         
     Returns:
         Dictionary with execution results and metadata
     """
-    logger.info(f"Starting evaluation for model: {model_name}")
+    logger.info(f"Starting evaluation for model: {model_name}, tasks: {tasks}")
     
-    # Get Python logger for detailed file logging
     file_logger = logging.getLogger('benchy.lm_eval')
-    file_logger.info(f"=== Starting LM Evaluation ===")
-    file_logger.info(f"Model: {model_name}")
-    file_logger.info(f"Tasks: {tasks}")
-    if use_accelerate:
-        file_logger.info(f"Multi-GPU: {num_gpus} GPUs with accelerate")
-        file_logger.info(f"Mixed precision: {mixed_precision}")
-    elif use_vllm:
-        file_logger.info(f"VLLM mode: {gpus_per_model} GPUs per model, {model_replicas} replicas")
-    else:
-        file_logger.info(f"Device: {device}")
-    file_logger.info(f"Batch size: {batch_size}")
-    file_logger.info(f"Cache requests: {cache_requests}")
-    if limit:
-        file_logger.info(f"Limit: {limit} (testing mode)")
+    try:
+        file_logger.info(f"=== Starting LM Evaluation ===")
+        file_logger.info(f"Model: {model_name}")
+        file_logger.info(f"Tasks: {tasks}")
+        file_logger.info(f"Server URL: {server_url}")
+        file_logger.info(f"Batch size: {batch_size}")
+        file_logger.info(f"Concurrent requests: {num_concurrent}")
+        if limit:
+            file_logger.info(f"Limit: {limit} (testing mode)")
+    except (RuntimeError, OSError):
+        pass
     
-    # Build the lm_eval command
-    if use_accelerate:
-        # Use accelerate launch for multi-GPU (with debugging info)
-        cmd_parts = [
-            "accelerate", "launch",
-            "--multi_gpu",
-            f"--num_processes={num_gpus}",
-            "--num_machines=1",
-            f"--mixed_precision={mixed_precision}",
-            "--dynamo_backend=no",
-            "-m", "lm_eval",
-            "--model", "hf",
-            "--model_args", model_args,
-            "--tasks", tasks,
-            "--batch_size", batch_size,
-            "--output_path", output_path
-        ]
-    elif use_vllm:
-        if use_local_api:
-            # Local API mode - connects to running vLLM server
-            # API models only support simple batch sizes, not "auto:N" format
-            api_batch_size = "auto" if batch_size.startswith("auto") else batch_size
-            cmd_parts = [
-                "lm_eval",
-                "--model", "local-completions",
-                "--model_args", f"model={model_name},base_url={local_api_base_url},num_concurrent={num_concurrent},max_retries=3",
-                "--tasks", tasks,
-                "--batch_size", api_batch_size,
-                "--output_path", output_path
-            ]
-        else:
-            # Direct VLLM mode
-            cmd_parts = [
-                "lm_eval",
-                "--model", "vllm",
-                "--model_args", model_args,
-                "--tasks", tasks,
-                "--batch_size", batch_size,
-                "--output_path", output_path
-            ]
-    else:
-        # Single GPU mode with HF
-        cmd_parts = [
-            "lm_eval",
-            "--model", "hf",
-            "--model_args", model_args,
-            "--tasks", tasks,
-            "--device", device,
-            "--batch_size", batch_size,
-            "--output_path", output_path
-        ]
+    # Build the lm_eval command for API mode
+    cmd_parts = [
+        "lm_eval",
+        "--model", "local-completions",
+        "--model_args", f"model={model_name},base_url={server_url}/v1/completions,num_concurrent={num_concurrent},max_retries=3",
+        "--tasks", tasks,
+        "--batch_size", batch_size,
+        "--output_path", output_path
+    ]
     
     if log_samples:
         cmd_parts.append("--log_samples")
@@ -333,28 +271,15 @@ def run_lm_evaluation(
     if trust_remote_code:
         cmd_parts.append("--trust_remote_code")
     
-    # Properly quote the model_args if it contains JSON
-    for i, part in enumerate(cmd_parts):
-        if i > 0 and cmd_parts[i-1] == "--model_args" and "{" in part:
-            cmd_parts[i] = f"'{part}'"  # Single quote to prevent shell parsing
-    
     cmd = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd}")
-    file_logger.info(f"Full command: {cmd}")
+    try:
+        file_logger.info(f"Full command: {cmd}")
+    except (RuntimeError, OSError):
+        pass
     
     try:
-        # Setup environment for accelerate/multiprocessing safety
-        env = os.environ.copy()
-        
-        # Disable problematic logging in subprocess to avoid lock conflicts
-        # This prevents the subprocess from inheriting our complex logging setup
-        if use_accelerate:
-            env["PYTHONPATH"] = f"{lm_eval_path}:{env.get('PYTHONPATH', '')}"
-            # Disable file logging in subprocess to prevent lock conflicts
-            env["DISABLE_FILE_LOGGING"] = "1"
-        
-        # Explicitly activate the lm-eval venv and run command
-        # This ensures we use the correct Python environment
+        # Activate the lm-eval venv and run command
         venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd}"
         
         # Stream output in real-time
@@ -363,11 +288,11 @@ def run_lm_evaluation(
             shell=True,
             cwd=lm_eval_path,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            stderr=subprocess.STDOUT,
             text=True,
-            env=env,
+            env=os.environ.copy(),
             executable="/bin/bash",
-            bufsize=1,  # Line buffered
+            bufsize=1,
             universal_newlines=True
         )
         
@@ -376,31 +301,29 @@ def run_lm_evaluation(
         try:
             for line in process.stdout:
                 line = line.rstrip()
-                if line:  # Only log non-empty lines
-                    # Use thread-safe logging approach
+                if line:
                     logger.info(f"[lm_eval] {line}")
-                    # Only log to file if we're not in accelerate mode or if it's safe
+                    # Safe file logging with error handling
                     try:
                         file_logger.info(f"[lm_eval] {line}")
-                    except (RuntimeError, OSError) as log_err:
-                        # If file logging fails due to lock conflict, continue with console only
+                    except (RuntimeError, OSError):
+                        # Continue if file logging fails
                         pass
                     output_lines.append(line)
         except Exception as stream_error:
             logger.warning(f"Stream reading interrupted: {stream_error}")
-            # Continue to wait for process completion
         
         # Wait for process to complete
         return_code = process.wait()
         stdout = "\n".join(output_lines)
         
         if return_code != 0:
-            logger.error(f"lm_eval failed with return code {return_code}")
+            error_msg = f"lm_eval failed with return code {return_code}"
+            logger.error(error_msg)
             try:
-                file_logger.error(f"lm_eval failed with return code {return_code}")
+                file_logger.error(error_msg)
                 file_logger.error("=== LM Evaluation FAILED ===")
             except (RuntimeError, OSError):
-                # File logging failed, but continue with error reporting
                 pass
             raise RuntimeError(f"lm_eval execution failed with return code {return_code}")
             
@@ -409,7 +332,6 @@ def run_lm_evaluation(
             file_logger.info("=== LM Evaluation COMPLETED SUCCESSFULLY ===")
             file_logger.info(f"Output saved to: {output_path}")
         except (RuntimeError, OSError):
-            # File logging failed, but the evaluation succeeded
             pass
         
         return {
@@ -417,23 +339,82 @@ def run_lm_evaluation(
             "tasks": tasks,
             "output_path": output_path,
             "stdout": stdout,
-            "stderr": "",  # Merged into stdout
             "return_code": return_code,
             "command": cmd
         }
         
     except Exception as e:
-        logger.error(f"Error running lm_eval: {str(e)}")
+        error_msg = f"Error running lm_eval: {str(e)}"
+        logger.error(error_msg)
         try:
-            file_logger.error(f"Error running lm_eval: {str(e)}")
+            file_logger.error(error_msg)
             file_logger.error("=== LM Evaluation FAILED ===")
         except (RuntimeError, OSError):
-            # File logging failed, but continue with error reporting
             pass
         raise
 
 
 @step
+def stop_vllm_server(pid: int) -> Dict[str, Any]:
+    """
+    Stop vLLM server process.
+    
+    Args:
+        pid: Process ID of the vLLM server
+        
+    Returns:
+        Dictionary with termination results
+    """
+    logger.info(f"Stopping vLLM server (PID: {pid})")
+    
+    file_logger = logging.getLogger('benchy.vllm_server')
+    try:
+        file_logger.info(f"=== Stopping vLLM Server (PID: {pid}) ===")
+    except (RuntimeError, OSError):
+        pass
+    
+    try:
+        import psutil
+        process = psutil.Process(pid)
+        process.terminate()
+        
+        # Wait for graceful termination
+        try:
+            process.wait(timeout=30)
+            logger.info("✅ vLLM server terminated gracefully")
+            try:
+                file_logger.info("vLLM server terminated gracefully")
+            except (RuntimeError, OSError):
+                pass
+            return {"status": "success", "method": "graceful", "pid": pid}
+        except psutil.TimeoutExpired:
+            # Force kill if graceful termination fails
+            process.kill()
+            logger.warning("⚠️ vLLM server force-killed after timeout")
+            try:
+                file_logger.warning("vLLM server force-killed after timeout")
+            except (RuntimeError, OSError):
+                pass
+            return {"status": "success", "method": "force_kill", "pid": pid}
+            
+    except psutil.NoSuchProcess:
+        logger.info("vLLM server process already terminated")
+        try:
+            file_logger.info("vLLM server process already terminated")
+        except (RuntimeError, OSError):
+            pass
+        return {"status": "already_terminated", "pid": pid}
+    except Exception as e:
+        error_msg = f"Error stopping vLLM server: {str(e)}"
+        logger.error(error_msg)
+        try:
+            file_logger.error(error_msg)
+        except (RuntimeError, OSError):
+            pass
+        return {"status": "error", "error": str(e), "pid": pid}
+
+
+@step  
 def upload_results(
     eval_results: Dict[str, Any],
     script_path: str = "/home/mauro/dev/leaderboard",
@@ -452,32 +433,34 @@ def upload_results(
     """
     logger.info(f"Starting upload for model: {eval_results['model_name']}")
     
-    # Get Python logger for detailed file logging
     file_logger = logging.getLogger('benchy.upload')
-    file_logger.info(f"=== Starting Upload ===")
-    file_logger.info(f"Model: {eval_results['model_name']}")
-    file_logger.info(f"Script path: {script_path}")
-    file_logger.info(f"Script name: {script_name}")
+    try:
+        file_logger.info(f"=== Starting Upload ===")
+        file_logger.info(f"Model: {eval_results['model_name']}")
+        file_logger.info(f"Script path: {script_path}")
+        file_logger.info(f"Script name: {script_name}")
+    except (RuntimeError, OSError):
+        pass
     
     # Build the upload command using uv
     cmd = f"uv run {script_name}"
     logger.info(f"Executing command: {cmd}")
-    file_logger.info(f"Upload command: {cmd}")
+    try:
+        file_logger.info(f"Upload command: {cmd}")
+    except (RuntimeError, OSError):
+        pass
     
     try:
-        # Run upload script using uv (which manages its own venv)
-        # uv automatically uses the project's virtual environment
-        
         # Stream output in real-time
         process = subprocess.Popen(
             cmd,
             shell=True,
             cwd=script_path,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Merge stderr into stdout
+            stderr=subprocess.STDOUT,
             text=True,
             env=os.environ.copy(),
-            bufsize=1,  # Line buffered
+            bufsize=1,
             universal_newlines=True
         )
         
@@ -485,9 +468,12 @@ def upload_results(
         output_lines = []
         for line in process.stdout:
             line = line.rstrip()
-            if line:  # Only log non-empty lines
+            if line:
                 logger.info(f"[upload] {line}")
-                file_logger.info(f"[upload] {line}")
+                try:
+                    file_logger.info(f"[upload] {line}")
+                except (RuntimeError, OSError):
+                    pass
                 output_lines.append(line)
         
         # Wait for process to complete
@@ -495,23 +481,34 @@ def upload_results(
         stdout = "\n".join(output_lines)
         
         if return_code != 0:
-            logger.error(f"Upload script failed with return code {return_code}")
-            file_logger.error(f"Upload script failed with return code {return_code}")
-            file_logger.error("=== Upload FAILED ===")
+            error_msg = f"Upload script failed with return code {return_code}"
+            logger.error(error_msg)
+            try:
+                file_logger.error(error_msg)
+                file_logger.error("=== Upload FAILED ===")
+            except (RuntimeError, OSError):
+                pass
             raise RuntimeError(f"Upload script execution failed with return code {return_code}")
             
         logger.info("Upload completed successfully")
-        file_logger.info("=== Upload COMPLETED SUCCESSFULLY ===")
+        try:
+            file_logger.info("=== Upload COMPLETED SUCCESSFULLY ===")
+        except (RuntimeError, OSError):
+            pass
         
         return {
             "model_name": eval_results["model_name"],
             "upload_stdout": stdout,
-            "upload_stderr": "",  # Merged into stdout
             "upload_return_code": return_code,
             "upload_command": cmd,
             "eval_results": eval_results
         }
         
     except Exception as e:
-        logger.error(f"Error running upload script: {str(e)}")
+        error_msg = f"Error running upload script: {str(e)}"
+        logger.error(error_msg)
+        try:
+            file_logger.error(error_msg)
+        except (RuntimeError, OSError):
+            pass
         raise
