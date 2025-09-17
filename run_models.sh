@@ -4,12 +4,22 @@
 echo "🚀 Starting batch evaluation of multiple models"
 echo "=============================================="
 
-# Array of config files
-configs=(
-    "./configs/Llama-3.2-3B-Instruct.yaml"
-    "./configs/Llama-3.1-8B-Instruct.yaml" 
-    "./configs/gemma-e4b.yaml"
-    "./configs/gemma-e2b.yaml"
+# Activate benchy virtual environment
+if [[ -f ".venv/bin/activate" ]]; then
+    source .venv/bin/activate
+    echo "✅ Activated benchy virtual environment"
+else
+    echo "❌ Virtual environment not found at .venv/bin/activate"
+    exit 1
+fi
+
+# Array of config files (with .yaml extensions)
+configs=(\
+    "./configs/gemma3n4.yaml"
+    "./configs/gemma3n2.yaml"
+    "./configs/llama3.1.yaml"
+    "./configs/llama3.2.yaml"
+    "./configs/qwen34b.yaml"
     # Add more config files here
 )
 echo "Current virtual environment: $VIRTUAL_ENV"
@@ -48,7 +58,7 @@ for i in "${!configs[@]}"; do
     start_time=$(date +%s)
     
     # Run the evaluation
-    if BENCHY_CONFIG="$config" python main.py; then
+    if python main.py -c "$config"; then
         end_time=$(date +%s)
         duration=$((end_time - start_time))
         echo "✅ Model $model_num completed successfully in ${duration}s"

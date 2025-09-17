@@ -222,7 +222,8 @@ def main():
             wandb_args=wandb_args,
             log_samples=eval_config.get('log_samples', True),
             limit=eval_config.get('limit'),
-            lm_eval_path=venv_config.get('lm_eval', '/home/mauro/dev/lm-evaluation-harness'),
+            lm_eval_spanish_venv=venv_config.get('lm_eval_spanish', '/home/mauro/dev/lm-evaluation-harness'),
+            lm_eval_portuguese_venv=venv_config.get('lm_eval_portuguese', '/home/mauro/dev/portu'),
             upload_script_path=upload_config.get('script_path', '/home/mauro/dev/leaderboard'),
             upload_script_name=upload_config.get('script_name', 'run_pipeline.py'),
             cache_requests=eval_config.get('cache_requests', True),
@@ -237,7 +238,8 @@ def main():
             limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
             hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
             hf_token=vllm_config.get('hf_token', ""),
-            num_concurrent=eval_config.get('num_concurrent', 8)
+            num_concurrent=eval_config.get('num_concurrent', 8),
+            startup_timeout=vllm_config.get('startup_timeout', 900)
         )
         
         logger.info("Benchmark pipeline completed successfully!")

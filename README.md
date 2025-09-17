@@ -52,6 +52,7 @@ Show help:
 python main.py --help
 ```
 
+ps aux | grep -E "(vllm|python.*api_server)" | grep -v grep
 ### Configuration
 
 Create YAML config files in the `configs/` directory. Example configuration:

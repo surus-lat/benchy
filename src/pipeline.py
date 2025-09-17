@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from zenml import pipeline
 from zenml.logger import get_logger
-from .steps import start_vllm_server, test_vllm_api, run_lm_evaluation, stop_vllm_server, upload_results
+from .steps import start_vllm_server, test_vllm_api, run_spanish_evaluation, run_portuguese_evaluation, stop_vllm_server, gather_results
 import atexit
 import os
 
@@ -50,7 +50,8 @@ def benchmark_pipeline(
     wandb_args: str = "",
     log_samples: bool = True,
     limit: Optional[int] = None,
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
+    lm_eval_spanish_venv: str = "/home/mauro/dev/lm-evaluation-harness",
+    lm_eval_portuguese_venv: str = "/home/mauro/dev/portu",
     upload_script_path: str = "/home/mauro/dev/leaderboard",
     upload_script_name: str = "run_pipeline.py",
     cache_requests: bool = True,
@@ -65,7 +66,8 @@ def benchmark_pipeline(
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
-    num_concurrent: int = 8
+    num_concurrent: int = 8,
+    startup_timeout: int = 900
 ) -> Dict[str, Any]:
     """
     Complete vLLM-based benchmarking pipeline.
@@ -87,7 +89,8 @@ def benchmark_pipeline(
         wandb_args: Weights & Biases arguments
         log_samples: Whether to log samples
         limit: Limit number of examples per task (useful for testing)
-        lm_eval_path: Path to lm-evaluation-harness installation
+        lm_eval_spanish_venv: Path to Spanish lm-evaluation-harness installation
+        lm_eval_portuguese_venv: Path to Portuguese lm-evaluation-harness installation
         upload_script_path: Path to upload script directory
         upload_script_name: Name of upload script
         cache_requests: Whether to enable request caching
@@ -118,7 +121,8 @@ def benchmark_pipeline(
         limit_mm_per_prompt=limit_mm_per_prompt,
         hf_cache=hf_cache,
         hf_token=hf_token,
-        lm_eval_path=lm_eval_path
+        lm_eval_path=lm_eval_spanish_venv,
+        startup_timeout=startup_timeout
     )
         
     # Step 2: Test vLLM API
@@ -127,53 +131,52 @@ def benchmark_pipeline(
         model_name=model_name
     )
     
+    output_path = f"{output_path}/{model_name.split('/')[-1]}"
+    os.makedirs(output_path, exist_ok=True)
+    
     # Step 3: Run Spanish evaluation
     logger.info("Running Spanish language evaluation...")
-    spanish_results = run_lm_evaluation(
+    spanish_results = run_spanish_evaluation(
         model_name=model_name,
         tasks=tasks_spanish,
         batch_size=batch_size,
-        output_path=f"{output_path}/spanish",
+        output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
         wandb_args=wandb_args,
         log_samples=log_samples,
         limit=limit,
-        lm_eval_path=lm_eval_path,
+        lm_eval_path=lm_eval_spanish_venv,
         cache_requests=cache_requests,
         trust_remote_code=trust_remote_code,
         num_concurrent=num_concurrent
     )
+
     
     # Step 4: Run Portuguese evaluation  
     logger.info("Running Portuguese language evaluation...")
-    portuguese_results = run_lm_evaluation(
+    portuguese_results = run_portuguese_evaluation(
         model_name=model_name,
         tasks=tasks_portuguese,
         batch_size=batch_size,
-        output_path=f"{output_path}/portuguese",
+        output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
         wandb_args=wandb_args,
         log_samples=log_samples,
         limit=limit,
-        lm_eval_path=lm_eval_path,
+        lm_eval_path=lm_eval_portuguese_venv,
         cache_requests=cache_requests,
-        trust_remote_code=trust_remote_code,
-        num_concurrent=num_concurrent
-    )
-        
-    # Step 5: Upload results (pass individual components, not combined dict)
-    upload_result = upload_results(
-        spanish_results=spanish_results,
-        portuguese_results=portuguese_results,
-        model_name=model_name,
-        script_path=upload_script_path,
-        script_name=upload_script_name
+        trust_remote_code=True,  # Always True for Portuguese
+        num_concurrent=num_concurrent,
+        tokenizer_backend="huggingface"  # Always huggingface for Portuguese
     )
     
-    # Step 6: Stop vLLM server (cleanup) - depends on upload completion
-    cleanup_result = stop_vllm_server(server_info=server_info, upload_result=upload_result)
+    # Step 4: gather results
+    gather_result = gather_results(spanish_results=spanish_results, portuguese_results=portuguese_results)
+    
+    # Step 5: Stop vLLM server (cleanup) - depends on upload completion
+    cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
     
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result

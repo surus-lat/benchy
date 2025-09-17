@@ -6,11 +6,68 @@ import logging
 import time
 import requests
 import atexit
-from typing import Dict, Any, Tuple
+import psutil
+from typing import Dict, Any, Optional, Tuple
 from zenml import step
 from zenml.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def kill_existing_vllm_processes(model_name: str) -> None:
+    """
+    Kill existing vLLM processes running the same model.
+    
+    Args:
+        model_name: The model name to match against running processes
+    """
+    current_user = os.getenv('USER', '')
+    killed_count = 0
+    
+    logger.info(f"Checking for existing vLLM processes with model: {model_name}")
+    
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username']):
+        try:
+            # Check if it's a Python process owned by current user
+            if (proc.info['name'] == 'python' and 
+                proc.info['username'] == current_user and 
+                proc.info['cmdline']):
+                
+                cmdline = ' '.join(proc.info['cmdline'])
+                
+                # Check if it's a vLLM API server process with the same model
+                if ('vllm.entrypoints.openai.api_server' in cmdline and 
+                    f'--model {model_name}' in cmdline):
+                    
+                    logger.info(f"Found existing vLLM process (PID: {proc.info['pid']}) with model: {model_name}")
+                    logger.info(f"Command: {cmdline}")
+                    
+                    # Kill the process
+                    proc.terminate()
+                    killed_count += 1
+                    
+                    # Wait a bit for graceful termination
+                    try:
+                        proc.wait(timeout=5)
+                        logger.info(f"Successfully terminated process {proc.info['pid']}")
+                    except psutil.TimeoutExpired:
+                        # Force kill if it doesn't terminate gracefully
+                        proc.kill()
+                        logger.warning(f"Force killed process {proc.info['pid']}")
+                        
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            # Process might have died or we don't have access
+            continue
+        except Exception as e:
+            logger.warning(f"Error checking process {proc.info.get('pid', 'unknown')}: {e}")
+            continue
+    
+    if killed_count > 0:
+        logger.info(f"Killed {killed_count} existing vLLM process(es) for model: {model_name}")
+        # Give a moment for cleanup
+        time.sleep(2)
+    else:
+        logger.info("No existing vLLM processes found for this model")
 
 
 @step(enable_cache=False)
@@ -25,7 +82,8 @@ def start_vllm_server(
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness"
+    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
+    startup_timeout: int = 900
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -42,11 +100,15 @@ def start_vllm_server(
         hf_cache: Hugging Face cache directory
         hf_token: Hugging Face token
         lm_eval_path: Path to lm-evaluation-harness installation (for venv)
+        startup_timeout: Timeout in seconds for server startup (default: 900s = 15min)
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
     """
     logger.info(f"Starting vLLM server for model: {model_name}")
+    
+    # Kill any existing vLLM processes for the same model
+    kill_existing_vllm_processes(model_name)
     
     # Get Python logger for detailed file logging with safe error handling
     file_logger = logging.getLogger('benchy.vllm_server')
@@ -62,6 +124,7 @@ def start_vllm_server(
     
     # Build command parts
     cmd_parts = [
+        "CUDA_VISIBLE_DEVICES=2,3",
         "python", "-m", "vllm.entrypoints.openai.api_server",
         "--host", host,
         "--model", model_name,
@@ -103,11 +166,11 @@ def start_vllm_server(
     # Wait for server to be ready
     server_url = f"http://{host}:{port}"
     start_time = time.time()
-    timeout = 300  # 5 minutes
     
     logger.info(f"Waiting for vLLM server to start at {server_url}...")
+    logger.info(f"Timeout set to {startup_timeout} seconds ({startup_timeout//60} minutes)")
     
-    while time.time() - start_time < timeout:
+    while time.time() - start_time < startup_timeout:
         try:
             response = requests.get(f"{server_url}/health", timeout=5)
             if response.status_code == 200:
@@ -123,7 +186,7 @@ def start_vllm_server(
     
     # Server failed to start
     process.kill()
-    error_msg = f"vLLM server failed to start within {timeout} seconds"
+    error_msg = f"vLLM server failed to start within {startup_timeout} seconds ({startup_timeout//60} minutes)"
     logger.error(error_msg)
     try:
         file_logger.error(error_msg)
@@ -207,7 +270,7 @@ def test_vllm_api(server_info: Dict[str, Any], model_name: str) -> Dict[str, Any
 
 
 @step
-def run_lm_evaluation(
+def run_spanish_evaluation(
     model_name: str,
     tasks: str,
     batch_size: str,
@@ -216,11 +279,88 @@ def run_lm_evaluation(
     api_test_result: Dict[str, Any],
     wandb_args: str = "",
     log_samples: bool = True,
-    limit: int = None,
+    limit: Optional[int] = None,
     lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
     cache_requests: bool = True,
     trust_remote_code: bool = False,
     num_concurrent: int = 8
+) -> Dict[str, Any]:
+    """
+    Run Spanish language evaluation using lm-evaluation-harness via API.
+    """
+    return _run_evaluation(
+        model_name=model_name,
+        tasks=tasks,
+        batch_size=batch_size,
+        output_path=output_path,
+        server_info=server_info,
+        api_test_result=api_test_result,
+        wandb_args=wandb_args,
+        log_samples=log_samples,
+        limit=limit,
+        lm_eval_path=lm_eval_path,
+        cache_requests=cache_requests,
+        trust_remote_code=trust_remote_code,
+        num_concurrent=num_concurrent,
+        language="Spanish"
+    )
+
+
+@step
+def run_portuguese_evaluation(
+    model_name: str,
+    tasks: str,
+    batch_size: str,
+    output_path: str,
+    server_info: Dict[str, Any],
+    api_test_result: Dict[str, Any],
+    wandb_args: str = "",
+    log_samples: bool = True,
+    limit: Optional[int] = None,
+    lm_eval_path: str = "/home/mauro/dev/portu",
+    cache_requests: bool = True,
+    trust_remote_code: bool = False,
+    num_concurrent: int = 8,
+    tokenizer_backend: str = "huggingface"
+) -> Dict[str, Any]:
+    """
+    Run Portuguese language evaluation using lm-evaluation-harness via API.
+    """
+    return _run_evaluation(
+        model_name=model_name,
+        tasks=tasks,
+        batch_size=batch_size,
+        output_path=output_path,
+        server_info=server_info,
+        api_test_result=api_test_result,
+        wandb_args=wandb_args,
+        log_samples=log_samples,
+        limit=limit,
+        lm_eval_path=lm_eval_path,
+        cache_requests=cache_requests,
+        trust_remote_code=trust_remote_code,
+        num_concurrent=num_concurrent,
+        language="Portuguese",
+        tokenizer_backend=tokenizer_backend
+    )
+
+
+def _run_evaluation(
+    model_name: str,
+    tasks: str,
+    batch_size: str,
+    output_path: str,
+    server_info: Dict[str, Any],
+    api_test_result: Dict[str, Any],
+    wandb_args: str = "",
+    log_samples: bool = True,
+    limit: Optional[int] = None,
+    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
+    cache_requests: bool = True,
+    trust_remote_code: bool = False,
+    num_concurrent: int = 8,
+    language: str = "Unknown",
+    tokenizer_backend: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run lm-evaluation-harness using vLLM API server.
@@ -244,11 +384,11 @@ def run_lm_evaluation(
     """
     server_url = server_info["url"]
     
-    logger.info(f"Starting evaluation for model: {model_name}, tasks: {tasks}")
+    logger.info(f"Starting {language} evaluation for model: {model_name}, tasks: {tasks}")
     
     file_logger = logging.getLogger('benchy.lm_eval')
     try:
-        file_logger.info(f"=== Starting LM Evaluation ===")
+        file_logger.info(f"=== Starting {language} LM Evaluation ===")
         file_logger.info(f"Model: {model_name}")
         file_logger.info(f"Tasks: {tasks}")
         file_logger.info(f"Server URL: {server_url}")
@@ -259,11 +399,29 @@ def run_lm_evaluation(
     except (RuntimeError, OSError):
         pass
     
+    # Build model_args string
+    model_args_parts = [
+        f"model={model_name}",
+        f"base_url={server_url}/v1/completions",
+        f"num_concurrent={num_concurrent}",
+        "max_retries=3"
+    ]
+    
+    # Add trust_remote_code if True
+    if trust_remote_code:
+        model_args_parts.append("trust_remote_code=True")
+    
+    # Add tokenizer_backend if provided
+    if tokenizer_backend:
+        model_args_parts.append(f"tokenizer_backend={tokenizer_backend}")
+    
+    model_args_str = ",".join(model_args_parts)
+    
     # Build the lm_eval command for API mode
     cmd_parts = [
         "lm_eval",
         "--model", "local-completions",
-        "--model_args", f"model={model_name},base_url={server_url}/v1/completions,num_concurrent={num_concurrent},max_retries=3",
+        "--model_args", model_args_str,
         "--tasks", tasks,
         "--batch_size", batch_size,
         "--output_path", output_path
@@ -366,6 +524,16 @@ def run_lm_evaluation(
             pass
         raise
 
+@step
+def gather_results(spanish_results: Dict[str, Any], portuguese_results: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Gather results from Spanish and Portuguese evaluations.
+    """
+    return {
+        "spanish_results": spanish_results,
+        "portuguese_results": portuguese_results
+    }
+
 
 @step(enable_cache=False)
 def stop_vllm_server(server_info: Dict[str, Any], upload_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -427,107 +595,3 @@ def stop_vllm_server(server_info: Dict[str, Any], upload_result: Dict[str, Any])
             pass
         return {"status": "error", "error": str(e), "pid": pid}
 
-
-@step  
-def upload_results(
-    spanish_results: Dict[str, Any],
-    portuguese_results: Dict[str, Any],
-    model_name: str,
-    script_path: str = "/home/mauro/dev/leaderboard",
-    script_name: str = "run_pipeline.py"
-) -> Dict[str, Any]:
-    """
-    Upload evaluation results using the leaderboard upload script.
-    
-    Args:
-        spanish_results: Results from Spanish evaluation step
-        portuguese_results: Results from Portuguese evaluation step
-        model_name: Name of the model being evaluated
-        script_path: Path to the leaderboard script directory  
-        script_name: Name of the upload script
-        
-    Returns:
-        Dictionary with upload results and metadata
-    """
-    logger.info(f"Starting upload for model: {model_name}")
-    
-    file_logger = logging.getLogger('benchy.upload')
-    try:
-        file_logger.info(f"=== Starting Upload ===")
-        file_logger.info(f"Model: {model_name}")
-        file_logger.info(f"Script path: {script_path}")
-        file_logger.info(f"Script name: {script_name}")
-    except (RuntimeError, OSError):
-        pass
-    
-    # Build the upload command using uv
-    cmd = f"uv run {script_name}"
-    logger.info(f"Executing command: {cmd}")
-    try:
-        file_logger.info(f"Upload command: {cmd}")
-    except (RuntimeError, OSError):
-        pass
-    
-    try:
-        # Stream output in real-time
-        process = subprocess.Popen(
-            cmd,
-            shell=True,
-            cwd=script_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=os.environ.copy(),
-            bufsize=1,
-            universal_newlines=True
-        )
-        
-        # Collect output while streaming it
-        output_lines = []
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:
-                logger.info(f"[upload] {line}")
-                try:
-                    file_logger.info(f"[upload] {line}")
-                except (RuntimeError, OSError):
-                    pass
-                output_lines.append(line)
-        
-        # Wait for process to complete
-        return_code = process.wait()
-        stdout = "\n".join(output_lines)
-        
-        if return_code != 0:
-            error_msg = f"Upload script failed with return code {return_code}"
-            logger.error(error_msg)
-            try:
-                file_logger.error(error_msg)
-                file_logger.error("=== Upload FAILED ===")
-            except (RuntimeError, OSError):
-                pass
-            raise RuntimeError(f"Upload script execution failed with return code {return_code}")
-            
-        logger.info("Upload completed successfully")
-        try:
-            file_logger.info("=== Upload COMPLETED SUCCESSFULLY ===")
-        except (RuntimeError, OSError):
-            pass
-        
-        return {
-            "model_name": model_name,
-            "upload_stdout": stdout,
-            "upload_return_code": return_code,
-            "upload_command": cmd,
-            "spanish_results": spanish_results,
-            "portuguese_results": portuguese_results
-        }
-        
-    except Exception as e:
-        error_msg = f"Error running upload script: {str(e)}"
-        logger.error(error_msg)
-        try:
-            file_logger.error(error_msg)
-        except (RuntimeError, OSError):
-            pass
-        raise

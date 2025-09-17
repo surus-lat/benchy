@@ -155,8 +155,10 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "dotenv" },
+    { name = "psutil" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "requests" },
     { name = "typing-extensions" },
     { name = "zenml", extra = ["server"] },
 ]
@@ -164,8 +166,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "psutil", specifier = ">=5.9.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests", specifier = ">=2.25.0" },
     { name = "typing-extensions", specifier = ">=4.0.0" },
     { name = "zenml", extras = ["server"], specifier = ">=0.84.3" },
 ]

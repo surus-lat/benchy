@@ -11,4 +11,5 @@ dependencies = [
     "typing-extensions>=4.0.0",
     "dotenv>=0.9.9",
     "requests>=2.25.0",
+    "psutil>=5.9.0",
 ]
