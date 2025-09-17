@@ -5,6 +5,8 @@ from typing import Optional, Dict, Any
 from zenml import pipeline
 from zenml.logger import get_logger
 from .steps import start_vllm_server, test_vllm_api, run_lm_evaluation, stop_vllm_server, upload_results
+import atexit
+import os
 
 logger = get_logger(__name__)
 
@@ -62,7 +64,7 @@ def benchmark_pipeline(
     enforce_eager: bool = True,
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
-    hf_token: str = None,
+    hf_token: str = "",
     num_concurrent: int = 8
 ) -> Dict[str, Any]:
     """
@@ -104,100 +106,74 @@ def benchmark_pipeline(
     """
     logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
     
-    # Initialize variables for cleanup
-    server_pid = None
-    server_url = None
-    server_port = None
+    # Step 1: Start vLLM server
+    server_info = start_vllm_server(
+        model_name=model_name,
+        host=host,
+        port=port,
+        tensor_parallel_size=tensor_parallel_size,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_memory_utilization,
+        enforce_eager=enforce_eager,
+        limit_mm_per_prompt=limit_mm_per_prompt,
+        hf_cache=hf_cache,
+        hf_token=hf_token,
+        lm_eval_path=lm_eval_path
+    )
+        
+    # Step 2: Test vLLM API
+    api_test_result = test_vllm_api(
+        server_info=server_info,
+        model_name=model_name
+    )
     
-    try:
-        # Step 1: Start vLLM server
-        server_pid, server_url, server_port = start_vllm_server(
-            model_name=model_name,
-            host=host,
-            port=port,
-            tensor_parallel_size=tensor_parallel_size,
-            max_model_len=max_model_len,
-            gpu_memory_utilization=gpu_memory_utilization,
-            enforce_eager=enforce_eager,
-            limit_mm_per_prompt=limit_mm_per_prompt,
-            hf_cache=hf_cache,
-            hf_token=hf_token
-        )
+    # Step 3: Run Spanish evaluation
+    logger.info("Running Spanish language evaluation...")
+    spanish_results = run_lm_evaluation(
+        model_name=model_name,
+        tasks=tasks_spanish,
+        batch_size=batch_size,
+        output_path=f"{output_path}/spanish",
+        server_info=server_info,
+        api_test_result=api_test_result,
+        wandb_args=wandb_args,
+        log_samples=log_samples,
+        limit=limit,
+        lm_eval_path=lm_eval_path,
+        cache_requests=cache_requests,
+        trust_remote_code=trust_remote_code,
+        num_concurrent=num_concurrent
+    )
+    
+    # Step 4: Run Portuguese evaluation  
+    logger.info("Running Portuguese language evaluation...")
+    portuguese_results = run_lm_evaluation(
+        model_name=model_name,
+        tasks=tasks_portuguese,
+        batch_size=batch_size,
+        output_path=f"{output_path}/portuguese",
+        server_info=server_info,
+        api_test_result=api_test_result,
+        wandb_args=wandb_args,
+        log_samples=log_samples,
+        limit=limit,
+        lm_eval_path=lm_eval_path,
+        cache_requests=cache_requests,
+        trust_remote_code=trust_remote_code,
+        num_concurrent=num_concurrent
+    )
         
-        # Step 2: Test vLLM API
-        api_test_result = test_vllm_api(
-            server_url=server_url,
-            model_name=model_name,
-            port=server_port
-        )
-        
-        # Step 3: Run Spanish evaluation
-        logger.info("Running Spanish language evaluation...")
-        spanish_results = run_lm_evaluation(
-            model_name=model_name,
-            tasks=tasks_spanish,
-            batch_size=batch_size,
-            output_path=f"{output_path}/spanish",
-            server_url=server_url,
-            port=server_port,
-            wandb_args=wandb_args,
-            log_samples=log_samples,
-            limit=limit,
-            lm_eval_path=lm_eval_path,
-            cache_requests=cache_requests,
-            trust_remote_code=trust_remote_code,
-            num_concurrent=num_concurrent
-        )
-        
-        # Step 4: Run Portuguese evaluation  
-        logger.info("Running Portuguese language evaluation...")
-        portuguese_results = run_lm_evaluation(
-            model_name=model_name,
-            tasks=tasks_portuguese,
-            batch_size=batch_size,
-            output_path=f"{output_path}/portuguese",
-            server_url=server_url,
-            port=server_port,
-            wandb_args=wandb_args,
-            log_samples=log_samples,
-            limit=limit,
-            lm_eval_path=lm_eval_path,
-            cache_requests=cache_requests,
-            trust_remote_code=trust_remote_code,
-            num_concurrent=num_concurrent
-        )
-        
-        # Combine results for upload
-        combined_results = {
-            "model_name": model_name,
-            "spanish_results": spanish_results,
-            "portuguese_results": portuguese_results,
-            "api_test": api_test_result,
-            "tasks": f"{tasks_spanish},{tasks_portuguese}",
-            "output_path": output_path
-        }
-        
-        # Step 5: Upload results
-        upload_result = upload_results(
-            eval_results=combined_results,
-            script_path=upload_script_path,
-            script_name=upload_script_name
-        )
-        
-        logger.info("Benchmark pipeline completed successfully")
-        return upload_result
-        
-    finally:
-        # Step 6: Always stop vLLM server (guaranteed cleanup)
-        if server_pid is not None:
-            try:
-                cleanup_result = stop_vllm_server(server_pid)
-                if cleanup_result["status"] != "success":
-                    logger.warning(f"⚠️ vLLM server cleanup had issues: {cleanup_result}")
-                else:
-                    logger.info("✅ vLLM server cleanup completed successfully")
-            except Exception as cleanup_error:
-                logger.error(f"❌ Critical: Failed to stop vLLM server (PID: {server_pid}): {cleanup_error}")
-                logger.error("⚠️ WARNING: vLLM server may still be running. Please check and stop manually if needed.")
-        else:
-            logger.warning("⚠️ No vLLM server PID available for cleanup - server may not have started")
+    # Step 5: Upload results (pass individual components, not combined dict)
+    upload_result = upload_results(
+        spanish_results=spanish_results,
+        portuguese_results=portuguese_results,
+        model_name=model_name,
+        script_path=upload_script_path,
+        script_name=upload_script_name
+    )
+    
+    # Step 6: Stop vLLM server (cleanup) - depends on upload completion
+    cleanup_result = stop_vllm_server(server_info=server_info, upload_result=upload_result)
+    
+    logger.info("Benchmark pipeline completed successfully")
+    return cleanup_result

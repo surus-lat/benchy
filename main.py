@@ -236,7 +236,7 @@ def main():
             enforce_eager=vllm_config.get('enforce_eager', True),
             limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
             hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
-            hf_token=vllm_config.get('hf_token'),
+            hf_token=vllm_config.get('hf_token', ""),
             num_concurrent=eval_config.get('num_concurrent', 8)
         )
         

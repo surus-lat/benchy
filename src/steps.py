@@ -13,7 +13,7 @@ from zenml.logger import get_logger
 logger = get_logger(__name__)
 
 
-@step
+@step(enable_cache=False)
 def start_vllm_server(
     model_name: str,
     host: str = "0.0.0.0",
@@ -24,8 +24,9 @@ def start_vllm_server(
     enforce_eager: bool = True,
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
-    hf_token: str = None
-) -> Tuple[int, str, int]:
+    hf_token: str = "",
+    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness"
+) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
     
@@ -40,9 +41,10 @@ def start_vllm_server(
         limit_mm_per_prompt: Multimodal limits as JSON string
         hf_cache: Hugging Face cache directory
         hf_token: Hugging Face token
+        lm_eval_path: Path to lm-evaluation-harness installation (for venv)
         
     Returns:
-        Tuple of (process_pid, server_url, port)
+        Dictionary with server info: {"pid": int, "url": str, "port": int}
     """
     logger.info(f"Starting vLLM server for model: {model_name}")
     
@@ -58,8 +60,8 @@ def start_vllm_server(
         # Continue if file logging fails
         pass
     
-    # Build command
-    cmd = [
+    # Build command parts
+    cmd_parts = [
         "python", "-m", "vllm.entrypoints.openai.api_server",
         "--host", host,
         "--model", model_name,
@@ -67,28 +69,36 @@ def start_vllm_server(
         "-tp", str(tensor_parallel_size),
         "--max-model-len", str(max_model_len),
         "--gpu-memory-utilization", str(gpu_memory_utilization),
-        "--limit-mm-per-prompt", limit_mm_per_prompt
+        "--limit-mm-per-prompt", f"'{limit_mm_per_prompt}'"  # Quote the JSON string
     ]
     
     if enforce_eager:
-        cmd.append("--enforce-eager")
+        cmd_parts.append("--enforce-eager")
     
     # Set up environment
     env = os.environ.copy()
     if hf_cache:
         env["HF_CACHE"] = hf_cache
-    if hf_token:
+    if hf_token:  # Only set if not empty string
         env["HF_TOKEN"] = hf_token
     
-    cmd_str = " ".join(cmd)
+    cmd_str = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd_str}")
     try:
         file_logger.info(f"Command: {cmd_str}")
     except (RuntimeError, OSError):
         pass
     
-    # Start the server
-    process = subprocess.Popen(cmd, env=env)
+    # Activate the lm-eval venv and start the server
+    venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd_str}"
+    
+    # Start the server using the lm-eval virtual environment
+    process = subprocess.Popen(
+        venv_cmd,
+        shell=True,
+        env=env,
+        executable="/bin/bash"
+    )
     
     # Wait for server to be ready
     server_url = f"http://{host}:{port}"
@@ -106,7 +116,7 @@ def start_vllm_server(
                     file_logger.info("vLLM server started successfully")
                 except (RuntimeError, OSError):
                     pass
-                return process.pid, server_url, port
+                return {"pid": process.pid, "url": server_url, "port": port}
         except requests.exceptions.RequestException:
             pass
         time.sleep(2)
@@ -122,19 +132,21 @@ def start_vllm_server(
     raise TimeoutError(error_msg)
 
 
-@step
-def test_vllm_api(server_url: str, model_name: str, port: int) -> Dict[str, Any]:
+@step(enable_cache=False)
+def test_vllm_api(server_info: Dict[str, Any], model_name: str) -> Dict[str, Any]:
     """
     Test vLLM API server with a simple completion request.
     
     Args:
-        server_url: URL of the vLLM server
+        server_info: Dictionary containing server info from start_vllm_server
         model_name: Model name to test
-        port: Port number for reference
         
     Returns:
         Dictionary with test results
     """
+    server_url = server_info["url"]
+    port = server_info["port"]
+    
     logger.info(f"Testing vLLM API at {server_url}")
     
     file_logger = logging.getLogger('benchy.api_test')
@@ -200,8 +212,8 @@ def run_lm_evaluation(
     tasks: str,
     batch_size: str,
     output_path: str,
-    server_url: str,
-    port: int,
+    server_info: Dict[str, Any],
+    api_test_result: Dict[str, Any],
     wandb_args: str = "",
     log_samples: bool = True,
     limit: int = None,
@@ -218,8 +230,7 @@ def run_lm_evaluation(
         tasks: Tasks to run (e.g., "latam_es" or "latam_pt")
         batch_size: Batch size configuration
         output_path: Output path for results
-        server_url: URL of the vLLM server
-        port: Port number
+        server_info: Dictionary containing server info from start_vllm_server
         wandb_args: Weights & Biases arguments
         log_samples: Whether to log samples
         limit: Limit number of examples per task (useful for testing)
@@ -231,6 +242,8 @@ def run_lm_evaluation(
     Returns:
         Dictionary with execution results and metadata
     """
+    server_url = server_info["url"]
+    
     logger.info(f"Starting evaluation for model: {model_name}, tasks: {tasks}")
     
     file_logger = logging.getLogger('benchy.lm_eval')
@@ -354,17 +367,18 @@ def run_lm_evaluation(
         raise
 
 
-@step
-def stop_vllm_server(pid: int) -> Dict[str, Any]:
+@step(enable_cache=False)
+def stop_vllm_server(server_info: Dict[str, Any], upload_result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Stop vLLM server process.
     
     Args:
-        pid: Process ID of the vLLM server
-        
+        server_info: Dictionary containing server info from start_vllm_server
+        upload_result: Dictionary containing upload result from upload_results
     Returns:
         Dictionary with termination results
     """
+    pid = server_info["pid"]
     logger.info(f"Stopping vLLM server (PID: {pid})")
     
     file_logger = logging.getLogger('benchy.vllm_server')
@@ -416,7 +430,9 @@ def stop_vllm_server(pid: int) -> Dict[str, Any]:
 
 @step  
 def upload_results(
-    eval_results: Dict[str, Any],
+    spanish_results: Dict[str, Any],
+    portuguese_results: Dict[str, Any],
+    model_name: str,
     script_path: str = "/home/mauro/dev/leaderboard",
     script_name: str = "run_pipeline.py"
 ) -> Dict[str, Any]:
@@ -424,19 +440,21 @@ def upload_results(
     Upload evaluation results using the leaderboard upload script.
     
     Args:
-        eval_results: Results from the evaluation step
+        spanish_results: Results from Spanish evaluation step
+        portuguese_results: Results from Portuguese evaluation step
+        model_name: Name of the model being evaluated
         script_path: Path to the leaderboard script directory  
         script_name: Name of the upload script
         
     Returns:
         Dictionary with upload results and metadata
     """
-    logger.info(f"Starting upload for model: {eval_results['model_name']}")
+    logger.info(f"Starting upload for model: {model_name}")
     
     file_logger = logging.getLogger('benchy.upload')
     try:
         file_logger.info(f"=== Starting Upload ===")
-        file_logger.info(f"Model: {eval_results['model_name']}")
+        file_logger.info(f"Model: {model_name}")
         file_logger.info(f"Script path: {script_path}")
         file_logger.info(f"Script name: {script_name}")
     except (RuntimeError, OSError):
@@ -497,11 +515,12 @@ def upload_results(
             pass
         
         return {
-            "model_name": eval_results["model_name"],
+            "model_name": model_name,
             "upload_stdout": stdout,
             "upload_return_code": return_code,
             "upload_command": cmd,
-            "eval_results": eval_results
+            "spanish_results": spanish_results,
+            "portuguese_results": portuguese_results
         }
         
     except Exception as e:

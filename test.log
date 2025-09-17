@@ -1,0 +1,366 @@
+nohup: ignoring input
+[37mStarting benchy - vLLM-powered ML model benchmarking[0m
+[37mLoaded environment variables from .env[0m
+[37mLoaded configuration from configs/test-gemma.yaml[0m
+[37m✅ ZenML server is already running[0m
+2025-09-17 02:25:14 | INFO     | benchy.logging       | Logging initialized - log file: logs/benchy_google_gemma-3n-E4B-it_20250917_022514.log
+2025-09-17 02:25:14 | INFO     | benchy.logging       | Model: google/gemma-3n-E4B-it
+2025-09-17 02:25:14 | INFO     | benchy.logging       | Tasks: unknown
+[37mFile logging enabled - log file: logs/benchy_google_gemma-3n-E4B-it_20250917_022514.log[0m
+2025-09-17 02:25:14 | INFO     | benchy.config        | === Configuration ===
+2025-09-17 02:25:14 | INFO     | benchy.config        | Model Name: google/gemma-3n-E4B-it
+2025-09-17 02:25:14 | INFO     | benchy.config        | Model dtype: N/A
+2025-09-17 02:25:14 | INFO     | benchy.config        | Model max_length: N/A
+2025-09-17 02:25:14 | INFO     | benchy.config        | Tasks: N/A
+2025-09-17 02:25:14 | INFO     | benchy.config        | Device: N/A
+2025-09-17 02:25:14 | INFO     | benchy.config        | Batch size: 10
+2025-09-17 02:25:14 | INFO     | benchy.config        | Output path: /home/mauro/dev/lm-evaluation-harness/output
+2025-09-17 02:25:14 | INFO     | benchy.config        | Log samples: True
+2025-09-17 02:25:14 | INFO     | benchy.config        | Limit: 10 (testing mode)
+2025-09-17 02:25:14 | INFO     | benchy.config        | LM Eval path: /home/mauro/dev/lm-evaluation-harness
+2025-09-17 02:25:14 | INFO     | benchy.config        | Leaderboard path: /home/mauro/dev/leaderboard
+2025-09-17 02:25:14 | INFO     | benchy.config        | === End Configuration ===
+[37mModel: google/gemma-3n-E4B-it[0m
+[37mSpanish tasks: latam_es[0m
+[37mPortuguese tasks: latam_pr[0m
+[37mvLLM server: 0.0.0.0:8000[0m
+[37mRunning pipeline with custom name: TEST_gemma_3n_E4B_it_2025_09_17_02_25_14[0m
+[37mTEST run detected - limit set to 10 examples per task[0m
+[37mStarting vLLM benchmark pipeline for model: google/gemma-3n-E4B-it[0m
+[37mRunning Spanish language evaluation...[0m
+[37mRunning Portuguese language evaluation...[0m
+[37mBenchmark pipeline completed successfully[0m
+[37mInitiating a new run for the pipeline: [0m[38;5;105mbenchmark_pipeline[37m.[0m
+[33mIn a future release, the default Python package installer used by ZenML to build container images for your containerized pipelines will change from 'pip' to 'uv'. To maintain current behavior, you can explicitly set [0m[38;5;105mpython_package_installer=PythonPackageInstaller.PIP[33m in your DockerSettings.[0m
+[37mUsing user: [0m[38;5;105mdefault[37m[0m
+[37mUsing stack: [0m[38;5;105mdefault[37m[0m
+[37m  artifact_store: [0m[38;5;105mdefault[37m[0m
+[37m  orchestrator: [0m[38;5;105mdefault[37m[0m
+[37mDashboard URL for Pipeline Run: [0m[34mhttp://127.0.0.1:8237/projects/default/runs/f22a6334-b5dc-4fe8-bc99-56559ac1e4af[37m[0m
+[37mStep [0m[38;5;105mstart_vllm_server[37m has started.[0m
+[start_vllm_server] [37mStarting vLLM server for model: google/gemma-3n-E4B-it[0m
+[start_vllm_server] 2025-09-17 02:25:16 | INFO     | benchy.vllm_server   | === Starting vLLM Server ===
+[start_vllm_server] 2025-09-17 02:25:16 | INFO     | benchy.vllm_server   | Model: google/gemma-3n-E4B-it
+[start_vllm_server] 2025-09-17 02:25:16 | INFO     | benchy.vllm_server   | Host: 0.0.0.0, Port: 8000
+[start_vllm_server] 2025-09-17 02:25:16 | INFO     | benchy.vllm_server   | Tensor parallel size: 1
+[start_vllm_server] 2025-09-17 02:25:16 | INFO     | benchy.vllm_server   | Max model length: 8192
+[start_vllm_server] [37mExecuting command: python -m vllm.entrypoints.openai.api_server --host 0.0.0.0 --model google/gemma-3n-E4B-it --port 8000 -tp 1 --max-model-len 8192 --gpu-memory-utilization 0.9 --limit-mm-per-prompt '{"images": 0, "audios": 0}' --enforce-eager[0m
+[start_vllm_server] 2025-09-17 02:25:16 | INFO     | benchy.vllm_server   | Command: python -m vllm.entrypoints.openai.api_server --host 0.0.0.0 --model google/gemma-3n-E4B-it --port 8000 -tp 1 --max-model-len 8192 --gpu-memory-utilization 0.9 --limit-mm-per-prompt '{"images": 0, "audios": 0}' --enforce-eager
+[start_vllm_server] [37mWaiting for vLLM server to start at [0m[34mhttp://0.0.0.0:8000...[37m[0m
+INFO 09-17 02:25:21 [__init__.py:241] Automatically detected platform cuda.
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:25:23 [api_server.py:1805] vLLM API server version 0.10.1.1
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:25:23 [utils.py:326] non-default args: {'host': '0.0.0.0', 'model': 'google/gemma-3n-E4B-it', 'max_model_len': 8192, 'enforce_eager': True, 'limit_mm_per_prompt': {'images': 0, 'audios': 0}}
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:25:36 [__init__.py:711] Resolved architecture: Gemma3nForConditionalGeneration
+[1;36m(APIServer pid=252955)[0;0m `torch_dtype` is deprecated! Use `dtype` instead!
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:25:36 [__init__.py:1750] Using max model len 8192
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:25:36 [scheduler.py:222] Chunked prefill is enabled with max_num_batched_tokens=2048.
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:25:36 [__init__.py:3565] Cudagraph is disabled under eager mode
+INFO 09-17 02:25:49 [__init__.py:241] Automatically detected platform cuda.
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:25:51 [core.py:636] Waiting for init message from front-end.
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:25:51 [core.py:74] Initializing a V1 LLM engine (v0.10.1.1) with config: model='google/gemma-3n-E4B-it', speculative_config=None, tokenizer='google/gemma-3n-E4B-it', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config={}, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=8192, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto, device_config=cuda, decoding_config=DecodingConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_backend=''), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None), seed=0, served_model_name=google/gemma-3n-E4B-it, enable_prefix_caching=True, chunked_prefill_enabled=True, use_async_output_proc=True, pooler_config=None, compilation_config={"level":0,"debug_dump_path":"","cache_dir":"","backend":"","custom_ops":[],"splitting_ops":null,"use_inductor":true,"compile_sizes":[],"inductor_compile_config":{"enable_auto_functionalized_v2":false},"inductor_passes":{},"cudagraph_mode":0,"use_cudagraph":true,"cudagraph_num_of_warmups":0,"cudagraph_capture_sizes":[],"cudagraph_copy_inputs":false,"full_cuda_graph":false,"pass_config":{},"max_capture_size":0,"local_cache_dir":null}
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:25:54 [parallel_state.py:1134] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, TP rank 0, EP rank 0
+[1;36m(EngineCore_0 pid=253408)[0;0m WARNING 09-17 02:25:57 [topk_topp_sampler.py:61] FlashInfer is not available. Falling back to the PyTorch-native implementation of top-p & top-k sampling. For the best performance, please install FlashInfer.
+[1;36m(EngineCore_0 pid=253408)[0;0m Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 31655.12it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 6538.28it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:07 [gpu_model_runner.py:1953] Starting to load model google/gemma-3n-E4B-it...
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:08 [gpu_model_runner.py:1985] Loading model from scratch...
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:08 [__init__.py:3565] Cudagraph is disabled under eager mode
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:08 [cuda.py:328] Using Flash Attention backend on V1 engine.
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:08 [weight_utils.py:296] Using model weights format ['*.safetensors']
+[1;36m(EngineCore_0 pid=253408)[0;0m Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:00<00:01,  2.18it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:01<00:01,  1.31it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:02<00:00,  1.20it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:03<00:00,  1.07it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:03<00:00,  1.16it/s]
+[1;36m(EngineCore_0 pid=253408)[0;0m 
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:13 [default_loader.py:262] Loading weights took 3.68 seconds
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:14 [gpu_model_runner.py:2007] Model loading took 14.6916 GiB and 5.001000 seconds
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:14 [gpu_model_runner.py:2591] Encoder cache will be initialized with a budget of 2048 tokens, and profiled with 7 image items of the maximum feature size.
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:17 [gpu_worker.py:276] Available KV cache memory: 4.08 GiB
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:17 [kv_cache_utils.py:1013] GPU KV cache size: 106,848 tokens
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:17 [kv_cache_utils.py:1017] Maximum concurrency for 8,192 tokens per request: 28.88x
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:17 [core.py:214] init engine (profile, create kv cache, warmup model) took 3.69 seconds
+[1;36m(EngineCore_0 pid=253408)[0;0m INFO 09-17 02:26:20 [__init__.py:3565] Cudagraph is disabled under eager mode
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:20 [loggers.py:142] Engine 000: vllm cache_config_info with initialization after num_gpu_blocks is: 33391
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:20 [api_server.py:1611] Supported_tasks: ['generate']
+[1;36m(APIServer pid=252955)[0;0m WARNING 09-17 02:26:21 [__init__.py:1625] Default sampling parameters have been overridden by the model's Hugging Face generation config recommended from the model creator. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [serving_responses.py:120] Using default chat sampling params from model: {'top_k': 64, 'top_p': 0.95}
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [serving_chat.py:134] Using default chat sampling params from model: {'top_k': 64, 'top_p': 0.95}
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [serving_completion.py:77] Using default completion sampling params from model: {'top_k': 64, 'top_p': 0.95}
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [api_server.py:1880] Starting vLLM API server 0 on http://0.0.0.0:8000
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:36] Available routes are:
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /openapi.json, Methods: HEAD, GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /docs, Methods: HEAD, GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /redoc, Methods: HEAD, GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /health, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /load, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /ping, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /ping, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /tokenize, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /detokenize, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/models, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /version, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/responses, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/responses/{response_id}, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/responses/{response_id}/cancel, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/chat/completions, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/completions, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/embeddings, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /pooling, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /classify, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /score, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/score, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/audio/transcriptions, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/audio/translations, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /rerank, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v1/rerank, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /v2/rerank, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /scale_elastic_ep, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /is_scaling_elastic_ep, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /invocations, Methods: POST
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:26:21 [launcher.py:44] Route: /metrics, Methods: GET
+[1;36m(APIServer pid=252955)[0;0m INFO:     Started server process [252955]
+[1;36m(APIServer pid=252955)[0;0m INFO:     Waiting for application startup.
+[1;36m(APIServer pid=252955)[0;0m INFO:     Application startup complete.
+[1;36m(APIServer pid=252955)[0;0m INFO:     127.0.0.1:46134 - "GET /health HTTP/1.1" 200 OK
+[start_vllm_server] [37m✅ vLLM server is ready![0m
+[start_vllm_server] 2025-09-17 02:26:24 | INFO     | benchy.vllm_server   | vLLM server started successfully
+[37mStep [0m[38;5;105mstart_vllm_server[37m has finished in [0m[38;5;105m1m8s[37m.[0m
+[37mStep [0m[38;5;105mtest_vllm_api[37m has started.[0m
+[test_vllm_api] [37mTesting vLLM API at [0m[34mhttp://0.0.0.0:8000[37m[0m
+[test_vllm_api] 2025-09-17 02:26:25 | INFO     | benchy.api_test      | === Testing vLLM API ===
+[test_vllm_api] 2025-09-17 02:26:25 | INFO     | benchy.api_test      | Server URL: http://0.0.0.0:8000
+[test_vllm_api] 2025-09-17 02:26:25 | INFO     | benchy.api_test      | Model: google/gemma-3n-E4B-it
+[test_vllm_api] [31mAPI test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}[0m
+[test_vllm_api] 2025-09-17 02:26:25 | ERROR    | benchy.api_test      | API test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}
+[test_vllm_api] [31mAPI test failed: API test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}[0m
+[test_vllm_api] 2025-09-17 02:26:25 | ERROR    | benchy.api_test      | API test failed: API test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}
+[31mFailed to run step [0m[38;5;105mtest_vllm_api[31m: API test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}[0m
+[31mPipeline failed: API test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}[0m
+2025-09-17 02:26:27 | INFO     | benchy.summary       | === RUN SUMMARY ===
+2025-09-17 02:26:27 | INFO     | benchy.summary       | Model: google/gemma-3n-E4B-it
+2025-09-17 02:26:27 | INFO     | benchy.summary       | Return code: 1
+2025-09-17 02:26:27 | INFO     | benchy.summary       | Log file: logs/benchy_google_gemma-3n-E4B-it_20250917_022514.log
+2025-09-17 02:26:27 | ERROR    | benchy.summary       | Run failed - check logs above for details
+2025-09-17 02:26:27 | ERROR    | benchy.summary       | Error: API test failed with status 500: {"error":{"message":"EngineCore encountered an issue. See stack trace (above) for the root cause.","type":"Internal Server Error","param":null,"code":500}}
+2025-09-17 02:26:27 | INFO     | benchy.summary       | === END SUMMARY ===
+╭───────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /home/mauro/dev/benchy/main.py:263 in <module>                               │
+│                                                                              │
+│   260                                                                        │
+│   261                                                                        │
+│   262 if __name__ == "__main__":                                             │
+│ ❱ 263 │   main()                                                             │
+│   264                                                                        │
+│                                                                              │
+│ /home/mauro/dev/benchy/main.py:214 in main                                   │
+│                                                                              │
+│   211 │   │   │   logger.info(f"TEST run detected - limit set to {limit} exa │
+│   212 │   │                                                                  │
+│   213 │   │   # Run the pipeline with custom run name                        │
+│ ❱ 214 │   │   result = benchmark_pipeline.with_options(                      │
+│   215 │   │   │   run_name=custom_run_name                                   │
+│   216 │   │   )(                                                             │
+│   217 │   │   │   model_name=model_name,                                     │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/pipelines/pi │
+│ peline_definition.py:1484 in __call__                                        │
+│                                                                              │
+│   1481 │   │   │   return self.entrypoint(*args, **kwargs)                   │
+│   1482 │   │                                                                 │
+│   1483 │   │   self.prepare(*args, **kwargs)                                 │
+│ ❱ 1484 │   │   return self._run()                                            │
+│   1485 │                                                                     │
+│   1486 │   def _call_entrypoint(self, *args: Any, **kwargs: Any) -> None:    │
+│   1487 │   │   """Calls the pipeline entrypoint function with the given argu │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/pipelines/pi │
+│ peline_definition.py:903 in _run                                             │
+│                                                                              │
+│    900 │   │   │   │   │   │   │   "`zenml login --local`."                  │
+│    901 │   │   │   │   │   │   )                                             │
+│    902 │   │   │   │                                                         │
+│ ❱  903 │   │   │   │   deploy_pipeline(                                      │
+│    904 │   │   │   │   │   deployment=deployment, stack=stack, placeholder_r │
+│    905 │   │   │   │   )                                                     │
+│    906                                                                       │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/pipelines/ru │
+│ n_utils.py:166 in deploy_pipeline                                            │
+│                                                                              │
+│   163 │   │   │   # run as failed if it is still in an initializing/running  │
+│   164 │   │   │   publish_failed_pipeline_run(placeholder_run.id)            │
+│   165 │   │                                                                  │
+│ ❱ 166 │   │   raise e                                                        │
+│   167 │   finally:                                                           │
+│   168 │   │   constants.SHOULD_PREVENT_PIPELINE_EXECUTION = previous_value   │
+│   169                                                                        │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/pipelines/ru │
+│ n_utils.py:147 in deploy_pipeline                                            │
+│                                                                              │
+│   144 │   constants.SHOULD_PREVENT_PIPELINE_EXECUTION = True                 │
+│   145 │   try:                                                               │
+│   146 │   │   stack.prepare_pipeline_deployment(deployment=deployment)       │
+│ ❱ 147 │   │   stack.deploy_pipeline(                                         │
+│   148 │   │   │   deployment=deployment,                                     │
+│   149 │   │   │   placeholder_run=placeholder_run,                           │
+│   150 │   │   )                                                              │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/stack/stack. │
+│ py:825 in deploy_pipeline                                                    │
+│                                                                              │
+│   822 │   │   │   deployment: The pipeline deployment.                       │
+│   823 │   │   │   placeholder_run: An optional placeholder run for the deplo │
+│   824 │   │   """                                                            │
+│ ❱ 825 │   │   self.orchestrator.run(                                         │
+│   826 │   │   │   deployment=deployment, stack=self, placeholder_run=placeho │
+│   827 │   │   )                                                              │
+│   828                                                                        │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/base_orchestrator.py:309 in run                                            │
+│                                                                              │
+│   306 │   │   │   │   │   │   │   │   f"run metadata: {e}"                   │
+│   307 │   │   │   │   │   │   │   )                                          │
+│   308 │   │   │   else:                                                      │
+│ ❱ 309 │   │   │   │   submission_result = self.submit_pipeline(              │
+│   310 │   │   │   │   │   deployment=deployment,                             │
+│   311 │   │   │   │   │   stack=stack,                                       │
+│   312 │   │   │   │   │   environment=environment,                           │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/local/local_orchestrator.py:89 in submit_pipeline                          │
+│                                                                              │
+│    86 │   │   │   │   │   step_name,                                         │
+│    87 │   │   │   │   )                                                      │
+│    88 │   │   │                                                              │
+│ ❱  89 │   │   │   self.run_step(                                             │
+│    90 │   │   │   │   step=step,                                             │
+│    91 │   │   │   )                                                          │
+│    92                                                                        │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/base_orchestrator.py:394 in run_step                                       │
+│                                                                              │
+│   391 │   │   │                                                              │
+│   392 │   │   │   while retries <= max_retries:                              │
+│   393 │   │   │   │   try:                                                   │
+│ ❱ 394 │   │   │   │   │   _launch_step()                                     │
+│   395 │   │   │   │   except RunStoppedException:                            │
+│   396 │   │   │   │   │   # Don't retry if the run was stopped               │
+│   397 │   │   │   │   │   raise                                              │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/base_orchestrator.py:379 in _launch_step                                   │
+│                                                                              │
+│   376 │   │   │   │   step=step,                                             │
+│   377 │   │   │   │   orchestrator_run_id=self.get_orchestrator_run_id(),    │
+│   378 │   │   │   )                                                          │
+│ ❱ 379 │   │   │   launcher.launch()                                          │
+│   380 │   │                                                                  │
+│   381 │   │   if self.config.handles_step_retries:                           │
+│   382 │   │   │   _launch_step()                                             │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/step_launcher.py:310 in launch                                             │
+│                                                                              │
+│   307 │   │   │   │   │   │   │   return None                                │
+│   308 │   │   │   │   │   │                                                  │
+│   309 │   │   │   │   │   │   force_write_logs = _bypass                     │
+│ ❱ 310 │   │   │   │   │   self._run_step(                                    │
+│   311 │   │   │   │   │   │   pipeline_run=pipeline_run,                     │
+│   312 │   │   │   │   │   │   step_run=step_run,                             │
+│   313 │   │   │   │   │   │   force_write_logs=force_write_logs,             │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/step_launcher.py:414 in _run_step                                          │
+│                                                                              │
+│   411 │   │   │   │   │   step_run_info=step_run_info,                       │
+│   412 │   │   │   │   )                                                      │
+│   413 │   │   │   else:                                                      │
+│ ❱ 414 │   │   │   │   self._run_step_without_step_operator(                  │
+│   415 │   │   │   │   │   pipeline_run=pipeline_run,                         │
+│   416 │   │   │   │   │   step_run=step_run,                                 │
+│   417 │   │   │   │   │   step_run_info=step_run_info,                       │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/step_launcher.py:490 in _run_step_without_step_operator                    │
+│                                                                              │
+│   487 │   │   │   output_artifact_uris: The output artifact URIs of the curr │
+│   488 │   │   """                                                            │
+│   489 │   │   runner = StepRunner(step=self._step, stack=self._stack)        │
+│ ❱ 490 │   │   runner.run(                                                    │
+│   491 │   │   │   pipeline_run=pipeline_run,                                 │
+│   492 │   │   │   step_run=step_run,                                         │
+│   493 │   │   │   input_artifacts=input_artifacts,                           │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/orchestrator │
+│ s/step_runner.py:198 in run                                                  │
+│                                                                              │
+│   195 │   │   │                                                              │
+│   196 │   │   │   step_failed = False                                        │
+│   197 │   │   │   try:                                                       │
+│ ❱ 198 │   │   │   │   return_values = step_instance.call_entrypoint(         │
+│   199 │   │   │   │   │   **function_params                                  │
+│   200 │   │   │   │   )                                                      │
+│   201 │   │   │   except BaseException as step_exception:  # noqa: E722      │
+│                                                                              │
+│ /home/mauro/dev/benchy/.venv/lib/python3.12/site-packages/zenml/steps/base_s │
+│ tep.py:571 in call_entrypoint                                                │
+│                                                                              │
+│    568 │   │   │   │   "pydantic error above for more details."              │
+│    569 │   │   │   ) from e                                                  │
+│    570 │   │                                                                 │
+│ ❱  571 │   │   return self.entrypoint(**validated_args)                      │
+│    572 │                                                                     │
+│    573 │   @property                                                         │
+│    574 │   def name(self) -> str:                                            │
+│                                                                              │
+│ /home/mauro/dev/benchy/src/steps.py:197 in test_vllm_api                     │
+│                                                                              │
+│   194 │   │   │   │   file_logger.error(error_msg)                           │
+│   195 │   │   │   except (RuntimeError, OSError):                            │
+│   196 │   │   │   │   pass                                                   │
+│ ❱ 197 │   │   │   raise RuntimeError(error_msg)                              │
+│   198 │                                                                      │
+│   199 │   except Exception as e:                                             │
+│   200 │   │   error_msg = f"API test failed: {str(e)}"                       │
+╰──────────────────────────────────────────────────────────────────────────────╯
+RuntimeError: API test failed with status 500: {"error":{"message":"EngineCore 
+encountered an issue. See stack trace (above) for the root 
+cause.","type":"Internal Server Error","param":null,"code":500}}
+[1;36m(APIServer pid=252955)[0;0m ERROR 09-17 02:27:17 [core_client.py:562] Engine core proc EngineCore_0 died unexpectedly, shutting down client.
+[1;36m(APIServer pid=252955)[0;0m /usr/lib/python3.12/weakref.py:590: RuntimeWarning: No running event loop. zmq.asyncio should be used from within an asyncio loop.
+[1;36m(APIServer pid=252955)[0;0m   return info.func(*info.args, **(info.kwargs or {}))
+[1;36m(APIServer pid=252955)[0;0m Exception in thread MPClientEngineMonitor:
+[1;36m(APIServer pid=252955)[0;0m Traceback (most recent call last):
+[1;36m(APIServer pid=252955)[0;0m   File "/usr/lib/python3.12/threading.py", line 1073, in _bootstrap_inner
+[1;36m(APIServer pid=252955)[0;0m     self.run()
+[1;36m(APIServer pid=252955)[0;0m   File "/usr/lib/python3.12/threading.py", line 1010, in run
+[1;36m(APIServer pid=252955)[0;0m     self._target(*self._args, **self._kwargs)
+[1;36m(APIServer pid=252955)[0;0m   File "/home/mauro/dev/lm-evaluation-harness/.venv/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 565, in monitor_engine_cores
+[1;36m(APIServer pid=252955)[0;0m     _self.shutdown()
+[1;36m(APIServer pid=252955)[0;0m   File "/home/mauro/dev/lm-evaluation-harness/.venv/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 517, in shutdown
+[1;36m(APIServer pid=252955)[0;0m     self._finalizer()
+[1;36m(APIServer pid=252955)[0;0m   File "/usr/lib/python3.12/weakref.py", line 590, in __call__
+[1;36m(APIServer pid=252955)[0;0m     return info.func(*info.args, **(info.kwargs or {}))
+[1;36m(APIServer pid=252955)[0;0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=252955)[0;0m   File "/home/mauro/dev/lm-evaluation-harness/.venv/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 350, in __call__
+[1;36m(APIServer pid=252955)[0;0m     loop = self.output_socket._get_loop()
+[1;36m(APIServer pid=252955)[0;0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=252955)[0;0m   File "/home/mauro/dev/lm-evaluation-harness/.venv/lib/python3.12/site-packages/zmq/_future.py", line 59, in _get_loop
+[1;36m(APIServer pid=252955)[0;0m     current_loop = self._default_loop()
+[1;36m(APIServer pid=252955)[0;0m                    ^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=252955)[0;0m   File "/home/mauro/dev/lm-evaluation-harness/.venv/lib/python3.12/site-packages/zmq/asyncio.py", line 116, in _default_loop
+[1;36m(APIServer pid=252955)[0;0m     return asyncio.get_event_loop()
+[1;36m(APIServer pid=252955)[0;0m            ^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=252955)[0;0m   File "/usr/lib/python3.12/asyncio/events.py", line 702, in get_event_loop
+[1;36m(APIServer pid=252955)[0;0m     raise RuntimeError('There is no current event loop in thread %r.'
+[1;36m(APIServer pid=252955)[0;0m RuntimeError: There is no current event loop in thread 'MPClientEngineMonitor'.
+[1;36m(APIServer pid=252955)[0;0m INFO 09-17 02:30:31 [launcher.py:101] Shutting down FastAPI HTTP server.
+[1;36m(APIServer pid=252955)[0;0m INFO:     Shutting down
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

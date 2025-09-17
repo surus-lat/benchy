@@ -4,7 +4,7 @@ model:
 
 evaluation:
   tasks_spanish: "latam_es"      # Spanish evaluation tasks
-  tasks_portuguese: "latam_pt"   # Portuguese evaluation tasks
+  tasks_portuguese: "latam_pr"   # Portuguese evaluation tasks
   batch_size: "20"               # Batch size for API mode
   output_path: "/home/mauro/dev/lm-evaluation-harness/output"
   log_samples: true
