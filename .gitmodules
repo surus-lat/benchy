@@ -1,0 +1,6 @@
+[submodule "external/lm-evaluation-harness"]
+	path = external/lm-evaluation-harness
+	url = https://github.com/surus-lat/lm-evaluation-harness-surus
+[submodule "external/portuguese-bench"]
+	path = external/portuguese-bench
+	url = https://github.com/surus-lat/portuguese-bench
