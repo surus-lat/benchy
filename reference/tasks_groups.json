@@ -1,0 +1,47 @@
+{
+    "task_groups": {
+      "latam_pr": {
+        "name": "Portuguese LATAM",
+      "description": "Portuguese language tasks for Latin America",
+      "description_en": "Portuguese language tasks for Latin America",
+      "description_es": "Tareas en portugués para América Latina",
+      "description_pt": "Tarefas em português para a América Latina",
+      "long_description": "Suite of selected tasks from the Portuguese LATAM group designed to evaluate the performance of models in the Portuguese language. Based on the work of the Open Portuguese LLM Leaderboard, these tasks were carefully selected to measure the capabilities of language models in understanding Portuguese. The tasks cover a wide range of linguistic abilities, from basic comprehension to complex reasoning in Portuguese. The evaluation suite includes tasks like ASSIN2 for textual entailment and semantic similarity, BLUEX for university entrance exams, and ENEM for standardized testing comprehension. This comprehensive set of benchmarks helps assess how well language models can process and generate Portuguese text across different contexts and difficulty levels.",
+      "long_description_en": "Suite of selected tasks from the Portuguese LATAM group designed to evaluate the performance of models in the Portuguese language. Based on the work of the Open Portuguese LLM Leaderboard, these tasks were carefully selected to measure the capabilities of language models in understanding Portuguese. The tasks cover a wide range of linguistic abilities, from basic comprehension to complex reasoning in Portuguese. The evaluation suite includes tasks like ASSIN2 for textual entailment and semantic similarity, BLUEX for university entrance exams, and ENEM for standardized testing comprehension. This comprehensive set of benchmarks helps assess how well language models can process and generate Portuguese text across different contexts and difficulty levels.",
+      "long_description_es": "Conjunto de tareas seleccionadas del grupo LATAM en portugués, diseñado para evaluar el desempeño de los modelos en dicho idioma. Basado en el trabajo del Open Portuguese LLM Leaderboard, estas tareas fueron cuidadosamente elegidas para medir la capacidad de los modelos de lenguaje para comprender el portugués. Cubren un amplio espectro de habilidades, desde comprensión básica hasta razonamiento complejo. La suite incluye ASSIN2 para inferencia textual y similitud semántica, BLUEX para exámenes de ingreso a la universidad y ENEM para comprensión en pruebas estandarizadas. Este conjunto permite evaluar cómo los modelos procesan y generan texto en portugués en distintos contextos y niveles de dificultad.",
+      "long_description_pt": "Conjunto de tarefas selecionadas do grupo LATAM em português, projetado para avaliar o desempenho dos modelos no idioma. Com base no Open Portuguese LLM Leaderboard, essas tarefas foram escolhidas para medir a capacidade dos modelos de compreender o português. As tarefas cobrem desde compreensão básica até raciocínio complexo. A suíte inclui ASSIN2 para inferência textual e similaridade semântica, BLUEX para vestibulares e ENEM para compreensão em exames padronizados. Esse conjunto avalia como os modelos processam e geram texto em português em diversos contextos e níveis de dificuldade.",
+        "repository": "https://github.com/eduagarcia/lm-evaluation-harness-pt",
+        "subtasks": [
+          "assin2_rte",
+          "assin2_sts", 
+          "bluex",
+          "enem_challenge",
+          "faquad_nli",
+          "oab_exams"
+        ]
+      }
+    ,
+    "latam_es": {
+      "name": "Spanish LATAM",
+      "description": "Spanish language tasks for Latin America",
+      "description_en": "Spanish language tasks for Latin America",
+      "description_es": "Tareas en español para América Latina",
+      "description_pt": "Tarefas em espanhol para a América Latina",
+      "long_description": "Suite of selected tasks from the Spanish Bench available in the lm-evaluation-harness from the team at IberoBench (https://aclanthology.org/2025.coling-main.699/) and SomosNLP's Spanish Leaderboard (https://github.com/somosnlp/lm-evaluation-harness) designed to evaluate the performance of models in the Spanish language. The tasks cover a wide range of linguistic abilities, from basic comprehension to complex reasoning in Spanish. The evaluation suite includes tasks like COPA for choice of plausible alternatives, ESCOLA for Spanish Corpus of Linguistic Acceptability, MGSM for Multilingual Grade School Math, OpenBookQA for open-domain question answering, PAWS for paraphrase adversaries from word scrambling, TELEIA for Teleia Spanish language assessment, WNLI for Winograd Natural Language Inference, and XNLI for Cross-lingual Natural Language Inference. This comprehensive set of benchmarks helps assess how well language models can process and generate Spanish text across different contexts and difficulty levels.",
+      "long_description_en": "Suite of selected tasks from the Spanish Bench available in the lm-evaluation-harness from the team at IberoBench (https://aclanthology.org/2025.coling-main.699/) and SomosNLP's Spanish Leaderboard (https://github.com/somosnlp/lm-evaluation-harness) designed to evaluate the performance of models in the Spanish language. The tasks cover a wide range of linguistic abilities, from basic comprehension to complex reasoning in Spanish. The evaluation suite includes tasks like COPA for choice of plausible alternatives, ESCOLA for Spanish Corpus of Linguistic Acceptability, MGSM for Multilingual Grade School Math, OpenBookQA for open-domain question answering, PAWS for paraphrase adversaries from word scrambling, TELEIA for Teleia Spanish language assessment, WNLI for Winograd Natural Language Inference, and XNLI for Cross-lingual Natural Language Inference. This comprehensive set of benchmarks helps assess how well language models can process and generate Spanish text across different contexts and difficulty levels.",
+      "long_description_es": "Conjunto de tareas seleccionadas del Spanish Bench del lm-evaluation-harness del equipo de IberoBench (https://aclanthology.org/2025.coling-main.699/) y del Spanish Leaderboard de SomosNLP (https://github.com/somosnlp/lm-evaluation-harness), diseñado para evaluar el desempeño de modelos en lengua española. Cubre habilidades desde comprensión básica hasta razonamiento complejo. Incluye COPA (elección de alternativas plausibles), EsCoLA (aceptabilidad lingüística), MGSM (matemática escolar multilingüe), OpenBookQA (preguntas de ciencia de dominio abierto), PAWS (paráfrasis con alta superposición léxica), TELEIA (evaluación del español), WNLI (inferencia Winograd) y XNLI (inferencia multilingüe). Este conjunto permite medir cómo los modelos procesan y generan texto en español en diversos contextos y niveles de dificultad.",
+      "long_description_pt": "Conjunto de tarefas selecionadas do Spanish Bench no lm-evaluation-harness da equipe IberoBench (https://aclanthology.org/2025.coling-main.699/) e do Spanish Leaderboard da SomosNLP (https://github.com/somosnlp/lm-evaluation-harness), projetado para avaliar o desempenho de modelos em língua espanhola. Cobre habilidades desde compreensão básica até raciocínio complexo. Inclui COPA (escolha de alternativas plausíveis), EsCoLA (aceitabilidade linguística), MGSM (matemática escolar multilíngue), OpenBookQA (perguntas de ciência de domínio aberto), PAWS (paráfrases com alta sobreposição lexical), TELEIA (avaliação do espanhol), WNLI (inferência Winograd) e XNLI (inferência multilíngue). Esse conjunto mede como os modelos processam e geram texto em espanhol em diferentes contextos e níveis de dificuldade.",
+      "repository": "https://github.com/EleutherAI/lm-evaluation-harness",
+      "subtasks": [
+        "copa_es",
+        "escola",
+        "mgsm_direct_es_spanish_bench",
+        "openbookqa_es",
+        "paws_es_spanish_bench",
+        "teleia",
+        "wnli_es",
+        "xnli_es_spanish_bench"
+      ]
+    }
+    }
+}

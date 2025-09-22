@@ -1,0 +1,12 @@
+# Leaderboard Configuration File
+# Customize your evaluation settings here
+
+# Paths
+paths:
+  lm_eval_output: "/home/mauro/dev/benchy/outputs/benchmarks"
+  reference_dir: "/home/mauro/dev/benchy/reference"
+  publish_dir: "/home/mauro/dev/benchy/outputs/publish"
+
+# Hugging Face datasets
+datasets:
+  results: "LatamBoard/leaderboard-results"

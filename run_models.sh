@@ -71,7 +71,7 @@ for i in "${!configs[@]}"; do
     start_time=$(date +%s)
     
     # Run the evaluation
-    if python main.py -c "$config"; then
+    if python eval.py -c "$config"; then
         end_time=$(date +%s)
         duration=$((end_time - start_time))
         echo "✅ Model $model_num completed successfully in ${duration}s"

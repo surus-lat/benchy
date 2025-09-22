@@ -12,4 +12,8 @@ dependencies = [
     "dotenv>=0.9.9",
     "requests>=2.25.0",
     "psutil>=5.9.0",
+    "pandas>=1.5.0",
+    "pyyaml>=6.0",
+    "openpyxl>=3.0.0",
+    "huggingface-hub>=0.20.0"
 ]

@@ -9,3 +9,7 @@ logs/
 # Virtual environments
 .venv
 output/
+.env
+#reference/
+outputs/
+.vscode/
