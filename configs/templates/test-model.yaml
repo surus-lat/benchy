@@ -16,7 +16,7 @@ evaluation:
 # vLLM server configuration
 vllm:
   host: "0.0.0.0"
-  port: 8000
+  port: 20501
   tensor_parallel_size: 1
   max_model_len: 8192           # Match original working command
   gpu_memory_utilization: 0.9    # Use default (higher) memory utilization

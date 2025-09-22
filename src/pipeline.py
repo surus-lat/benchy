@@ -1,46 +1,17 @@
-"""Main ZenML pipeline for vLLM-based ML model benchmarking."""
+"""Main Prefect pipeline for vLLM-based ML model benchmarking."""
 
 from datetime import datetime
 from typing import Optional, Dict, Any
-from zenml import pipeline
-from zenml.logger import get_logger
+from prefect import flow
 from .steps import start_vllm_server, test_vllm_api, run_spanish_evaluation, run_portuguese_evaluation, stop_vllm_server, gather_results
 import atexit
 import os
+import logging
 
-logger = get_logger(__name__)
-
-
-def create_run_name(model_name: str, limit: Optional[int] = None) -> str:
-    """
-    Create a custom run name based on model name and timestamp.
-    
-    Args:
-        model_name: Full model name (e.g., "google/gemma-3n-E4B-it")
-        limit: Optional limit parameter - if set, adds TEST prefix
-        
-    Returns:
-        Custom run name in format: [TEST_]model_name_YYYY_MM_DD_HH_MM_SS
-    """
-    # Extract just the model name part (after the slash if present)
-    if "/" in model_name:
-        clean_model_name = model_name.split("/")[-1]
-    else:
-        clean_model_name = model_name
-    
-    # Replace any remaining problematic characters
-    clean_model_name = clean_model_name.replace("-", "_").replace(".", "_")
-    
-    # Generate timestamp
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    
-    # Add TEST prefix if limit is used
-    prefix = "TEST_" if limit is not None else ""
-    
-    return f"{prefix}{clean_model_name}_{timestamp}"
+logger = logging.getLogger(__name__)
 
 
-@pipeline
+@flow()
 def benchmark_pipeline(
     model_name: str,
     tasks_spanish: str,
@@ -121,7 +92,7 @@ def benchmark_pipeline(
         limit_mm_per_prompt=limit_mm_per_prompt,
         hf_cache=hf_cache,
         hf_token=hf_token,
-        lm_eval_path=lm_eval_spanish_venv,
+        vllm_venv_path="/home/mauro/dev/benchy/.venv",
         startup_timeout=startup_timeout
     )
         
@@ -179,4 +150,48 @@ def benchmark_pipeline(
     cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
     
     logger.info("Benchmark pipeline completed successfully")
+    return cleanup_result
+
+@flow()
+def test_vllm_server(
+    model_name: str,
+    # vLLM server configuration
+    host: str = "0.0.0.0",
+    port: int = 8000,
+    tensor_parallel_size: int = 1,
+    max_model_len: int = 8192,
+    gpu_memory_utilization: float = 0.6,
+    enforce_eager: bool = True,
+    limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
+    hf_cache: str = "/home/mauro/.cache/huggingface",
+    hf_token: str = "",
+    startup_timeout: int = 900
+) -> Dict[str, Any]:
+        
+    # Step 1: Start vLLM server
+    server_info = start_vllm_server(
+        model_name=model_name,
+        host=host,
+        port=port,
+        tensor_parallel_size=tensor_parallel_size,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=gpu_memory_utilization,
+        enforce_eager=enforce_eager,
+        limit_mm_per_prompt=limit_mm_per_prompt,
+        hf_cache=hf_cache,
+        hf_token=hf_token,
+        vllm_venv_path="/home/mauro/dev/benchy/.venv",
+        startup_timeout=startup_timeout
+    )
+        
+    # Step 2: Test vLLM API
+    api_test_result = test_vllm_api(
+        server_info=server_info,
+        model_name=model_name
+    )
+    
+    # Step 3: Stop vLLM server (cleanup) - depends on upload completion
+    cleanup_result = stop_vllm_server(server_info=server_info, upload_result=api_test_result)
+    
+    logger.info("Test model config completed successfully")
     return cleanup_result

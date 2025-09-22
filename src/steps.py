@@ -1,4 +1,4 @@
-"""ZenML steps for vLLM-based ML model benchmarking."""
+"""Prefect steps for vLLM-based ML model benchmarking."""
 
 import os
 import subprocess
@@ -8,23 +8,25 @@ import requests
 import atexit
 import psutil
 from typing import Dict, Any, Optional, Tuple
-from zenml import step
-from zenml.logger import get_logger
+from prefect import task
+from prefect.cache_policies import NO_CACHE
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
-def kill_existing_vllm_processes(model_name: str) -> None:
+def kill_existing_vllm_processes(model_name: str, port: int = 8000) -> None:
     """
-    Kill existing vLLM processes running the same model.
+    Kill existing vLLM processes running the same model or using the same port.
     
     Args:
         model_name: The model name to match against running processes
+        port: The port to check for conflicts
     """
     current_user = os.getenv('USER', '')
     killed_count = 0
     
-    logger.info(f"Checking for existing vLLM processes with model: {model_name}")
+    logger.info(f"Checking for existing vLLM processes with model: {model_name} or port: {port}")
     
     for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username']):
         try:
@@ -35,11 +37,17 @@ def kill_existing_vllm_processes(model_name: str) -> None:
                 
                 cmdline = ' '.join(proc.info['cmdline'])
                 
-                # Check if it's a vLLM API server process with the same model
-                if ('vllm.entrypoints.openai.api_server' in cmdline and 
-                    f'--model {model_name}' in cmdline):
-                    
-                    logger.info(f"Found existing vLLM process (PID: {proc.info['pid']}) with model: {model_name}")
+                # Check if it's a vLLM API server process with the same model OR same port
+                should_kill = False
+                if 'vllm.entrypoints.openai.api_server' in cmdline:
+                    if f'--model {model_name}' in cmdline:
+                        logger.info(f"Found existing vLLM process (PID: {proc.info['pid']}) with model: {model_name}")
+                        should_kill = True
+                    elif f'--port {port}' in cmdline:
+                        logger.info(f"Found existing vLLM process (PID: {proc.info['pid']}) using port: {port}")
+                        should_kill = True
+                
+                if should_kill:
                     logger.info(f"Command: {cmdline}")
                     
                     # Kill the process
@@ -63,14 +71,14 @@ def kill_existing_vllm_processes(model_name: str) -> None:
             continue
     
     if killed_count > 0:
-        logger.info(f"Killed {killed_count} existing vLLM process(es) for model: {model_name}")
+        logger.info(f"Killed {killed_count} existing vLLM process(es)")
         # Give a moment for cleanup
-        time.sleep(2)
+        time.sleep(3)
     else:
-        logger.info("No existing vLLM processes found for this model")
+        logger.info("No existing vLLM processes found")
 
 
-@step(enable_cache=False)
+@task(cache_policy=NO_CACHE)
 def start_vllm_server(
     model_name: str,
     host: str = "0.0.0.0",
@@ -82,7 +90,7 @@ def start_vllm_server(
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
+    vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
     startup_timeout: int = 900
 ) -> Dict[str, Any]:
     """
@@ -99,7 +107,7 @@ def start_vllm_server(
         limit_mm_per_prompt: Multimodal limits as JSON string
         hf_cache: Hugging Face cache directory
         hf_token: Hugging Face token
-        lm_eval_path: Path to lm-evaluation-harness installation (for venv)
+        vllm_venv_path: Path to vLLM virtual environment
         startup_timeout: Timeout in seconds for server startup (default: 900s = 15min)
         
     Returns:
@@ -107,8 +115,8 @@ def start_vllm_server(
     """
     logger.info(f"Starting vLLM server for model: {model_name}")
     
-    # Kill any existing vLLM processes for the same model
-    kill_existing_vllm_processes(model_name)
+    # Kill any existing vLLM processes for the same model or port
+    kill_existing_vllm_processes(model_name, port)
     
     # Get Python logger for detailed file logging with safe error handling
     file_logger = logging.getLogger('benchy.vllm_server')
@@ -152,10 +160,10 @@ def start_vllm_server(
     except (RuntimeError, OSError):
         pass
     
-    # Activate the lm-eval venv and start the server
-    venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd_str}"
+    # Activate the vLLM venv and start the server
+    venv_cmd = f"source {vllm_venv_path}/bin/activate && {cmd_str}"
     
-    # Start the server using the lm-eval virtual environment
+    # Start the server using the vLLM virtual environment
     process = subprocess.Popen(
         venv_cmd,
         shell=True,
@@ -195,7 +203,7 @@ def start_vllm_server(
     raise TimeoutError(error_msg)
 
 
-@step(enable_cache=False)
+@task(cache_policy=NO_CACHE)
 def test_vllm_api(server_info: Dict[str, Any], model_name: str) -> Dict[str, Any]:
     """
     Test vLLM API server with a simple completion request.
@@ -269,7 +277,7 @@ def test_vllm_api(server_info: Dict[str, Any], model_name: str) -> Dict[str, Any
         raise
 
 
-@step
+@task
 def run_spanish_evaluation(
     model_name: str,
     tasks: str,
@@ -306,7 +314,7 @@ def run_spanish_evaluation(
     )
 
 
-@step
+@task
 def run_portuguese_evaluation(
     model_name: str,
     tasks: str,
@@ -524,7 +532,7 @@ def _run_evaluation(
             pass
         raise
 
-@step
+@task
 def gather_results(spanish_results: Dict[str, Any], portuguese_results: Dict[str, Any]) -> Dict[str, Any]:
     """
     Gather results from Spanish and Portuguese evaluations.
@@ -535,7 +543,7 @@ def gather_results(spanish_results: Dict[str, Any], portuguese_results: Dict[str
     }
 
 
-@step(enable_cache=False)
+@task(cache_policy=NO_CACHE)
 def stop_vllm_server(server_info: Dict[str, Any], upload_result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Stop vLLM server process.

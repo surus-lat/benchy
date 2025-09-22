@@ -1,4 +1,4 @@
-"""Logging utilities for Benchy - file and console logging setup."""
+"""Logging utilities for Benchy - file and console logging setup with Prefect."""
 
 import os
 import logging
@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
-from zenml.logger import get_logger as get_zenml_logger
+import logging
 
 
 class BenchyLoggingSetup:
@@ -26,9 +26,8 @@ class BenchyLoggingSetup:
         self.log_filename = f"benchy_{safe_model_name}_{timestamp}.log"
         self.log_filepath = self.log_dir / self.log_filename
         
-        # Setup both Python logging and ZenML logging
         self.setup_python_logging()
-        self.zenml_logger = get_zenml_logger(__name__)
+        self.zenml_logger = logging.getLogger(__name__)
         
     def setup_python_logging(self):
         """Setup Python standard logging to both file and console."""
@@ -141,22 +140,21 @@ class BenchyLoggingSetup:
         logger = logging.getLogger('benchy.summary')
         logger.info("=== RUN SUMMARY ===")
         
-        # Handle both dictionary and ZenML response objects
-        if hasattr(results, 'get'):
-            # Dictionary-like object
-            model_name = results.get('model_name', 'unknown')
-            return_code = results.get('return_code', 'unknown')
-            error = results.get('error')
-        elif hasattr(results, 'body') and hasattr(results.body, 'status'):
-            # ZenML PipelineRunResponse object
+        # Handle Prefect result dictionaries
+        if isinstance(results, dict):
+            # Prefect result dictionary
             model_name = self.config.get('model', {}).get('name', 'unknown')
-            status = results.body.status.value if hasattr(results.body.status, 'value') else str(results.body.status)
-            return_code = 0 if status == 'completed' else 1
-            error = None
+            # Check if the result indicates success
+            if results.get('status') == 'success' or 'error' not in results:
+                return_code = 0
+                error = None
+            else:
+                return_code = 1
+                error = results.get('error', 'Unknown error')
         else:
-            # Fallback
+            # Fallback - assume success if we can't determine
             model_name = self.config.get('model', {}).get('name', 'unknown')
-            return_code = 'unknown'
+            return_code = 0
             error = None
             
         logger.info(f"Model: {model_name}")

@@ -7,73 +7,22 @@ import yaml
 import subprocess
 import time
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
-from zenml.logger import get_logger
-from src.pipeline import benchmark_pipeline, create_run_name
+
+# Set Prefect API URL BEFORE importing Prefect modules
+# This must be done before any Prefect imports
+if 'PREFECT_API_URL' not in os.environ:
+    os.environ['PREFECT_API_URL'] = 'http://localhost:4200/api'
+
+from src.pipeline import benchmark_pipeline, test_vllm_server
+from prefect import serve
 from src.logging_utils import setup_file_logging
+import logging
 
-logger = get_logger(__name__)
 
 
-def ensure_zenml_server():
-    """Ensure ZenML server is running."""
-    # Check if ZenML server is already running
-    try:
-        response = requests.get("http://localhost:8080/health", timeout=5)
-        if response.status_code == 200:
-            logger.info("✅ ZenML server is already running")
-            return
-    except requests.exceptions.RequestException:
-        pass
-    
-    logger.info("🚀 Starting ZenML server...")
-    
-    # Check if we need sudo for docker commands
-    needs_sudo = False
-    try:
-        subprocess.run("docker ps", shell=True, check=True, capture_output=True)
-    except subprocess.CalledProcessError:
-        needs_sudo = True
-        logger.info("🔐 Docker requires sudo permissions")
-    
-    # Try docker-compose first, then docker compose
-    compose_commands = ["docker-compose", "docker compose"]
-    
-    for cmd in compose_commands:
-        try:
-            # Check if command exists
-            test_cmd = f"sudo {cmd}" if needs_sudo else cmd
-            subprocess.run(f"{test_cmd} --version", shell=True, check=True, 
-                         capture_output=True, text=True)
-            
-            # Remove existing container and start the service
-            subprocess.run(f"{test_cmd} rm -f zenml", shell=True, capture_output=True)
-            subprocess.run(f"{test_cmd} up -d zenml", shell=True, check=True)
-            
-            # Wait and verify
-            time.sleep(15)
-            response = requests.get("http://localhost:8080/health", timeout=5)
-            if response.status_code == 200:
-                logger.info("✅ ZenML server started successfully")
-                return
-            
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            continue
-    
-    # Fallback to manual docker command
-    try:
-        docker_cmd = "sudo docker" if needs_sudo else "docker"
-        subprocess.run(f"{docker_cmd} rm -f zenml", shell=True, capture_output=True)
-        subprocess.run(
-            f"{docker_cmd} run -d -p 8080:8080 --name zenml zenmldocker/zenml-server",
-            shell=True, check=True
-        )
-        time.sleep(15)
-        logger.info("✅ ZenML server started with docker command")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"❌ Failed to start ZenML server: {e}")
-        raise RuntimeError("Could not start ZenML server. Please start it manually.")
-
+logger = logging.getLogger(__name__)
 
 def load_config(config_path: str = None) -> dict:
     """Load configuration from YAML file."""
@@ -123,9 +72,13 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py                                    # Use default config.yaml
-  python main.py --config configs/my-model.yaml    # Use specific config
-  python main.py -c configs/gemma-e4b.yaml         # Short form
+  python eval.py                                    # Use default config.yaml
+  python eval.py --config configs/my-model.yaml    # Use specific config
+  python eval.py -c configs/gemma-e4b.yaml         # Short form
+  python eval.py --test                             # Test vLLM server only
+  python eval.py -t -c configs/test-model.yaml     # Test with specific config
+  python eval.py --register                         # Register flows with Prefect server
+  python eval.py --prefect-url http://localhost:4200/api  # Use custom Prefect server
         """
     )
     
@@ -140,6 +93,25 @@ Examples:
         '--verbose', '-v',
         action='store_true',
         help='Enable verbose logging'
+    )
+    
+    parser.add_argument(
+        '--test', '-t',
+        action='store_true',
+        help='Run test pipeline (only start and test vLLM server, no evaluation)'
+    )
+    
+    parser.add_argument(
+        '--register', '-r',
+        action='store_true',
+        help='Register flows with Prefect server for dashboard visibility'
+    )
+    
+    parser.add_argument(
+        '--prefect-url',
+        type=str,
+        default='http://localhost:4200/api',
+        help='Prefect API URL (default: http://localhost:4200/api)'
     )
     
     return parser.parse_args()
@@ -162,6 +134,13 @@ def main():
         load_dotenv('.env')
         logger.info("Loaded environment variables from .env")
     
+    # Override Prefect API URL if specified via command line
+    if args.prefect_url:
+        os.environ['PREFECT_API_URL'] = args.prefect_url
+        logger.info(f"Using Prefect API URL from command line: {args.prefect_url}")
+    else:
+        logger.info(f"Using Prefect API URL: {os.environ.get('PREFECT_API_URL', 'http://localhost:4200/api')}")
+    
     # Load configuration
     try:
         # Use command line config if provided, otherwise fall back to env var or default
@@ -175,8 +154,6 @@ def main():
         logger.error(f"Error loading configuration: {e}")
         return
     
-    # Ensure ZenML server is running
-    ensure_zenml_server()
     
     # Setup file logging
     logging_config = config.get('logging', {})
@@ -202,45 +179,68 @@ def main():
     logger.info(f"Portuguese tasks: {eval_config['tasks_portuguese']}")
     logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
     
-    try:
-        # Create custom run name based on model
-        limit = eval_config.get('limit')
-        custom_run_name = create_run_name(model_name, limit)
-        logger.info(f"Running pipeline with custom name: {custom_run_name}")
-        if limit is not None:
-            logger.info(f"TEST run detected - limit set to {limit} examples per task")
-        
-        # Run the pipeline with custom run name
-        result = benchmark_pipeline.with_options(
-            run_name=custom_run_name
-        )(
-            model_name=model_name,
-            tasks_spanish=eval_config['tasks_spanish'],
-            tasks_portuguese=eval_config['tasks_portuguese'],
-            batch_size=eval_config['batch_size'],
-            output_path=eval_config['output_path'],
-            wandb_args=wandb_args,
-            log_samples=eval_config.get('log_samples', True),
-            limit=eval_config.get('limit'),
-            lm_eval_spanish_venv=venv_config.get('lm_eval_spanish', '/home/mauro/dev/lm-evaluation-harness'),
-            lm_eval_portuguese_venv=venv_config.get('lm_eval_portuguese', '/home/mauro/dev/portu'),
-            upload_script_path=upload_config.get('script_path', '/home/mauro/dev/leaderboard'),
-            upload_script_name=upload_config.get('script_name', 'run_pipeline.py'),
-            cache_requests=eval_config.get('cache_requests', True),
-            trust_remote_code=eval_config.get('trust_remote_code', False),
-            # vLLM server configuration
-            host=vllm_config.get('host', '0.0.0.0'),
-            port=vllm_config.get('port', 8000),
-            tensor_parallel_size=vllm_config.get('tensor_parallel_size', 1),
-            max_model_len=vllm_config.get('max_model_len', 8192),
-            gpu_memory_utilization=vllm_config.get('gpu_memory_utilization', 0.6),
-            enforce_eager=vllm_config.get('enforce_eager', True),
-            limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
-            hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
-            hf_token=vllm_config.get('hf_token', ""),
-            num_concurrent=eval_config.get('num_concurrent', 8),
-            startup_timeout=vllm_config.get('startup_timeout', 900)
+    # Handle flow registration if requested
+    if args.register:
+        logger.info("Registering flows with Prefect server for dashboard visibility...")
+        # Create a timestamped name for the deployment
+        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        serve(
+            benchmark_pipeline.to_deployment(),
+            test_vllm_server.to_deployment(),
+            limit=1,  # Only run one instance at a time
+            print_starting_message=True
         )
+        return
+    
+    try:
+        logger.info(f"Running pipeline")
+        if args.test:
+            # Run test pipeline (only start and test vLLM server)
+            logger.info("Running test pipeline (vLLM server test only)")
+            result = test_vllm_server(
+                model_name=model_name,
+                # vLLM server configuration
+                host=vllm_config.get('host', '0.0.0.0'),
+                port=vllm_config.get('port', 8000),
+                tensor_parallel_size=vllm_config.get('tensor_parallel_size', 1),
+                max_model_len=vllm_config.get('max_model_len', 8192),
+                gpu_memory_utilization=vllm_config.get('gpu_memory_utilization', 0.6),
+                enforce_eager=vllm_config.get('enforce_eager', True),
+                limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
+                hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
+                hf_token=vllm_config.get('hf_token', ""),
+                startup_timeout=vllm_config.get('startup_timeout', 900)
+            )
+        else:
+            # Run full benchmark pipeline
+            result = benchmark_pipeline(
+                model_name=model_name,
+                tasks_spanish=eval_config['tasks_spanish'],
+                tasks_portuguese=eval_config['tasks_portuguese'],
+                batch_size=eval_config['batch_size'],
+                output_path=eval_config['output_path'],
+                wandb_args=wandb_args,
+                log_samples=eval_config.get('log_samples', True),
+                limit=eval_config.get('limit'),
+                lm_eval_spanish_venv=venv_config.get('lm_eval_spanish', '/home/mauro/dev/lm-evaluation-harness'),
+                lm_eval_portuguese_venv=venv_config.get('lm_eval_portuguese', '/home/mauro/dev/portu'),
+                upload_script_path=upload_config.get('script_path', '/home/mauro/dev/leaderboard'),
+                upload_script_name=upload_config.get('script_name', 'run_pipeline.py'),
+                cache_requests=eval_config.get('cache_requests', True),
+                trust_remote_code=eval_config.get('trust_remote_code', False),
+                # vLLM server configuration
+                host=vllm_config.get('host', '0.0.0.0'),
+                port=vllm_config.get('port', 8000),
+                tensor_parallel_size=vllm_config.get('tensor_parallel_size', 1),
+                max_model_len=vllm_config.get('max_model_len', 8192),
+                gpu_memory_utilization=vllm_config.get('gpu_memory_utilization', 0.6),
+                enforce_eager=vllm_config.get('enforce_eager', True),
+                limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
+                hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
+                hf_token=vllm_config.get('hf_token', ""),
+                num_concurrent=eval_config.get('num_concurrent', 8),
+                startup_timeout=vllm_config.get('startup_timeout', 900)
+            )
         
         logger.info("Benchmark pipeline completed successfully!")
         logger.info(f"Results: {result}")
