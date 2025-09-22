@@ -15,11 +15,24 @@ fi
 
 # Array of config files (with .yaml extensions)
 configs=(\
-    "./configs/gemma3n4.yaml"
-    "./configs/gemma3n2.yaml"
-    "./configs/llama3.1.yaml"
-    "./configs/llama3.2.yaml"
-    "./configs/qwen34b.yaml"
+    #"./configs/gemma3n4.yaml"
+    #"./configs/gemma3n2.yaml"
+    #"./configs/llama3.1.yaml"
+    #"./configs/llama3.2.yaml"
+    #"./configs/qwen34b.yaml"
+    #"./configs/ministral8b.yaml"
+    #"./configs/phi4mini.yaml"
+    #"./configs/aya8b.yaml"
+    #"./configs/hormoz8b.yaml"
+    #"./configs/c4ai-command-r7b-12-2024.yaml"
+    "./configs/bloomz-7b1.yaml" # 2048
+    "./configs/c4ai-command-r7b-12-2024.yaml"
+    #"./configs/DeepSeek-R1-Distill-Llama-8B.yaml"
+    #"./configs/DeepSeek-R1-Distill-Qwen-7B.yaml"
+    #"./configs/Hermes-3-Llama-3.1-8B.yaml" # 8192
+    #"./configs/Yi-1.5-9B-Chat.yaml" # 4096
+    #"./configs/Yi-1.5-6B-Chat.yaml" # 4096
+    #"./configs/zephyr-7b-beta.yaml" # 8192
     # Add more config files here
 )
 echo "Current virtual environment: $VIRTUAL_ENV"

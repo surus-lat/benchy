@@ -1,0 +1,41 @@
+# Test configuration for Gemma with limited samples
+model:
+  name: "CohereLabs/aya-expanse-8b"
+
+evaluation:
+  tasks_spanish: "latam_es"
+  tasks_portuguese: "latam_pr"
+  batch_size: "10"               # Smaller batch for testing
+  output_path: "/home/mauro/dev/benchmark_outputs"
+  log_samples: true
+  cache_requests: true
+  trust_remote_code: true
+  num_concurrent: 10
+
+# vLLM server configuration
+vllm:
+  host: "0.0.0.0"
+  port: 8000
+  tensor_parallel_size: 1
+  max_model_len: 8192           # Match original working command
+  gpu_memory_utilization: 0.9    # Use default (higher) memory utilization
+  enforce_eager: true
+  limit_mm_per_prompt: '{"images": 0, "audios": 0}'
+  hf_cache: "/mnt/Hiksemi-2Tb/.cache/huggingface"
+  startup_timeout: 900           # Server startup timeout in seconds (15 minutes)
+
+wandb:
+  entity: "surus-lat"
+  project: "LATAM-leaderboard"
+
+upload:
+  script_path: "/home/mauro/dev/leaderboard"
+  script_name: "run_pipeline.py"
+
+logging:
+  log_dir: "logs"
+
+venvs:
+  lm_eval_spanish: "/home/mauro/dev/lm-evaluation-harness"
+  lm_eval_portuguese: "/home/mauro/dev/portu"
+  leaderboard: "/home/mauro/dev/leaderboard"
