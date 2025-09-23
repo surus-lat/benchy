@@ -1,178 +1,294 @@
-# Benchy - vLLM-Powered ML Benchmarking
+# Benchy - LATAM Leaderboard Benchmarking Suite
 
-A streamlined ZenML-powered system for benchmarking ML models using vLLM API server and lm-evaluation-harness, with automatic results upload.
+A comprehensive benchmarking suite for evaluating Large Language Models (LLMs) on Spanish and Portuguese tasks for the LATAM Leaderboard. This system uses Prefect for workflow orchestration, vLLM for efficient model serving, and lm-evaluation-harness for standardized evaluations.
 
-## Overview
+## 🚀 Features
 
-Benchy runs a complete evaluation pipeline:
-1. **Start vLLM server** with the specified model and configuration
-2. **Test API connectivity** to ensure the server is working
-3. **Run Spanish evaluation** tasks sequentially 
-4. **Run Portuguese evaluation** tasks sequentially
-5. **Upload results** to the leaderboard
-6. **Clean up** - always stops the vLLM server
+- **Multi-language Support**: Evaluates models on both Spanish (`latam_es`) and Portuguese (`latam_pr`) tasks
+- **vLLM Integration**: High-performance model serving with GPU optimization
+- **Prefect Orchestration**: Robust workflow management with monitoring and retry capabilities
+- **Flexible Configuration**: YAML-based configuration system for easy model and task management
+- **Batch Processing**: Support for running multiple models sequentially
+- **Comprehensive Logging**: Detailed logging and result tracking
+- **Leaderboard Integration**: Automatic result parsing and upload to the LATAM leaderboard
 
-## Setup
+## 📋 Prerequisites
 
-1. Install dependencies:
+### System Requirements
+- Python 3.12+
+- CUDA-compatible GPU(s)
+- Docker (for Prefect server)
+- Sufficient disk space for model downloads and outputs
+
+### External Dependencies
+- **lm-evaluation-harness**: For Spanish task evaluations
+- **Portuguese benchmark suite**: For Portuguese task evaluations
+- **Prefect server**: Running in Docker container (recommended port 4200)
+
+## 🛠️ Installation
+
+1. **Clone the repository**:
    ```bash
+   git clone <repository-url>
+   cd benchy
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   # Using uv (recommended)
    uv sync
+   
+   # Or using pip
+   pip install -e .
    ```
 
-2. Copy environment template and fill in your values:
+3. **Set up external evaluation environments**:
+   
+   For Spanish evaluations (lm-evaluation-harness):
    ```bash
-   cp env.template .env
-   # Edit .env with your HF_TOKEN if needed
+   cd /path/to/lm-evaluation-harness
+   uv pip install -e .[api]
    ```
-
-3. Configure your benchmark in a YAML config file (see `configs/` directory)
-
-4. Ensure ZenML server is running:
+   
+   For Portuguese evaluations:
    ```bash
-   sudo docker run -it -d -p 8080:8080 --name zenml zenmldocker/zenml-server
+   cd /path/to/portuguese-bench
+   uv pip install -e ".[anthropic,openai,sentencepiece]"
    ```
 
-## Usage
+4. **Start Prefect server** (Docker recommended):
+   ```bash
+   docker run -d --name prefect-server -p 4200:4200 prefecthq/prefect:2-python3.11
+   ```
 
-### Single Model Runs
+## ⚙️ Configuration
 
-Run with default configuration:
-```bash
-python main.py
-```
+### Model Configuration
 
-Run with specific configuration:
-```bash
-python main.py --config configs/gemma-e4b.yaml
-python main.py -c configs/test-gemma.yaml
-```
-
-Show help:
-```bash
-python main.py --help
-```
-
-ps aux | grep -E "(vllm|python.*api_server)" | grep -v grep
-### Configuration
-
-Create YAML config files in the `configs/` directory. Example configuration:
+Create a YAML configuration file for each model you want to evaluate. See `configs/templates/test-model.yaml` for a template:
 
 ```yaml
-# configs/my-model.yaml
+# Model configuration
 model:
-  name: "google/gemma-3n-E4B-it"
+  name: "your-model-name"
 
+# Evaluation settings
 evaluation:
-  tasks_spanish: "latam_es"      # Spanish evaluation tasks
-  tasks_portuguese: "latam_pt"   # Portuguese evaluation tasks  
-  batch_size: "20"
-  output_path: "/home/mauro/dev/lm-evaluation-harness/output"
+  tasks_spanish: "latam_es"
+  tasks_portuguese: "latam_pr"
+  batch_size: "4"
+  output_path: "/path/to/outputs"
   log_samples: true
   cache_requests: true
   trust_remote_code: true
-  num_concurrent: 20
-  # limit: 5                     # Uncomment for testing (TEST mode)
+  num_concurrent: 8
+  limit: null  # Set to a number for testing with limited samples
 
 # vLLM server configuration
 vllm:
   host: "0.0.0.0"
   port: 8000
-  tensor_parallel_size: 1        # Number of GPUs (-tp parameter)
+  tensor_parallel_size: 1
   max_model_len: 8192
-  gpu_memory_utilization: 0.6
-  enforce_eager: true            # Better compatibility
-  limit_mm_per_prompt: '{"images": 0, "audios": 0}'  # Disable multimodal
-  hf_cache: "/home/mauro/.cache/huggingface"
-  # hf_token: "hf_..."           # Set if needed
+  gpu_memory_utilization: 0.7
+  enforce_eager: true
+  limit_mm_per_prompt: '{"images": 0, "audios": 0}'
+  hf_cache: "/path/to/huggingface/cache"
+  startup_timeout: 900
+  cuda_devices: "0"  # Specify GPU device(s)
 
+# Optional: Weights & Biases integration
 wandb:
-  entity: "surus-lat"
+  entity: "your-entity"
   project: "LATAM-leaderboard"
 
-upload:
-  script_path: "/home/mauro/dev/leaderboard"
-  script_name: "run_pipeline.py"
-
+# Logging configuration
 logging:
   log_dir: "logs"
 
+# Virtual environment paths
 venvs:
-  lm_eval: "/home/mauro/dev/lm-evaluation-harness"
-  leaderboard: "/home/mauro/dev/leaderboard"
+  lm_eval_spanish: "/path/to/lm-evaluation-harness"
+  lm_eval_portuguese: "/path/to/portuguese-bench"
 ```
 
-### Available Configurations
+### Environment Variables
 
-- `configs/gemma-e4b.yaml` - Production Gemma model configuration
-- `configs/test-gemma.yaml` - Test configuration with limited samples
+Create a `.env` file for sensitive configuration:
 
-### Test Mode
-
-Add `limit: N` to the evaluation section to run in TEST mode:
-- Only evaluates N examples per task
-- Adds "TEST_" prefix to the run name
-- Useful for validating configuration before full runs
-
-## Pipeline Steps
-
-The pipeline executes these steps in order:
-
-1. **start_vllm_server** - Starts vLLM API server with model
-2. **test_vllm_api** - Validates server is responding
-3. **run_lm_evaluation** (Spanish) - Runs Spanish language tasks
-4. **run_lm_evaluation** (Portuguese) - Runs Portuguese language tasks  
-5. **upload_results** - Uploads combined results
-6. **stop_vllm_server** - Always stops server (guaranteed cleanup)
-
-## Features
-
-- **Automatic server management** - vLLM server is always cleaned up
-- **Sequential task execution** - Spanish and Portuguese tasks run separately
-- **Safe logging** - Handles parallel logging conflicts gracefully
-- **Configurable vLLM settings** - Full control over server parameters
-- **Error resilience** - Server cleanup happens even if pipeline fails
-- **Test mode support** - Quick validation with limited samples
-
-## Logging
-
-All runs generate detailed logs in the `logs/` directory:
-- Console output with real-time progress
-- File logs with complete execution details
-- Separate logs for each pipeline step
-- Safe error handling for logging conflicts
-
-## Environment Variables
-
-Set in `.env` file:
-- `HF_TOKEN` - Hugging Face token (if needed for model access)
-- `BENCHY_CONFIG` - Default config file path (optional)
-
-## Troubleshooting
-
-### vLLM Server Issues
-- Check GPU memory usage
-- Reduce `gpu_memory_utilization` in config
-- Verify model fits in available memory
-- Check logs for CUDA errors
-
-### Evaluation Failures
-- Verify lm-evaluation-harness virtual environment is set up
-- Check task names are correct
-- Ensure API server is responding
-- Review batch size settings
-
-### Server Cleanup
-The pipeline guarantees vLLM server cleanup. If you see warnings about manual cleanup, check running processes:
 ```bash
-ps aux | grep vllm
-# Kill any remaining vLLM processes if needed
+# Prefect configuration
+PREFECT_API_URL=http://localhost:4200/api
+
+# Hugging Face token (if needed)
+HF_TOKEN=your_huggingface_token
+
+# Custom config path
+BENCHY_CONFIG=configs/my-model.yaml
 ```
 
-## Development
+## 🚀 Usage
 
-The codebase is intentionally minimal and focused:
-- `main.py` - Entry point and configuration handling
-- `src/pipeline.py` - Main ZenML pipeline definition
-- `src/steps.py` - Individual pipeline steps
-- `src/logging_utils.py` - Logging utilities
-- `configs/` - Configuration files
+### Single Model Evaluation
+
+```bash
+# Run with default config
+python eval.py
+
+# Run with specific config
+python eval.py --config configs/my-model.yaml
+
+# Test vLLM server only (no evaluation)
+python eval.py --test
+
+# Register flows with Prefect for dashboard visibility
+python eval.py --register
+
+# Verbose logging
+python eval.py --verbose
+```
+
+### Batch Model Evaluation
+
+Use the provided script to run multiple models sequentially:
+
+```bash
+# Edit run_models.sh to include your config files
+./run_models.sh
+```
+
+### Download Models
+
+Pre-download models to avoid download delays during evaluation:
+
+```bash
+# Edit download_models.sh with your model list
+./download_models.sh
+```
+
+## 📊 Pipeline Overview
+
+The benchmarking pipeline consists of the following steps:
+
+1. **vLLM Server Startup**: Launches a vLLM server with the specified model
+2. **API Testing**: Verifies the server is responding correctly
+3. **Spanish Evaluation**: Runs Spanish tasks using lm-evaluation-harness
+4. **Portuguese Evaluation**: Runs Portuguese tasks using the Portuguese benchmark suite
+5. **Result Gathering**: Collects and processes evaluation results
+6. **Server Cleanup**: Stops the vLLM server and cleans up resources
+
+## 📁 Directory Structure
+
+```
+benchy/
+├── configs/                 # Configuration files
+│   ├── templates/          # Configuration templates
+│   ├── single_card/        # Single GPU configurations
+│   └── server/            # Server-specific configs
+├── src/                   # Source code
+│   ├── pipeline.py        # Main Prefect pipeline
+│   ├── steps.py          # Individual pipeline steps
+│   ├── logging_utils.py  # Logging utilities
+│   └── leaderboard/      # Leaderboard integration
+├── outputs/              # Evaluation results
+├── logs/                # Log files
+├── external/            # External dependencies
+├── reference/           # Reference data
+├── eval.py             # Main entry point
+├── run_models.sh       # Batch evaluation script
+└── download_models.sh  # Model download script
+```
+
+## 🔧 Advanced Configuration
+
+### GPU Memory Optimization
+
+For memory-constrained setups:
+
+```yaml
+vllm:
+  gpu_memory_utilization: 0.6  # Reduce from default 0.9
+  kv_cache_memory: 12934271795  # Explicit KV cache allocation
+  tensor_parallel_size: 1       # Single GPU
+```
+
+### Multi-GPU Setup
+
+```yaml
+vllm:
+  tensor_parallel_size: 2       # Use 2 GPUs
+  cuda_devices: "0,1"          # Specify GPU devices
+```
+
+### Testing Configuration
+
+For quick testing with limited samples:
+
+```yaml
+evaluation:
+  limit: 10                    # Only 10 samples per task
+  batch_size: "2"             # Smaller batch size
+  num_concurrent: 4           # Fewer concurrent requests
+```
+
+## 📈 Monitoring and Logging
+
+- **Prefect Dashboard**: Access at `http://localhost:4200` to monitor pipeline execution
+- **Log Files**: Detailed logs stored in `logs/` directory
+- **Weights & Biases**: Optional integration for experiment tracking
+- **Output Files**: Results stored in `outputs/` directory
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Prefect Server Connection**:
+   ```bash
+   # Check if Prefect server is running
+   curl http://localhost:4200/api/health
+   ```
+
+2. **GPU Memory Issues**:
+   - Reduce `gpu_memory_utilization`
+   - Decrease `batch_size`
+   - Lower `num_concurrent`
+
+3. **Model Download Issues**:
+   - Check Hugging Face token
+   - Verify model name spelling
+   - Ensure sufficient disk space
+
+4. **Port Conflicts**:
+   - Change vLLM port in configuration
+   - Kill existing vLLM processes: `pkill -f vllm`
+
+### Debug Mode
+
+Run with verbose logging for detailed debugging:
+
+```bash
+python eval.py --verbose --config configs/debug-config.yaml
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📄 License
+
+[Add your license information here]
+
+## 🙏 Acknowledgments
+
+- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) for evaluation framework
+- [vLLM](https://github.com/vllm-project/vllm) for efficient model serving
+- [Prefect](https://www.prefect.io/) for workflow orchestration
+- LATAM community for benchmark development
+
+---
+
+For questions or support, please open an issue or contact the maintainers.
