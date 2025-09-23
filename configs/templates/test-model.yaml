@@ -10,7 +10,7 @@ evaluation:
   log_samples: true
   cache_requests: true
   trust_remote_code: true
-  num_concurrent: 4               # Reduced concurrent requests to avoid memory pressure
+  num_concurrent: 4                # Reduced concurrent requests to avoid memory pressure
   limit: 10                       # TEST mode - only 2 examples per task
 
 # vLLM server configuration

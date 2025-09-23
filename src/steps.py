@@ -428,41 +428,39 @@ def _run_evaluation(
     except (RuntimeError, OSError):
         pass
     
-    # Build model_args string
+    # Build model_args string with optimizations for API-only usage
     model_args_parts = [
         f"model={model_name}",
         f"max_length={max_length}",
         f"base_url={server_url}/v1/completions",
         f"num_concurrent={num_concurrent}",
-        "max_retries=3"
+        "max_retries=3",
+        # Optimize for minimal local compute
+        "tokenized_requests=False",  # Send text instead of tokens to API
     ]
     
-    # Add trust_remote_code if True
+    # Add trust_remote_code if True (needed for tokenizer)
     if trust_remote_code:
         model_args_parts.append("trust_remote_code=True")
     
-    # Add tokenizer_backend if provided
+    # Add tokenizer_backend if provided, defaulting to lightweight option
     if tokenizer_backend:
         model_args_parts.append(f"tokenizer_backend={tokenizer_backend}")
+    else:
+        # Use huggingface but with optimizations for CPU-only usage
+        model_args_parts.append("tokenizer_backend=huggingface")
     
     model_args_str = ",".join(model_args_parts)
     
     # Build the lm_eval command for API mode
-    cuda_visible_devices = cuda_devices if cuda_devices is not None else ""
-    cmd_parts = []
-    
-    # Add CUDA_VISIBLE_DEVICES if specified
-    if cuda_visible_devices:
-        cmd_parts.append(f"CUDA_VISIBLE_DEVICES={cuda_visible_devices}")
-    
-    cmd_parts.extend([
+    cmd_parts = [
         "lm_eval",
         "--model", "local-completions",
         "--model_args", model_args_str,
         "--tasks", tasks,
         "--batch_size", batch_size,
         "--output_path", output_path
-    ])
+    ]
     
     if log_samples:
         cmd_parts.append("--log_samples")
@@ -490,6 +488,12 @@ def _run_evaluation(
         # Activate the lm-eval venv and run command
         venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd}"
         
+        # Set up CPU-only environment for lm-eval client
+        env = os.environ.copy()
+        # Force PyTorch to use CPU only
+        env["CUDA_VISIBLE_DEVICES"] = ""
+        env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+        
         # Stream output in real-time
         process = subprocess.Popen(
             venv_cmd,
@@ -498,7 +502,7 @@ def _run_evaluation(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env=os.environ.copy(),
+            env=env,
             executable="/bin/bash",
             bufsize=1,
             universal_newlines=True
