@@ -38,7 +38,9 @@ def benchmark_pipeline(
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
     num_concurrent: int = 8,
-    startup_timeout: int = 900
+    startup_timeout: int = 900,
+    cuda_devices: Optional[str] = None,
+    kv_cache_memory: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Complete vLLM-based benchmarking pipeline.
@@ -77,6 +79,7 @@ def benchmark_pipeline(
         hf_cache: Hugging Face cache directory
         hf_token: Hugging Face token
         num_concurrent: Number of concurrent API requests
+        cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
     """
     logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
     
@@ -93,7 +96,9 @@ def benchmark_pipeline(
         hf_cache=hf_cache,
         hf_token=hf_token,
         vllm_venv_path="/home/mauro/dev/benchy/.venv",
-        startup_timeout=startup_timeout
+        startup_timeout=startup_timeout,
+        cuda_devices=cuda_devices,
+        kv_cache_memory=kv_cache_memory
     )
         
     # Step 2: Test vLLM API
@@ -114,13 +119,15 @@ def benchmark_pipeline(
         output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
+        max_length=max_model_len,
         wandb_args=wandb_args,
         log_samples=log_samples,
         limit=limit,
         lm_eval_path=lm_eval_spanish_venv,
         cache_requests=cache_requests,
         trust_remote_code=trust_remote_code,
-        num_concurrent=num_concurrent
+        num_concurrent=num_concurrent,
+        cuda_devices=cuda_devices
     )
 
     
@@ -133,6 +140,7 @@ def benchmark_pipeline(
         output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
+        max_length=max_model_len,
         wandb_args=wandb_args,
         log_samples=log_samples,
         limit=limit,
@@ -140,7 +148,8 @@ def benchmark_pipeline(
         cache_requests=cache_requests,
         trust_remote_code=True,  # Always True for Portuguese
         num_concurrent=num_concurrent,
-        tokenizer_backend="huggingface"  # Always huggingface for Portuguese
+        tokenizer_backend="huggingface",  # Always huggingface for Portuguese
+        cuda_devices=cuda_devices
     )
     
     # Step 4: gather results
@@ -165,7 +174,9 @@ def test_vllm_server(
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
-    startup_timeout: int = 900
+    startup_timeout: int = 900,
+    cuda_devices: Optional[str] = None,
+    kv_cache_memory: Optional[int] = None
 ) -> Dict[str, Any]:
         
     # Step 1: Start vLLM server
@@ -181,7 +192,9 @@ def test_vllm_server(
         hf_cache=hf_cache,
         hf_token=hf_token,
         vllm_venv_path="/home/mauro/dev/benchy/.venv",
-        startup_timeout=startup_timeout
+        startup_timeout=startup_timeout,
+        cuda_devices=cuda_devices,
+        kv_cache_memory=kv_cache_memory
     )
         
     # Step 2: Test vLLM API

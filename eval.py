@@ -173,6 +173,7 @@ def main():
     upload_config = config.get('upload', {})
     venv_config = config.get('venvs', {})
     wandb_args = build_wandb_args(config)
+    cuda_devices = vllm_config.get('cuda_devices', None)
     
     logger.info(f"Model: {model_name}")
     logger.info(f"Spanish tasks: {eval_config['tasks_spanish']}")
@@ -209,7 +210,8 @@ def main():
                 limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
                 hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
                 hf_token=vllm_config.get('hf_token', ""),
-                startup_timeout=vllm_config.get('startup_timeout', 900)
+                startup_timeout=vllm_config.get('startup_timeout', 900),
+                cuda_devices=cuda_devices
             )
         else:
             # Run full benchmark pipeline
@@ -239,7 +241,8 @@ def main():
                 hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
                 hf_token=vllm_config.get('hf_token', ""),
                 num_concurrent=eval_config.get('num_concurrent', 8),
-                startup_timeout=vllm_config.get('startup_timeout', 900)
+                startup_timeout=vllm_config.get('startup_timeout', 900),
+                cuda_devices=cuda_devices
             )
         
         logger.info("Benchmark pipeline completed successfully!")

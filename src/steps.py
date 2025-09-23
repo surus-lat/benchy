@@ -91,7 +91,9 @@ def start_vllm_server(
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
     vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
-    startup_timeout: int = 900
+    startup_timeout: int = 900,
+    cuda_devices: Optional[str] = None,
+    kv_cache_memory: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -109,6 +111,7 @@ def start_vllm_server(
         hf_token: Hugging Face token
         vllm_venv_path: Path to vLLM virtual environment
         startup_timeout: Timeout in seconds for server startup (default: 900s = 15min)
+        cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
@@ -131,8 +134,9 @@ def start_vllm_server(
         pass
     
     # Build command parts
+    cuda_visible_devices = cuda_devices if cuda_devices is not None else "2,3"
     cmd_parts = [
-        "CUDA_VISIBLE_DEVICES=2,3",
+        f"CUDA_VISIBLE_DEVICES={cuda_visible_devices}",
         "python", "-m", "vllm.entrypoints.openai.api_server",
         "--host", host,
         "--model", model_name,
@@ -146,12 +150,18 @@ def start_vllm_server(
     if enforce_eager:
         cmd_parts.append("--enforce-eager")
     
+    if kv_cache_memory is not None:
+        cmd_parts.extend(["--kv-cache-memory", str(kv_cache_memory)])
+    
     # Set up environment
     env = os.environ.copy()
     if hf_cache:
         env["HF_CACHE"] = hf_cache
     if hf_token:  # Only set if not empty string
         env["HF_TOKEN"] = hf_token
+    
+    # Add PyTorch CUDA memory management optimization
+    env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     
     cmd_str = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd_str}")
@@ -287,11 +297,13 @@ def run_spanish_evaluation(
     api_test_result: Dict[str, Any],
     wandb_args: str = "",
     log_samples: bool = True,
+    max_length: int = 2048,
     limit: Optional[int] = None,
     lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
     cache_requests: bool = True,
     trust_remote_code: bool = False,
-    num_concurrent: int = 8
+    num_concurrent: int = 8,
+    cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run Spanish language evaluation using lm-evaluation-harness via API.
@@ -303,6 +315,7 @@ def run_spanish_evaluation(
         output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
+        max_length=max_length,
         wandb_args=wandb_args,
         log_samples=log_samples,
         limit=limit,
@@ -310,7 +323,8 @@ def run_spanish_evaluation(
         cache_requests=cache_requests,
         trust_remote_code=trust_remote_code,
         num_concurrent=num_concurrent,
-        language="Spanish"
+        language="Spanish",
+        cuda_devices=cuda_devices
     )
 
 
@@ -322,6 +336,7 @@ def run_portuguese_evaluation(
     output_path: str,
     server_info: Dict[str, Any],
     api_test_result: Dict[str, Any],
+    max_length: int = 2048,
     wandb_args: str = "",
     log_samples: bool = True,
     limit: Optional[int] = None,
@@ -329,7 +344,8 @@ def run_portuguese_evaluation(
     cache_requests: bool = True,
     trust_remote_code: bool = False,
     num_concurrent: int = 8,
-    tokenizer_backend: str = "huggingface"
+    tokenizer_backend: str = "huggingface",
+    cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run Portuguese language evaluation using lm-evaluation-harness via API.
@@ -342,6 +358,7 @@ def run_portuguese_evaluation(
         server_info=server_info,
         api_test_result=api_test_result,
         wandb_args=wandb_args,
+        max_length=max_length,
         log_samples=log_samples,
         limit=limit,
         lm_eval_path=lm_eval_path,
@@ -349,7 +366,8 @@ def run_portuguese_evaluation(
         trust_remote_code=trust_remote_code,
         num_concurrent=num_concurrent,
         language="Portuguese",
-        tokenizer_backend=tokenizer_backend
+        tokenizer_backend=tokenizer_backend,
+        cuda_devices=cuda_devices
     )
 
 
@@ -360,6 +378,7 @@ def _run_evaluation(
     output_path: str,
     server_info: Dict[str, Any],
     api_test_result: Dict[str, Any],
+    max_length: int = 2048,
     wandb_args: str = "",
     log_samples: bool = True,
     limit: Optional[int] = None,
@@ -368,7 +387,8 @@ def _run_evaluation(
     trust_remote_code: bool = False,
     num_concurrent: int = 8,
     language: str = "Unknown",
-    tokenizer_backend: Optional[str] = None
+    tokenizer_backend: Optional[str] = None,
+    cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Run lm-evaluation-harness using vLLM API server.
@@ -386,6 +406,7 @@ def _run_evaluation(
         cache_requests: Whether to enable request caching
         trust_remote_code: Whether to trust remote code when loading models
         num_concurrent: Number of concurrent API requests
+        cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
         
     Returns:
         Dictionary with execution results and metadata
@@ -410,6 +431,7 @@ def _run_evaluation(
     # Build model_args string
     model_args_parts = [
         f"model={model_name}",
+        f"max_length={max_length}",
         f"base_url={server_url}/v1/completions",
         f"num_concurrent={num_concurrent}",
         "max_retries=3"
@@ -426,14 +448,21 @@ def _run_evaluation(
     model_args_str = ",".join(model_args_parts)
     
     # Build the lm_eval command for API mode
-    cmd_parts = [
+    cuda_visible_devices = cuda_devices if cuda_devices is not None else ""
+    cmd_parts = []
+    
+    # Add CUDA_VISIBLE_DEVICES if specified
+    if cuda_visible_devices:
+        cmd_parts.append(f"CUDA_VISIBLE_DEVICES={cuda_visible_devices}")
+    
+    cmd_parts.extend([
         "lm_eval",
         "--model", "local-completions",
         "--model_args", model_args_str,
         "--tasks", tasks,
         "--batch_size", batch_size,
         "--output_path", output_path
-    ]
+    ])
     
     if log_samples:
         cmd_parts.append("--log_samples")
