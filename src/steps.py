@@ -423,6 +423,8 @@ def _run_evaluation(
         file_logger.info(f"Server URL: {server_url}")
         file_logger.info(f"Batch size: {batch_size}")
         file_logger.info(f"Concurrent requests: {num_concurrent}")
+        if batch_size != "1":
+            file_logger.info("Note: vLLM supports batched requests with varying sequence lengths")
         if limit:
             file_logger.info(f"Limit: {limit} (testing mode)")
     except (RuntimeError, OSError):
@@ -462,6 +464,18 @@ def _run_evaluation(
         "--output_path", output_path
     ]
     
+    # Note: Chat template application is disabled due to compatibility issues
+    # with JsonChatStr objects in lm-eval. The model will still work but may
+    # not be optimally formatted for instruct models.
+    # TODO: Investigate proper chat template handling in lm-eval
+    if False and ("instruct" in model_name.lower() or "chat" in model_name.lower()):
+        cmd_parts.append("--apply_chat_template")
+        logger.info("Detected instruct/chat model, enabling chat template")
+        try:
+            file_logger.info("Auto-enabled chat template for instruct/chat model")
+        except (RuntimeError, OSError):
+            pass
+    
     if log_samples:
         cmd_parts.append("--log_samples")
         
@@ -485,8 +499,11 @@ def _run_evaluation(
         pass
     
     try:
+        # Set environment variables for datasets trust
+        env_vars = "HF_DATASETS_TRUST_REMOTE_CODE=true"
+        
         # Activate the lm-eval venv and run command
-        venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {cmd}"
+        venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {env_vars} {cmd}"
         
         # Set up CPU-only environment for lm-eval client
         env = os.environ.copy()
