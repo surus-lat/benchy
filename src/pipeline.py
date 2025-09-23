@@ -3,7 +3,8 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
-from .steps import start_vllm_server, test_vllm_api, run_spanish_evaluation, run_portuguese_evaluation, stop_vllm_server, gather_results
+from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
+from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results
 import atexit
 import os
 import logging
@@ -23,8 +24,6 @@ def benchmark_pipeline(
     limit: Optional[int] = None,
     lm_eval_spanish_venv: str = "/home/mauro/dev/lm-evaluation-harness",
     lm_eval_portuguese_venv: str = "/home/mauro/dev/portu",
-    upload_script_path: str = "/home/mauro/dev/leaderboard",
-    upload_script_name: str = "run_pipeline.py",
     cache_requests: bool = True,
     trust_remote_code: bool = False,
     # vLLM server configuration
