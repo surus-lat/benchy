@@ -12,19 +12,11 @@ logger = logging.getLogger(__name__)
 @task
 def run_spanish_evaluation(
     model_name: str,
-    tasks: str,
-    batch_size: str,
     output_path: str,
     server_info: Dict[str, Any],
     api_test_result: Dict[str, Any],
-    wandb_args: str = "",
-    log_samples: bool = True,
-    max_length: int = 2048,
+    task_config: Dict[str, Any],
     limit: Optional[int] = None,
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
-    cache_requests: bool = True,
-    trust_remote_code: bool = False,
-    num_concurrent: int = 8,
     cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -32,19 +24,11 @@ def run_spanish_evaluation(
     """
     return _run_evaluation(
         model_name=model_name,
-        tasks=tasks,
-        batch_size=batch_size,
         output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
-        max_length=max_length,
-        wandb_args=wandb_args,
-        log_samples=log_samples,
+        task_config=task_config,
         limit=limit,
-        lm_eval_path=lm_eval_path,
-        cache_requests=cache_requests,
-        trust_remote_code=trust_remote_code,
-        num_concurrent=num_concurrent,
         language="Spanish",
         cuda_devices=cuda_devices
     )
@@ -53,20 +37,11 @@ def run_spanish_evaluation(
 @task
 def run_portuguese_evaluation(
     model_name: str,
-    tasks: str,
-    batch_size: str,
     output_path: str,
     server_info: Dict[str, Any],
     api_test_result: Dict[str, Any],
-    max_length: int = 2048,
-    wandb_args: str = "",
-    log_samples: bool = True,
+    task_config: Dict[str, Any],
     limit: Optional[int] = None,
-    lm_eval_path: str = "/home/mauro/dev/portu",
-    cache_requests: bool = True,
-    trust_remote_code: bool = False,
-    num_concurrent: int = 8,
-    tokenizer_backend: str = "huggingface",
     cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -74,42 +49,24 @@ def run_portuguese_evaluation(
     """
     return _run_evaluation(
         model_name=model_name,
-        tasks=tasks,
-        batch_size=batch_size,
         output_path=output_path,
         server_info=server_info,
         api_test_result=api_test_result,
-        wandb_args=wandb_args,
-        max_length=max_length,
-        log_samples=log_samples,
+        task_config=task_config,
         limit=limit,
-        lm_eval_path=lm_eval_path,
-        cache_requests=cache_requests,
-        trust_remote_code=trust_remote_code,
-        num_concurrent=num_concurrent,
         language="Portuguese",
-        tokenizer_backend=tokenizer_backend,
         cuda_devices=cuda_devices
     )
 
 
 def _run_evaluation(
     model_name: str,
-    tasks: str,
-    batch_size: str,
     output_path: str,
     server_info: Dict[str, Any],
     api_test_result: Dict[str, Any],
-    max_length: int = 2048,
-    wandb_args: str = "",
-    log_samples: bool = True,
+    task_config: Dict[str, Any],
     limit: Optional[int] = None,
-    lm_eval_path: str = "/home/mauro/dev/lm-evaluation-harness",
-    cache_requests: bool = True,
-    trust_remote_code: bool = False,
-    num_concurrent: int = 8,
     language: str = "Unknown",
-    tokenizer_backend: Optional[str] = None,
     cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -117,22 +74,35 @@ def _run_evaluation(
     
     Args:
         model_name: The model to evaluate
-        tasks: Tasks to run (e.g., "latam_es" or "latam_pt")
-        batch_size: Batch size configuration
-        output_path: Output path for results
+        output_path: Base output path for results
         server_info: Dictionary containing server info from start_vllm_server
-        wandb_args: Weights & Biases arguments
-        log_samples: Whether to log samples
+        api_test_result: API test result (unused but kept for compatibility)
+        task_config: Task configuration dictionary
         limit: Limit number of examples per task (useful for testing)
-        lm_eval_path: Path to lm-evaluation-harness installation
-        cache_requests: Whether to enable request caching
-        trust_remote_code: Whether to trust remote code when loading models
-        num_concurrent: Number of concurrent API requests
+        language: Language name for logging
         cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
         
     Returns:
         Dictionary with execution results and metadata
     """
+    # Extract parameters from task config
+    tasks = task_config['task_name']
+    lm_eval_path = task_config['lm_eval_path']
+    tokenizer_backend = task_config.get('tokenizer_backend', 'huggingface')
+    
+    # Get defaults from task config
+    defaults = task_config.get('defaults', {})
+    batch_size = defaults.get('batch_size', '4')
+    log_samples = defaults.get('log_samples', True)
+    cache_requests = defaults.get('cache_requests', True)
+    trust_remote_code = defaults.get('trust_remote_code', False)
+    num_concurrent = defaults.get('num_concurrent', 8)
+    max_length = defaults.get('max_length', 2048)
+    
+    # Create task-specific output path
+    output_subdir = task_config.get('output', {}).get('subdirectory', language.lower())
+    task_output_path = f"{output_path}/{output_subdir}"
+    
     server_url = server_info["url"]
     
     logger.info(f"Starting {language} evaluation for model: {model_name}, tasks: {tasks}")
@@ -183,7 +153,7 @@ def _run_evaluation(
         "--model_args", model_args_str,
         "--tasks", tasks,
         "--batch_size", batch_size,
-        "--output_path", output_path
+        "--output_path", task_output_path
     ]
     
     # Note: Chat template application is disabled due to compatibility issues
@@ -203,9 +173,6 @@ def _run_evaluation(
         
     if limit is not None:
         cmd_parts.extend(["--limit", str(limit)])
-        
-    if wandb_args:
-        cmd_parts.extend(["--wandb_args", wandb_args])
         
     if cache_requests:
         cmd_parts.extend(["--cache_requests", "true"])
@@ -281,14 +248,14 @@ def _run_evaluation(
         logger.info("lm_eval completed successfully")
         try:
             file_logger.info("=== LM Evaluation COMPLETED SUCCESSFULLY ===")
-            file_logger.info(f"Output saved to: {output_path}")
+            file_logger.info(f"Output saved to: {task_output_path}")
         except (RuntimeError, OSError):
             pass
         
         return {
             "model_name": model_name,
             "tasks": tasks,
-            "output_path": output_path,
+            "output_path": task_output_path,
             "stdout": stdout,
             "return_code": return_code,
             "command": cmd

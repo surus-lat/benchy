@@ -1,16 +1,15 @@
 # Benchy - LATAM Leaderboard Benchmarking Suite
 
-A comprehensive benchmarking suite for evaluating Large Language Models (LLMs) on Spanish and Portuguese tasks for the LATAM Leaderboard. This system uses Prefect for workflow orchestration, vLLM for efficient model serving, and lm-evaluation-harness for standardized evaluations.
+A modular benchmarking suite for evaluating Large Language Models (LLMs) on Spanish and Portuguese tasks for the LATAM Leaderboard. Features a clean, task-based configuration system with vLLM integration and Prefect orchestration.
 
 ## 🚀 Features
 
-- **Multi-language Support**: Evaluates models on both Spanish (`latam_es`) and Portuguese (`latam_pr`) tasks
+- **Modular Task System**: Separate configs for Spanish, Portuguese, and translation tasks
 - **vLLM Integration**: High-performance model serving with GPU optimization
-- **Prefect Orchestration**: Robust workflow management with monitoring and retry capabilities
-- **Flexible Configuration**: YAML-based configuration system for easy model and task management
-- **Batch Processing**: Support for running multiple models sequentially
-- **Comprehensive Logging**: Detailed logging and result tracking
-- **Leaderboard Integration**: Automatic result parsing and upload to the LATAM leaderboard
+- **Centralized Configuration**: Global settings in one place, minimal model configs
+- **Command Line Control**: Easy testing with `--limit` parameter
+- **Prefect Orchestration**: Robust workflow management with monitoring
+- **Clean Architecture**: Decoupled components for easy maintenance
 
 ## 📋 Prerequisites
 
@@ -63,53 +62,54 @@ A comprehensive benchmarking suite for evaluating Large Language Models (LLMs) o
 
 ## ⚙️ Configuration
 
+### Configuration Structure
+
+The system uses a modular configuration approach:
+
+```
+configs/
+├── config.yaml              # Global settings (paths, logging)
+├── providers/
+│   └── vllm_single_card.yaml # vLLM server defaults
+├── tasks/
+│   ├── spanish.yaml         # Spanish evaluation config
+│   ├── portuguese.yaml      # Portuguese evaluation config
+│   └── translation.yaml     # Translation config (ready)
+└── models/
+    └── qwen-4b.yaml         # Model config (minimal)
+```
+
 ### Model Configuration
 
-Create a YAML configuration file for each model you want to evaluate. See `configs/templates/test-model.yaml` for a template:
+Create a minimal YAML configuration for each model:
 
 ```yaml
-# Model configuration
+# Model information
 model:
-  name: "your-model-name"
+  name: "Qwen/Qwen3-4B-Instruct-2507"
 
-# Evaluation settings
-evaluation:
-  tasks_spanish: "latam_es"
-  tasks_portuguese: "latam_pr"
-  batch_size: "4"
-  output_path: "/path/to/outputs"
-  log_samples: true
-  cache_requests: true
-  trust_remote_code: true
-  num_concurrent: 8
-  limit: null  # Set to a number for testing with limited samples
-
-# vLLM server configuration
+# vLLM configuration - references base provider config
 vllm:
-  host: "0.0.0.0"
-  port: 8000
-  tensor_parallel_size: 1
-  max_model_len: 8192
-  gpu_memory_utilization: 0.7
-  enforce_eager: true
-  limit_mm_per_prompt: '{"images": 0, "audios": 0}'
-  hf_cache: "/path/to/huggingface/cache"
-  startup_timeout: 900
-  cuda_devices: "0"  # Specify GPU device(s)
+  provider_config: "vllm_single_card"  # Base config
+  overrides:
+    max_model_len: 2000  # Override only what's different
 
-# Optional: Weights & Biases integration
-wandb:
-  entity: "your-entity"
-  project: "LATAM-leaderboard"
+# Tasks to run
+tasks:
+  - "spanish"
+  - "portuguese"
+```
 
-# Logging configuration
+### Global Configuration (`configs/config.yaml`)
+
+```yaml
+# Central Configuration File
+paths:
+  benchmark_outputs: "/home/mauro/dev/benchmark_outputs"
+  logs: "logs"
+
 logging:
   log_dir: "logs"
-
-# Virtual environment paths
-venvs:
-  lm_eval_spanish: "/path/to/lm-evaluation-harness"
-  lm_eval_portuguese: "/path/to/portuguese-bench"
 ```
 
 ### Environment Variables
@@ -129,24 +129,32 @@ BENCHY_CONFIG=configs/my-model.yaml
 
 ## 🚀 Usage
 
-### Single Model Evaluation
+### Basic Usage
 
 ```bash
-# Run with default config
-python eval.py
+# Run full evaluation
+python eval.py --config configs/models/qwen-4b.yaml
 
-# Run with specific config
-python eval.py --config configs/my-model.yaml
+# Test with limited samples (perfect for testing!)
+python eval.py --config configs/models/qwen-4b.yaml --limit 10
 
 # Test vLLM server only (no evaluation)
-python eval.py --test
+python eval.py --config configs/models/qwen-4b.yaml --test
 
-# Register flows with Prefect for dashboard visibility
-python eval.py --register
+# Run only Portuguese evaluation
+python eval.py --config configs/templates/test-model_new.yaml
 
 # Verbose logging
-python eval.py --verbose
+python eval.py --config configs/models/qwen-4b.yaml --verbose
 ```
+
+### Command Line Options
+
+- `--config` / `-c`: Path to model configuration file
+- `--limit`: Limit number of examples per task (useful for testing)
+- `--test`: Test vLLM server only, no evaluation
+- `--verbose` / `-v`: Enable verbose logging
+- `--register` / `-r`: Register flows with Prefect server
 
 ### Batch Model Evaluation
 
@@ -168,75 +176,89 @@ Pre-download models to avoid download delays during evaluation:
 
 ## 📊 Pipeline Overview
 
-The benchmarking pipeline consists of the following steps:
+The modular pipeline consists of:
 
-1. **vLLM Server Startup**: Launches a vLLM server with the specified model
-2. **API Testing**: Verifies the server is responding correctly
-3. **Spanish Evaluation**: Runs Spanish tasks using lm-evaluation-harness
-4. **Portuguese Evaluation**: Runs Portuguese tasks using the Portuguese benchmark suite
+1. **Configuration Loading**: Loads model config, merges with provider defaults
+2. **vLLM Server Startup**: Launches server with merged configuration
+3. **API Testing**: Verifies server is responding correctly
+4. **Task Execution**: Runs only the tasks specified in model config
+   - Spanish evaluation (if `"spanish"` in tasks list)
+   - Portuguese evaluation (if `"portuguese"` in tasks list)
 5. **Result Gathering**: Collects and processes evaluation results
-6. **Server Cleanup**: Stops the vLLM server and cleans up resources
+6. **Server Cleanup**: Stops vLLM server and cleans up resources
 
 ## 📁 Directory Structure
 
 ```
 benchy/
 ├── configs/                 # Configuration files
-│   ├── templates/          # Configuration templates
-│   ├── single_card/        # Single GPU configurations
-│   └── server/            # Server-specific configs
+│   ├── config.yaml         # Global settings
+│   ├── providers/          # vLLM provider configs
+│   ├── tasks/              # Task-specific configs
+│   ├── models/             # Model configs (minimal)
+│   └── templates/          # Example configs
 ├── src/                   # Source code
 │   ├── pipeline.py        # Main Prefect pipeline
-│   ├── steps.py          # Individual pipeline steps
-│   ├── logging_utils.py  # Logging utilities
-│   └── leaderboard/      # Leaderboard integration
+│   ├── config_manager.py  # Configuration management
+│   ├── inference/         # vLLM server management
+│   ├── tasks/             # Evaluation tasks
+│   └── logging_utils.py   # Logging utilities
 ├── outputs/              # Evaluation results
 ├── logs/                # Log files
 ├── external/            # External dependencies
-├── reference/           # Reference data
 ├── eval.py             # Main entry point
-├── run_models.sh       # Batch evaluation script
-└── download_models.sh  # Model download script
+└── scripts/            # Utility scripts
 ```
 
 ## 🔧 Advanced Configuration
 
+### Adding New Tasks
+
+1. Create task config in `configs/tasks/`:
+```yaml
+# configs/tasks/my_task.yaml
+task_name: "my_custom_task"
+lm_eval_path: "/path/to/evaluation/suite"
+defaults:
+  batch_size: "4"
+  num_concurrent: 8
+```
+
+2. Add task to model config:
+```yaml
+tasks:
+  - "spanish"
+  - "portuguese" 
+  - "my_task"  # New task
+```
+
 ### GPU Memory Optimization
 
-For memory-constrained setups:
+Override vLLM settings in model config:
 
 ```yaml
 vllm:
-  gpu_memory_utilization: 0.6  # Reduce from default 0.9
-  kv_cache_memory: 12934271795  # Explicit KV cache allocation
-  tensor_parallel_size: 1       # Single GPU
+  provider_config: "vllm_single_card"
+  overrides:
+    gpu_memory_utilization: 0.6  # Reduce from default
+    kv_cache_memory: 12934271795  # Explicit KV cache
+    tensor_parallel_size: 1       # Single GPU
 ```
 
-### Multi-GPU Setup
+### Testing with Limited Samples
 
-```yaml
-vllm:
-  tensor_parallel_size: 2       # Use 2 GPUs
-  cuda_devices: "0,1"          # Specify GPU devices
-```
+Use the `--limit` parameter for quick testing:
 
-### Testing Configuration
-
-For quick testing with limited samples:
-
-```yaml
-evaluation:
-  limit: 10                    # Only 10 samples per task
-  batch_size: "2"             # Smaller batch size
-  num_concurrent: 4           # Fewer concurrent requests
+```bash
+# Test with 10 samples per task
+python eval.py --config configs/models/qwen-4b.yaml --limit 10
 ```
 
 ## 📈 Monitoring and Logging
 
 - **Prefect Dashboard**: Access at `http://localhost:4200` to monitor pipeline execution
-- **Log Files**: Detailed logs stored in `logs/` directory
-- **Weights & Biases**: Optional integration for experiment tracking
-- **Output Files**: Results stored in `outputs/` directory
+- **Log Files**: Detailed logs stored in `logs/` directory (configurable in `configs/config.yaml`)
+- **Output Files**: Results stored in centralized output directory
 
 ## 🐛 Troubleshooting
 
@@ -267,7 +289,7 @@ evaluation:
 Run with verbose logging for detailed debugging:
 
 ```bash
-python eval.py --verbose --config configs/debug-config.yaml
+python eval.py --verbose --config configs/models/qwen-4b.yaml --limit 5
 ```
 
 ## 🤝 Contributing

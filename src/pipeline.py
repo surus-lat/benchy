@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results
+from .config_manager import ConfigManager
 import atexit
 import os
 import logging
@@ -15,17 +16,9 @@ logger = logging.getLogger(__name__)
 @flow()
 def benchmark_pipeline(
     model_name: str,
-    tasks_spanish: str,
-    tasks_portuguese: str,
-    batch_size: str,
+    tasks: list,
     output_path: str,
-    wandb_args: str = "",
-    log_samples: bool = True,
     limit: Optional[int] = None,
-    lm_eval_spanish_venv: str = "/home/mauro/dev/lm-evaluation-harness",
-    lm_eval_portuguese_venv: str = "/home/mauro/dev/portu",
-    cache_requests: bool = True,
-    trust_remote_code: bool = False,
     # vLLM server configuration
     host: str = "0.0.0.0",
     port: int = 8000,
@@ -36,7 +29,6 @@ def benchmark_pipeline(
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
     hf_cache: str = "/home/mauro/.cache/huggingface",
     hf_token: str = "",
-    num_concurrent: int = 8,
     startup_timeout: int = 900,
     cuda_devices: Optional[str] = None,
     kv_cache_memory: Optional[int] = None
@@ -47,26 +39,16 @@ def benchmark_pipeline(
     The pipeline:
     1. Starts a vLLM server with the specified model
     2. Tests the API server to ensure it's working
-    3. Runs Spanish language evaluation tasks
-    4. Runs Portuguese language evaluation tasks  
-    5. Uploads results
-    6. Stops the vLLM server (guaranteed cleanup)
+    3. Runs specified evaluation tasks (spanish, portuguese, etc.)
+    4. Gathers results
+    5. Stops the vLLM server (guaranteed cleanup)
     
     Args:
         model_name: The model to evaluate
-        tasks_spanish: Spanish tasks to run (e.g., "latam_es")
-        tasks_portuguese: Portuguese tasks to run (e.g., "latam_pt")
-        batch_size: Batch size configuration  
-        output_path: Output path for results
+        tasks: List of task names to run (e.g., ["spanish", "portuguese"])
+        output_path: Base output path for results
         wandb_args: Weights & Biases arguments
-        log_samples: Whether to log samples
         limit: Limit number of examples per task (useful for testing)
-        lm_eval_spanish_venv: Path to Spanish lm-evaluation-harness installation
-        lm_eval_portuguese_venv: Path to Portuguese lm-evaluation-harness installation
-        upload_script_path: Path to upload script directory
-        upload_script_name: Name of upload script
-        cache_requests: Whether to enable request caching
-        trust_remote_code: Whether to trust remote code when loading models
         # vLLM server configuration
         host: Host to bind vLLM server to
         port: Port for vLLM server
@@ -77,10 +59,15 @@ def benchmark_pipeline(
         limit_mm_per_prompt: Multimodal limits as JSON string
         hf_cache: Hugging Face cache directory
         hf_token: Hugging Face token
-        num_concurrent: Number of concurrent API requests
+        startup_timeout: Server startup timeout
         cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
+        kv_cache_memory: KV cache memory allocation
     """
     logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
+    logger.info(f"Tasks to run: {tasks}")
+    
+    # Initialize config manager
+    config_manager = ConfigManager()
     
     # Step 1: Start vLLM server
     server_info = start_vllm_server(
@@ -106,55 +93,48 @@ def benchmark_pipeline(
         model_name=model_name
     )
     
-    output_path = f"{output_path}/{model_name.split('/')[-1]}"
-    os.makedirs(output_path, exist_ok=True)
+    # Create model-specific output directory
+    model_output_path = f"{output_path}/{model_name.split('/')[-1]}"
+    os.makedirs(model_output_path, exist_ok=True)
     
-    # Step 3: Run Spanish evaluation
-    logger.info("Running Spanish language evaluation...")
-    spanish_results = run_spanish_evaluation(
-        model_name=model_name,
-        tasks=tasks_spanish,
-        batch_size=batch_size,
-        output_path=output_path,
-        server_info=server_info,
-        api_test_result=api_test_result,
-        max_length=max_model_len,
-        wandb_args=wandb_args,
-        log_samples=log_samples,
-        limit=limit,
-        lm_eval_path=lm_eval_spanish_venv,
-        cache_requests=cache_requests,
-        trust_remote_code=trust_remote_code,
-        num_concurrent=num_concurrent,
-        cuda_devices=cuda_devices
-    )
-
+    # Step 3: Run evaluation tasks
+    task_results = {}
     
-    # Step 4: Run Portuguese evaluation  
-    logger.info("Running Portuguese language evaluation...")
-    portuguese_results = run_portuguese_evaluation(
-        model_name=model_name,
-        tasks=tasks_portuguese,
-        batch_size=batch_size,
-        output_path=output_path,
-        server_info=server_info,
-        api_test_result=api_test_result,
-        max_length=max_model_len,
-        wandb_args=wandb_args,
-        log_samples=log_samples,
-        limit=limit,
-        lm_eval_path=lm_eval_portuguese_venv,
-        cache_requests=cache_requests,
-        trust_remote_code=True,  # Always True for Portuguese
-        num_concurrent=num_concurrent,
-        tokenizer_backend="huggingface",  # Always huggingface for Portuguese
-        cuda_devices=cuda_devices
+    if "spanish" in tasks:
+        logger.info("Running Spanish language evaluation...")
+        spanish_task_config = config_manager.get_task_config("spanish")
+        spanish_results = run_spanish_evaluation(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=spanish_task_config,
+            limit=limit,
+            cuda_devices=cuda_devices
+        )
+        task_results["spanish"] = spanish_results
+    
+    if "portuguese" in tasks:
+        logger.info("Running Portuguese language evaluation...")
+        portuguese_task_config = config_manager.get_task_config("portuguese")
+        portuguese_results = run_portuguese_evaluation(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=portuguese_task_config,
+            limit=limit,
+            cuda_devices=cuda_devices
+        )
+        task_results["portuguese"] = portuguese_results
+    
+    # Step 4: Gather results
+    gather_result = gather_results(
+        spanish_results=task_results.get("spanish", {}),
+        portuguese_results=task_results.get("portuguese", {})
     )
     
-    # Step 4: gather results
-    gather_result = gather_results(spanish_results=spanish_results, portuguese_results=portuguese_results)
-    
-    # Step 5: Stop vLLM server (cleanup) - depends on upload completion
+    # Step 5: Stop vLLM server (cleanup)
     cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
     
     logger.info("Benchmark pipeline completed successfully")

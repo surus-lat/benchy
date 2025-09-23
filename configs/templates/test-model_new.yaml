@@ -1,0 +1,11 @@
+model:
+  name: Qwen/Qwen3-4B-Instruct-2507
+vllm:
+  provider_config: vllm_single_card
+  overrides: {}
+#    max_model_len: 2000  # Override only this value from the base config
+tasks:
+  - "spanish"
+  - "portuguese"
+
+# Remember to use --limit 10 to test your model!

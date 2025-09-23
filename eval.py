@@ -18,6 +18,7 @@ if 'PREFECT_API_URL' not in os.environ:
 from src.pipeline import benchmark_pipeline, test_vllm_server
 from prefect import serve
 from src.logging_utils import setup_file_logging
+from src.config_manager import ConfigManager
 import logging
 
 
@@ -49,20 +50,6 @@ def load_config(config_path: str = None) -> dict:
         return yaml.safe_load(f)
 
 
-def build_wandb_args(config: dict) -> str:
-    """Build wandb arguments string from config."""
-    if 'wandb' not in config:
-        return ""
-    
-    wandb = config['wandb']
-    args = []
-    
-    if 'entity' in wandb:
-        args.append(f"entity={wandb['entity']}")
-    if 'project' in wandb:
-        args.append(f"project={wandb['project']}")
-        
-    return ",".join(args)
 
 
 def parse_args():
@@ -114,6 +101,13 @@ Examples:
         help='Prefect API URL (default: http://localhost:4200/api)'
     )
     
+    parser.add_argument(
+        '--limit',
+        type=int,
+        default=None,
+        help='Limit number of examples per task (useful for testing)'
+    )
+    
     return parser.parse_args()
 
 
@@ -145,8 +139,18 @@ def main():
     try:
         # Use command line config if provided, otherwise fall back to env var or default
         config_path = args.config or os.environ.get('BENCHY_CONFIG', 'config.yaml')
-        config = load_config(config_path)
-        logger.info(f"Loaded configuration from {config_path}")
+        
+        # Use ConfigManager for new format, fallback to old load_config for backward compatibility
+        config_manager = ConfigManager()
+        try:
+            config = config_manager.load_model_config(config_path)
+            logger.info(f"Loaded configuration from {config_path} using ConfigManager")
+        except (FileNotFoundError, KeyError) as e:
+            # Fallback to old config loading for backward compatibility
+            logger.info(f"Falling back to legacy config loading: {e}")
+            config = load_config(config_path)
+            logger.info(f"Loaded legacy configuration from {config_path}")
+            
     except FileNotFoundError as e:
         logger.error(str(e))
         return
@@ -154,10 +158,11 @@ def main():
         logger.error(f"Error loading configuration: {e}")
         return
     
+    # Load centralized config for global settings
+    central_config = load_config('configs/config.yaml')
     
-    # Setup file logging
-    logging_config = config.get('logging', {})
-    log_dir = logging_config.get('log_dir', 'logs')
+    # Setup file logging using centralized config
+    log_dir = central_config['logging']['log_dir']
     
     # Initialize logging system
     log_setup = setup_file_logging(config, log_dir)
@@ -168,16 +173,15 @@ def main():
     
     # Extract configuration values
     model_name = config['model']['name']
-    eval_config = config['evaluation']
     vllm_config = config['vllm']
-    upload_config = config.get('upload', {})
-    venv_config = config.get('venvs', {})
-    wandb_args = build_wandb_args(config)
     cuda_devices = vllm_config.get('cuda_devices', None)
     
+    # Use centralized paths
+    output_path = central_config['paths']['benchmark_outputs']
+    
     logger.info(f"Model: {model_name}")
-    logger.info(f"Spanish tasks: {eval_config['tasks_spanish']}")
-    logger.info(f"Portuguese tasks: {eval_config['tasks_portuguese']}")
+    tasks_to_run = config.get('tasks', ['spanish', 'portuguese'])
+    logger.info(f"Tasks to run: {tasks_to_run}")
     logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
     
     # Handle flow registration if requested
@@ -211,25 +215,16 @@ def main():
                 hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
                 hf_token=vllm_config.get('hf_token', ""),
                 startup_timeout=vllm_config.get('startup_timeout', 900),
-                cuda_devices=cuda_devices
+                cuda_devices=cuda_devices,
+                kv_cache_memory=vllm_config.get('kv_cache_memory', None)
             )
         else:
             # Run full benchmark pipeline
             result = benchmark_pipeline(
                 model_name=model_name,
-                tasks_spanish=eval_config['tasks_spanish'],
-                tasks_portuguese=eval_config['tasks_portuguese'],
-                batch_size=eval_config['batch_size'],
-                output_path=eval_config['output_path'],
-                wandb_args=wandb_args,
-                log_samples=eval_config.get('log_samples', True),
-                limit=eval_config.get('limit'),
-                lm_eval_spanish_venv=venv_config.get('lm_eval_spanish', '/home/mauro/dev/lm-evaluation-harness'),
-                lm_eval_portuguese_venv=venv_config.get('lm_eval_portuguese', '/home/mauro/dev/portu'),
-                upload_script_path=upload_config.get('script_path', '/home/mauro/dev/leaderboard'),
-                upload_script_name=upload_config.get('script_name', 'run_pipeline.py'),
-                cache_requests=eval_config.get('cache_requests', True),
-                trust_remote_code=eval_config.get('trust_remote_code', False),
+                tasks=config.get('tasks', ['spanish', 'portuguese']),  # Default to both tasks
+                output_path=output_path,  # Use centralized output path
+                limit=args.limit,  # Use command line limit parameter
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),
@@ -240,9 +235,9 @@ def main():
                 limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
                 hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
                 hf_token=vllm_config.get('hf_token', ""),
-                num_concurrent=eval_config.get('num_concurrent', 8),
                 startup_timeout=vllm_config.get('startup_timeout', 900),
-                cuda_devices=cuda_devices
+                cuda_devices=cuda_devices,
+                kv_cache_memory=vllm_config.get('kv_cache_memory', None)
             )
         
         logger.info("Benchmark pipeline completed successfully!")

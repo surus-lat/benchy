@@ -1,0 +1,23 @@
+# Translation evaluation task configuration
+
+# Task identification
+name: "translation"
+description: "Translation evaluation using lm-evaluation-harness"
+
+# Task-specific parameters
+task_name: "translation_es_pt"  # Example task name
+lm_eval_path: "/home/mauro/dev/benchy/external/lm-evaluation-harness"
+tokenizer_backend: "huggingface"
+
+# Default evaluation parameters
+defaults:
+  batch_size: "2"  # Smaller batch for translation tasks
+  log_samples: true
+  cache_requests: true
+  trust_remote_code: false
+  num_concurrent: 2  # Lower concurrency for translation
+  max_length: 1024  # Shorter max length for translation
+
+# Output configuration
+output:
+  subdirectory: "translation"  # Will be appended to main output path

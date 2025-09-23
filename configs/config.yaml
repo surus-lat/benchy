@@ -1,12 +1,22 @@
-# Leaderboard Configuration File
-# Customize your evaluation settings here
+# Central Configuration File
+# Global settings used throughout the benchy system
 
 # Paths
 paths:
   lm_eval_output: "/home/mauro/dev/benchy/outputs/benchmarks"
   reference_dir: "/home/mauro/dev/benchy/reference"
   publish_dir: "/home/mauro/dev/benchy/outputs/publish"
+  benchmark_outputs: "/home/mauro/dev/benchmark_outputs"
+  logs: "logs"
 
 # Hugging Face datasets
 datasets:
   results: "LatamBoard/leaderboard-results"
+
+# Default evaluation settings
+evaluation:
+  default_limit: null  # No limit by default, can be overridden by --limit
+
+# Logging configuration
+logging:
+  log_dir: "logs"
