@@ -1,6 +1,6 @@
 # Benchy - LATAM Leaderboard Benchmarking Suite
 
-A modular benchmarking suite for evaluating Large Language Models (LLMs) on Spanish and Portuguese tasks for the LATAM Leaderboard. Features a clean, task-based configuration system with vLLM integration and Prefect orchestration.
+A modular benchmarking suite for evaluating Large Language Models (LLMs) on Spanish and Portuguese tasks for the [LATAM Leaderboard](https://latamboard.ai/). Features a clean, task-based configuration system with vLLM integration and Prefect orchestration.
 
 ## 🚀 Features
 
@@ -361,15 +361,13 @@ python eval.py --verbose --config configs/single_card/qwen34b.yaml --limit 5
 4. Add tests if applicable
 5. Submit a pull request
 
-## 📄 License
-
-[Add your license information here]
 
 ## 🙏 Acknowledgments
 
 - [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) for evaluation framework
 - [vLLM](https://github.com/vllm-project/vllm) for efficient model serving
 - [Prefect](https://www.prefect.io/) for workflow orchestration
+- [Surus](https://surus.lat/) for starting this project
 - LATAM community for benchmark development
 
 ---
