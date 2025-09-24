@@ -30,36 +30,33 @@ A modular benchmarking suite for evaluating Large Language Models (LLMs) on Span
    ```bash
    git clone <repository-url>
    cd benchy
+   git submodule update --init --recursive
    ```
 
 2. **Install dependencies**:
    ```bash
-   # Using uv (recommended)
+   # use our setup script (recommended)
+   bash setup.sh
+
+   # ALTERNATIVE: Using uv
+   
+   # Main repo
    uv sync
    
-   # Or using pip
-   pip install -e .
-   ```
-
-3. **Set up external evaluation environments**:
-   
-   For Spanish evaluations (lm-evaluation-harness):
-   ```bash
-   cd /path/to/lm-evaluation-harness
+   # SURUS LM harness 
+   cd external/lm-evaluation-harness
    uv venv
    uv pip install -e .[api]
-   ```
    
-   For Portuguese evaluations:
-   ```bash
-   cd /path/to/portuguese-bench
+   # Portuguese bench
+   cd external/portuguese-bench
    uv venv
    uv pip install -e ".[anthropic,openai,sentencepiece]"
    ```
 
-4. **Start Prefect server** (Docker recommended):
+3. **Start Prefect server** (Docker recommended):
    ```bash
-   docker run -d --name prefect-server -p 4200:4200 prefecthq/prefect:2-python3.11
+   sudo docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0
    ```
 
 ## ⚙️ Configuration
