@@ -46,12 +46,14 @@ A modular benchmarking suite for evaluating Large Language Models (LLMs) on Span
    For Spanish evaluations (lm-evaluation-harness):
    ```bash
    cd /path/to/lm-evaluation-harness
+   uv venv
    uv pip install -e .[api]
    ```
    
    For Portuguese evaluations:
    ```bash
    cd /path/to/portuguese-bench
+   uv venv
    uv pip install -e ".[anthropic,openai,sentencepiece]"
    ```
 
@@ -74,9 +76,14 @@ configs/
 ├── tasks/
 │   ├── spanish.yaml         # Spanish evaluation config
 │   ├── portuguese.yaml      # Portuguese evaluation config
-│   └── translation.yaml     # Translation config (ready)
-└── models/
-    └── qwen-4b.yaml         # Model config (minimal)
+│   └── translation.yaml     # Translation config (ready for use)
+├── single_card/             # Pre-configured model configs
+│   ├── aya8b.yaml
+│   ├── llama3.1.yaml
+│   ├── qwen34b.yaml
+│   └── ... (15+ models ready)
+└── templates/
+    └── test-model_new.yaml  # Template for new models
 ```
 
 ### Model Configuration
@@ -106,8 +113,19 @@ tasks:
 # Central Configuration File
 paths:
   benchmark_outputs: "/home/mauro/dev/benchmark_outputs"
+  reference_dir: "/home/mauro/dev/benchy/reference"
+  publish_dir: "/home/mauro/dev/publish"
   logs: "logs"
 
+# Hugging Face datasets
+datasets:
+  results: "LatamBoard/leaderboard-results"
+
+# Default evaluation settings
+evaluation:
+  default_limit: null  # No limit by default, can be overridden by --limit
+
+# Logging configuration
 logging:
   log_dir: "logs"
 ```
@@ -123,29 +141,43 @@ PREFECT_API_URL=http://localhost:4200/api
 # Hugging Face token (if needed)
 HF_TOKEN=your_huggingface_token
 
-# Custom config path
-BENCHY_CONFIG=configs/my-model.yaml
 ```
 
 ## 🚀 Usage
+
+### Quick Start
+
+1. **Choose a model** from the 15+ pre-configured options in `configs/single_card/`
+2. **Test with limited samples**:
+   ```bash
+   python eval.py --config configs/single_card/qwen34b.yaml --limit 10
+   ```
+3. **Run full evaluation**:
+   ```bash
+   python eval.py --config configs/single_card/qwen34b.yaml
+   ```
+4. **Process results**:
+   ```bash
+   python ./src/leaderboard/process_all.py
+   ```
 
 ### Basic Usage
 
 ```bash
 # Run full evaluation
-python eval.py --config configs/models/qwen-4b.yaml
+python eval.py --config configs/single_card/qwen34b.yaml
 
 # Test with limited samples (perfect for testing!)
-python eval.py --config configs/models/qwen-4b.yaml --limit 10
+python eval.py --config configs/single_card/qwen34b.yaml --limit 10
 
 # Test vLLM server only (no evaluation)
-python eval.py --config configs/models/qwen-4b.yaml --test
+python eval.py --config configs/single_card/qwen34b.yaml --test
 
-# Run only Portuguese evaluation
-python eval.py --config configs/templates/test-model_new.yaml
+# Run any of the 15+ pre-configured models
+python eval.py --config configs/single_card/llama3.1.yaml --limit 5
 
 # Verbose logging
-python eval.py --config configs/models/qwen-4b.yaml --verbose
+python eval.py --config configs/single_card/qwen34b.yaml --verbose
 ```
 
 ### Command Line Options
@@ -195,13 +227,14 @@ benchy/
 │   ├── config.yaml         # Global settings
 │   ├── providers/          # vLLM provider configs
 │   ├── tasks/              # Task-specific configs
-│   ├── models/             # Model configs (minimal)
+│   ├── single_card/        # Pre-configured model configs (15+ models)
 │   └── templates/          # Example configs
 ├── src/                   # Source code
 │   ├── pipeline.py        # Main Prefect pipeline
 │   ├── config_manager.py  # Configuration management
 │   ├── inference/         # vLLM server management
 │   ├── tasks/             # Evaluation tasks
+│   ├── leaderboard/       # Results processing
 │   └── logging_utils.py   # Logging utilities
 ├── outputs/              # Evaluation results
 ├── logs/                # Log files
@@ -251,7 +284,7 @@ Use the `--limit` parameter for quick testing:
 
 ```bash
 # Test with 10 samples per task
-python eval.py --config configs/models/qwen-4b.yaml --limit 10
+python eval.py --config configs/single_card/qwen34b.yaml --limit 10
 ```
 
 ## 📈 Monitoring and Logging
@@ -259,6 +292,34 @@ python eval.py --config configs/models/qwen-4b.yaml --limit 10
 - **Prefect Dashboard**: Access at `http://localhost:4200` to monitor pipeline execution
 - **Log Files**: Detailed logs stored in `logs/` directory (configurable in `configs/config.yaml`)
 - **Output Files**: Results stored in centralized output directory
+
+## 📊 Results Processing
+
+After running evaluations, process the results for the leaderboard:
+
+```bash
+# Process all model results and generate leaderboard
+python ./src/leaderboard/process_all.py
+```
+
+This will:
+1. **Parse Results**: Extract scores from Spanish and Portuguese evaluations
+2. **Generate Tables**: Create JSON and CSV leaderboard tables
+3. **Copy References**: Include task definitions and metadata
+4. **Prepare Upload**: Ready files for Hugging Face dataset upload
+
+### Output Structure
+
+```
+publish/
+├── leaderboard_table.json    # Main results (JSON)
+├── leaderboard_table.csv     # Results (CSV)
+├── summaries/                # Individual model summaries
+│   ├── model1_summary.json
+│   └── all_model_summaries.json
+├── tasks_list.json          # Task definitions
+└── tasks_groups.json        # Task groupings
+```
 
 ## 🐛 Troubleshooting
 
@@ -289,7 +350,7 @@ python eval.py --config configs/models/qwen-4b.yaml --limit 10
 Run with verbose logging for detailed debugging:
 
 ```bash
-python eval.py --verbose --config configs/models/qwen-4b.yaml --limit 5
+python eval.py --verbose --config configs/single_card/qwen34b.yaml --limit 5
 ```
 
 ## 🤝 Contributing
