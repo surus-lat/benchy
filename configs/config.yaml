@@ -3,10 +3,9 @@
 
 # Paths
 paths:
-  lm_eval_output: "/home/mauro/dev/benchy/outputs/benchmarks"
-  reference_dir: "/home/mauro/dev/benchy/reference"
-  publish_dir: "/home/mauro/dev/benchy/outputs/publish"
   benchmark_outputs: "/home/mauro/dev/benchmark_outputs"
+  reference_dir: "/home/mauro/dev/benchy/reference"
+  publish_dir: "/home/mauro/dev/publish"
   logs: "logs"
 
 # Hugging Face datasets

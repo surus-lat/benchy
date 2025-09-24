@@ -21,3 +21,4 @@ defaults:
 # Output configuration
 output:
   subdirectory: "portuguese"  # Will be appended to main output path
+

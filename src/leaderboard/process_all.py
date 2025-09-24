@@ -9,10 +9,14 @@ import sys
 from pathlib import Path
 import yaml
 
-# Import the function modules
-from .functions.parse_model_results import parse_model_results
-from .functions.generate_leaderboard_table import generate_leaderboard_table
-from .functions.copy_reference_files import copy_reference_files
+# Add the src directory to the path for imports
+current_dir = Path(__file__).parent
+src_dir = current_dir.parent
+sys.path.insert(0, str(src_dir))
+
+from leaderboard.functions.parse_model_results import parse_model_results
+from leaderboard.functions.generate_leaderboard_table import generate_leaderboard_table
+from leaderboard.functions.copy_reference_files import copy_reference_files
 
 def load_config(config_path: str = None) -> dict:
     """Load configuration from YAML file."""
@@ -52,19 +56,19 @@ def main():
         return False
     
     # Check if required directories exist
-    lm_eval_output = Path(config["paths"]["lm_eval_output"])
-    if not lm_eval_output.exists():
-        print(f"❌ LM-Evaluation-Harness output directory not found: {lm_eval_output}")
+    benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
+    if not benchmark_outputs.exists():
+        print(f"❌ Benchmark outputs directory not found: {benchmark_outputs}")
         print("   Please check the path in config.yaml")
         return False
     
-    print(f"✓ LM-Evaluation-Harness output directory found: {lm_eval_output}")
+    print(f"✓ Benchmark outputs directory found: {benchmark_outputs}")
     
     # Step 1: Parse model results
     success = run_function(
         parse_model_results, 
         "Step 1: Parsing model results and generating summaries",
-        config["paths"]["lm_eval_output"],
+        config["paths"]["benchmark_outputs"],
         config["paths"]["publish_dir"]
     )
     if not success:

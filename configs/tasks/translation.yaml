@@ -21,3 +21,4 @@ defaults:
 # Output configuration
 output:
   subdirectory: "translation"  # Will be appended to main output path
+
