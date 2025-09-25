@@ -20,7 +20,7 @@ def run_spanish_evaluation(
     cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Run Spanish language evaluation using lm-evaluation-harness via API.
+    Run Spanish task_group_name evaluation using lm-evaluation-harness via API.
     """
     return _run_evaluation(
         model_name=model_name,
@@ -29,7 +29,7 @@ def run_spanish_evaluation(
         api_test_result=api_test_result,
         task_config=task_config,
         limit=limit,
-        language="Spanish",
+        task_group_name="Spanish",
         cuda_devices=cuda_devices
     )
 
@@ -45,7 +45,7 @@ def run_portuguese_evaluation(
     cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Run Portuguese language evaluation using lm-evaluation-harness via API.
+    Run Portuguese task_group_name evaluation using lm-evaluation-harness via API.
     """
     return _run_evaluation(
         model_name=model_name,
@@ -54,9 +54,34 @@ def run_portuguese_evaluation(
         api_test_result=api_test_result,
         task_config=task_config,
         limit=limit,
-        language="Portuguese",
+        task_group_name="Portuguese",
         cuda_devices=cuda_devices
     )
+    
+@task
+def run_translation_evaluation(
+    model_name: str,
+    output_path: str,
+    server_info: Dict[str, Any],
+    api_test_result: Dict[str, Any],
+    task_config: Dict[str, Any],
+    limit: Optional[int] = None,
+    cuda_devices: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Run Spanish task_group_name evaluation using lm-evaluation-harness via API.
+    """
+    return _run_evaluation(
+        model_name=model_name,
+        output_path=output_path,
+        server_info=server_info,
+        api_test_result=api_test_result,
+        task_config=task_config,
+        limit=limit,
+        task_group_name="Spanish",
+        cuda_devices=cuda_devices
+    )
+
 
 
 def _run_evaluation(
@@ -66,7 +91,7 @@ def _run_evaluation(
     api_test_result: Dict[str, Any],
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
-    language: str = "Unknown",
+    task_group_name: str = "Unknown",
     cuda_devices: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -79,7 +104,7 @@ def _run_evaluation(
         api_test_result: API test result (unused but kept for compatibility)
         task_config: Task configuration dictionary
         limit: Limit number of examples per task (useful for testing)
-        language: Language name for logging
+        task_group_name: Language name for logging
         cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
         
     Returns:
@@ -100,16 +125,16 @@ def _run_evaluation(
     max_length = defaults.get('max_length', 2048)
     
     # Create task-specific output path
-    output_subdir = task_config.get('output', {}).get('subdirectory', language.lower())
+    output_subdir = task_config.get('output', {}).get('subdirectory', task_group_name.lower())
     task_output_path = f"{output_path}/{output_subdir}"
     
     server_url = server_info["url"]
     
-    logger.info(f"Starting {language} evaluation for model: {model_name}, tasks: {tasks}")
+    logger.info(f"Starting {task_group_name} evaluation for model: {model_name}, tasks: {tasks}")
     
     file_logger = logging.getLogger('benchy.lm_eval')
     try:
-        file_logger.info(f"=== Starting {language} LM Evaluation ===")
+        file_logger.info(f"=== Starting {task_group_name} LM Evaluation ===")
         file_logger.info(f"Model: {model_name}")
         file_logger.info(f"Tasks: {tasks}")
         file_logger.info(f"Server URL: {server_url}")
@@ -175,7 +200,7 @@ def _run_evaluation(
         cmd_parts.extend(["--limit", str(limit)])
         
     if cache_requests:
-        cmd_parts.extend(["--cache_requests", "true"])
+        cmd_parts.extend(["--cache_requests", "true"]) # refresh
         
     if trust_remote_code:
         cmd_parts.append("--trust_remote_code")
@@ -273,11 +298,12 @@ def _run_evaluation(
 
 
 @task
-def gather_results(spanish_results: Dict[str, Any], portuguese_results: Dict[str, Any]) -> Dict[str, Any]:
+def gather_results(spanish_results: Dict[str, Any], portuguese_results: Dict[str, Any], translation_results: Dict[str, Any]) -> Dict[str, Any]:
     """
     Gather results from Spanish and Portuguese evaluations.
     """
     return {
         "spanish_results": spanish_results,
-        "portuguese_results": portuguese_results
+        "portuguese_results": portuguese_results,
+        "translation_results": translation_results
     }
