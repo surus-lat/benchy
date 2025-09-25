@@ -1,0 +1,12 @@
+model:
+  name: "tencent/Hunyuan-MT-7B"
+
+vllm:
+  provider_config: "vllm_single_card"
+  overrides:
+    kv_cache_memory: 0
+
+tasks:
+  - "spanish"
+  - "portuguese"
+  - "translation"

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
-from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results
+from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
 from .config_manager import ConfigManager
 import atexit
 import os
@@ -128,10 +128,25 @@ def benchmark_pipeline(
         )
         task_results["portuguese"] = portuguese_results
     
+    if "translation" in tasks:
+        logger.info("Running translation language evaluation...")
+        translation_task_config = config_manager.get_task_config("translation")
+        translation_results = run_translation_evaluation(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=translation_task_config,
+            limit=limit,
+            cuda_devices=cuda_devices
+        )
+        task_results["translation"] = translation_results
+    
     # Step 4: Gather results
     gather_result = gather_results(
         spanish_results=task_results.get("spanish", {}),
-        portuguese_results=task_results.get("portuguese", {})
+        portuguese_results=task_results.get("portuguese", {}),
+        translation_results=task_results.get("translation", {})
     )
     
     # Step 5: Stop vLLM server (cleanup)
