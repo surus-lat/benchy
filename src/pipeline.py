@@ -35,7 +35,7 @@ def benchmark_pipeline(
     cuda_devices: Optional[str] = None,
     kv_cache_memory: Optional[int] = None,
     vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
-    vllm_version: str = "0.8.0",
+    vllm_version: Optional[str] = None,
     multimodal: bool = True
 ) -> Dict[str, Any]:
     """
@@ -186,7 +186,7 @@ def test_vllm_server(
     cuda_devices: Optional[str] = None,
     kv_cache_memory: Optional[int] = None,
     vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
-    vllm_version: str = "0.8.0",
+    vllm_version: Optional[str] = None,
     multimodal: bool = True
 ) -> Dict[str, Any]:
         
