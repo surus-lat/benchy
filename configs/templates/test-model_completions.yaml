@@ -1,0 +1,11 @@
+model:
+  name: ByteDance-Seed/Seed-X-PPO-7B
+vllm:
+  provider_config: vllm_single_card
+  overrides: {}
+#    max_model_len: 2000  # Override only this value from the base config
+tasks:
+  - "translation"
+use_chat_completions: false  # Use /v1/completions (this is now the default behavior)
+
+# Remember to use --limit 10 to test your model!
