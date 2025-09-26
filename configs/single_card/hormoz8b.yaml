@@ -8,3 +8,4 @@ vllm:
 tasks:
   - "spanish"
   - "portuguese"
+  - "translation"
