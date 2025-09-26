@@ -9,6 +9,7 @@ import psutil
 from typing import Dict, Any, Optional
 from prefect import task
 from prefect.cache_policies import NO_CACHE
+from .venv_manager import VLLMVenvManager
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,9 @@ def start_vllm_server(
     vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
     startup_timeout: int = 900,
     cuda_devices: Optional[str] = None,
-    kv_cache_memory: Optional[int] = None
+    kv_cache_memory: Optional[int] = None,
+    vllm_version: Optional[str] = "0.8.0",
+    multimodal: bool = True
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -107,14 +110,26 @@ def start_vllm_server(
         limit_mm_per_prompt: Multimodal limits as JSON string
         hf_cache: Hugging Face cache directory
         hf_token: Hugging Face token
-        vllm_venv_path: Path to vLLM virtual environment
+        vllm_venv_path: Path to vLLM virtual environment (fallback if version management fails)
         startup_timeout: Timeout in seconds for server startup (default: 900s = 15min)
         cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
+        kv_cache_memory: KV cache memory allocation
+        vllm_version: vLLM version to use (default: "0.8.0")
+        multimodal: Whether the model supports multimodal features (default: True)
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
     """
     logger.info(f"Starting vLLM server for model: {model_name}")
+    logger.info(f"Using vLLM version: {vllm_version}")
+    
+    # Manage vLLM virtual environment
+    print(f"🔍 Configuring vLLM {vllm_version} environment...")
+    venv_manager = VLLMVenvManager()
+    actual_venv_path = venv_manager.ensure_venv_exists(vllm_version)
+    
+    logger.info(f"Using virtual environment: {actual_venv_path}")
+    print(f"✅ Using vLLM {vllm_version} from: {actual_venv_path}")
     
     # Kill any existing vLLM processes for the same model or port
     kill_existing_vllm_processes(model_name, port)
@@ -141,15 +156,29 @@ def start_vllm_server(
         "--port", str(port),
         "-tp", str(tensor_parallel_size),
         "--max-model-len", str(max_model_len),
-        "--gpu-memory-utilization", str(gpu_memory_utilization),
-        "--limit-mm-per-prompt", f"'{limit_mm_per_prompt}'"  # Quote the JSON string
+        "--gpu-memory-utilization", str(gpu_memory_utilization)
     ]
+    
+    # Handle version-specific multimodal arguments (only for multimodal models)
+    if multimodal:
+        if vllm_version and vllm_version.startswith(("0.6", "0.7")):
+            # Older versions might use JSON format
+            cmd_parts.extend(["--limit-mm-per-prompt", limit_mm_per_prompt])
+        else:
+            # vLLM 0.8.0+ uses key=value format
+            cmd_parts.extend(["--limit-mm-per-prompt", "images=0", "--limit-mm-per-prompt", "audios=0"])
+    # Skip multimodal limits for text-only models to avoid errors
     
     if enforce_eager:
         cmd_parts.append("--enforce-eager")
     
+    # Handle version-specific arguments
     if kv_cache_memory is not None:
-        cmd_parts.extend(["--kv-cache-memory", str(kv_cache_memory)])
+        # --kv-cache-memory was removed in newer vLLM versions (0.8.0+)
+        # For older versions, include it; for newer versions, skip it
+        if vllm_version and vllm_version.startswith(("0.6", "0.7")):
+            cmd_parts.extend(["--kv-cache-memory", str(kv_cache_memory)])
+        # For vLLM 0.8.0+, this argument doesn't exist, so we skip it
     
     # Set up environment
     env = os.environ.copy()
@@ -169,7 +198,7 @@ def start_vllm_server(
         pass
     
     # Activate the vLLM venv and start the server
-    venv_cmd = f"source {vllm_venv_path}/bin/activate && {cmd_str}"
+    venv_cmd = f"source {actual_venv_path}/bin/activate && {cmd_str}"
     
     # Start the server using the vLLM virtual environment
     process = subprocess.Popen(

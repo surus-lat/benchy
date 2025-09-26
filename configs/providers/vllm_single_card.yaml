@@ -13,3 +13,6 @@ hf_cache: "/mnt/Hiksemi-2Tb/.cache/huggingface"
 hf_token: ""
 startup_timeout: 900
 cuda_devices: "3"
+# Additional parameters you can override
+#vllm_version: "0.8.0" # uses latest vLLM version from main project environment overwise
+#multimodal: false # true by default

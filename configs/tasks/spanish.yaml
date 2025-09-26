@@ -12,7 +12,7 @@ tokenizer_backend: "huggingface"
 # Default evaluation parameters
 defaults:
   batch_size: "4"
-  log_samples: false
+  log_samples: true
   cache_requests: true
   trust_remote_code: false
   num_concurrent: 4

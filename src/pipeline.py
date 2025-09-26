@@ -32,7 +32,10 @@ def benchmark_pipeline(
     hf_token: str = "",
     startup_timeout: int = 900,
     cuda_devices: Optional[str] = None,
-    kv_cache_memory: Optional[int] = None
+    kv_cache_memory: Optional[int] = None,
+    vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
+    vllm_version: str = "0.8.0",
+    multimodal: bool = True
 ) -> Dict[str, Any]:
     """
     Complete vLLM-based benchmarking pipeline.
@@ -82,10 +85,12 @@ def benchmark_pipeline(
         limit_mm_per_prompt=limit_mm_per_prompt,
         hf_cache=hf_cache,
         hf_token=hf_token,
-        vllm_venv_path="/home/mauro/dev/benchy/.venv",
+        vllm_venv_path=vllm_venv_path,
         startup_timeout=startup_timeout,
         cuda_devices=cuda_devices,
-        kv_cache_memory=kv_cache_memory
+        kv_cache_memory=kv_cache_memory,
+        vllm_version=vllm_version,
+        multimodal=multimodal
     )
         
     # Step 2: Test vLLM API
@@ -177,7 +182,10 @@ def test_vllm_server(
     hf_token: str = "",
     startup_timeout: int = 900,
     cuda_devices: Optional[str] = None,
-    kv_cache_memory: Optional[int] = None
+    kv_cache_memory: Optional[int] = None,
+    vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
+    vllm_version: str = "0.8.0",
+    multimodal: bool = True
 ) -> Dict[str, Any]:
         
     # Step 1: Start vLLM server
@@ -192,10 +200,12 @@ def test_vllm_server(
         limit_mm_per_prompt=limit_mm_per_prompt,
         hf_cache=hf_cache,
         hf_token=hf_token,
-        vllm_venv_path="/home/mauro/dev/benchy/.venv",
+        vllm_venv_path=vllm_venv_path,
         startup_timeout=startup_timeout,
         cuda_devices=cuda_devices,
-        kv_cache_memory=kv_cache_memory
+        kv_cache_memory=kv_cache_memory,
+        vllm_version=vllm_version,
+        multimodal=multimodal
     )
         
     # Step 2: Test vLLM API

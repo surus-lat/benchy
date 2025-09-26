@@ -1,7 +1,8 @@
 model:
   name: "ByteDance-Seed/Seed-X-Instruct-7B"
+
 vllm:
-  provider_config: vllm_single_card
+  provider_config: "vllm_single_card"
   overrides:
     kv_cache_memory: 0
     gpu_memory_utilization: 0.95
@@ -10,8 +11,6 @@ vllm:
     multimodal: false
 
 tasks:
-  - "translation"
   - "spanish"
   - "portuguese"
-
-# Remember to use --limit 10 to test your model!
+  - "translation"

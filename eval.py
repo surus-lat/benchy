@@ -216,7 +216,10 @@ def main():
                 hf_token=vllm_config.get('hf_token', ""),
                 startup_timeout=vllm_config.get('startup_timeout', 900),
                 cuda_devices=cuda_devices,
-                kv_cache_memory=vllm_config.get('kv_cache_memory', None)
+                kv_cache_memory=vllm_config.get('kv_cache_memory', None),
+                vllm_venv_path=vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
+                vllm_version=vllm_config.get('vllm_version', None),
+                multimodal=vllm_config.get('multimodal', True)
             )
         else:
             # Run full benchmark pipeline
@@ -238,7 +241,10 @@ def main():
                 hf_token=vllm_config.get('hf_token', ""),
                 startup_timeout=vllm_config.get('startup_timeout', 900),
                 cuda_devices=cuda_devices,
-                kv_cache_memory=vllm_config.get('kv_cache_memory', None)
+                kv_cache_memory=vllm_config.get('kv_cache_memory', None),
+                vllm_venv_path=vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
+                vllm_version=vllm_config.get('vllm_version', None),
+                multimodal=vllm_config.get('multimodal', True)
             )
         
         logger.info("Benchmark pipeline completed successfully!")
