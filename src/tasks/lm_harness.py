@@ -114,6 +114,7 @@ def _run_evaluation(
     tasks = task_config['task_name']
     lm_eval_path = task_config['lm_eval_path']
     tokenizer_backend = task_config.get('tokenizer_backend', 'huggingface')
+    use_chat_completions = task_config.get('use_chat_completions', False)  # Default to False
     
     # Get defaults from task config
     defaults = task_config.get('defaults', {})
@@ -148,10 +149,13 @@ def _run_evaluation(
         pass
     
     # Build model_args string with optimizations for API-only usage
+    # Determine the correct endpoint based on use_chat_completions
+    endpoint = "/v1/chat/completions" if use_chat_completions else "/v1/completions"
+    
     model_args_parts = [
         f"model={model_name}",
         f"max_length={max_length}",
-        f"base_url={server_url}/v1/completions",
+        f"base_url={server_url}{endpoint}",
         f"num_concurrent={num_concurrent}",
         "max_retries=3",
         # Optimize for minimal local compute
@@ -172,27 +176,22 @@ def _run_evaluation(
     model_args_str = ",".join(model_args_parts)
     
     # Build the lm_eval command for API mode
+    # Determine the correct model type based on use_chat_completions
+    model_type = "local-chat-completions" if use_chat_completions else "local-completions"
+    
     cmd_parts = [
         "lm_eval",
-        "--model", "local-completions",
+        "--model", model_type,
         "--model_args", model_args_str,
         "--tasks", tasks,
         "--batch_size", batch_size,
         "--output_path", task_output_path
     ]
     
-    # Note: Chat template application is disabled due to compatibility issues
-    # with JsonChatStr objects in lm-eval. The model will still work but may
-    # not be optimally formatted for instruct models.
-    # TODO: Investigate proper chat template handling in lm-eval
-    if False and ("instruct" in model_name.lower() or "chat" in model_name.lower()):
+    # Add --apply_chat_template only if using chat completions
+    if use_chat_completions:
         cmd_parts.append("--apply_chat_template")
-        logger.info("Detected instruct/chat model, enabling chat template")
-        try:
-            file_logger.info("Auto-enabled chat template for instruct/chat model")
-        except (RuntimeError, OSError):
-            pass
-    
+        
     if log_samples:
         cmd_parts.append("--log_samples")
         

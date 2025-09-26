@@ -225,6 +225,7 @@ def main():
                 tasks=config.get('tasks', ['spanish', 'portuguese']),  # Default to both tasks
                 output_path=output_path,  # Use centralized output path
                 limit=args.limit,  # Use command line limit parameter
+                use_chat_completions=config.get('use_chat_completions', False),  # Default to False
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),
