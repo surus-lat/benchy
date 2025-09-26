@@ -50,6 +50,39 @@ class ConfigManager:
                 overrides = vllm_config.get('overrides', {})
                 merged_vllm_config = {**base_vllm_config, **overrides}
                 
+                # Handle vLLM version-specific virtual environment
+                if 'vllm_version' in merged_vllm_config:
+                    from .inference.venv_manager import get_vllm_venv_path
+                    vllm_version = merged_vllm_config['vllm_version']
+                    transformers_version = merged_vllm_config.get('transformers_version', None)
+                    
+                    if transformers_version:
+                        print(f"🔍 Configuring vLLM {vllm_version} + transformers {transformers_version} environment...")
+                    else:
+                        print(f"🔍 Configuring vLLM {vllm_version} environment...")
+                    
+                    venv_path = get_vllm_venv_path(vllm_version, transformers_version=transformers_version)
+                    merged_vllm_config['vllm_venv_path'] = venv_path
+                    
+                    if transformers_version:
+                        logger.info(f"Using vLLM {vllm_version} + transformers {transformers_version} from virtual environment: {venv_path}")
+                        print(f"✅ Using vLLM {vllm_version} + transformers {transformers_version} from: {venv_path}")
+                    else:
+                        logger.info(f"Using vLLM {vllm_version} from virtual environment: {venv_path}")
+                        print(f"✅ Using vLLM {vllm_version} from: {venv_path}")
+                else:
+                    # Default to main project environment (latest vLLM version)
+                    # Find the project root by looking for pyproject.toml
+                    current_dir = Path(__file__).parent
+                    while current_dir != current_dir.parent:
+                        if (current_dir / "pyproject.toml").exists():
+                            break
+                        current_dir = current_dir.parent
+                    default_venv_path = str(current_dir / ".venv")
+                    merged_vllm_config['vllm_venv_path'] = default_venv_path
+                    logger.info("Using default vLLM version from main project environment")
+                    print(f"✅ Using default vLLM version from main project environment")
+                
                 # Log what was overridden
                 if overrides:
                     logger.info(f"Applied overrides: {list(overrides.keys())}")
