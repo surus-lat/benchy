@@ -20,6 +20,7 @@ def benchmark_pipeline(
     output_path: str,
     limit: Optional[int] = None,
     use_chat_completions: bool = False,
+    task_defaults_overrides: Optional[Dict[str, Any]] = None,
     # vLLM server configuration
     host: str = "0.0.0.0",
     port: int = 8000,
@@ -53,6 +54,7 @@ def benchmark_pipeline(
         output_path: Base output path for results
         limit: Limit number of examples per task (useful for testing)
         use_chat_completions: Whether to use chat completions API (/v1/chat/completions) or completions API (/v1/completions)
+        task_defaults_overrides: Optional dict to override task default parameters (e.g., log_samples, batch_size)
         # vLLM server configuration
         host: Host to bind vLLM server to
         port: Port for vLLM server
@@ -108,7 +110,7 @@ def benchmark_pipeline(
     
     if "spanish" in tasks:
         logger.info("Running Spanish language evaluation...")
-        spanish_task_config = config_manager.get_task_config("spanish")
+        spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         spanish_task_config['use_chat_completions'] = use_chat_completions
         spanish_results = run_spanish_evaluation(
@@ -124,7 +126,7 @@ def benchmark_pipeline(
     
     if "portuguese" in tasks:
         logger.info("Running Portuguese language evaluation...")
-        portuguese_task_config = config_manager.get_task_config("portuguese")
+        portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         portuguese_task_config['use_chat_completions'] = use_chat_completions
         portuguese_results = run_portuguese_evaluation(
@@ -140,7 +142,7 @@ def benchmark_pipeline(
     
     if "translation" in tasks:
         logger.info("Running translation language evaluation...")
-        translation_task_config = config_manager.get_task_config("translation")
+        translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         translation_task_config['use_chat_completions'] = use_chat_completions
         translation_results = run_translation_evaluation(
