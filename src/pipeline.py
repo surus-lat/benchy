@@ -19,6 +19,7 @@ def benchmark_pipeline(
     tasks: list,
     output_path: str,
     limit: Optional[int] = None,
+    use_chat_completions: bool = False,
     # vLLM server configuration
     host: str = "0.0.0.0",
     port: int = 8000,
@@ -47,8 +48,8 @@ def benchmark_pipeline(
         model_name: The model to evaluate
         tasks: List of task names to run (e.g., ["spanish", "portuguese"])
         output_path: Base output path for results
-        wandb_args: Weights & Biases arguments
         limit: Limit number of examples per task (useful for testing)
+        use_chat_completions: Whether to use chat completions API (/v1/chat/completions) or completions API (/v1/completions)
         # vLLM server configuration
         host: Host to bind vLLM server to
         port: Port for vLLM server
@@ -103,6 +104,8 @@ def benchmark_pipeline(
     if "spanish" in tasks:
         logger.info("Running Spanish language evaluation...")
         spanish_task_config = config_manager.get_task_config("spanish")
+        # Merge use_chat_completions from model config into task config
+        spanish_task_config['use_chat_completions'] = use_chat_completions
         spanish_results = run_spanish_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -117,6 +120,8 @@ def benchmark_pipeline(
     if "portuguese" in tasks:
         logger.info("Running Portuguese language evaluation...")
         portuguese_task_config = config_manager.get_task_config("portuguese")
+        # Merge use_chat_completions from model config into task config
+        portuguese_task_config['use_chat_completions'] = use_chat_completions
         portuguese_results = run_portuguese_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -131,6 +136,8 @@ def benchmark_pipeline(
     if "translation" in tasks:
         logger.info("Running translation language evaluation...")
         translation_task_config = config_manager.get_task_config("translation")
+        # Merge use_chat_completions from model config into task config
+        translation_task_config['use_chat_completions'] = use_chat_completions
         translation_results = run_translation_evaluation(
             model_name=model_name,
             output_path=model_output_path,
