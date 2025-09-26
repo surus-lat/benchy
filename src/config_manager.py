@@ -2,7 +2,7 @@
 
 import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -132,15 +132,16 @@ class ConfigManager:
         
         return [f.stem for f in models_dir.glob("*.yaml")]
     
-    def get_task_config(self, task_name: str) -> Dict[str, Any]:
+    def get_task_config(self, task_name: str, task_defaults_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Load a task configuration file.
+        Load a task configuration file and apply any overrides.
         
         Args:
             task_name: Name of the task config (without .yaml)
+            task_defaults_overrides: Optional dictionary to override task defaults
             
         Returns:
-            Task configuration dictionary
+            Task configuration dictionary with overrides applied
         """
         task_path = self.configs_dir / "tasks" / f"{task_name}.yaml"
         
@@ -148,7 +149,18 @@ class ConfigManager:
             raise FileNotFoundError(f"Task config not found: {task_path}")
         
         with open(task_path, 'r') as f:
-            return yaml.safe_load(f)
+            task_config = yaml.safe_load(f)
+        
+        # Apply task defaults overrides if provided
+        if task_defaults_overrides:
+            if 'defaults' in task_config:
+                logger.info(f"Applying task defaults overrides for {task_name}: {task_defaults_overrides}")
+                task_config['defaults'].update(task_defaults_overrides)
+            else:
+                logger.info(f"Creating defaults section for {task_name} with overrides: {task_defaults_overrides}")
+                task_config['defaults'] = task_defaults_overrides
+        
+        return task_config
     
     def list_available_tasks(self) -> list:
         """List all available task configurations."""

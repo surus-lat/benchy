@@ -64,6 +64,8 @@ Examples:
   python eval.py -c configs/gemma-e4b.yaml         # Short form
   python eval.py --test                             # Test vLLM server only
   python eval.py -t -c configs/test-model.yaml     # Test with specific config
+  python eval.py --log-samples                     # Enable sample logging for all tasks
+  python eval.py --no-log-samples                  # Disable sample logging for all tasks
   python eval.py --register                         # Register flows with Prefect server
   python eval.py --prefect-url http://localhost:4200/api  # Use custom Prefect server
         """
@@ -108,6 +110,18 @@ Examples:
         help='Limit number of examples per task (useful for testing)'
     )
     
+    parser.add_argument(
+        '--log-samples',
+        action='store_true',
+        help='Enable sample logging for all tasks (overrides task config defaults)'
+    )
+    
+    parser.add_argument(
+        '--no-log-samples',
+        action='store_true',
+        help='Disable sample logging for all tasks (overrides task config defaults)'
+    )
+    
     return parser.parse_args()
 
 
@@ -115,6 +129,11 @@ def main():
     """Run the vLLM benchmark pipeline with configuration from specified file."""
     # Parse command line arguments
     args = parse_args()
+    
+    # Validate mutually exclusive log_samples arguments
+    if args.log_samples and args.no_log_samples:
+        logger.error("Cannot specify both --log-samples and --no-log-samples")
+        return
     
     logger.info("Starting benchy - vLLM-powered ML model benchmarking")
     
@@ -176,6 +195,28 @@ def main():
     vllm_config = config['vllm']
     cuda_devices = vllm_config.get('cuda_devices', None)
     
+    # Prepare task defaults overrides
+    task_defaults_overrides = {}
+    
+    # Command line overrides take priority
+    if args.log_samples:
+        task_defaults_overrides['log_samples'] = True
+        logger.info("Command line override: log_samples = True")
+    elif args.no_log_samples:
+        task_defaults_overrides['log_samples'] = False
+        logger.info("Command line override: log_samples = False")
+    
+    # Merge with config-based task defaults
+    config_task_defaults = config.get('task_defaults', {})
+    if config_task_defaults:
+        logger.info(f"Using task defaults from config: {config_task_defaults}")
+        # Command line args override config values
+        merged_overrides = {**config_task_defaults, **task_defaults_overrides}
+        task_defaults_overrides = merged_overrides
+    
+    if task_defaults_overrides:
+        logger.info(f"Final task defaults overrides: {task_defaults_overrides}")
+    
     # Use centralized paths
     output_path = central_config['paths']['benchmark_outputs']
     
@@ -229,6 +270,7 @@ def main():
                 output_path=output_path,  # Use centralized output path
                 limit=args.limit,  # Use command line limit parameter
                 use_chat_completions=config.get('use_chat_completions', False),  # Default to False
+                task_defaults_overrides=task_defaults_overrides or None,  # Pass task overrides
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),

@@ -9,6 +9,13 @@ vllm:
     transformers_version: "4.51.3"
     multimodal: false
 
+# Override task defaults across all tasks (optional)
+task_defaults:
+  log_samples: false          # Override log_samples for all tasks
+  # batch_size: "8"           # You can override any task default
+  # num_concurrent: 8         # Example: increase concurrency
+  # cache_requests: false     # Example: disable request caching
+
 tasks:
   - "translation"
   - "spanish"
