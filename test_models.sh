@@ -9,41 +9,74 @@
 # 2. Run 'python eval.py -c <config> --test --no-log-samples' for each
 # 3. Provide detailed summary with lists of passed/failed models
 
-# Check for help flag
-if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-    echo "🧪 Test Models Script"
-    echo "===================="
-    echo ""
-    echo "Usage: ./test_models.sh [config_name.yaml]"
-    echo ""
-    echo "This script tests all model configurations in configs/single_card/ by:"
-    echo "  • Finding all .yaml files in configs/single_card/"
-    echo "  • Running vLLM server tests for each model"
-    echo "  • Providing detailed pass/fail summary with model names"
-    echo ""
-    echo "Arguments:"
-    echo "  config_name.yaml    Test only this specific config file (optional)"
-    echo ""
-    echo "Features:"
-    echo "  • Automatic discovery of all single card configs"
-    echo "  • Fast testing with --test and --no-log-samples flags"
-    echo "  • Detailed summary showing which models passed/failed"
-    echo "  • Exit code 0 if all pass, 1 if any fail"
-    echo ""
-    echo "Example output:"
-    echo "  ✅ MODELS THAT PASSED TESTING (15):"
-    echo "    ✓ ByteDance-Seed/Seed-X-Instruct-7B"
-    echo "      └── Config: Seed-X-Instruct-7B.yaml"
-    echo ""
-    echo "  ❌ MODELS THAT FAILED TESTING (2):"
-    echo "    ✗ Some/Broken-Model"
-    echo "      └── Config: broken-model.yaml"
-    echo ""
-    exit 0
-fi
+# Handle command line flags
+QUIET_MODE="false"
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --help|-h)
+            echo "🧪 Test Models Script"
+            echo "===================="
+            echo ""
+            echo "Usage: ./test_models.sh [--quiet] [config_name.yaml]"
+            echo ""
+            echo "This script tests all model configurations in configs/single_card/ by:"
+            echo "  • Finding all .yaml files in configs/single_card/"
+            echo "  • Running vLLM server tests for each model"
+            echo "  • Providing detailed pass/fail summary with model names"
+            echo ""
+            echo "Arguments:"
+            echo "  config_name.yaml    Test only this specific config file (optional)"
+            echo ""
+            echo "Options:"
+            echo "  --quiet             Suppress detailed pipeline output (recommended for long runs)"
+            echo ""
+            echo "Features:"
+            echo "  • Automatic discovery of all single card configs"
+            echo "  • Fast testing with --test and --no-log-samples flags"
+            echo "  • Detailed summary showing which models passed/failed"
+            echo "  • Exit code 0 if all pass, 1 if any fail"
+            echo ""
+            echo "Example output:"
+            echo "  ✅ MODELS THAT PASSED TESTING (15):"
+            echo "    ✓ ByteDance-Seed/Seed-X-Instruct-7B"
+            echo "      └── Config: Seed-X-Instruct-7B.yaml"
+            echo ""
+            echo "  ❌ MODELS THAT FAILED TESTING (2):"
+            echo "    ✗ Some/Broken-Model"
+            echo "      └── Config: broken-model.yaml"
+            echo ""
+            echo "Usage with nohup:"
+            echo "  nohup ./test_models.sh --quiet > test_results.log 2>&1 &"
+            echo ""
+            exit 0
+            ;;
+        --quiet|-q)
+            QUIET_MODE="true"
+            shift
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Restore positional parameters
+set -- "${POSITIONAL_ARGS[@]}"
+
+# This section is now handled by the while loop above
 
 echo "🧪 Starting batch testing of all single card models"
 echo "=================================================="
+
+if [[ "$QUIET_MODE" == "true" ]]; then
+    echo "🔇 Quiet mode enabled - suppressing detailed pipeline output"
+    echo "   Individual test results will only show pass/fail status"
+    echo "   Full logs are still saved by the pipeline to individual files"
+    echo ""
+fi
 
 # Activate benchy virtual environment
 if [[ -f ".venv/bin/activate" ]]; then
@@ -139,7 +172,16 @@ for i in "${!configs[@]}"; do
     start_time=$(date +%s)
     
     # Run the test with --test flag (and --no-log-samples to speed up testing)
-    if python eval.py -c "$config" --test --no-log-samples; then
+    # Redirect output to suppress verbose logging (pipeline logs to its own files)
+    if [[ "$QUIET_MODE" == "true" ]]; then
+        python eval.py -c "$config" --test --no-log-samples > /dev/null 2>&1
+        test_result=$?
+    else
+        python eval.py -c "$config" --test --no-log-samples
+        test_result=$?
+    fi
+    
+    if [[ $test_result -eq 0 ]]; then
         end_time=$(date +%s)
         duration=$((end_time - start_time))
         echo "✅ Model $model_num test PASSED in ${duration}s"

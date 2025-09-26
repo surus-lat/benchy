@@ -93,7 +93,7 @@ def start_vllm_server(
     startup_timeout: int = 900,
     cuda_devices: Optional[str] = None,
     kv_cache_memory: Optional[int] = None,
-    vllm_version: Optional[str] = "0.8.0",
+    vllm_version: Optional[str] = None,
     multimodal: bool = True
 ) -> Dict[str, Any]:
     """
@@ -121,15 +121,21 @@ def start_vllm_server(
         Dictionary with server info: {"pid": int, "url": str, "port": int}
     """
     logger.info(f"Starting vLLM server for model: {model_name}")
-    logger.info(f"Using vLLM version: {vllm_version}")
     
-    # Manage vLLM virtual environment
-    print(f"🔍 Configuring vLLM {vllm_version} environment...")
-    venv_manager = VLLMVenvManager()
-    actual_venv_path = venv_manager.ensure_venv_exists(vllm_version)
-    
-    logger.info(f"Using virtual environment: {actual_venv_path}")
-    print(f"✅ Using vLLM {vllm_version} from: {actual_venv_path}")
+    # Handle vLLM version - use main project environment if None
+    if vllm_version is None:
+        logger.info("No vLLM version specified, using main project environment")
+        print("✅ Using default vLLM version from main project environment")
+        actual_venv_path = vllm_venv_path  # Use the provided fallback path
+    else:
+        logger.info(f"Using vLLM version: {vllm_version}")
+        # Manage vLLM virtual environment
+        print(f"🔍 Configuring vLLM {vllm_version} environment...")
+        venv_manager = VLLMVenvManager()
+        actual_venv_path = venv_manager.ensure_venv_exists(vllm_version)
+        
+        logger.info(f"Using virtual environment: {actual_venv_path}")
+        print(f"✅ Using vLLM {vllm_version} from: {actual_venv_path}")
     
     # Kill any existing vLLM processes for the same model or port
     kill_existing_vllm_processes(model_name, port)
@@ -162,11 +168,11 @@ def start_vllm_server(
     # Handle version-specific multimodal arguments (only for multimodal models)
     if multimodal:
         if vllm_version and vllm_version.startswith(("0.6", "0.7")):
-            # Older versions might use JSON format
-            cmd_parts.extend(["--limit-mm-per-prompt", limit_mm_per_prompt])
-        else:
-            # vLLM 0.8.0+ uses key=value format
+            # Older versions uses key=value format
             cmd_parts.extend(["--limit-mm-per-prompt", "images=0", "--limit-mm-per-prompt", "audios=0"])
+        else:
+            # vLLM latest uses JSON format
+            cmd_parts.extend(["--limit-mm-per-prompt", f"'{limit_mm_per_prompt}'"])
     # Skip multimodal limits for text-only models to avoid errors
     
     if enforce_eager:
@@ -178,7 +184,7 @@ def start_vllm_server(
         # For older versions, include it; for newer versions, skip it
         if vllm_version and vllm_version.startswith(("0.6", "0.7")):
             cmd_parts.extend(["--kv-cache-memory", str(kv_cache_memory)])
-        # For vLLM 0.8.0+, this argument doesn't exist, so we skip it
+        # For vLLM 0.8.0+ or None (latest), this argument doesn't exist, so we skip it
     
     # Set up environment
     env = os.environ.copy()
@@ -216,6 +222,17 @@ def start_vllm_server(
     logger.info(f"Timeout set to {startup_timeout} seconds ({startup_timeout//60} minutes)")
     
     while time.time() - start_time < startup_timeout:
+        # Check if process crashed early (early failure detection)
+        if process.poll() is not None:
+            # Process exited - this is likely an error since vLLM should keep running
+            error_msg = f"vLLM server process exited early with return code {process.returncode}"
+            logger.error(error_msg)
+            try:
+                file_logger.error(error_msg)
+            except (RuntimeError, OSError):
+                pass
+            raise RuntimeError(error_msg)
+        
         try:
             response = requests.get(f"{server_url}/health", timeout=5)
             if response.status_code == 200:
