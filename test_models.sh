@@ -11,6 +11,7 @@
 
 # Handle command line flags
 QUIET_MODE="false"
+LIMITED_MODE="false"
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -19,7 +20,7 @@ while [[ $# -gt 0 ]]; do
             echo "🧪 Test Models Script"
             echo "===================="
             echo ""
-            echo "Usage: ./test_models.sh [--quiet] [config_name.yaml]"
+            echo "Usage: ./test_models.sh [--quiet] [--limited] [config_name.yaml]"
             echo ""
             echo "This script tests all model configurations in configs/single_card/ by:"
             echo "  • Finding all .yaml files in configs/single_card/"
@@ -31,10 +32,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --quiet             Suppress detailed pipeline output (recommended for long runs)"
+            echo "  --limited           Run limited evaluation with --log-samples --limit 10 instead of test mode"
             echo ""
             echo "Features:"
             echo "  • Automatic discovery of all single card configs"
-            echo "  • Fast testing with --test and --no-log-samples flags"
+            echo "  • Fast testing with --test and --no-log-samples flags (default)"
+            echo "  • Limited evaluation with --log-samples --limit 10 (--limited mode)"
             echo "  • Detailed summary showing which models passed/failed"
             echo "  • Exit code 0 if all pass, 1 if any fail"
             echo ""
@@ -48,12 +51,23 @@ while [[ $# -gt 0 ]]; do
             echo "      └── Config: broken-model.yaml"
             echo ""
             echo "Usage with nohup:"
+            echo "  # Quick test mode (default)"
             echo "  nohup ./test_models.sh --quiet > test_results.log 2>&1 &"
+            echo ""
+            echo "  # Limited evaluation mode"
+            echo "  nohup ./test_models.sh --limited --quiet > limited_results.log 2>&1 &"
+            echo ""
+            echo "  # Limited evaluation on specific model"
+            echo "  nohup ./test_models.sh --limited --quiet my-model.yaml > my_model_limited.log 2>&1 &"
             echo ""
             exit 0
             ;;
         --quiet|-q)
             QUIET_MODE="true"
+            shift
+            ;;
+        --limited|-l)
+            LIMITED_MODE="true"
             shift
             ;;
         *)
@@ -75,6 +89,12 @@ if [[ "$QUIET_MODE" == "true" ]]; then
     echo "🔇 Quiet mode enabled - suppressing detailed pipeline output"
     echo "   Individual test results will only show pass/fail status"
     echo "   Full logs are still saved by the pipeline to individual files"
+    echo ""
+fi
+
+if [[ "$LIMITED_MODE" == "true" ]]; then
+    echo "📊 Limited mode enabled - running evaluation with --log-samples --limit 10"
+    echo "   This will run actual evaluation on 10 samples instead of quick test mode"
     echo ""
 fi
 
@@ -171,14 +191,26 @@ for i in "${!configs[@]}"; do
     
     start_time=$(date +%s)
     
-    # Run the test with --test flag (and --no-log-samples to speed up testing)
+    # Run the test with appropriate flags based on mode
     # Redirect output to suppress verbose logging (pipeline logs to its own files)
-    if [[ "$QUIET_MODE" == "true" ]]; then
-        python eval.py -c "$config" --test --no-log-samples > /dev/null 2>&1
-        test_result=$?
+    if [[ "$LIMITED_MODE" == "true" ]]; then
+        # Limited mode: run actual evaluation with --log-samples --limit 10
+        if [[ "$QUIET_MODE" == "true" ]]; then
+            python eval.py -c "$config" --log-samples --limit 10 > /dev/null 2>&1
+            test_result=$?
+        else
+            python eval.py -c "$config" --log-samples --limit 10
+            test_result=$?
+        fi
     else
-        python eval.py -c "$config" --test --no-log-samples
-        test_result=$?
+        # Default mode: run quick test with --test flag (and --no-log-samples to speed up testing)
+        if [[ "$QUIET_MODE" == "true" ]]; then
+            python eval.py -c "$config" --test --no-log-samples > /dev/null 2>&1
+            test_result=$?
+        else
+            python eval.py -c "$config" --test --no-log-samples
+            test_result=$?
+        fi
     fi
     
     if [[ $test_result -eq 0 ]]; then
