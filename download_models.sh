@@ -1,8 +1,7 @@
 #!/bin/bash
 models=(
-    "tencent/Hunyuan-MT-7B" #works
-    "ByteDance-Seed/Seed-X-PPO-7B"
-    "ByteDance-Seed/Seed-X-Instruct-7B"
+    "swiss-ai/Apertus-8B-Instruct-2509"
+    "arcee-ai/AFM-4.5B"
 )
 
 for model in "${models[@]}"; do
