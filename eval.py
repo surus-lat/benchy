@@ -260,7 +260,9 @@ def main():
                 kv_cache_memory=vllm_config.get('kv_cache_memory', None),
                 vllm_venv_path=vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
                 vllm_version=vllm_config.get('vllm_version', None),
-                multimodal=vllm_config.get('multimodal', True)
+                multimodal=vllm_config.get('multimodal', True),
+                max_num_seqs=vllm_config.get('max_num_seqs', None),
+                max_num_batched_tokens=vllm_config.get('max_num_batched_tokens', None)
             )
         else:
             # Run full benchmark pipeline
@@ -271,6 +273,7 @@ def main():
                 limit=args.limit,  # Use command line limit parameter
                 use_chat_completions=config.get('use_chat_completions', False),  # Default to False
                 task_defaults_overrides=task_defaults_overrides or None,  # Pass task overrides
+                log_setup=log_setup,  # Pass log setup for task config logging
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),
@@ -286,7 +289,9 @@ def main():
                 kv_cache_memory=vllm_config.get('kv_cache_memory', None),
                 vllm_venv_path=vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
                 vllm_version=vllm_config.get('vllm_version', None),
-                multimodal=vllm_config.get('multimodal', True)
+                multimodal=vllm_config.get('multimodal', True),
+                max_num_seqs=vllm_config.get('max_num_seqs', None),
+                max_num_batched_tokens=vllm_config.get('max_num_batched_tokens', None)
             )
         
         logger.info("Benchmark pipeline completed successfully!")

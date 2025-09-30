@@ -21,6 +21,7 @@ def benchmark_pipeline(
     limit: Optional[int] = None,
     use_chat_completions: bool = False,
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
+    log_setup: Optional[Any] = None,
     # vLLM server configuration
     host: str = "0.0.0.0",
     port: int = 8000,
@@ -36,7 +37,9 @@ def benchmark_pipeline(
     kv_cache_memory: Optional[int] = None,
     vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
     vllm_version: Optional[str] = None,
-    multimodal: bool = True
+    multimodal: bool = True,
+    max_num_seqs: Optional[int] = None,
+    max_num_batched_tokens: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Complete vLLM-based benchmarking pipeline.
@@ -92,7 +95,9 @@ def benchmark_pipeline(
         cuda_devices=cuda_devices,
         kv_cache_memory=kv_cache_memory,
         vllm_version=vllm_version,
-        multimodal=multimodal
+        multimodal=multimodal,
+        max_num_seqs=max_num_seqs,
+        max_num_batched_tokens=max_num_batched_tokens
     )
         
     # Step 2: Test vLLM API
@@ -113,6 +118,10 @@ def benchmark_pipeline(
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         spanish_task_config['use_chat_completions'] = use_chat_completions
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("spanish", spanish_task_config)
         spanish_results = run_spanish_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -129,6 +138,10 @@ def benchmark_pipeline(
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         portuguese_task_config['use_chat_completions'] = use_chat_completions
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("portuguese", portuguese_task_config)
         portuguese_results = run_portuguese_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -145,6 +158,10 @@ def benchmark_pipeline(
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         translation_task_config['use_chat_completions'] = use_chat_completions
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("translation", translation_task_config)
         translation_results = run_translation_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -187,7 +204,9 @@ def test_vllm_server(
     kv_cache_memory: Optional[int] = None,
     vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
     vllm_version: Optional[str] = None,
-    multimodal: bool = True
+    multimodal: bool = True,
+    max_num_seqs: Optional[int] = None,
+    max_num_batched_tokens: Optional[int] = None
 ) -> Dict[str, Any]:
         
     # Step 1: Start vLLM server
@@ -207,7 +226,9 @@ def test_vllm_server(
         cuda_devices=cuda_devices,
         kv_cache_memory=kv_cache_memory,
         vllm_version=vllm_version,
-        multimodal=multimodal
+        multimodal=multimodal,
+        max_num_seqs=max_num_seqs,
+        max_num_batched_tokens=max_num_batched_tokens
     )
         
     # Step 2: Test vLLM API
