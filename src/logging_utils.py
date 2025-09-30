@@ -84,24 +84,55 @@ class BenchyLoggingSetup:
         model_config = self.config.get('model', {})
         logger.info(f"Model Name: {model_config.get('name', 'N/A')}")
         logger.info(f"Model dtype: {model_config.get('dtype', 'N/A')}")
-        logger.info(f"Model max_length: {model_config.get('max_length', 'N/A')}")
         
-        # Evaluation config
-        eval_config = self.config.get('evaluation', {})
-        logger.info(f"Tasks: {eval_config.get('tasks', 'N/A')}")
-        logger.info(f"Device: {eval_config.get('device', 'N/A')}")
-        logger.info(f"Batch size: {eval_config.get('batch_size', 'N/A')}")
-        logger.info(f"Output path: {eval_config.get('output_path', 'N/A')}")
-        logger.info(f"Log samples: {eval_config.get('log_samples', 'N/A')}")
-        if 'limit' in eval_config:
-            logger.info(f"Limit: {eval_config['limit']} (testing mode)")
+        # vLLM config 
+        vllm_config = self.config.get('vllm', {})
+        logger.info(f"Max model length: {vllm_config.get('max_model_len', 'N/A')}")
+        logger.info(f"GPU memory utilization: {vllm_config.get('gpu_memory_utilization', 'N/A')}")
+        logger.info(f"Host: {vllm_config.get('host', 'N/A')}")
+        logger.info(f"Port: {vllm_config.get('port', 'N/A')}")
+        logger.info(f"CUDA devices: {vllm_config.get('cuda_devices', 'N/A')}")
+        logger.info(f"Tensor parallel size: {vllm_config.get('tensor_parallel_size', 'N/A')}")
+        if vllm_config.get('max_num_seqs'):
+            logger.info(f"Max concurrent sequences: {vllm_config.get('max_num_seqs')}")
+        if vllm_config.get('max_num_batched_tokens'):
+            logger.info(f"Max batched tokens: {vllm_config.get('max_num_batched_tokens')}")
         
-        # Paths
-        venv_config = self.config.get('venvs', {})
-        logger.info(f"LM Eval path: {venv_config.get('lm_eval', 'N/A')}")
-        logger.info(f"Leaderboard path: {venv_config.get('leaderboard', 'N/A')}")
+        # Tasks
+        tasks = self.config.get('tasks', [])
+        logger.info(f"Tasks: {tasks}")
+        
+        # Task defaults overrides if any
+        task_defaults = self.config.get('task_defaults', {})
+        if task_defaults:
+            logger.info(f"Task defaults overrides: {task_defaults}")
         
         logger.info("=== End Configuration ===")
+    
+    def log_task_config(self, task_name: str, task_config: Dict[str, Any]):
+        """Log the configuration for a specific task."""
+        logger = logging.getLogger('benchy.config')
+        logger.info(f"=== Task Configuration: {task_name} ===")
+        
+        # Basic task info
+        logger.info(f"Task name: {task_config.get('task_name', 'N/A')}")
+        logger.info(f"Description: {task_config.get('description', 'N/A')}")
+        logger.info(f"LM Eval path: {task_config.get('lm_eval_path', 'N/A')}")
+        logger.info(f"Tokenizer backend: {task_config.get('tokenizer_backend', 'N/A')}")
+        
+        # Task defaults
+        defaults = task_config.get('defaults', {})
+        if defaults:
+            logger.info("Task defaults:")
+            for key, value in defaults.items():
+                logger.info(f"  {key}: {value}")
+        
+        # Output config
+        output_config = task_config.get('output', {})
+        if output_config:
+            logger.info(f"Output subdirectory: {output_config.get('subdirectory', 'N/A')}")
+        
+        logger.info(f"=== End Task Configuration: {task_name} ===")
     
     def log_command(self, command: str, step_name: str = "command"):
         """Log the command being executed."""
