@@ -11,6 +11,7 @@
 
 # Handle command line flags
 QUIET_MODE="false"
+CUSTOM_RUN_ID=""
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -19,7 +20,7 @@ while [[ $# -gt 0 ]]; do
             echo "🚀 Run Models Script"
             echo "==================="
             echo ""
-            echo "Usage: ./run_models.sh [--quiet] [config_list.txt] [config_name.yaml]"
+            echo "Usage: ./run_models.sh [--quiet] [--run-id ID] [config_list.txt] [config_name.yaml]"
             echo ""
             echo "This script runs evaluation on multiple model configurations by:"
             echo "  • Finding all .yaml files in configs/single_card/ (default)"
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --quiet             Suppress detailed pipeline output (recommended for long runs)"
+            echo "  --run-id ID         Use custom run ID for organizing outputs (default: auto-generated)"
             echo ""
             echo "Features:"
             echo "  • Automatic discovery of all single card configs"
@@ -57,6 +59,9 @@ while [[ $# -gt 0 ]]; do
             echo "  # Run all models quietly"
             echo "  ./run_models.sh --quiet"
             echo ""
+            echo "  # Run with custom run ID"
+            echo "  ./run_models.sh --run-id my_experiment_001"
+            echo ""
             echo "  # Run specific model"
             echo "  ./run_models.sh my-model.yaml"
             echo ""
@@ -72,6 +77,10 @@ while [[ $# -gt 0 ]]; do
             QUIET_MODE="true"
             shift
             ;;
+        --run-id)
+            CUSTOM_RUN_ID="$2"
+            shift 2
+            ;;
         *)
             POSITIONAL_ARGS+=("$1")
             shift
@@ -85,9 +94,14 @@ set -- "${POSITIONAL_ARGS[@]}"
 echo "🚀 Starting batch evaluation of multiple models"
 echo "=============================================="
 
-# Generate a unique run ID for this batch
-RUN_ID="batch_$(date +%Y%m%d_%H%M%S)"
-echo "📋 Generated run ID: $RUN_ID"
+# Generate or use custom run ID for this batch
+if [[ -n "$CUSTOM_RUN_ID" ]]; then
+    RUN_ID="$CUSTOM_RUN_ID"
+    echo "📋 Using custom run ID: $RUN_ID"
+else
+    RUN_ID="batch_$(date +%Y%m%d_%H%M%S)"
+    echo "📋 Generated run ID: $RUN_ID"
+fi
 echo "   All models in this batch will use the same run ID for organized outputs"
 echo ""
 

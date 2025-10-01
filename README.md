@@ -175,6 +175,9 @@ python eval.py --config configs/single_card/llama3.1.yaml --limit 5
 
 # Verbose logging
 python eval.py --config configs/single_card/qwen34b.yaml --verbose
+
+# Custom run ID for organized outputs
+python eval.py --config configs/single_card/qwen34b.yaml --run-id my_experiment_001
 ```
 
 ### Command Line Options
@@ -184,15 +187,63 @@ python eval.py --config configs/single_card/qwen34b.yaml --verbose
 - `--test`: Test vLLM server only, no evaluation
 - `--verbose` / `-v`: Enable verbose logging
 - `--register` / `-r`: Register flows with Prefect server
+- `--run-id`: Custom run ID for organizing outputs (default: auto-generated timestamp)
 
 ### Batch Model Evaluation
 
-Use the provided script to run multiple models sequentially:
+Use the provided scripts to run multiple models sequentially:
+
+#### Full Evaluation (`run_models.sh`)
+
+Run complete evaluations on multiple models:
 
 ```bash
-# Edit run_models.sh to include your config files
+# Run all models in configs/single_card/
 ./run_models.sh
+
+# Run with custom run ID for organized outputs
+./run_models.sh --run-id my_experiment_001
+
+# Run quietly (suppress detailed output)
+./run_models.sh --quiet
+
+# Run specific model
+./run_models.sh my-model.yaml
+
+# Run models from a list file
+./run_models.sh my_model_list.txt
+
+# Combine options
+./run_models.sh --quiet --run-id production_batch_2024
 ```
+
+#### Testing Models (`test_models.sh`)
+
+Quickly test all model configurations to verify they work:
+
+```bash
+# Test all models (quick vLLM server tests)
+./test_models.sh
+
+# Test with limited evaluation (10 samples per task)
+./test_models.sh --limited
+
+# Test quietly
+./test_models.sh --quiet
+
+# Test specific model
+./test_models.sh my-model.yaml
+
+# Limited evaluation on specific model
+./test_models.sh --limited --quiet my-model.yaml
+```
+
+**Script Features:**
+- **Automatic Discovery**: Finds all `.yaml` files in `configs/single_card/`
+- **Custom Run IDs**: Use `--run-id` to organize outputs
+- **Detailed Summaries**: Shows which models passed/failed with model names
+- **Flexible Testing**: Quick tests or limited evaluations
+- **Background Execution**: Use `nohup` for long-running batches
 
 ### Download Models
 
