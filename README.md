@@ -1,4 +1,10 @@
-# Benchy - LATAM Leaderboard Benchmarking Suite
+<h1 align="center"><strong>Benchy</strong></h1>
+<p align="center"> LATAM Leaderboard Benchmarking Suite </p>
+
+<p align="center">
+    <img src="./docs/benchy_2.png" alt="readme_image" style="width:220px;height:220px;" />
+</p>
+
 
 A modular benchmarking suite for evaluating Large Language Models (LLMs) on Spanish and Portuguese tasks for the [LATAM Leaderboard](https://latamboard.ai/). Features a clean, task-based configuration system with vLLM integration and Prefect orchestration.
 
