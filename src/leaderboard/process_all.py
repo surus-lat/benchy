@@ -6,6 +6,7 @@ This runs all steps: copy raw data, parse results, and generate final table.
 
 import subprocess
 import sys
+import argparse
 from pathlib import Path
 import yaml
 
@@ -17,6 +18,27 @@ sys.path.insert(0, str(src_dir))
 from leaderboard.functions.parse_model_results import parse_model_results
 from leaderboard.functions.generate_leaderboard_table import generate_leaderboard_table
 from leaderboard.functions.copy_reference_files import copy_reference_files
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Process LM-Evaluation-Harness results and generate leaderboard",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python process_all.py                    # Process all results in benchmark_outputs/
+  python process_all.py batch_20241201_143022  # Process specific run_id results
+  python process_all.py my_experiment_001  # Process custom run_id results
+        """
+    )
+    
+    parser.add_argument(
+        'run_id',
+        nargs='?',  # Optional positional argument
+        help='Run ID to process (looks in benchmark_outputs/run_id/). If not provided, processes all results in benchmark_outputs/'
+    )
+    
+    return parser.parse_args()
 
 def load_config(config_path: str = None) -> dict:
     """Load configuration from YAML file."""
@@ -44,6 +66,9 @@ def run_function(function, description: str, *args) -> bool:
 
 def main():
     """Main function to run the entire processing pipeline."""
+    # Parse command line arguments
+    args = parse_args()
+    
     print("🚀 Starting LM-Evaluation-Harness Results Processing Pipeline")
     print("=" * 70)
     
@@ -55,11 +80,34 @@ def main():
         print(f"❌ Error loading configuration: {e}")
         return False
     
+    # Determine the benchmark outputs path based on run_id
+    base_benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
+    
+    if args.run_id:
+        # Use specific run_id subdirectory
+        benchmark_outputs = base_benchmark_outputs / args.run_id
+        print(f"🎯 Processing specific run ID: {args.run_id}")
+        print(f"   Looking in: {benchmark_outputs}")
+    else:
+        # Use base directory (backward compatibility)
+        benchmark_outputs = base_benchmark_outputs
+        print(f"📁 Processing all results in base directory")
+        print(f"   Looking in: {benchmark_outputs}")
+    
     # Check if required directories exist
-    benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
     if not benchmark_outputs.exists():
         print(f"❌ Benchmark outputs directory not found: {benchmark_outputs}")
-        print("   Please check the path in config.yaml")
+        if args.run_id:
+            print(f"   Run ID '{args.run_id}' not found in {base_benchmark_outputs}")
+            print(f"   Available run IDs:")
+            if base_benchmark_outputs.exists():
+                for subdir in sorted(base_benchmark_outputs.iterdir()):
+                    if subdir.is_dir():
+                        print(f"     - {subdir.name}")
+            else:
+                print(f"     Base directory {base_benchmark_outputs} does not exist")
+        else:
+            print("   Please check the path in config.yaml")
         return False
     
     print(f"✓ Benchmark outputs directory found: {benchmark_outputs}")
@@ -68,7 +116,7 @@ def main():
     success = run_function(
         parse_model_results, 
         "Step 1: Parsing model results and generating summaries",
-        config["paths"]["benchmark_outputs"],
+        str(benchmark_outputs),  # Use the determined path (with or without run_id)
         config["paths"]["publish_dir"]
     )
     if not success:
@@ -106,6 +154,8 @@ def main():
     
     if publish_dir.exists():
         print(f"\n📁 Results available in: {publish_dir}")
+        if args.run_id:
+            print(f"   Processed run ID: {args.run_id}")
         print("   Generated files:")
         for file in sorted(publish_dir.glob("*")):
             size = file.stat().st_size

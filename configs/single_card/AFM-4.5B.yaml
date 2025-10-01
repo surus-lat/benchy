@@ -1,5 +1,5 @@
 model:
-  name: "Qwen/Qwen3-4B-Instruct-2507"
+  name: "arcee-ai/AFM-4.5B"
 
 vllm:
   provider_config: "vllm_single_card"
