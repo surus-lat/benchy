@@ -1,0 +1,16 @@
+model:
+  name: "ByteDance-Seed/Seed-X-PPO-7B"
+
+vllm:
+  provider_config: "vllm_single_card"
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.95
+    vllm_version: "0.8.0"
+    transformers_version: "4.51.3"
+    multimodal: false
+
+tasks:
+  - "spanish"
+  - "portuguese"
+  - "translation"

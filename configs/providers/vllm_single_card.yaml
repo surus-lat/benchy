@@ -5,11 +5,16 @@ host: "0.0.0.0"
 port: 20501
 tensor_parallel_size: 1
 max_model_len: 8192
-gpu_memory_utilization: 0.7
+gpu_memory_utilization: 0.95
 enforce_eager: true
 limit_mm_per_prompt: '{"images": 0, "audios": 0}'
-kv_cache_memory: 12934271795
+kv_cache_memory: 0
+max_num_seqs: 256
+max_num_batched_tokens: 8192
 hf_cache: "/mnt/Hiksemi-2Tb/.cache/huggingface"
 hf_token: ""
 startup_timeout: 900
 cuda_devices: "3"
+# Additional parameters you can override
+#vllm_version: "0.8.0" # uses latest vLLM version from main project environment overwise
+#multimodal: false # true by default
