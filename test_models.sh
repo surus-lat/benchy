@@ -38,6 +38,7 @@ while [[ $# -gt 0 ]]; do
             echo "  • Automatic discovery of all single card configs"
             echo "  • Fast testing with --test and --no-log-samples flags (default)"
             echo "  • Limited evaluation with --log-samples --limit 10 (--limited mode)"
+            echo "  • Automatic run ID generation for organized outputs"
             echo "  • Detailed summary showing which models passed/failed"
             echo "  • Exit code 0 if all pass, 1 if any fail"
             echo ""
@@ -84,6 +85,12 @@ set -- "${POSITIONAL_ARGS[@]}"
 
 echo "🧪 Starting batch testing of all single card models"
 echo "=================================================="
+
+# Generate a unique run ID for this batch
+RUN_ID="test_$(date +%Y%m%d_%H%M%S)"
+echo "📋 Generated run ID: $RUN_ID"
+echo "   All models in this batch will use the same run ID for organized outputs"
+echo ""
 
 if [[ "$QUIET_MODE" == "true" ]]; then
     echo "🔇 Quiet mode enabled - suppressing detailed pipeline output"
@@ -196,19 +203,19 @@ for i in "${!configs[@]}"; do
     if [[ "$LIMITED_MODE" == "true" ]]; then
         # Limited mode: run actual evaluation with --log-samples --limit 10
         if [[ "$QUIET_MODE" == "true" ]]; then
-            python eval.py -c "$config" --log-samples --limit 10 > /dev/null 2>&1
+            python eval.py -c "$config" --log-samples --limit 10 --run-id "$RUN_ID" > /dev/null 2>&1
             test_result=$?
         else
-            python eval.py -c "$config" --log-samples --limit 10
+            python eval.py -c "$config" --log-samples --limit 10 --run-id "$RUN_ID"
             test_result=$?
         fi
     else
         # Default mode: run quick test with --test flag (and --no-log-samples to speed up testing)
         if [[ "$QUIET_MODE" == "true" ]]; then
-            python eval.py -c "$config" --test --no-log-samples > /dev/null 2>&1
+            python eval.py -c "$config" --test --no-log-samples --run-id "$RUN_ID" > /dev/null 2>&1
             test_result=$?
         else
-            python eval.py -c "$config" --test --no-log-samples
+            python eval.py -c "$config" --test --no-log-samples --run-id "$RUN_ID"
             test_result=$?
         fi
     fi

@@ -37,6 +37,7 @@ while [[ $# -gt 0 ]]; do
             echo "  • Automatic discovery of all single card configs"
             echo "  • Support for config list files"
             echo "  • Single config execution"
+            echo "  • Automatic run ID generation for organized outputs"
             echo "  • Detailed summary showing which models passed/failed"
             echo "  • Exit code 0 if all pass, 1 if any fail"
             echo ""
@@ -83,6 +84,12 @@ set -- "${POSITIONAL_ARGS[@]}"
 
 echo "🚀 Starting batch evaluation of multiple models"
 echo "=============================================="
+
+# Generate a unique run ID for this batch
+RUN_ID="batch_$(date +%Y%m%d_%H%M%S)"
+echo "📋 Generated run ID: $RUN_ID"
+echo "   All models in this batch will use the same run ID for organized outputs"
+echo ""
 
 if [[ "$QUIET_MODE" == "true" ]]; then
     echo "🔇 Quiet mode enabled - suppressing detailed pipeline output"
@@ -196,11 +203,11 @@ for i in "${!configs[@]}"; do
     # Run the evaluation with appropriate output handling
     if [[ "$QUIET_MODE" == "true" ]]; then
         # Quiet mode: suppress detailed output
-        python eval.py -c "$config" > /dev/null 2>&1
+        python eval.py -c "$config" --run-id "$RUN_ID" > /dev/null 2>&1
         eval_result=$?
     else
         # Normal mode: show full output
-        python eval.py -c "$config"
+        python eval.py -c "$config" --run-id "$RUN_ID"
         eval_result=$?
     fi
     

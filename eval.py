@@ -66,6 +66,7 @@ Examples:
   python eval.py -t -c configs/test-model.yaml     # Test with specific config
   python eval.py --log-samples                     # Enable sample logging for all tasks
   python eval.py --no-log-samples                  # Disable sample logging for all tasks
+  python eval.py --run-id my_experiment_001         # Use custom run ID for outputs
   python eval.py --register                         # Register flows with Prefect server
   python eval.py --prefect-url http://localhost:4200/api  # Use custom Prefect server
         """
@@ -120,6 +121,13 @@ Examples:
         '--no-log-samples',
         action='store_true',
         help='Disable sample logging for all tasks (overrides task config defaults)'
+    )
+    
+    parser.add_argument(
+        '--run-id',
+        type=str,
+        default=None,
+        help='Run ID for organizing outputs (default: auto-generated timestamp)'
     )
     
     return parser.parse_args()
@@ -245,6 +253,7 @@ def main():
             logger.info("Running test pipeline (vLLM server test only)")
             result = test_vllm_server(
                 model_name=model_name,
+                run_id=args.run_id,
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),
@@ -274,6 +283,7 @@ def main():
                 use_chat_completions=config.get('use_chat_completions', False),  # Default to False
                 task_defaults_overrides=task_defaults_overrides or None,  # Pass task overrides
                 log_setup=log_setup,  # Pass log setup for task config logging
+                run_id=args.run_id,  # Pass run_id for organizing outputs
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),

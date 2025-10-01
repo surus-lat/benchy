@@ -1,0 +1,11 @@
+model:
+  name: "arcee-ai/AFM-4.5B"
+
+vllm:
+  provider_config: "vllm_single_card"
+  overrides: {}
+
+tasks:
+  - "spanish"
+  - "portuguese"
+  - "translation"

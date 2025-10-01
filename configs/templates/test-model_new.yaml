@@ -1,24 +1,24 @@
 model:
-  name: "ByteDance-Seed/Seed-X-Instruct-7B"
+  name: "HuggingFaceH4/zephyr-7b-beta"
 vllm:
   provider_config: vllm_single_card
   overrides:
     kv_cache_memory: 0
     gpu_memory_utilization: 0.95
-    vllm_version: "0.8.0"
-    transformers_version: "4.51.3"
-    multimodal: false
+    #vllm_version: "0.8.0"
+    #transformers_version: "4.51.3"
+    #multimodal: false
+    port: 20502
 
 # Override task defaults across all tasks (optional)
 task_defaults:
-  log_samples: false          # Override log_samples for all tasks
+  log_samples: true          # Override log_samples for all tasks
   # batch_size: "8"           # You can override any task default
   # num_concurrent: 8         # Example: increase concurrency
   # cache_requests: false     # Example: disable request caching
+  cuda_devices: "2"
 
 tasks:
   - "translation"
-  - "spanish"
-  - "portuguese"
 
 # Remember to use --limit 10 to test your model!
