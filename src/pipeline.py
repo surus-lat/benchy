@@ -6,6 +6,7 @@ from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
 from .config_manager import ConfigManager
+from .generation_config import fetch_generation_config, save_generation_config
 import atexit
 import os
 import logging
@@ -75,6 +76,13 @@ def benchmark_pipeline(
     # Initialize config manager
     config_manager = ConfigManager()
     
+    # Step 0: Fetch generation config from model repository
+    generation_config = fetch_generation_config(
+        model_name=model_name,
+        hf_cache=hf_cache,
+        hf_token=hf_token
+    )
+    
     # Step 1: Start vLLM server
     server_info = start_vllm_server(
         model_name=model_name,
@@ -105,6 +113,10 @@ def benchmark_pipeline(
     model_output_path = f"{output_path}/{model_name.split('/')[-1]}"
     os.makedirs(model_output_path, exist_ok=True)
     
+    # Save generation config to output directory
+    if generation_config:
+        save_generation_config(generation_config, model_output_path, model_name)
+    
     # Step 3: Run evaluation tasks
     task_results = {}
     
@@ -113,6 +125,8 @@ def benchmark_pipeline(
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         spanish_task_config['use_chat_completions'] = use_chat_completions
+        # Add generation config
+        spanish_task_config['generation_config'] = generation_config
         spanish_results = run_spanish_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -129,6 +143,8 @@ def benchmark_pipeline(
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         portuguese_task_config['use_chat_completions'] = use_chat_completions
+        # Add generation config
+        portuguese_task_config['generation_config'] = generation_config
         portuguese_results = run_portuguese_evaluation(
             model_name=model_name,
             output_path=model_output_path,
@@ -145,6 +161,8 @@ def benchmark_pipeline(
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         translation_task_config['use_chat_completions'] = use_chat_completions
+        # Add generation config
+        translation_task_config['generation_config'] = generation_config
         translation_results = run_translation_evaluation(
             model_name=model_name,
             output_path=model_output_path,
