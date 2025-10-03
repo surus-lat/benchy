@@ -86,6 +86,20 @@ def create_leaderboard_table(summaries: List[Dict]) -> List[Dict]:
                     if task_name.startswith("teleia_"):
                         row[f"teleia_{task_name}"] = round(task_data["score"], 4)
         
+        # Process Translation scores
+        if "translation" in categories:
+            translation_data = categories["translation"]
+            
+            # Get Translation category score (translation)
+            translation_score = None
+            if "translation" in translation_data.get("category_scores", {}):
+                translation_score = translation_data["category_scores"]["translation"]["score"]
+                row["translation_score"] = round(translation_score, 4)
+            
+            # Add individual Translation task scores
+            for task_name, task_data in translation_data.get("task_scores", {}).items():
+                row[f"translation_{task_name}"] = round(task_data["score"], 4)
+        
         leaderboard_data.append(row)
     
     return leaderboard_data

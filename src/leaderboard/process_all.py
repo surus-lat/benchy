@@ -2,12 +2,18 @@
 """
 Main script to orchestrate the entire processing pipeline.
 This runs all steps: copy raw data, parse results, and generate final table.
+
+Usage:
+    python -m src.leaderboard.process_all <run_id>
+    
+Where run_id is the specific run directory under outputs/benchmark_outputs/
 """
 
 import subprocess
 import sys
 from pathlib import Path
 import yaml
+import argparse
 
 # Add the src directory to the path for imports
 current_dir = Path(__file__).parent
@@ -44,8 +50,14 @@ def run_function(function, description: str, *args) -> bool:
 
 def main():
     """Main function to run the entire processing pipeline."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Process LM-Evaluation-Harness results for a specific run")
+    parser.add_argument("run_id", help="The run ID directory under outputs/benchmark_outputs/")
+    args = parser.parse_args()
+    
     print("🚀 Starting LM-Evaluation-Harness Results Processing Pipeline")
     print("=" * 70)
+    print(f"📁 Processing run: {args.run_id}")
     
     # Load configuration
     try:
@@ -55,11 +67,24 @@ def main():
         print(f"❌ Error loading configuration: {e}")
         return False
     
-    # Check if required directories exist
-    benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
-    if not benchmark_outputs.exists():
-        print(f"❌ Benchmark outputs directory not found: {benchmark_outputs}")
+    # Construct the full path to the specific run's benchmark outputs
+    base_benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
+    benchmark_outputs = base_benchmark_outputs / args.run_id
+    
+    # Check if the base directory exists
+    if not base_benchmark_outputs.exists():
+        print(f"❌ Base benchmark outputs directory not found: {base_benchmark_outputs}")
         print("   Please check the path in config.yaml")
+        return False
+    
+    # Check if the specific run directory exists
+    if not benchmark_outputs.exists():
+        print(f"❌ Run directory not found: {benchmark_outputs}")
+        print(f"   Available runs in {base_benchmark_outputs}:")
+        if base_benchmark_outputs.exists():
+            for run_dir in sorted(base_benchmark_outputs.iterdir()):
+                if run_dir.is_dir():
+                    print(f"     - {run_dir.name}")
         return False
     
     print(f"✓ Benchmark outputs directory found: {benchmark_outputs}")
@@ -68,7 +93,7 @@ def main():
     success = run_function(
         parse_model_results, 
         "Step 1: Parsing model results and generating summaries",
-        config["paths"]["benchmark_outputs"],
+        str(benchmark_outputs),
         config["paths"]["publish_dir"]
     )
     if not success:
@@ -106,6 +131,7 @@ def main():
     
     if publish_dir.exists():
         print(f"\n📁 Results available in: {publish_dir}")
+        print(f"   Processed run: {args.run_id}")
         print("   Generated files:")
         for file in sorted(publish_dir.glob("*")):
             size = file.stat().st_size
