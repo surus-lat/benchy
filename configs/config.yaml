@@ -19,3 +19,15 @@ evaluation:
 # Logging configuration
 logging:
   log_dir: "logs"
+
+# Leaderboard scoring configuration
+leaderboard:
+  # Categories to include in overall LATAM score calculation
+  overall_score_categories:
+    - "latam_es"    # Spanish category score
+    - "latam_pr"    # Portuguese category score
+    - "translation" # Translation category score
+  
+  # Normalize scores to 0-1 range (divide by 100) for specific tasks
+  normalize_scores:
+    - "translation"  # Normalize translation scores (CHRF from 0-100 to 0-1)

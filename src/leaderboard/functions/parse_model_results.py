@@ -19,8 +19,14 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 import yaml
 
-def load_config(config_path: str = "config.yaml") -> Dict:
+def load_config(config_path: str = None) -> Dict:
     """Load configuration from YAML file."""
+    if config_path is None:
+        # Find config.yaml relative to the project root
+        current_dir = Path(__file__).parent
+        project_root = current_dir.parent.parent.parent  # Go up from src/leaderboard/functions to benchy root
+        config_path = project_root / "configs" / "config.yaml"
+    
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
@@ -40,7 +46,7 @@ def load_task_config(task_name: str) -> Dict:
     
     return {}
 
-def extract_metric_from_task_data(task_data: Dict) -> tuple[Optional[str], Optional[float], Optional[float]]:
+def extract_metric_from_task_data(task_data: Dict, task_name: str = None, normalize_tasks: list = None) -> tuple[Optional[str], Optional[float], Optional[float]]:
     """Extract main metric, score, and stderr from task data."""
     main_metric = None
     main_score = None
@@ -74,31 +80,47 @@ def extract_metric_from_task_data(task_data: Dict) -> tuple[Optional[str], Optio
                 stderr_key = f"{metric_name}_stderr,none"
                 main_stderr = task_data.get(stderr_key, 0.0)
                 break
+        elif key.endswith(",clean_translation") and not key.endswith("_stderr,clean_translation"):
+            # Handle translation metrics like "chrf,clean_translation"
+            metric_name = key.replace(",clean_translation", "")
+            if metric_name in ["chrf", "bleu", "meteor"]:
+                main_metric = metric_name
+                # Normalize translation scores to 0-1 range if configured
+                should_normalize = normalize_tasks and "translation" in normalize_tasks
+                if should_normalize:
+                    main_score = value / 100.0
+                    stderr_key = f"{metric_name}_stderr,clean_translation"
+                    main_stderr = task_data.get(stderr_key, 0.0) / 100.0  # Also normalize stderr
+                else:
+                    main_score = value
+                    stderr_key = f"{metric_name}_stderr,clean_translation"
+                    main_stderr = task_data.get(stderr_key, 0.0)
+                break
     
     return main_metric, main_score, main_stderr
 
-def extract_scores_from_results(results_data: Dict) -> Dict[str, Any]:
+def extract_scores_from_results(results_data: Dict, task_name: str = None, normalize_tasks: list = None) -> Dict[str, Any]:
     """Extract and organize scores from the new benchmark results format."""
     
     # Extract individual task scores
     task_scores = {}
-    for task_name, task_data in results_data.get("results", {}).items():
-        if not task_name.startswith("latam_"):  # Skip top-level categories
-            main_metric, main_score, main_stderr = extract_metric_from_task_data(task_data)
+    for result_task_name, task_data in results_data.get("results", {}).items():
+        if not result_task_name.startswith("latam_"):  # Skip top-level categories
+            main_metric, main_score, main_stderr = extract_metric_from_task_data(task_data, task_name, normalize_tasks)
             
             if main_score is not None:
-                task_scores[task_name] = {
+                task_scores[result_task_name] = {
                     "score": main_score,
                     "stderr": main_stderr,
                     "metric": main_metric,
-                    "alias": task_name
+                    "alias": result_task_name
                 }
     
-    # Extract category scores (latam_pr, latam_es, spanish, teleia, etc.)
+    # Extract category scores (latam_pr, latam_es, spanish, teleia, translation, etc.)
     category_scores = {}
     for category_name, category_data in results_data.get("results", {}).items():
-        if category_name.startswith("latam_") or category_name in ["spanish", "teleia"]:
-            main_metric, main_score, main_stderr = extract_metric_from_task_data(category_data)
+        if category_name.startswith("latam_") or category_name in ["spanish", "teleia", "translation"]:
+            main_metric, main_score, main_stderr = extract_metric_from_task_data(category_data, task_name, normalize_tasks)
             
             if main_score is not None:
                 category_scores[category_name] = {
@@ -202,11 +224,8 @@ def process_portuguese_results(model_dir: Path, model_name: str) -> Optional[Dic
         print(f"    Error processing Portuguese results from {results_file.name}: {e}")
         return None
 
-def process_translation_results(model_dir: Path, model_name: str) -> Optional[Dict[str, Any]]:
-    """
-    Template function for processing translation evaluation results.
-    Copy this function and modify for new tasks.
-    """
+def process_translation_results(model_dir: Path, model_name: str, normalize_tasks: list = None) -> Optional[Dict[str, Any]]:
+    """Process Translation evaluation results for a model."""
     print(f"    Processing Translation results...")
     
     # Load task config to get output subdirectory
@@ -219,10 +238,10 @@ def process_translation_results(model_dir: Path, model_name: str) -> Optional[Di
         print(f"    Warning: Translation results directory not found: {task_dir}")
         return None
     
-    # Look for results files (modify pattern as needed)
-    results_files = list(task_dir.glob("results*.json"))
+    # Look for results_*.json files in translation directory (including nested subdirectories)
+    results_files = list(task_dir.rglob("results_*.json"))
     if not results_files:
-        print(f"    Warning: No results files found in {task_dir}")
+        print(f"    Warning: No results_*.json files found in {task_dir}")
         return None
     
     # Process the first results file found
@@ -231,10 +250,10 @@ def process_translation_results(model_dir: Path, model_name: str) -> Optional[Di
         with open(results_file, 'r') as f:
             task_results_data = json.load(f)
         
-        task_scores = extract_scores_from_results(task_results_data)
+        task_scores = extract_scores_from_results(task_results_data, "translation", normalize_tasks)
         task_scores["model_name"] = model_name
         
-        print(f"    ✓ Translation results processed from {results_file.name}")
+        print(f"    ✓ Translation results processed from {results_file.relative_to(model_dir)}")
         return task_scores
         
     except Exception as e:
@@ -246,16 +265,25 @@ def get_available_task_processors() -> Dict[str, callable]:
     return {
         "spanish": process_spanish_results,
         "portuguese": process_portuguese_results,
+        "translation": process_translation_results,
         # Add new tasks here as they are implemented
-        # "translation": process_translation_results,
     }
 
-def process_model_directory(model_dir: Path) -> Dict[str, Any]:
+def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, Any]:
     """Process model results using task-specific functions."""
     model_name = model_dir.name
     print(f"  Processing {model_name}...")
     
     try:
+        # Load configuration if not provided
+        if config is None:
+            config = load_config()
+        
+        # Get leaderboard configuration
+        leaderboard_config = config.get("leaderboard", {})
+        main_categories = leaderboard_config.get("overall_score_categories", ["latam_es", "latam_pr", "translation"])
+        normalize_tasks = leaderboard_config.get("normalize_scores", ["translation"])
+        
         # Load tasks mapping
         tasks_mapping = load_tasks_mapping()
         
@@ -266,7 +294,10 @@ def process_model_directory(model_dir: Path) -> Dict[str, Any]:
         all_scores = {}
         
         for task_name, processor_func in task_processors.items():
-            task_scores = processor_func(model_dir, model_name)
+            if task_name == "translation":
+                task_scores = processor_func(model_dir, model_name, normalize_tasks)
+            else:
+                task_scores = processor_func(model_dir, model_name)
             if task_scores:
                 all_scores[task_name] = task_scores
         
@@ -283,15 +314,42 @@ def process_model_directory(model_dir: Path) -> Dict[str, Any]:
         elif "qwen" in model_name.lower():
             provider = "qwen"
         
-        # Calculate overall LATAM score from category scores
+        # Generate overall translation score if none exists
+        if "translation" in all_scores:
+            translation_data = all_scores["translation"]
+            if not translation_data.get("category_scores") or "translation" not in translation_data["category_scores"]:
+                # Calculate average of all translation task scores
+                task_scores = translation_data.get("task_scores", {})
+                if task_scores:
+                    translation_scores = [task_data["score"] for task_data in task_scores.values()]
+                    avg_translation_score = sum(translation_scores) / len(translation_scores)
+                    
+                    # The individual task scores are already normalized, so the average is already in 0-1 range
+                    final_translation_score = avg_translation_score
+                    print(f"    ✓ Generated overall translation score: {final_translation_score:.4f}")
+                    
+                    # Add the calculated translation score to category_scores
+                    if "category_scores" not in translation_data:
+                        translation_data["category_scores"] = {}
+                    
+                    translation_data["category_scores"]["translation"] = {
+                        "score": final_translation_score,
+                        "stderr": 0.0,  # We don't have stderr for the average
+                        "metric": "chrf",  # Assuming CHRF as the main metric
+                        "alias": "translation"
+                    }
+
+        # Calculate overall LATAM score from main category scores
         overall_scores = []
         for category_data in all_scores.values():
             if category_data and category_data.get("category_scores"):
                 for cat_name, cat_data in category_data["category_scores"].items():
-                    if cat_name.startswith("latam_"):
+                    if cat_name in main_categories:
                         overall_scores.append(cat_data["score"])
         
         overall_latam_score = sum(overall_scores) / len(overall_scores) if overall_scores else None
+        if overall_scores:
+            print(f"    ✓ Overall LATAM score: {overall_latam_score:.4f} (from {len(overall_scores)} categories: {main_categories})")
         
         # Combine all scores
         combined_scores = {
@@ -310,13 +368,17 @@ def process_model_directory(model_dir: Path) -> Dict[str, Any]:
 
 def parse_model_results(benchmark_outputs_dir: str, publish_dir: str) -> bool:
     """Parse model results and generate summary data for each model."""
+    # Load configuration
+    config = load_config()
+    
     # Set up paths
     raw_data_dir = Path(benchmark_outputs_dir)
     publish_dir_path = Path(publish_dir)
     summaries_dir = publish_dir_path / "summaries"
     
     # Create summaries directory
-    summaries_dir.mkdir(exist_ok=True)
+    publish_dir_path.mkdir(parents=True, exist_ok=True)
+    summaries_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"Processing model results from: {raw_data_dir}")
     
@@ -344,7 +406,7 @@ def parse_model_results(benchmark_outputs_dir: str, publish_dir: str) -> bool:
     for model_dir in model_dirs:
         print(f"\nProcessing {model_dir.name}...")
         try:
-            summary = process_model_directory(model_dir)
+            summary = process_model_directory(model_dir, config)
             if summary:
                 all_summaries[model_dir.name] = summary
                 
