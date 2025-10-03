@@ -94,7 +94,9 @@ def start_vllm_server(
     cuda_devices: Optional[str] = None,
     kv_cache_memory: Optional[int] = None,
     vllm_version: Optional[str] = None,
-    multimodal: bool = True
+    multimodal: bool = True,
+    max_num_seqs: Optional[int] = None,
+    max_num_batched_tokens: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -116,6 +118,8 @@ def start_vllm_server(
         kv_cache_memory: KV cache memory allocation
         vllm_version: vLLM version to use (default: "0.8.0")
         multimodal: Whether the model supports multimodal features (default: True)
+        max_num_seqs: Maximum number of concurrent sequences
+        max_num_batched_tokens: Maximum number of tokens to batch
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
@@ -177,6 +181,13 @@ def start_vllm_server(
     
     if enforce_eager:
         cmd_parts.append("--enforce-eager")
+    
+    # Add performance optimization parameters
+    if max_num_seqs is not None:
+        cmd_parts.extend(["--max-num-seqs", str(max_num_seqs)])
+    
+    if max_num_batched_tokens is not None:
+        cmd_parts.extend(["--max-num-batched-tokens", str(max_num_batched_tokens)])
     
     # Handle version-specific arguments
     if kv_cache_memory is not None:

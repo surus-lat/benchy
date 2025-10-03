@@ -126,6 +126,7 @@ def _run_evaluation(
     trust_remote_code = defaults.get('trust_remote_code', False)
     num_concurrent = defaults.get('num_concurrent', 8)
     max_length = defaults.get('max_length', 2048)
+    # bootstrap_iters is controlled via direct modifications to lm-eval defaults (now set to 1000)
     
     # Create task-specific output path
     output_subdir = task_config.get('output', {}).get('subdirectory', task_group_name.lower())
@@ -214,6 +215,9 @@ def _run_evaluation(
     if trust_remote_code:
         cmd_parts.append("--trust_remote_code")
     
+    # Note: bootstrap_iters is not available as a command-line argument in lm-eval
+    # We control this via our direct code modifications to metrics.py instead
+    
     cmd = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd}")
     try:
@@ -222,8 +226,8 @@ def _run_evaluation(
         pass
     
     try:
-        # Set environment variables for datasets trust
-        env_vars = "HF_DATASETS_TRUST_REMOTE_CODE=true"
+        # Set environment variables for datasets trust and multiprocessing
+        env_vars = "HF_DATASETS_TRUST_REMOTE_CODE=true DISABLE_MULTIPROC=0 OMP_NUM_THREADS=24"
         
         # Activate the lm-eval venv and run command
         venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {env_vars} {cmd}"
@@ -233,6 +237,12 @@ def _run_evaluation(
         # Force PyTorch to use CPU only
         env["CUDA_VISIBLE_DEVICES"] = ""
         env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+        
+        # Force multiprocessing and CPU optimization
+        env["DISABLE_MULTIPROC"] = "0"  # Ensure multiprocessing is enabled
+        env["OMP_NUM_THREADS"] = "24"   # Use up to 24 threads
+        env["MKL_NUM_THREADS"] = "24"   # For Intel MKL
+        env["OPENBLAS_NUM_THREADS"] = "24"  # For OpenBLAS
         
         # Stream output in real-time
         process = subprocess.Popen(
