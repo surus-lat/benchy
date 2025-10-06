@@ -260,8 +260,129 @@ def process_translation_results(model_dir: Path, model_name: str, normalize_task
         print(f"    Error processing Translation results from {results_file.name}: {e}")
         return None
 
+def standard_results_processor(model_dir: Path, model_name: str, task_config: Dict) -> Optional[Dict[str, Any]]:
+    """Standard processor for tasks that follow the common results format."""
+    task_name = task_config.get("name", "unknown")
+    print(f"    Processing {task_name} results...")
+    
+    # Load task config to get output subdirectory
+    task_config_file = load_task_config(task_name)
+    output_subdir = task_config_file.get("output", {}).get("subdirectory", task_name)
+    
+    # Look for results in the subdirectory
+    task_dir = model_dir / output_subdir
+    if not task_dir.exists():
+        print(f"    Warning: {task_name} results directory not found: {task_dir}")
+        return None
+    
+    # Look for results_*.json files
+    results_files = list(task_dir.rglob("results_*.json"))
+    if not results_files:
+        print(f"    Warning: No results_*.json files found in {task_dir}")
+        return None
+    
+    # Process the first results file found
+    results_file = results_files[0]
+    try:
+        with open(results_file, 'r') as f:
+            task_results_data = json.load(f)
+        
+        task_scores = extract_scores_from_results(task_results_data, task_name, None)
+        task_scores["model_name"] = model_name
+        
+        print(f"    ✓ {task_name} results processed from {results_file.relative_to(model_dir)}")
+        return task_scores
+        
+    except Exception as e:
+        print(f"    Error processing {task_name} results from {results_file.name}: {e}")
+        return None
+
+def portuguese_results_processor(model_dir: Path, model_name: str, task_config: Dict) -> Optional[Dict[str, Any]]:
+    """Specialized processor for Portuguese tasks that use results.json format."""
+    task_name = task_config.get("name", "portuguese")
+    print(f"    Processing {task_name} results...")
+    
+    # Load task config to get output subdirectory
+    task_config_file = load_task_config(task_name)
+    output_subdir = task_config_file.get("output", {}).get("subdirectory", task_name)
+    
+    # Look for results in the subdirectory
+    task_dir = model_dir / output_subdir
+    if not task_dir.exists():
+        print(f"    Warning: {task_name} results directory not found: {task_dir}")
+        return None
+    
+    # Look for results.json (Portuguese uses different file pattern)
+    results_file = task_dir / "results.json"
+    if not results_file.exists():
+        print(f"    Warning: No results.json found in {task_dir}")
+        return None
+    
+    try:
+        with open(results_file, 'r') as f:
+            task_results_data = json.load(f)
+        
+        task_scores = extract_scores_from_results(task_results_data, task_name, None)
+        task_scores["model_name"] = model_name
+        
+        print(f"    ✓ {task_name} results processed from {results_file.name}")
+        return task_scores
+        
+    except Exception as e:
+        print(f"    Error processing {task_name} results from {results_file.name}: {e}")
+        return None
+
+def translation_results_processor(model_dir: Path, model_name: str, task_config: Dict) -> Optional[Dict[str, Any]]:
+    """Specialized processor for translation tasks with metric selection."""
+    task_name = task_config.get("name", "translation")
+    primary_metric = task_config.get("primary_metric", "chrf")
+    normalize_tasks = task_config.get("normalize_tasks", ["translation"])
+    
+    print(f"    Processing {task_name} results...")
+    
+    # Load task config to get output subdirectory
+    task_config_file = load_task_config(task_name)
+    output_subdir = task_config_file.get("output", {}).get("subdirectory", task_name)
+    
+    # Look for results in the subdirectory
+    task_dir = model_dir / output_subdir
+    if not task_dir.exists():
+        print(f"    Warning: {task_name} results directory not found: {task_dir}")
+        return None
+    
+    # Look for results_*.json files
+    results_files = list(task_dir.rglob("results_*.json"))
+    if not results_files:
+        print(f"    Warning: No results_*.json files found in {task_dir}")
+        return None
+    
+    # Process the first results file found
+    results_file = results_files[0]
+    try:
+        with open(results_file, 'r') as f:
+            task_results_data = json.load(f)
+        
+        task_scores = extract_scores_from_results(task_results_data, task_name, normalize_tasks)
+        task_scores["model_name"] = model_name
+        
+        print(f"    ✓ {task_name} results processed from {results_file.relative_to(model_dir)}")
+        return task_scores
+        
+    except Exception as e:
+        print(f"    Error processing {task_name} results from {results_file.name}: {e}")
+        return None
+
+def get_task_processor(processor_type: str) -> callable:
+    """Get the appropriate processor function based on type."""
+    processors = {
+        "standard_results_processor": standard_results_processor,
+        "portuguese_results_processor": portuguese_results_processor,
+        "translation_results_processor": translation_results_processor,
+    }
+    return processors.get(processor_type, standard_results_processor)
+
 def get_available_task_processors() -> Dict[str, callable]:
-    """Get dictionary of available task processors."""
+    """Get dictionary of available task processors (legacy compatibility)."""
     return {
         "spanish": process_spanish_results,
         "portuguese": process_portuguese_results,
@@ -270,7 +391,7 @@ def get_available_task_processors() -> Dict[str, callable]:
     }
 
 def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, Any]:
-    """Process model results using task-specific functions."""
+    """Process model results using modular task system."""
     model_name = model_dir.name
     print(f"  Processing {model_name}...")
     
@@ -283,21 +404,23 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
         leaderboard_config = config.get("leaderboard", {})
         main_categories = leaderboard_config.get("overall_score_categories", ["latam_es", "latam_pr", "translation"])
         normalize_tasks = leaderboard_config.get("normalize_scores", ["translation"])
+        task_definitions = leaderboard_config.get("tasks", {})
         
-        # Load tasks mapping
-        tasks_mapping = load_tasks_mapping()
-        
-        # Get available task processors
-        task_processors = get_available_task_processors()
-        
-        # Process each task using task-specific functions
+        # Process each task using modular system
         all_scores = {}
         
-        for task_name, processor_func in task_processors.items():
-            if task_name == "translation":
-                task_scores = processor_func(model_dir, model_name, normalize_tasks)
-            else:
-                task_scores = processor_func(model_dir, model_name)
+        for task_name, task_config in task_definitions.items():
+            # Add task name to config for processors
+            task_config_with_name = task_config.copy()
+            task_config_with_name["name"] = task_name
+            task_config_with_name["normalize_tasks"] = normalize_tasks
+            
+            # Get the appropriate processor
+            processor_type = task_config.get("processor", "standard_results_processor")
+            processor_func = get_task_processor(processor_type)
+            
+            # Process the task
+            task_scores = processor_func(model_dir, model_name, task_config_with_name)
             if task_scores:
                 all_scores[task_name] = task_scores
         
@@ -356,8 +479,7 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
             "model_name": model_name,
             "provider": provider,
             "categories": all_scores,
-            "overall_latam_score": overall_latam_score,
-            "tasks_mapping": tasks_mapping
+            "overall_latam_score": overall_latam_score
         }
         
         return combined_scores

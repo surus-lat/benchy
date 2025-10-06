@@ -23,6 +23,7 @@ logging:
 # Leaderboard scoring configuration
 leaderboard:
   # Categories to include in overall LATAM score calculation
+  # These are automatically derived from task definitions below
   overall_score_categories:
     - "latam_es"    # Spanish category score
     - "latam_pr"    # Portuguese category score
@@ -31,3 +32,38 @@ leaderboard:
   # Normalize scores to 0-1 range (divide by 100) for specific tasks
   normalize_scores:
     - "translation"  # Normalize translation scores (CHRF from 0-100 to 0-1)
+  
+  # Task definitions for modular processing
+  tasks:
+    spanish:
+      processor: "standard_results_processor"
+      category_score_key: "latam_es"
+      output_prefix: "spanish"
+      subcategories:
+        - name: "teleia"
+          prefix: "teleia"
+          filter_prefix: "teleia_"
+    
+    portuguese:
+      processor: "portuguese_results_processor"
+      category_score_key: "latam_pr"
+      output_prefix: "portuguese"
+    
+    translation:
+      processor: "translation_results_processor"
+      category_score_key: "translation"
+      output_prefix: "translation"
+      metrics: ["chrf", "bleu"]  # Available metrics
+      primary_metric: "chrf"     # Which metric to use for scoring
+      exclude_tasks: ["translation"]  # Tasks to exclude from individual scores
+    
+    # Example of how to add a new task:
+    # new_task:
+    #   processor: "standard_results_processor"  # or "translation_results_processor"
+    #   category_score_key: "new_task_category"
+    #   output_prefix: "new_task"
+    #   # Optional: subcategories for nested scoring
+    #   subcategories:
+    #     - name: "subcategory_name"
+    #       prefix: "subcategory"
+    #       filter_prefix: "subcategory_"
