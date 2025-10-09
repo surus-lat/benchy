@@ -6,6 +6,4 @@ vllm:
   overrides: {}
 
 tasks:
-  - "spanish"
-  - "portuguese"
-  - "translation"
+  - "latam_board"

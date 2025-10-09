@@ -7,12 +7,38 @@ from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_s
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
+from .gpu_config import load_gpu_config
 import atexit
 import os
 import sys
 import logging
 import yaml
 import json
+
+
+def load_config(config_path: str = None) -> dict:
+    """Load configuration from YAML file."""
+    # Priority order: 1) Explicit path, 2) Environment variable, 3) Default
+    if config_path is None:
+        config_path = os.environ.get('BENCHY_CONFIG', 'config.yaml')
+    
+    # Check if file exists
+    if not os.path.exists(config_path):
+        available_configs = []
+        if os.path.exists('configs'):
+            available_configs = [f"configs/{f}" for f in os.listdir('configs') if f.endswith('.yaml')]
+        
+        error_msg = f"Configuration file '{config_path}' not found."
+        if available_configs:
+            error_msg += f"\n\nAvailable configurations:\n" + "\n".join(f"  - {cfg}" for cfg in available_configs[:5])
+            if len(available_configs) > 5:
+                error_msg += f"\n  ... and {len(available_configs) - 5} more in configs/"
+        error_msg += f"\n\nTry: python main.py --config <path-to-config.yaml>"
+        
+        raise FileNotFoundError(error_msg)
+    
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +202,21 @@ def benchmark_pipeline(
     # Initialize config manager
     config_manager = ConfigManager()
     
+    # Load GPU configuration from central config
+    central_config = load_config('configs/config.yaml')
+    gpu_manager = load_gpu_config(central_config)
+    
+    # Log GPU configuration
+    gpu_summary = gpu_manager.get_config_summary()
+    logger.info(f"GPU Configuration: {gpu_summary}")
+    
+    # Expand task groups into individual tasks
+    expanded_tasks = config_manager.expand_task_groups(tasks, central_config)
+    logger.info(f"Task expansion: {tasks} -> {expanded_tasks}")
+    
+    # Update tasks with expanded list
+    tasks = expanded_tasks
+    
     # Step 0: Fetch generation config from model repository
     generation_config = fetch_generation_config(
         model_name=model_name,
@@ -214,6 +255,10 @@ def benchmark_pipeline(
     )
     
     # Step 1: Start vLLM server
+    # Use GPU configuration from central config, with command line override
+    vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
+    logger.info(f"Starting vLLM server with CUDA devices: {vllm_cuda_devices}")
+    
     server_info = start_vllm_server(
         model_name=model_name,
         host=host,
@@ -227,7 +272,7 @@ def benchmark_pipeline(
         hf_token=hf_token,
         vllm_venv_path=vllm_venv_path,
         startup_timeout=startup_timeout,
-        cuda_devices=cuda_devices,
+        cuda_devices=vllm_cuda_devices,
         kv_cache_memory=kv_cache_memory,
         vllm_version=vllm_version,
         multimodal=multimodal,
@@ -270,7 +315,7 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=spanish_task_config,
             limit=limit,
-            cuda_devices=cuda_devices
+            cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["spanish"] = spanish_results
     
@@ -292,7 +337,7 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=portuguese_task_config,
             limit=limit,
-            cuda_devices=cuda_devices
+            cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["portuguese"] = portuguese_results
     
@@ -314,7 +359,7 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=translation_task_config,
             limit=limit,
-            cuda_devices=cuda_devices
+            cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["translation"] = translation_results
             
@@ -413,8 +458,20 @@ def test_vllm_server(
     with open(test_config_path, 'w') as f:
         yaml.dump(test_config, f, default_flow_style=False, sort_keys=False, indent=2)
     logger.info(f"Test configuration written to: {test_config_path}")
+    
+    # Load GPU configuration from central config
+    central_config = load_config('configs/config.yaml')
+    gpu_manager = load_gpu_config(central_config)
+    
+    # Log GPU configuration
+    gpu_summary = gpu_manager.get_config_summary()
+    logger.info(f"GPU Configuration for test: {gpu_summary}")
         
     # Step 1: Start vLLM server
+    # Use GPU configuration from central config, with command line override
+    vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
+    logger.info(f"Starting vLLM test server with CUDA devices: {vllm_cuda_devices}")
+    
     server_info = start_vllm_server(
         model_name=model_name,
         host=host,
@@ -428,7 +485,7 @@ def test_vllm_server(
         hf_token=hf_token,
         vllm_venv_path=vllm_venv_path,
         startup_timeout=startup_timeout,
-        cuda_devices=cuda_devices,
+        cuda_devices=vllm_cuda_devices,
         kv_cache_memory=kv_cache_memory,
         vllm_version=vllm_version,
         multimodal=multimodal,

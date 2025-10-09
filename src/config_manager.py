@@ -170,3 +170,39 @@ class ConfigManager:
             return []
         
         return [f.stem for f in tasks_dir.glob("*.yaml")]
+    
+    def expand_task_groups(self, tasks: list, central_config: Dict[str, Any]) -> list:
+        """
+        Expand task groups into individual task names.
+        
+        Args:
+            tasks: List of task names and/or task group names
+            central_config: Central configuration containing task_groups
+            
+        Returns:
+            Expanded list of individual task names
+        """
+        task_groups = central_config.get('task_groups', {})
+        expanded_tasks = []
+        
+        for task in tasks:
+            if task in task_groups:
+                # This is a task group, expand it
+                group_tasks = task_groups[task].get('tasks', [])
+                group_description = task_groups[task].get('description', task)
+                logger.info(f"Expanding task group '{task}': {group_description}")
+                logger.info(f"  Group contains tasks: {group_tasks}")
+                expanded_tasks.extend(group_tasks)
+            else:
+                # This is an individual task, keep it as is
+                expanded_tasks.append(task)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_tasks = []
+        for task in expanded_tasks:
+            if task not in seen:
+                seen.add(task)
+                unique_tasks.append(task)
+        
+        return unique_tasks

@@ -20,6 +20,50 @@ evaluation:
 logging:
   log_dir: "logs"
 
+# GPU Configuration
+# Centralized GPU allocation for vLLM server and evaluation tasks
+gpu_config:
+  # vLLM server GPU allocation
+  vllm:
+    devices: "3"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
+    # Alternative configurations:
+    # devices: "2,3"    # Use GPUs 2 and 3 for vLLM
+    # devices: "1,2,3,4" # Use all 4 GPUs for vLLM
+  
+  # Evaluation tasks GPU allocation  
+  tasks:
+    devices: "2"  # GPU device for evaluation tasks (e.g., "2" or "1")
+    # Alternative configurations:
+    # devices: "1"      # Use GPU 1 for tasks
+    # devices: ""       # Use CPU only for tasks (current default)
+  
+  # Validation settings
+  validation:
+    check_gpu_availability: true  # Check if specified GPUs are available
+    allow_overlap: false          # Prevent vLLM and tasks from using same GPUs
+
+# Task Groups Configuration
+# Define groups of tasks that can be used as shortcuts in model configs
+task_groups:
+  latam_board:
+    description: "Complete LATAM evaluation suite"
+    tasks:
+      - "spanish"
+      - "portuguese" 
+      - "translation"
+  
+  # Example of additional task groups you can define:
+  # language_only:
+  #   description: "Language evaluation tasks only"
+  #   tasks:
+  #     - "spanish"
+  #     - "portuguese"
+  # 
+  # translation_only:
+  #   description: "Translation tasks only"
+  #   tasks:
+  #     - "translation"
+
 # Leaderboard scoring configuration
 leaderboard:
   # Categories to include in overall LATAM score calculation
