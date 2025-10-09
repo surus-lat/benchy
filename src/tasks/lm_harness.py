@@ -232,11 +232,20 @@ def _run_evaluation(
         # Activate the lm-eval venv and run command
         venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {env_vars} {cmd}"
         
-        # Set up CPU-only environment for lm-eval client
+        # Set up environment for lm-eval client based on GPU configuration
         env = os.environ.copy()
-        # Force PyTorch to use CPU only
-        env["CUDA_VISIBLE_DEVICES"] = ""
-        env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+        
+        # Configure CUDA devices based on task configuration
+        if cuda_devices:
+            # Use specified GPU for tasks
+            env["CUDA_VISIBLE_DEVICES"] = cuda_devices
+            env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+            logger.info(f"Tasks will use GPU(s): {cuda_devices}")
+        else:
+            # Use CPU only for tasks (current default behavior)
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+            logger.info("Tasks will use CPU only")
         
         # Force multiprocessing and CPU optimization
         env["DISABLE_MULTIPROC"] = "0"  # Ensure multiprocessing is enabled

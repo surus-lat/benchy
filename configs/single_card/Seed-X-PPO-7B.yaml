@@ -11,6 +11,4 @@ vllm:
     multimodal: false
 
 tasks:
-  - "spanish"
-  - "portuguese"
-  - "translation"
+  - "latam_board"

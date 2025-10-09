@@ -7,6 +7,4 @@ vllm:
     max_model_len: 4096
 
 tasks:
-  - "spanish"
-  - "portuguese"
-  - "translation"
+  - "latam_board"
