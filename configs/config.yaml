@@ -48,9 +48,15 @@ task_groups:
   latam_board:
     description: "Complete LATAM evaluation suite"
     tasks:
-      - "spanish"
-      - "portuguese" 
+      #- "spanish"
+      #- "portuguese" 
       - "translation"
+      - "structured_extraction"
+  
+  structured_only:
+    description: "Structured data extraction only"
+    tasks:
+      - "structured_extraction"
   
   # Example of additional task groups you can define:
   # language_only:
@@ -72,10 +78,11 @@ leaderboard:
     - "latam_es"    # Spanish category score
     - "latam_pr"    # Portuguese category score
     - "translation" # Translation category score
+    - "structured_extraction"  # Uncomment to include structured extraction in overall score
   
   # Normalize scores to 0-1 range (divide by 100) for specific tasks
   normalize_scores:
-    - "translation"  # Normalize translation scores (CHRF from 0-100 to 0-1)
+    #- "translation"  # Normalize translation scores (CHRF from 0-100 to 0-1)
   
   # Task definitions for modular processing
   tasks:
@@ -97,9 +104,16 @@ leaderboard:
       processor: "translation_results_processor"
       category_score_key: "translation"
       output_prefix: "translation"
-      metrics: ["chrf", "bleu"]  # Available metrics
-      primary_metric: "chrf"     # Which metric to use for scoring
+      metrics: ["chrf", "bleu", "comet"]  # Available metrics
+      primary_metric: "comet"     # Which metric to use for scoring
       exclude_tasks: ["translation"]  # Tasks to exclude from individual scores
+    
+    structured_extraction:
+      processor: "structured_extraction_results_processor"
+      category_score_key: "structured_extraction"
+      output_prefix: "structured_extraction"
+      metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
+      primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
     
     # Example of how to add a new task:
     # new_task:

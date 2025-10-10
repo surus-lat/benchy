@@ -372,12 +372,128 @@ def translation_results_processor(model_dir: Path, model_name: str, task_config:
         print(f"    Error processing {task_name} results from {results_file.name}: {e}")
         return None
 
+def structured_extraction_results_processor(model_dir: Path, model_name: str, task_config: Dict) -> Optional[Dict[str, Any]]:
+    """Specialized processor for structured extraction tasks."""
+    import shutil
+    
+    task_name = task_config.get("name", "structured_extraction")
+    print(f"    Processing {task_name} results...")
+    
+    # Load task config to get output subdirectory
+    task_config_file = load_task_config(task_name)
+    output_subdir = task_config_file.get("output", {}).get("subdirectory", task_name)
+    
+    # Look for results in the subdirectory
+    task_dir = model_dir / output_subdir
+    if not task_dir.exists():
+        print(f"    Warning: {task_name} results directory not found: {task_dir}")
+        return None
+    
+    # Look for metrics JSON files (structured extraction format)
+    metrics_files = list(task_dir.glob("*_metrics.json"))
+    if not metrics_files:
+        print(f"    Warning: No *_metrics.json files found in {task_dir}")
+        return None
+    
+    # Process the first metrics file found
+    metrics_file = metrics_files[0]
+    try:
+        with open(metrics_file, 'r') as f:
+            metrics_data = json.load(f)
+        
+        # Extract metrics from structured extraction format
+        metrics = metrics_data.get("metrics", {})
+        
+        # Get composite score stats (main metric for leaderboard)
+        composite_stats = metrics.get("composite_score_stats", {})
+        composite_mean = composite_stats.get("mean", 0.0)
+        composite_stdev = composite_stats.get("stdev", 0.0)
+        
+        # Also get other key metrics
+        eqs = metrics.get("extraction_quality_score", 0.0)
+        schema_validity = metrics.get("schema_validity_rate", 0.0)
+        f1_partial = metrics.get("field_f1_partial", 0.0)
+        hallucination_rate = metrics.get("hallucination_rate", 0.0)
+        
+        # Copy report.txt file to summaries if it exists
+        report_files = list(task_dir.glob("*_report.txt"))
+        if report_files:
+            report_file = report_files[0]
+            # Get publish directory from config
+            config = load_config()
+            publish_dir = Path(config["paths"]["publish_dir"])
+            summaries_dir = publish_dir / "summaries"
+            summaries_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy report with model name
+            report_dest = summaries_dir / f"{model_name}_structured_extraction_report.txt"
+            shutil.copy2(report_file, report_dest)
+            print(f"    ✓ Report copied to {report_dest.name}")
+        
+        # Build task scores (individual metrics)
+        task_scores = {
+            "extraction_quality_score": {
+                "score": eqs,
+                "stderr": 0.0,
+                "metric": "eqs",
+                "alias": "extraction_quality_score"
+            },
+            "composite_score": {
+                "score": composite_mean,
+                "stderr": composite_stdev,
+                "metric": "composite_mean",
+                "alias": "composite_score"
+            },
+            "schema_validity": {
+                "score": schema_validity,
+                "stderr": 0.0,
+                "metric": "validity_rate",
+                "alias": "schema_validity"
+            },
+            "field_f1_partial": {
+                "score": f1_partial,
+                "stderr": 0.0,
+                "metric": "f1",
+                "alias": "field_f1_partial"
+            }
+        }
+        
+        # Build category scores (use composite score as main category score)
+        category_scores = {
+            "structured_extraction": {
+                "score": composite_mean,
+                "stderr": composite_stdev,
+                "metric": "composite_mean",
+                "alias": "structured_extraction"
+            }
+        }
+        
+        result = {
+            "model_name": model_name,
+            "task_scores": task_scores,
+            "category_scores": category_scores,
+            "top_level_scores": category_scores,
+            "overall_score": composite_mean,
+            "evaluation_time": metrics_data.get("timestamp", "unknown")
+        }
+        
+        print(f"    ✓ {task_name} results processed from {metrics_file.name}")
+        print(f"    ✓ Composite Score: {composite_mean:.4f} ± {composite_stdev:.4f}")
+        print(f"    ✓ EQS: {eqs:.4f}, F1: {f1_partial:.4f}, Validity: {schema_validity:.2%}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"    Error processing {task_name} results from {metrics_file.name}: {e}")
+        return None
+
 def get_task_processor(processor_type: str) -> callable:
     """Get the appropriate processor function based on type."""
     processors = {
         "standard_results_processor": standard_results_processor,
         "portuguese_results_processor": portuguese_results_processor,
         "translation_results_processor": translation_results_processor,
+        "structured_extraction_results_processor": structured_extraction_results_processor,
     }
     return processors.get(processor_type, standard_results_processor)
 
