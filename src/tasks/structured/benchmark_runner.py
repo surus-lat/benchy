@@ -1,0 +1,287 @@
+"""Core benchmark runner logic."""
+
+import asyncio
+import hashlib
+import json
+import logging
+import time
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+from scipy import stats
+
+from .llm import VLLMInterface
+from .metrics import MetricsCalculator, ReportGenerator, classify_complexity
+from .tasks import ParaloqTask
+
+logger = logging.getLogger(__name__)
+
+
+class BenchmarkRunner:
+    """Manages benchmark execution with checkpointing and complexity analysis."""
+    
+    def __init__(self, model_name: str, config: dict):
+        self.model_name = model_name
+        self.config = config
+        self.llm = VLLMInterface(config, model_name)
+        self.task = ParaloqTask(config)
+        self.metrics_calc = MetricsCalculator(config)
+        self.batch_size = config.get("performance", {}).get("batch_size", 20)
+    
+    async def run(
+        self,
+        limit: int = None,
+        log_samples: bool = False,
+        no_resume: bool = False,
+    ) -> dict:
+        """Execute benchmark with optional checkpointing."""
+        logger.info(f"Starting benchmark for model: {self.model_name}")
+        
+        # Test connection
+        if not await self.llm.test_connection(max_retries=3, timeout=30):
+            logger.error("Cannot establish connection to vLLM server")
+            raise ConnectionError("vLLM server unavailable")
+        
+        # Load dataset
+        self.task.load()
+        all_samples = list(self.task.get_samples(limit=limit))
+        
+        # Handle checkpointing
+        checkpoint_path = self._get_checkpoint_path()
+        config_hash = self._get_config_hash()
+        completed_ids = set()
+        
+        if not no_resume:
+            completed_ids = self._load_checkpoint(checkpoint_path, config_hash)
+        
+        # Filter completed samples
+        samples = [s for s in all_samples if s["id"] not in completed_ids]
+        if not samples:
+            logger.info("All samples already completed!")
+            return {"per_sample_metrics": [], "aggregate_metrics": {}, "samples": []}
+        
+        logger.info(f"Processing {len(samples)} samples in batches of {self.batch_size}")
+        
+        # Run evaluation
+        results = await self._evaluate_samples(
+            samples, checkpoint_path, config_hash, no_resume, log_samples, list(completed_ids)
+        )
+        
+        # Compute complexity analysis
+        complexity = self._compute_complexity(samples, results["per_sample_metrics"])
+        if complexity:
+            results["aggregate_metrics"]["complexity_analysis"] = complexity
+        
+        # Cleanup checkpoint
+        if not no_resume and checkpoint_path.exists():
+            checkpoint_path.unlink()
+            logger.info("✓ Benchmark completed - checkpoint removed")
+        
+        return results
+    
+    async def _evaluate_samples(
+        self, samples, checkpoint_path, config_hash, no_resume, log_samples, completed_ids
+    ):
+        """Evaluate samples in batches."""
+        results = {"samples": [], "per_sample_metrics": []}
+        start_time = time.time()
+        
+        for batch_idx in range(0, len(samples), self.batch_size):
+            batch = samples[batch_idx:batch_idx + self.batch_size]
+            logger.info(f"Processing batch {batch_idx//self.batch_size + 1}/"
+                       f"{(len(samples) + self.batch_size - 1)//self.batch_size} "
+                       f"({len(batch)} samples)...")
+            
+            # Prepare requests
+            requests = [
+                {
+                    "system_prompt": self.task.get_prompt(s)[0],
+                    "user_prompt": self.task.get_prompt(s)[1],
+                    "schema": s["schema"],
+                    "sample_id": s["id"],
+                }
+                for s in batch
+            ]
+            
+            # Generate
+            batch_start = time.time()
+            outputs = await self.llm.generate_batch(requests)
+            
+            # Count errors
+            errors = sum(1 for r in outputs if r["error"])
+            if errors:
+                logger.warning(f"  Batch had {errors}/{len(batch)} errors")
+            
+            logger.info(f"  Batch completed in {time.time()-batch_start:.2f}s "
+                       f"({len(batch)/(time.time()-batch_start):.2f} samples/s)")
+            
+            # Calculate metrics
+            for sample, output in zip(batch, outputs):
+                metrics = self.metrics_calc.calculate_all(
+                    prediction=output["output"],
+                    expected=sample["expected"],
+                    schema=sample["schema"],
+                    error=output["error"],
+                )
+                results["per_sample_metrics"].append(metrics)
+                
+                if log_samples:
+                    results["samples"].append({
+                        "id": sample["id"],
+                        "title": sample["title"],
+                        "topic": sample["topic"],
+                        "prediction": output["output"],
+                        "expected": sample["expected"],
+                        "metrics": metrics,
+                        "error": output["error"],
+                    })
+                
+                completed_ids.append(sample["id"])
+            
+            # Checkpoint
+            if not no_resume and len(completed_ids) % 50 <= self.batch_size:
+                self._save_checkpoint(checkpoint_path, completed_ids, config_hash)
+        
+        # Aggregate
+        logger.info("Calculating aggregate metrics...")
+        aggregate = self.metrics_calc.aggregate_metrics(results["per_sample_metrics"])
+        aggregate["total_duration"] = time.time() - start_time
+        aggregate["throughput"] = len(samples) / aggregate["total_duration"]
+        results["aggregate_metrics"] = aggregate
+        
+        self._log_summary(aggregate)
+        return results
+    
+    def _compute_complexity(self, samples, metrics_list):
+        """Compute schema complexity analysis."""
+        valid_pairs = [
+            (s, m) for s, m in zip(samples, metrics_list)
+            if m.get("valid") and m.get("error") is None
+        ]
+        
+        if not valid_pairs:
+            return {}
+        
+        # Bin by complexity
+        bins = {"simple": [], "medium": [], "complex": []}
+        for sample, metrics in valid_pairs:
+            bin_name = classify_complexity(sample.get("complexity_score", 0.0))
+            bins[bin_name].append({"metrics": metrics, "sample": sample})
+        
+        # Compute bin stats
+        bin_stats = {}
+        for name, items in bins.items():
+            if not items:
+                continue
+            ms = [i["metrics"] for i in items]
+            bin_stats[name] = {
+                "count": len(items),
+                "eqs": np.mean([m["extraction_quality_score"] for m in ms]),
+                "f1_partial": np.mean([m["field_f1_partial"] for m in ms]),
+                "f1_strict": np.mean([m["field_f1_strict"] for m in ms]),
+                "hallucination_rate": np.mean([m["hallucination_rate"] for m in ms]),
+            }
+        
+        # Correlations
+        correlations = {}
+        if len(valid_pairs) >= 10:
+            cs = [s.get("complexity_score", 0.0) for s, _ in valid_pairs]
+            fs = [s.get("complexity", {}).get("total_fields", 0) for s, _ in valid_pairs]
+            ds = [s.get("complexity", {}).get("max_nesting_depth", 0) for s, _ in valid_pairs]
+            eqs = [m["extraction_quality_score"] for _, m in valid_pairs]
+            f1s = [m["field_f1_partial"] for _, m in valid_pairs]
+            
+            correlations["complexity_score_vs_eqs"] = stats.pearsonr(cs, eqs)[0]
+            correlations["total_fields_vs_f1"] = stats.pearsonr(fs, f1s)[0]
+            correlations["max_depth_vs_f1"] = stats.pearsonr(ds, f1s)[0]
+        
+        return {"bins": bin_stats, "correlations": correlations}
+    
+    def _get_checkpoint_path(self):
+        """Get checkpoint file path."""
+        checkpoint_dir = Path(self.config.get("output", {}).get("results_dir", "./results")) / ".checkpoints"
+        return checkpoint_dir / f"{self.model_name.replace('/', '_')}_checkpoint.json"
+    
+    def _get_config_hash(self):
+        """Generate config hash for checkpoint validation."""
+        relevant = {
+            "model": self.model_name,
+            "base_url": self.config.get("model", {}).get("base_url"),
+            "temperature": self.config.get("model", {}).get("temperature"),
+            "max_tokens": self.config.get("model", {}).get("max_tokens"),
+            "batch_size": self.batch_size,
+        }
+        return hashlib.md5(json.dumps(relevant, sort_keys=True).encode()).hexdigest()
+    
+    def _save_checkpoint(self, path, completed_ids, config_hash):
+        """Save checkpoint."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({
+                "completed_sample_ids": completed_ids,
+                "config_hash": config_hash,
+                "timestamp": datetime.now().isoformat(),
+                "count": len(completed_ids),
+            }, f, indent=2)
+    
+    def _load_checkpoint(self, path, config_hash):
+        """Load and validate checkpoint."""
+        if not path.exists():
+            return set()
+        
+        try:
+            with open(path) as f:
+                checkpoint = json.load(f)
+            
+            if checkpoint.get("config_hash") != config_hash:
+                logger.warning("Checkpoint found but config changed - ignoring")
+                return set()
+            
+            ids = set(checkpoint.get("completed_sample_ids", []))
+            logger.info(f"✓ Loaded checkpoint: {len(ids)} samples completed")
+            return ids
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint: {e}")
+            return set()
+    
+    def _log_summary(self, metrics):
+        """Log benchmark summary."""
+        logger.info("=" * 60)
+        logger.info("BENCHMARK RESULTS")
+        logger.info("=" * 60)
+        logger.info(f"Model: {self.model_name}")
+        logger.info(f"Samples: {metrics['total_samples']}")
+        logger.info(f"Duration: {metrics['total_duration']:.2f}s ({metrics['throughput']:.2f} samples/s)")
+        logger.info(f"EQS: {metrics['extraction_quality_score']:.3f}")
+        logger.info(f"Schema Validity: {metrics['schema_validity_rate']:.2%}")
+        logger.info(f"Exact Match: {metrics['exact_match_rate']:.2%}")
+        logger.info(f"F1 (Partial): {metrics['field_f1_partial']:.3f}")
+        logger.info(f"Hallucination Rate: {metrics['hallucination_rate']:.2%}")
+        logger.info(f"Error Rate: {metrics['error_rate']:.2%}")
+        logger.info("=" * 60)
+
+
+def save_results(results: dict, output_dir: Path, model_name: str, log_samples: bool, config: dict):
+    """Save benchmark results to files."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = model_name.replace("/", "_")
+    
+    # Save JSON metrics
+    metrics_file = output_dir / f"{safe_name}_{timestamp}_metrics.json"
+    with open(metrics_file, "w") as f:
+        json.dump({"model": model_name, "timestamp": timestamp, "metrics": results["aggregate_metrics"]}, f, indent=2)
+    logging.info(f"Saved aggregate metrics to {metrics_file}")
+    
+    # Generate text report
+    report_file = output_dir / f"{safe_name}_{timestamp}_report.txt"
+    ReportGenerator(config).generate_text_report(model_name, results["aggregate_metrics"], report_file)
+    
+    # Save samples if requested
+    if log_samples:
+        samples_file = output_dir / f"{safe_name}_{timestamp}_samples.json"
+        with open(samples_file, "w") as f:
+            json.dump({"model": model_name, "timestamp": timestamp, "samples": results["samples"]}, f, indent=2)
+        logging.info(f"Saved sample results to {samples_file}")
+

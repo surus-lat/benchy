@@ -4,7 +4,7 @@
 host: "0.0.0.0"
 port: 20501
 tensor_parallel_size: 1
-max_model_len: 8192
+max_model_len: 12288
 gpu_memory_utilization: 0.95
 enforce_eager: true
 limit_mm_per_prompt: '{"images": 0, "audios": 0}'

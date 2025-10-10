@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
+from .tasks.structured_extraction import run_structured_extraction
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
@@ -362,6 +363,24 @@ def benchmark_pipeline(
             cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["translation"] = translation_results
+    
+    if "structured_extraction" in tasks:
+        logger.info("Running structured data extraction evaluation...")
+        structured_task_config = config_manager.get_task_config("structured_extraction", task_defaults_overrides)
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("structured_extraction", structured_task_config)
+        structured_results = run_structured_extraction(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=structured_task_config,
+            limit=limit,
+            cuda_devices=gpu_manager.get_task_cuda_devices()
+        )
+        task_results["structured_extraction"] = structured_results
             
     # Step 4: Gather results
     gather_result = gather_results(

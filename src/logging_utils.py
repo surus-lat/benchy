@@ -23,7 +23,7 @@ class BenchyLoggingSetup:
         # Clean model name for filename
         safe_model_name = model_name.replace('/', '_').replace('\\', '_')
         
-        self.log_filename = f"benchy_{safe_model_name}_{timestamp}.log"
+        self.log_filename = f"benchy_{timestamp}_{safe_model_name}.log"
         self.log_filepath = self.log_dir / self.log_filename
         
         self.setup_python_logging()
