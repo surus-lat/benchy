@@ -118,12 +118,36 @@ class BenchmarkRunner:
             
             # Calculate metrics
             for sample, output in zip(batch, outputs):
-                metrics = self.metrics_calc.calculate_all(
-                    prediction=output["output"],
-                    expected=sample["expected"],
-                    schema=sample["schema"],
-                    error=output["error"],
-                )
+                try:
+                    metrics = self.metrics_calc.calculate_all(
+                        prediction=output["output"],
+                        expected=sample["expected"],
+                        schema=sample["schema"],
+                        error=output["error"],
+                    )
+                except Exception as e:
+                    logger.error(f"Error calculating metrics for sample {sample['id']}: {e}")
+                    logger.error(f"  Output type: {type(output['output']).__name__}")
+                    logger.error(f"  Expected type: {type(sample['expected']).__name__}")
+                    # Create a failed metrics entry
+                    metrics = {
+                        "valid": False,
+                        "schema_validity": 0.0,
+                        "exact_match": False,
+                        "field_f1_partial": 0.0,
+                        "field_f1_strict": 0.0,
+                        "field_precision_partial": 0.0,
+                        "field_recall_partial": 0.0,
+                        "field_precision_strict": 0.0,
+                        "field_recall_strict": 0.0,
+                        "type_accuracy": 0.0,
+                        "hallucination_rate": 0.0,
+                        "extraction_quality_score": 0.0,
+                        "match_distribution": {},
+                        "composite_scores": [],
+                        "schema_complexity": {},
+                        "error": f"Metrics calculation failed: {str(e)}"
+                    }
                 results["per_sample_metrics"].append(metrics)
                 
                 if log_samples:

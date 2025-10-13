@@ -39,6 +39,7 @@ def run_structured_extraction(
     from .structured.llm import VLLMInterface
     from .structured.tasks import ParaloqTask
     from .structured.metrics import MetricsCalculator
+    from ..task_completion_checker import write_task_done_file
     
     logger.info(f"Starting structured extraction evaluation for model: {model_name}")
     
@@ -140,6 +141,9 @@ def run_structured_extraction(
             file_logger.info(f"Output saved to: {task_output_path}")
         except (RuntimeError, OSError):
             pass
+        
+        # Write done file to mark task completion
+        write_task_done_file(task_output_path)
         
         return {
             "model_name": model_name,

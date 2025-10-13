@@ -78,36 +78,79 @@ class MetricsCalculator:
         if error or prediction is None:
             return metrics
 
-        # Check schema validity
-        metrics["valid"] = self._validate_schema(prediction, schema)
-        metrics["schema_validity"] = 1.0 if metrics["valid"] else 0.0
+        try:
+            # Check schema validity
+            metrics["valid"] = self._validate_schema(prediction, schema)
+            metrics["schema_validity"] = 1.0 if metrics["valid"] else 0.0
 
-        if not metrics["valid"]:
+            if not metrics["valid"]:
+                logger.debug(f"Schema validation failed for prediction type: {type(prediction).__name__}")
+                return metrics
+
+            # Calculate schema complexity for this sample
+            metrics["schema_complexity"] = self._calculate_schema_complexity(schema)
+
+            # Flatten structures for field-level comparison
+            try:
+                pred_fields = self._flatten_dict(prediction)
+                exp_fields = self._flatten_dict(expected)
+            except Exception as e:
+                logger.error(f"Error flattening dicts - prediction type: {type(prediction).__name__}, expected type: {type(expected).__name__}: {e}")
+                metrics["error"] = f"Flattening error: {str(e)}"
+                return metrics
+
+            # Compare fields and gather statistics
+            try:
+                field_results = self._compare_fields(pred_fields, exp_fields)
+            except Exception as e:
+                logger.error(f"Error comparing fields: {e}")
+                metrics["error"] = f"Field comparison error: {str(e)}"
+                return metrics
+
+            # Calculate metrics from field results
+            try:
+                metrics.update(self._aggregate_field_results(field_results, pred_fields, exp_fields))
+            except Exception as e:
+                logger.error(f"Error aggregating field results: {e}")
+                metrics["error"] = f"Aggregation error: {str(e)}"
+                return metrics
+
+            # Check exact match
+            try:
+                metrics["exact_match"] = self._exact_match(prediction, expected)
+            except Exception as e:
+                logger.warning(f"Error checking exact match: {e}")
+                metrics["exact_match"] = False
+
+            # Calculate EQS (Extraction Quality Score)
+            try:
+                metrics["extraction_quality_score"] = self._calculate_eqs(metrics)
+            except Exception as e:
+                logger.error(f"Error calculating EQS: {e}")
+                metrics["extraction_quality_score"] = 0.0
+
+        except Exception as e:
+            logger.error(f"Unexpected error in calculate_all: {e}", exc_info=True)
+            metrics["error"] = f"Calculation error: {str(e)}"
             return metrics
-
-        # Calculate schema complexity for this sample
-        metrics["schema_complexity"] = self._calculate_schema_complexity(schema)
-
-        # Flatten structures for field-level comparison
-        pred_fields = self._flatten_dict(prediction)
-        exp_fields = self._flatten_dict(expected)
-
-        # Compare fields and gather statistics
-        field_results = self._compare_fields(pred_fields, exp_fields)
-
-        # Calculate metrics from field results
-        metrics.update(self._aggregate_field_results(field_results, pred_fields, exp_fields))
-
-        # Check exact match
-        metrics["exact_match"] = self._exact_match(prediction, expected)
-
-        # Calculate EQS (Extraction Quality Score)
-        metrics["extraction_quality_score"] = self._calculate_eqs(metrics)
 
         return metrics
 
-    def _validate_schema(self, output: Dict, schema: Dict) -> bool:
-        """Validate output against JSON schema."""
+    def _validate_schema(self, output: Any, schema: Dict) -> bool:
+        """Validate output against JSON schema.
+        
+        Args:
+            output: Output to validate (should be dict, but may be other types)
+            schema: JSON schema for validation
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        # Quick type check - if output isn't a dict and schema expects object, it's invalid
+        if not isinstance(output, dict):
+            logger.debug(f"Output is {type(output).__name__}, not dict - invalid")
+            return False
+            
         try:
             validate(instance=output, schema=schema)
             return True
@@ -326,21 +369,49 @@ class MetricsCalculator:
             "has_nested_objects": "$defs" in schema or max_depth > 1,
         }
 
-    def _flatten_dict(self, d: Dict, parent_key: str = "", sep: str = ".") -> Dict:
-        """Flatten nested dictionary."""
-        items = []
-        for k, v in d.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
-            elif isinstance(v, list):
-                for i, item in enumerate(v):
-                    if isinstance(item, dict):
-                        items.extend(self._flatten_dict(item, f"{new_key}[{i}]", sep=sep).items())
-                    else:
-                        items.append((f"{new_key}[{i}]", item))
+    def _flatten_dict(self, d: Any, parent_key: str = "", sep: str = ".") -> Dict:
+        """Flatten nested dictionary, handling edge cases.
+        
+        Args:
+            d: Input data (should be dict, but may be list or other types)
+            parent_key: Parent key for nested flattening
+            sep: Separator for key concatenation
+            
+        Returns:
+            Flattened dictionary
+        """
+        # Handle non-dict inputs gracefully
+        if d is None:
+            return {}
+        
+        if not isinstance(d, dict):
+            # If it's a list at the top level, try to convert to dict-like structure
+            if isinstance(d, list):
+                logger.warning(f"Received list instead of dict for flattening, wrapping as 'root' key")
+                d = {"root": d}
             else:
-                items.append((new_key, v))
+                # For other types, wrap as a single value
+                logger.warning(f"Received {type(d).__name__} instead of dict for flattening, wrapping as 'root' key")
+                return {"root": d}
+        
+        items = []
+        try:
+            for k, v in d.items():
+                new_key = f"{parent_key}{sep}{k}" if parent_key else k
+                if isinstance(v, dict):
+                    items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+                elif isinstance(v, list):
+                    for i, item in enumerate(v):
+                        if isinstance(item, dict):
+                            items.extend(self._flatten_dict(item, f"{new_key}[{i}]", sep=sep).items())
+                        else:
+                            items.append((f"{new_key}[{i}]", item))
+                else:
+                    items.append((new_key, v))
+        except Exception as e:
+            logger.error(f"Error during dict flattening: {e}, returning empty dict")
+            return {}
+            
         return dict(items)
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict:
