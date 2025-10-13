@@ -9,6 +9,7 @@ from .tasks.structured_extraction import run_structured_extraction
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
+from .task_completion_checker import TaskCompletionChecker
 import atexit
 import os
 import sys
@@ -218,6 +219,33 @@ def benchmark_pipeline(
     # Update tasks with expanded list
     tasks = expanded_tasks
     
+    # Check for completed tasks to enable resuming failed runs
+    completion_checker = TaskCompletionChecker(
+        output_path=output_path,
+        run_id=run_id,
+        model_name=model_name
+    )
+    
+    # Check completion status for all requested tasks
+    completion_status = completion_checker.get_completed_tasks(tasks)
+    completion_checker.log_completion_summary(completion_status)
+    
+    # Filter out completed tasks
+    pending_tasks = [task for task, completed in completion_status.items() if not completed]
+    
+    if not pending_tasks:
+        logger.info("All tasks are already completed! Nothing to run.")
+        # Return early with a success result
+        return {
+            "model_name": model_name,
+            "run_id": run_id,
+            "status": "all_tasks_completed",
+            "completed_tasks": tasks,
+            "message": "All tasks were already completed in previous run"
+        }
+    
+    logger.info(f"Running {len(pending_tasks)} pending tasks: {pending_tasks}")
+    
     # Step 0: Fetch generation config from model repository
     generation_config = fetch_generation_config(
         model_name=model_name,
@@ -295,10 +323,23 @@ def benchmark_pipeline(
     if generation_config:
         save_generation_config(generation_config, model_output_path, model_name)
     
-    # Step 3: Run evaluation tasks
+    # Step 3: Run evaluation tasks (only pending ones)
     task_results = {}
     
-    if "spanish" in tasks:
+    # Load results from already completed tasks
+    completed_tasks = [task for task, completed in completion_status.items() if completed]
+    for task in completed_tasks:
+        logger.info(f"Loading results from previously completed task: {task}")
+        # Create a placeholder result for completed tasks
+        task_results[task] = {
+            "model_name": model_name,
+            "task": task,
+            "status": "previously_completed",
+            "output_path": f"{model_output_path}/{task}",
+            "message": f"Task {task} was completed in a previous run"
+        }
+    
+    if "spanish" in pending_tasks:
         logger.info("Running Spanish language evaluation...")
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
@@ -320,7 +361,7 @@ def benchmark_pipeline(
         )
         task_results["spanish"] = spanish_results
     
-    if "portuguese" in tasks:
+    if "portuguese" in pending_tasks:
         logger.info("Running Portuguese language evaluation...")
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
@@ -342,7 +383,7 @@ def benchmark_pipeline(
         )
         task_results["portuguese"] = portuguese_results
     
-    if "translation" in tasks:
+    if "translation" in pending_tasks:
         logger.info("Running translation language evaluation...")
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
@@ -364,7 +405,7 @@ def benchmark_pipeline(
         )
         task_results["translation"] = translation_results
     
-    if "structured_extraction" in tasks:
+    if "structured_extraction" in pending_tasks:
         logger.info("Running structured data extraction evaluation...")
         structured_task_config = config_manager.get_task_config("structured_extraction", task_defaults_overrides)
         
@@ -391,6 +432,19 @@ def benchmark_pipeline(
     
     # Step 5: Stop vLLM server (cleanup)
     cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
+    
+    # Log final completion summary
+    newly_completed = [task for task in pending_tasks if task in task_results]
+    total_completed = len(completed_tasks) + len(newly_completed)
+    
+    logger.info("=" * 60)
+    logger.info("BENCHMARK PIPELINE COMPLETION SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Total tasks requested: {len(tasks)}")
+    logger.info(f"Previously completed: {len(completed_tasks)}")
+    logger.info(f"Newly completed: {len(newly_completed)}")
+    logger.info(f"Total completed: {total_completed}")
+    logger.info("=" * 60)
     
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result

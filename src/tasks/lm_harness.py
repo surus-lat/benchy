@@ -6,6 +6,7 @@ import logging
 from typing import Dict, Any, Optional
 from prefect import task
 from ..generation_config import format_generation_params_for_lm_eval
+from ..task_completion_checker import write_task_done_file
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +305,9 @@ def _run_evaluation(
             file_logger.info(f"Output saved to: {task_output_path}")
         except (RuntimeError, OSError):
             pass
+        
+        # Write done file to mark task completion
+        write_task_done_file(task_output_path)
         
         return {
             "model_name": model_name,
