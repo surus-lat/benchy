@@ -30,6 +30,60 @@ class VLLMInterface:
             base_url=self.config["base_url"],
             api_key=self.config["api_key"],
         )
+        
+        # Track if this is a known problematic model for cleaner logging
+        known_chat_template_issues = [
+            "ByteDance-Seed/Seed-X-Instruct-7B",
+            "ByteDance-Seed/Seed-X-PPO-7B"
+        ]
+        self.is_problematic_model = any(model in self.model_name for model in known_chat_template_issues)
+
+    def _extract_json_from_output(self, raw_output: str) -> str:
+        """Extract JSON from model output, handling various formats.
+        
+        Args:
+            raw_output: Raw text output from the model
+            
+        Returns:
+            Cleaned JSON string ready for parsing
+        """
+        import re
+        
+        # Remove leading/trailing whitespace
+        text = raw_output.strip()
+        
+        # Try to find JSON within markdown code blocks
+        # Look for ```json ... ``` or ``` ... ``` patterns
+        json_patterns = [
+            r'```json\s*\n(.*?)\n```',  # ```json ... ```
+            r'```\s*\n(.*?)\n```',      # ``` ... ```
+            r'```json(.*?)```',         # ```json...``` (no newlines)
+            r'```(.*?)```',             # ```...``` (no newlines)
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
+            if matches:
+                # Take the first match and clean it
+                json_candidate = matches[0].strip()
+                # Remove any remaining markdown artifacts
+                json_candidate = re.sub(r'^```.*?\n?', '', json_candidate)
+                json_candidate = re.sub(r'\n?```$', '', json_candidate)
+                return json_candidate.strip()
+        
+        # If no code blocks found, look for JSON-like content
+        # Find the first { and last } that might contain JSON
+        first_brace = text.find('{')
+        last_brace = text.rfind('}')
+        
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            json_candidate = text[first_brace:last_brace + 1]
+            # Basic validation - check if it looks like JSON
+            if json_candidate.count('{') == json_candidate.count('}'):
+                return json_candidate
+        
+        # If all else fails, return the original text
+        return text
 
     async def _generate_single(
         self,
@@ -55,36 +109,117 @@ class VLLMInterface:
             "error": None,
         }
 
+        # Use the flag set in __init__
+        use_completions_fallback = self.is_problematic_model
+        
         for attempt in range(self.config["max_retries"]):
             try:
-                response = await self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    extra_body={
-                        "guided_json": schema,
-                    },
-                    temperature=self.config["temperature"],
-                    max_tokens=self.config["max_tokens"],
-                    timeout=self.config["timeout"],
-                )
+                # For models with known chat template issues, try completions API first
+                if use_completions_fallback and attempt == 0:
+                    logger.info(f"[{sample_id}] Using completions API fallback for model with known chat template issues")
+                    combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+                    
+                    response = await self.client.completions.create(
+                        model=self.model_name,
+                        prompt=combined_prompt,
+                        temperature=self.config["temperature"],
+                        max_tokens=self.config["max_tokens"],
+                        timeout=self.config["timeout"],
+                    )
 
-                raw_output = response.choices[0].message.content
-                result["raw"] = raw_output
+                    raw_output = response.choices[0].text
+                    result["raw"] = raw_output
 
-                # Parse JSON output
-                try:
-                    result["output"] = json.loads(raw_output)
-                except json.JSONDecodeError as e:
-                    logger.debug(f"[{sample_id}] Failed to parse JSON output: {e}")
-                    result["error"] = f"JSON parse error: {e}"
+                    # Parse JSON output with filtering
+                    try:
+                        # Clean the output by removing markdown code blocks and extracting JSON
+                        cleaned_output = self._extract_json_from_output(raw_output)
+                        result["output"] = json.loads(cleaned_output)
+                        logger.info(f"[{sample_id}] ✓ Completions API successful - JSON parsed")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"[{sample_id}] ⚠️ Completions API successful but JSON parse failed: {e}")
+                        logger.info(f"[{sample_id}] Raw output (first 200 chars): {raw_output[:200]}...")
+                        result["error"] = f"JSON parse error: {e}"
 
-                return result
+                    return result
+                else:
+                    # Try chat completions (preferred method with guided JSON)
+                    response = await self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        extra_body={
+                            "guided_json": schema,
+                        },
+                        temperature=self.config["temperature"],
+                        max_tokens=self.config["max_tokens"],
+                        timeout=self.config["timeout"],
+                    )
+
+                    raw_output = response.choices[0].message.content
+                    result["raw"] = raw_output
+
+                    # Parse JSON output with filtering
+                    try:
+                        # Clean the output by removing markdown code blocks and extracting JSON
+                        cleaned_output = self._extract_json_from_output(raw_output)
+                        result["output"] = json.loads(cleaned_output)
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"[{sample_id}] Failed to parse JSON output: {e}")
+                        result["error"] = f"JSON parse error: {e}"
+
+                    return result
 
             except Exception as e:
+                error_str = str(e)
                 logger.debug(f"[{sample_id}] Attempt {attempt + 1} failed: {e}")
+                
+                # Check if this is a chat template error or HTTP 400 error - try completions API as fallback
+                is_chat_template_error = (
+                    "chat template" in error_str.lower() and "not allowed" in error_str.lower()
+                ) or (
+                    "400" in error_str and "bad request" in error_str.lower()
+                ) or (
+                    hasattr(e, 'response') and hasattr(e.response, 'status_code') and e.response.status_code == 400
+                )
+                
+                if is_chat_template_error:
+                    logger.info(f"[{sample_id}] Chat template error detected, trying completions API fallback...")
+                    try:
+                        # Fallback to completions API (no chat template required)
+                        # Combine system and user prompts into a single prompt
+                        combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+                        
+                        response = await self.client.completions.create(
+                            model=self.model_name,
+                            prompt=combined_prompt,
+                            temperature=self.config["temperature"],
+                            max_tokens=self.config["max_tokens"],
+                            timeout=self.config["timeout"],
+                        )
+
+                        raw_output = response.choices[0].text
+                        result["raw"] = raw_output
+
+                        # Parse JSON output with filtering
+                        try:
+                            # Clean the output by removing markdown code blocks and extracting JSON
+                            cleaned_output = self._extract_json_from_output(raw_output)
+                            result["output"] = json.loads(cleaned_output)
+                            logger.info(f"[{sample_id}] ✓ Fallback to completions API successful - JSON parsed")
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"[{sample_id}] ⚠️ Fallback successful but JSON parse failed: {e}")
+                            logger.info(f"[{sample_id}] Raw output (first 200 chars): {raw_output[:200]}...")
+                            result["error"] = f"JSON parse error (fallback): {e}"
+
+                        return result
+                        
+                    except Exception as fallback_e:
+                        logger.warning(f"[{sample_id}] Fallback to completions API also failed: {fallback_e}")
+                        # Continue to normal retry logic below
+                
                 if attempt == self.config["max_retries"] - 1:
                     logger.warning(f"[{sample_id}] All {self.config['max_retries']} attempts failed: {e}")
                     result["error"] = str(e)
@@ -122,8 +257,12 @@ class VLLMInterface:
         # Execute all requests concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Handle any exceptions that occurred
+        # Handle any exceptions that occurred and provide summary
         processed_results = []
+        successful = 0
+        json_parse_errors = 0
+        other_errors = 0
+        
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Request {requests[i]['sample_id']} failed with exception: {result}")
@@ -132,8 +271,19 @@ class VLLMInterface:
                     "raw": None,
                     "error": str(result),
                 })
+                other_errors += 1
             else:
                 processed_results.append(result)
+                if result.get("output") is not None:
+                    successful += 1
+                elif result.get("error") and "JSON parse error" in result.get("error", ""):
+                    json_parse_errors += 1
+                else:
+                    other_errors += 1
+        
+        # Log batch summary
+        total = len(requests)
+        logger.info(f"📊 Batch completed: {successful}/{total} successful, {json_parse_errors} JSON parse errors, {other_errors} other errors")
         
         return processed_results
 
@@ -147,6 +297,12 @@ class VLLMInterface:
         Returns:
             True if connection successful, False otherwise
         """
+        # Log model-specific information
+        if self.is_problematic_model:
+            logger.info(f"🔧 Using completions API fallback for model: {self.model_name}")
+        else:
+            logger.info(f"🚀 Using chat completions API for model: {self.model_name}")
+            
         for attempt in range(max_retries):
             try:
                 logger.info(f"Testing connection to vLLM server (attempt {attempt + 1}/{max_retries})...")

@@ -46,6 +46,47 @@ def load_task_config(task_name: str) -> Dict:
     
     return {}
 
+def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
+    """Extract model information from run_config.yaml file."""
+    config_file = model_dir / "run_config.yaml"
+    
+    if not config_file.exists():
+        print(f"    Warning: run_config.yaml not found in {model_dir}")
+        return {
+            "model_name": model_dir.name,
+            "publisher": "unknown",
+            "full_model_name": model_dir.name
+        }
+    
+    try:
+        with open(config_file, 'r') as f:
+            config_data = yaml.safe_load(f)
+        
+        # Extract model name from config
+        full_model_name = config_data.get("model", {}).get("name", model_dir.name)
+        
+        # Extract publisher and model name from full model name
+        if "/" in full_model_name:
+            publisher = full_model_name.split("/")[0]
+            model_name = full_model_name.split("/")[1]
+        else:
+            publisher = "unknown"
+            model_name = full_model_name
+        
+        return {
+            "model_name": model_name,
+            "publisher": publisher,
+            "full_model_name": full_model_name
+        }
+        
+    except Exception as e:
+        print(f"    Warning: Error reading run_config.yaml from {model_dir}: {e}")
+        return {
+            "model_name": model_dir.name,
+            "publisher": "unknown",
+            "full_model_name": model_dir.name
+        }
+
 def extract_metric_from_task_data(task_data: Dict, task_name: str = None, normalize_tasks: list = None) -> tuple[Optional[str], Optional[float], Optional[float]]:
     """Extract main metric, score, and stderr from task data."""
     main_metric = None
@@ -404,13 +445,15 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
         # Extract metrics from structured extraction format
         metrics = metrics_data.get("metrics", {})
         
-        # Get composite score stats (main metric for leaderboard)
+        # Get EQS as main metric for leaderboard (better than composite score)
+        eqs = metrics.get("extraction_quality_score", 0.0)
+        
+        # Get composite score stats for reference
         composite_stats = metrics.get("composite_score_stats", {})
         composite_mean = composite_stats.get("mean", 0.0)
         composite_stdev = composite_stats.get("stdev", 0.0)
         
         # Also get other key metrics
-        eqs = metrics.get("extraction_quality_score", 0.0)
         schema_validity = metrics.get("schema_validity_rate", 0.0)
         f1_partial = metrics.get("field_f1_partial", 0.0)
         hallucination_rate = metrics.get("hallucination_rate", 0.0)
@@ -425,8 +468,9 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
             summaries_dir = publish_dir / "summaries"
             summaries_dir.mkdir(parents=True, exist_ok=True)
             
-            # Copy report with model name
-            report_dest = summaries_dir / f"{model_name}_structured_extraction_report.txt"
+            # Copy report with model name (sanitize model name for filesystem)
+            safe_model_name = model_name.replace("/", "_").replace("\\", "_")
+            report_dest = summaries_dir / f"{safe_model_name}_structured_extraction_report.txt"
             shutil.copy2(report_file, report_dest)
             print(f"    ✓ Report copied to {report_dest.name}")
         
@@ -455,15 +499,21 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
                 "stderr": 0.0,
                 "metric": "f1",
                 "alias": "field_f1_partial"
+            },
+            "hallucination_rate": {
+                "score": hallucination_rate,
+                "stderr": 0.0,
+                "metric": "hallucination_rate",
+                "alias": "hallucination_rate"
             }
         }
         
-        # Build category scores (use composite score as main category score)
+        # Build category scores (use EQS as main category score)
         category_scores = {
             "structured_extraction": {
-                "score": composite_mean,
-                "stderr": composite_stdev,
-                "metric": "composite_mean",
+                "score": eqs,
+                "stderr": 0.0,  # EQS doesn't have stderr in current format
+                "metric": "eqs",
                 "alias": "structured_extraction"
             }
         }
@@ -473,13 +523,14 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
             "task_scores": task_scores,
             "category_scores": category_scores,
             "top_level_scores": category_scores,
-            "overall_score": composite_mean,
+            "overall_score": eqs,  # Use EQS as overall score
             "evaluation_time": metrics_data.get("timestamp", "unknown")
         }
         
         print(f"    ✓ {task_name} results processed from {metrics_file.name}")
+        print(f"    ✓ EQS (Primary): {eqs:.4f}")
+        print(f"    ✓ EQS Components: Validity={schema_validity:.2%}, F1={f1_partial:.4f}, Hallucination={hallucination_rate:.2%}")
         print(f"    ✓ Composite Score: {composite_mean:.4f} ± {composite_stdev:.4f}")
-        print(f"    ✓ EQS: {eqs:.4f}, F1: {f1_partial:.4f}, Validity: {schema_validity:.2%}")
         
         return result
         
@@ -516,6 +567,14 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
         if config is None:
             config = load_config()
         
+        # Extract model information from config file
+        model_info = extract_model_info_from_config(model_dir)
+        config_model_name = model_info["model_name"]
+        publisher = model_info["publisher"]
+        full_model_name = model_info["full_model_name"]
+        
+        print(f"    Model info from config: {config_model_name} (publisher: {publisher})")
+        
         # Get leaderboard configuration
         leaderboard_config = config.get("leaderboard", {})
         main_categories = leaderboard_config.get("overall_score_categories", ["latam_es", "latam_pr", "translation"])
@@ -536,22 +595,13 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
             processor_func = get_task_processor(processor_type)
             
             # Process the task
-            task_scores = processor_func(model_dir, model_name, task_config_with_name)
+            task_scores = processor_func(model_dir, config_model_name, task_config_with_name)
             if task_scores:
                 all_scores[task_name] = task_scores
         
         if not all_scores:
             print(f"  Warning: No valid results found for {model_name}")
             return None
-        
-        # Determine provider from model name
-        provider = "unknown"
-        if "google" in model_name.lower():
-            provider = "google"
-        elif "meta" in model_name.lower() or "llama" in model_name.lower():
-            provider = "meta-llama"
-        elif "qwen" in model_name.lower():
-            provider = "qwen"
         
         # Generate overall translation score if none exists
         if "translation" in all_scores:
@@ -592,8 +642,9 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
         
         # Combine all scores
         combined_scores = {
-            "model_name": model_name,
-            "provider": provider,
+            "model_name": config_model_name,
+            "publisher": publisher,
+            "full_model_name": full_model_name,
             "categories": all_scores,
             "overall_latam_score": overall_latam_score
         }

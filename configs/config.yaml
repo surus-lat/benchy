@@ -82,7 +82,7 @@ leaderboard:
   
   # Normalize scores to 0-1 range (divide by 100) for specific tasks
   normalize_scores:
-    #- "translation"  # Normalize translation scores (CHRF from 0-100 to 0-1)
+    - "translation"  # Normalize translation scores (CHRF from 0-100 to 0-1)
   
   # Task definitions for modular processing
   tasks:

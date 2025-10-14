@@ -151,15 +151,18 @@ class BenchmarkRunner:
                 results["per_sample_metrics"].append(metrics)
                 
                 if log_samples:
-                    results["samples"].append({
+                    # Store both parsed output and raw text for debugging
+                    sample_data = {
                         "id": sample["id"],
                         "title": sample["title"],
                         "topic": sample["topic"],
                         "prediction": output["output"],
+                        "raw_prediction": output["raw"],  # Always store the raw text
                         "expected": sample["expected"],
                         "metrics": metrics,
                         "error": output["error"],
-                    })
+                    }
+                    results["samples"].append(sample_data)
                 
                 completed_ids.append(sample["id"])
             

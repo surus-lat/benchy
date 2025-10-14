@@ -77,14 +77,16 @@ def create_leaderboard_table(summaries: List[Dict], config: Dict = None) -> List
     
     for model_data in summaries:
         model_name = model_data["model_name"]
-        provider = model_data["provider"]
+        publisher = model_data.get("publisher", "unknown")
+        full_model_name = model_data.get("full_model_name", model_name)
         categories = model_data.get("categories", {})
         overall_latam_score = model_data.get("overall_latam_score")
         
         # Initialize the row with basic info
         row = {
             "model_name": model_name,
-            "provider": provider,
+            "publisher": publisher,
+            "full_model_name": full_model_name,
             "overall_latam_score": round(overall_latam_score, 4) if overall_latam_score is not None else None
         }
         
