@@ -201,7 +201,7 @@ def main():
     
     print(f"\n✨ Ready for upload to Hugging Face dataset!")
     print(f"   Dataset: {config['datasets']['results']}")
-    print(f"   To upload: python -m src.leaderboard.publish --path ../latamboard_results/publish")
+    print(f"   To upload: python -m src.leaderboard.publish --path {publish_dir}")
     
     return True
 

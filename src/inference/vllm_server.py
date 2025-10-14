@@ -207,6 +207,10 @@ def start_vllm_server(
     # Add PyTorch CUDA memory management optimization
     env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     
+    # Reduce vLLM server logging verbosity
+    env["VLLM_LOGGING_LEVEL"] = "WARNING"  # Only show warnings and errors
+    env["VLLM_LOGGER_LEVEL"] = "WARNING"   # Alternative env var name
+    
     cmd_str = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd_str}")
     try:
