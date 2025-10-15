@@ -1,7 +1,7 @@
 [project]
 name = "benchy"
 version = "0.1.0"
-description = "ZenML-powered ML model benchmarking system"
+description = "LATAMBoard benchmarking suite"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
