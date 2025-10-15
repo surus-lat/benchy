@@ -156,7 +156,14 @@ def benchmark_pipeline(
     vllm_version: Optional[str] = None,
     multimodal: bool = True,
     max_num_seqs: Optional[int] = None,
-    max_num_batched_tokens: Optional[int] = None
+    max_num_batched_tokens: Optional[int] = None,
+    # New parameters for better model compatibility
+    trust_remote_code: bool = True,
+    tokenizer_mode: Optional[str] = None,
+    config_format: Optional[str] = None,
+    load_format: Optional[str] = None,
+    tool_call_parser: Optional[str] = None,
+    enable_auto_tool_choice: bool = False
 ) -> Dict[str, Any]:
     """
     Complete vLLM-based benchmarking pipeline.
@@ -306,7 +313,13 @@ def benchmark_pipeline(
         vllm_version=vllm_version,
         multimodal=multimodal,
         max_num_seqs=max_num_seqs,
-        max_num_batched_tokens=max_num_batched_tokens
+        max_num_batched_tokens=max_num_batched_tokens,
+        trust_remote_code=trust_remote_code,
+        tokenizer_mode=tokenizer_mode,
+        config_format=config_format,
+        load_format=load_format,
+        tool_call_parser=tool_call_parser,
+        enable_auto_tool_choice=enable_auto_tool_choice
     )
         
     # Step 2: Test vLLM API
@@ -470,7 +483,14 @@ def test_vllm_server(
     vllm_version: Optional[str] = None,
     multimodal: bool = True,
     max_num_seqs: Optional[int] = None,
-    max_num_batched_tokens: Optional[int] = None
+    max_num_batched_tokens: Optional[int] = None,
+    # New parameters for better model compatibility
+    trust_remote_code: bool = True,
+    tokenizer_mode: Optional[str] = None,
+    config_format: Optional[str] = None,
+    load_format: Optional[str] = None,
+    tool_call_parser: Optional[str] = None,
+    enable_auto_tool_choice: bool = False
 ) -> Dict[str, Any]:
     """
     Test vLLM server functionality without running full evaluation.
@@ -563,7 +583,13 @@ def test_vllm_server(
         vllm_version=vllm_version,
         multimodal=multimodal,
         max_num_seqs=max_num_seqs,
-        max_num_batched_tokens=max_num_batched_tokens
+        max_num_batched_tokens=max_num_batched_tokens,
+        trust_remote_code=trust_remote_code,
+        tokenizer_mode=tokenizer_mode,
+        config_format=config_format,
+        load_format=load_format,
+        tool_call_parser=tool_call_parser,
+        enable_auto_tool_choice=enable_auto_tool_choice
     )
         
     # Step 2: Test vLLM API
