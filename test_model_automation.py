@@ -31,11 +31,11 @@ from typing import Dict, List, Optional, Tuple
 # Setup logging
 def setup_logging():
     """Setup logging for the automation script."""
-    log_dir = Path("logs")
+    log_dir = Path("logs").joinpath("model_testing")
     log_dir.mkdir(exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"model_testing_{timestamp}.log"
+    log_file = log_dir.joinpath(f"model_testing_{timestamp}.log")
     
     logging.basicConfig(
         level=logging.INFO,
@@ -306,6 +306,12 @@ class ModelTester:
         
         # Add trust_remote_code=True by default
         params['trust_remote_code'] = True
+        
+        # Check if model is multimodal and disable multimodal features
+        is_multimodal_model = self.is_multimodal(model_name)
+        if is_multimodal_model:
+            params['limit_mm_per_prompt'] = '{"images": 0, "audios": 0}'
+            self.logger.info(f"🔧 Disabled multimodal features for {model_name} (images=0, audios=0)")
         
         # Check for Mistral models and add special parameters
         model_type = config.get('model_type', '').lower()
