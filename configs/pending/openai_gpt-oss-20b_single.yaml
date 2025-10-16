@@ -1,0 +1,21 @@
+model:
+  name: openai/gpt-oss-20b
+vllm:
+  provider_config: vllm_single_card
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.95
+    port: 20502
+    trust_remote_code: true
+task_defaults:
+  log_samples: true
+  cuda_devices: '2'
+tasks:
+- latam_board
+metadata:
+  max_context_length: 131072
+  is_multimodal: false
+  model_type: gpt_oss
+  detected_from_config: true
+  generated_at: '2025-10-15T16:02:09.673154'
+  gpu_type: single

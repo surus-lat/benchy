@@ -1,0 +1,22 @@
+model:
+  name: microsoft/Phi-3-medium-4k-instruct
+vllm:
+  provider_config: vllm_two_cards
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.95
+    port: 20502
+    trust_remote_code: true
+    max_model_len: 4096
+task_defaults:
+  log_samples: true
+  cuda_devices: '1'
+tasks:
+- latam_board
+metadata:
+  max_context_length: 4096
+  is_multimodal: false
+  model_type: phi3
+  detected_from_config: true
+  generated_at: '2025-10-15T17:43:21.415070'
+  gpu_type: two
