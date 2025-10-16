@@ -167,7 +167,7 @@ class BenchmarkRunner:
                 completed_ids.append(sample["id"])
             
             # Checkpoint
-            if not no_resume and len(completed_ids) % 50 <= self.batch_size:
+            if not no_resume and len(completed_ids) > 0 and len(completed_ids) % 50 == 0:
                 self._save_checkpoint(checkpoint_path, completed_ids, config_hash)
         
         # Aggregate

@@ -52,7 +52,7 @@ class GPUConfigManager:
                 logger.warning(f"Some specified GPUs may not be available: {list(unavailable_gpus)}")
                 logger.info(f"Available GPUs: {available_gpus}")
         
-        logger.info(f"GPU configuration validated successfully")
+        logger.info("GPU configuration validated successfully")
         logger.info(f"vLLM will use GPUs: {self.vllm_devices}")
         logger.info(f"Tasks will use GPUs: {self.task_devices if self.task_devices else 'CPU only'}")
     

@@ -19,6 +19,6 @@ task_defaults:
   cuda_devices: "2"
 
 tasks:
-  - "structured_extraction"
+  - "latam_board"
 
 # Remember to use --limit 10 to test your model!

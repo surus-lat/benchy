@@ -39,6 +39,8 @@ async def main_async(args):
     try:
         # Load config
         config = load_config(args.config)
+        # Ensure output section exists
+        config.setdefault("output", {})
         if args.log_samples:
             config["output"]["log_samples"] = True
         
@@ -51,7 +53,7 @@ async def main_async(args):
         )
         
         # Save results
-        output_dir = Path(config["output"]["results_dir"])
+        output_dir = Path(config["output"].get("results_dir", "./results"))
         save_results(results, output_dir, args.model, args.log_samples, config)
         
         logger.info("Benchmark completed successfully!")

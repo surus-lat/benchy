@@ -104,6 +104,9 @@ def write_task_done_file(task_output_path: str) -> None:
     Args:
         task_output_path: Path to the task output directory
     """
+    # Ensure directory exists
+    Path(task_output_path).mkdir(parents=True, exist_ok=True)
+    
     done_file = f"{task_output_path}/.done"
     with open(done_file, 'w') as f:
         f.write("")  # Empty file
