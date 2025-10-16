@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Optional
 
 from datasets import load_dataset
 from jsonschema import validate, ValidationError
@@ -20,7 +20,7 @@ def download_and_preprocess_dataset(
     cache_dir: str = "./cache",
     split: str = "train",
     max_input_chars: int = 20000,
-    process_sample_fn: Callable[[Dict], Dict[str, Any]] = None,
+    process_sample_fn: Optional[Callable[[Dict[str, Any], int], Dict[str, Any]]] = None,
 ) -> Dict[str, int]:
     """Download and preprocess a HuggingFace dataset.
     

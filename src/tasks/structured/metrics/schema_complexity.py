@@ -66,11 +66,19 @@ def compute_schema_complexity(schema: Dict[str, Any]) -> Dict[str, Any]:
                 
                 # Recursively analyze array items if they're objects
                 items_schema = field_schema.get('items', {})
-                if items_schema.get('type') == 'object':
+                if isinstance(items_schema, dict) and items_schema.get('type') == 'object':
                     features['has_nested_objects'] = True
                     items_props = items_schema.get('properties', {})
                     items_required = set(items_schema.get('required', []))
                     field_count += analyze_properties(items_props, items_required, depth + 1)
+                elif isinstance(items_schema, list):
+                    # Handle list of schemas
+                    for item in items_schema:
+                        if isinstance(item, dict) and item.get('type') == 'object':
+                            features['has_nested_objects'] = True
+                            items_props = item.get('properties', {})
+                            items_required = set(item.get('required', []))
+                            field_count += analyze_properties(items_props, items_required, depth + 1)
             
             # Check for nested objects
             elif field_type == 'object':

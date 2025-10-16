@@ -48,8 +48,8 @@ task_groups:
   latam_board:
     description: "Complete LATAM evaluation suite"
     tasks:
-      #- "spanish"
-      #- "portuguese" 
+      - "spanish"
+      - "portuguese" 
       - "translation"
       - "structured_extraction"
   

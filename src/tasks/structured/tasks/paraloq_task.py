@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Iterator, List
+from typing import Dict, Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class ParaloqTask:
         
         logger.info(f"Loaded {len(self.dataset)} samples")
 
-    def get_samples(self, limit: int = None) -> Iterator[Dict]:
+    def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
         """Iterate over dataset samples.
 
         Args:
