@@ -20,6 +20,7 @@ from prefect import serve
 from src.logging_utils import setup_file_logging
 from src.config_manager import ConfigManager
 from src.gpu_config import load_gpu_config
+from src.run_id_manager import generate_run_id, get_run_paths, setup_run_directories, get_prefect_flow_name
 import logging
 
 
@@ -196,11 +197,20 @@ def main():
     gpu_summary = gpu_manager.get_config_summary()
     logger.info(f"GPU Configuration: {gpu_summary}")
     
-    # Setup file logging using centralized config
-    log_dir = central_config['logging']['log_dir']
+    # Generate run ID using centralized logic
+    run_id = generate_run_id(
+        custom_run_id=args.run_id,
+        is_test=args.test,
+        is_limited=args.limit is not None
+    )
+    logger.info(f"Generated run ID: {run_id}")
     
-    # Initialize logging system
-    log_setup = setup_file_logging(config, log_dir)
+    # Get standardized paths for this run
+    run_paths = get_run_paths(run_id, central_config['paths']['benchmark_outputs'], central_config['logging']['log_dir'])
+    setup_run_directories(run_paths)
+    
+    # Setup file logging using centralized config and run_id
+    log_setup = setup_file_logging(config, central_config['logging']['log_dir'], run_id)
     logger.info(f"File logging enabled - log file: {log_setup.get_log_filepath()}")
     
     # Log complete configuration
@@ -235,9 +245,6 @@ def main():
     if task_defaults_overrides:
         logger.info(f"Final task defaults overrides: {task_defaults_overrides}")
     
-    # Use centralized paths
-    output_path = central_config['paths']['benchmark_outputs']
-    
     logger.info(f"Model: {model_name}")
     tasks_to_run = config.get('tasks', ['spanish', 'portuguese'])
     
@@ -248,12 +255,16 @@ def main():
     
     logger.info(f"Tasks to run: {tasks_to_run}")
     logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
+    logger.info(f"Output path: {run_paths['output_path']}")
+    logger.info(f"Log path: {run_paths['log_path']}")
     
     # Handle flow registration if requested
     if args.register:
         logger.info("Registering flows with Prefect server for dashboard visibility...")
-        # Create a timestamped name for the deployment
-        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        # Set flow names with run_id prefix
+        benchmark_pipeline.name = get_prefect_flow_name("benchmark_pipeline", run_id)
+        test_vllm_server.name = get_prefect_flow_name("test_vllm_server", run_id)
+        
         serve(
             benchmark_pipeline.to_deployment(),
             test_vllm_server.to_deployment(),
@@ -269,7 +280,7 @@ def main():
             logger.info("Running test pipeline (vLLM server test only)")
             result = test_vllm_server(
                 model_name=model_name,
-                run_id=args.run_id,
+                run_id=run_id,
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),
@@ -294,12 +305,12 @@ def main():
             result = benchmark_pipeline(
                 model_name=model_name,
                 tasks=config.get('tasks', ['spanish', 'portuguese']),  # Default to both tasks
-                output_path=output_path,  # Use centralized output path
+                output_path=run_paths['output_path'],  # Use run-specific output path
                 limit=args.limit,  # Use command line limit parameter
                 use_chat_completions=config.get('use_chat_completions', False),  # Default to False
                 task_defaults_overrides=task_defaults_overrides or None,  # Pass task overrides
                 log_setup=log_setup,  # Pass log setup for task config logging
-                run_id=args.run_id,  # Pass run_id for organizing outputs
+                run_id=run_id,  # Pass generated run_id for organizing outputs
                 # vLLM server configuration
                 host=vllm_config.get('host', '0.0.0.0'),
                 port=vllm_config.get('port', 8000),

@@ -10,6 +10,7 @@ from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
 from .task_completion_checker import TaskCompletionChecker
+from .run_id_manager import get_prefect_flow_name
 import atexit
 import os
 import sys
@@ -200,13 +201,7 @@ def benchmark_pipeline(
     """
     logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
     logger.info(f"Tasks to run: {tasks}")
-    
-    # Generate run_id if not provided
-    if run_id is None:
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        logger.info(f"Auto-generated run_id: {run_id}")
-    else:
-        logger.info(f"Using provided run_id: {run_id}")
+    logger.info(f"Using run_id: {run_id}")
     
     # Initialize config manager
     config_manager = ConfigManager()
@@ -500,12 +495,7 @@ def test_vllm_server(
         run_id: Optional run ID for organizing outputs. If not provided, auto-generated.
         # vLLM server configuration parameters...
     """
-    # Generate run_id if not provided
-    if run_id is None:
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        logger.info(f"Auto-generated run_id for test: {run_id}")
-    else:
-        logger.info(f"Using provided run_id for test: {run_id}")
+    logger.info(f"Using run_id for test: {run_id}")
     
     # Write test run configuration (simplified version)
     test_config = {
