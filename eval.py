@@ -304,7 +304,7 @@ def main():
             # Run full benchmark pipeline
             result = benchmark_pipeline(
                 model_name=model_name,
-                tasks=config.get('tasks', ['spanish', 'portuguese']),  # Default to both tasks
+                tasks=tasks_to_run,  # Use expanded task list
                 output_path=run_paths['output_path'],  # Use run-specific output path
                 limit=args.limit,  # Use command line limit parameter
                 use_chat_completions=config.get('use_chat_completions', False),  # Default to False
