@@ -5,13 +5,42 @@ from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
+from .tasks.structured_extraction import run_structured_extraction
 from .config_manager import ConfigManager
+from .generation_config import fetch_generation_config, save_generation_config
+from .gpu_config import load_gpu_config
+from .task_completion_checker import TaskCompletionChecker
 import atexit
 import os
 import sys
 import logging
 import yaml
 import json
+
+
+def load_config(config_path: str = None) -> dict:
+    """Load configuration from YAML file."""
+    # Priority order: 1) Explicit path, 2) Environment variable, 3) Default
+    if config_path is None:
+        config_path = os.environ.get('BENCHY_CONFIG', 'config.yaml')
+    
+    # Check if file exists
+    if not os.path.exists(config_path):
+        available_configs = []
+        if os.path.exists('configs'):
+            available_configs = [f"configs/{f}" for f in os.listdir('configs') if f.endswith('.yaml')]
+        
+        error_msg = f"Configuration file '{config_path}' not found."
+        if available_configs:
+            error_msg += f"\n\nAvailable configurations:\n" + "\n".join(f"  - {cfg}" for cfg in available_configs[:5])
+            if len(available_configs) > 5:
+                error_msg += f"\n  ... and {len(available_configs) - 5} more in configs/"
+        error_msg += f"\n\nTry: python main.py --config <path-to-config.yaml>"
+        
+        raise FileNotFoundError(error_msg)
+    
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +204,55 @@ def benchmark_pipeline(
     # Initialize config manager
     config_manager = ConfigManager()
     
+    # Load GPU configuration from central config
+    central_config = load_config('configs/config.yaml')
+    gpu_manager = load_gpu_config(central_config)
+    
+    # Log GPU configuration
+    gpu_summary = gpu_manager.get_config_summary()
+    logger.info(f"GPU Configuration: {gpu_summary}")
+    
+    # Expand task groups into individual tasks
+    expanded_tasks = config_manager.expand_task_groups(tasks, central_config)
+    logger.info(f"Task expansion: {tasks} -> {expanded_tasks}")
+    
+    # Update tasks with expanded list
+    tasks = expanded_tasks
+    
+    # Check for completed tasks to enable resuming failed runs
+    completion_checker = TaskCompletionChecker(
+        output_path=output_path,
+        run_id=run_id,
+        model_name=model_name
+    )
+    
+    # Check completion status for all requested tasks
+    completion_status = completion_checker.get_completed_tasks(tasks)
+    completion_checker.log_completion_summary(completion_status)
+    
+    # Filter out completed tasks
+    pending_tasks = [task for task, completed in completion_status.items() if not completed]
+    
+    if not pending_tasks:
+        logger.info("All tasks are already completed! Nothing to run.")
+        # Return early with a success result
+        return {
+            "model_name": model_name,
+            "run_id": run_id,
+            "status": "all_tasks_completed",
+            "completed_tasks": tasks,
+            "message": "All tasks were already completed in previous run"
+        }
+    
+    logger.info(f"Running {len(pending_tasks)} pending tasks: {pending_tasks}")
+    
+    # Step 0: Fetch generation config from model repository
+    generation_config = fetch_generation_config(
+        model_name=model_name,
+        hf_cache=hf_cache,
+        hf_token=hf_token
+    )
+    
     # Write complete run configuration
     config_file_path = write_run_config(
         model_name=model_name,
@@ -206,6 +284,10 @@ def benchmark_pipeline(
     )
     
     # Step 1: Start vLLM server
+    # Use GPU configuration from central config, with command line override
+    vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
+    logger.info(f"Starting vLLM server with CUDA devices: {vllm_cuda_devices}")
+    
     server_info = start_vllm_server(
         model_name=model_name,
         host=host,
@@ -219,7 +301,7 @@ def benchmark_pipeline(
         hf_token=hf_token,
         vllm_venv_path=vllm_venv_path,
         startup_timeout=startup_timeout,
-        cuda_devices=cuda_devices,
+        cuda_devices=vllm_cuda_devices,
         kv_cache_memory=kv_cache_memory,
         vllm_version=vllm_version,
         multimodal=multimodal,
@@ -237,14 +319,33 @@ def benchmark_pipeline(
     model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
     os.makedirs(model_output_path, exist_ok=True)
     
-    # Step 3: Run evaluation tasks
+    # Save generation config to output directory
+    if generation_config:
+        save_generation_config(generation_config, model_output_path, model_name)
+    
+    # Step 3: Run evaluation tasks (only pending ones)
     task_results = {}
     
-    if "spanish" in tasks:
+    # Load results from already completed tasks
+    completed_tasks = [task for task, completed in completion_status.items() if completed]
+    for task in completed_tasks:
+        logger.info(f"Loading results from previously completed task: {task}")
+        # Create a placeholder result for completed tasks
+        task_results[task] = {
+            "model_name": model_name,
+            "task": task,
+            "status": "previously_completed",
+            "output_path": f"{model_output_path}/{task}",
+            "message": f"Task {task} was completed in a previous run"
+        }
+    
+    if "spanish" in pending_tasks:
         logger.info("Running Spanish language evaluation...")
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         spanish_task_config['use_chat_completions'] = use_chat_completions
+        # Add generation config
+        spanish_task_config['generation_config'] = generation_config
         
         # Log task configuration
         if log_setup:
@@ -256,15 +357,17 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=spanish_task_config,
             limit=limit,
-            cuda_devices=cuda_devices
+            cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["spanish"] = spanish_results
     
-    if "portuguese" in tasks:
+    if "portuguese" in pending_tasks:
         logger.info("Running Portuguese language evaluation...")
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         portuguese_task_config['use_chat_completions'] = use_chat_completions
+        # Add generation config
+        portuguese_task_config['generation_config'] = generation_config
         
         # Log task configuration
         if log_setup:
@@ -276,15 +379,17 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=portuguese_task_config,
             limit=limit,
-            cuda_devices=cuda_devices
+            cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["portuguese"] = portuguese_results
     
-    if "translation" in tasks:
+    if "translation" in pending_tasks:
         logger.info("Running translation language evaluation...")
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
         # Merge use_chat_completions from model config into task config
         translation_task_config['use_chat_completions'] = use_chat_completions
+        # Add generation config
+        translation_task_config['generation_config'] = generation_config
         
         # Log task configuration
         if log_setup:
@@ -296,9 +401,27 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=translation_task_config,
             limit=limit,
-            cuda_devices=cuda_devices
+            cuda_devices=gpu_manager.get_task_cuda_devices()
         )
         task_results["translation"] = translation_results
+    
+    if "structured_extraction" in pending_tasks:
+        logger.info("Running structured data extraction evaluation...")
+        structured_task_config = config_manager.get_task_config("structured_extraction", task_defaults_overrides)
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("structured_extraction", structured_task_config)
+        structured_results = run_structured_extraction(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=structured_task_config,
+            limit=limit,
+            cuda_devices=gpu_manager.get_task_cuda_devices()
+        )
+        task_results["structured_extraction"] = structured_results
             
     # Step 4: Gather results
     gather_result = gather_results(
@@ -309,6 +432,19 @@ def benchmark_pipeline(
     
     # Step 5: Stop vLLM server (cleanup)
     cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
+    
+    # Log final completion summary
+    newly_completed = [task for task in pending_tasks if task in task_results]
+    total_completed = len(completed_tasks) + len(newly_completed)
+    
+    logger.info("=" * 60)
+    logger.info("BENCHMARK PIPELINE COMPLETION SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Total tasks requested: {len(tasks)}")
+    logger.info(f"Previously completed: {len(completed_tasks)}")
+    logger.info(f"Newly completed: {len(newly_completed)}")
+    logger.info(f"Total completed: {total_completed}")
+    logger.info("=" * 60)
     
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result
@@ -395,8 +531,20 @@ def test_vllm_server(
     with open(test_config_path, 'w') as f:
         yaml.dump(test_config, f, default_flow_style=False, sort_keys=False, indent=2)
     logger.info(f"Test configuration written to: {test_config_path}")
+    
+    # Load GPU configuration from central config
+    central_config = load_config('configs/config.yaml')
+    gpu_manager = load_gpu_config(central_config)
+    
+    # Log GPU configuration
+    gpu_summary = gpu_manager.get_config_summary()
+    logger.info(f"GPU Configuration for test: {gpu_summary}")
         
     # Step 1: Start vLLM server
+    # Use GPU configuration from central config, with command line override
+    vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
+    logger.info(f"Starting vLLM test server with CUDA devices: {vllm_cuda_devices}")
+    
     server_info = start_vllm_server(
         model_name=model_name,
         host=host,
@@ -410,7 +558,7 @@ def test_vllm_server(
         hf_token=hf_token,
         vllm_venv_path=vllm_venv_path,
         startup_timeout=startup_timeout,
-        cuda_devices=cuda_devices,
+        cuda_devices=vllm_cuda_devices,
         kv_cache_memory=kv_cache_memory,
         vllm_version=vllm_version,
         multimodal=multimodal,

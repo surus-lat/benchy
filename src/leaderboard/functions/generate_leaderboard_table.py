@@ -31,60 +31,69 @@ def load_all_summaries(summaries_dir: Path) -> List[Dict]:
     else:
         return data
 
-def create_leaderboard_table(summaries: List[Dict]) -> List[Dict]:
-    """Generate the leaderboard table in the expected format."""
+def process_task_scores(row: Dict, task_name: str, task_data: Dict, task_config: Dict) -> None:
+    """Process scores for a specific task based on its configuration."""
+    output_prefix = task_config.get("output_prefix", task_name)
+    category_score_key = task_config.get("category_score_key")
+    exclude_tasks = task_config.get("exclude_tasks", [])
+    
+    # Add category score
+    if category_score_key and category_score_key in task_data.get("category_scores", {}):
+        category_score = task_data["category_scores"][category_score_key]["score"]
+        row[f"{output_prefix}_score"] = round(category_score, 4)
+    
+    # Add individual task scores
+    for individual_task_name, individual_task_data in task_data.get("task_scores", {}).items():
+        if individual_task_name not in exclude_tasks:
+            row[f"{output_prefix}_{individual_task_name}"] = round(individual_task_data["score"], 4)
+    
+    # Process subcategories if defined
+    subcategories = task_config.get("subcategories", [])
+    for subcategory in subcategories:
+        subcategory_name = subcategory["name"]
+        subcategory_prefix = subcategory["prefix"]
+        filter_prefix = subcategory.get("filter_prefix", f"{subcategory_name}_")
+        
+        # Add subcategory score if it exists
+        if subcategory_name in task_data.get("category_scores", {}):
+            subcategory_score = task_data["category_scores"][subcategory_name]["score"]
+            row[f"{subcategory_prefix}_score"] = round(subcategory_score, 4)
+        
+        # Add individual subcategory task scores
+        for individual_task_name, individual_task_data in task_data.get("task_scores", {}).items():
+            if individual_task_name.startswith(filter_prefix):
+                row[f"{subcategory_prefix}_{individual_task_name}"] = round(individual_task_data["score"], 4)
+
+def create_leaderboard_table(summaries: List[Dict], config: Dict = None) -> List[Dict]:
+    """Generate the leaderboard table in the expected format using modular task system."""
+    if config is None:
+        from .parse_model_results import load_config
+        config = load_config()
+    
+    leaderboard_config = config.get("leaderboard", {})
+    task_definitions = leaderboard_config.get("tasks", {})
+    
     leaderboard_data = []
     
     for model_data in summaries:
         model_name = model_data["model_name"]
-        provider = model_data["provider"]
+        publisher = model_data.get("publisher", "unknown")
+        full_model_name = model_data.get("full_model_name", model_name)
         categories = model_data.get("categories", {})
         overall_latam_score = model_data.get("overall_latam_score")
         
         # Initialize the row with basic info
         row = {
             "model_name": model_name,
-            "provider": provider,
+            "publisher": publisher,
+            "full_model_name": full_model_name,
             "overall_latam_score": round(overall_latam_score, 4) if overall_latam_score is not None else None
         }
         
-        # Process Portuguese scores
-        if "portuguese" in categories:
-            portuguese_data = categories["portuguese"]
-            
-            # Get Portuguese category score (latam_pr)
-            portuguese_score = None
-            if "latam_pr" in portuguese_data.get("category_scores", {}):
-                portuguese_score = portuguese_data["category_scores"]["latam_pr"]["score"]
-                row["portuguese_score"] = round(portuguese_score, 4)
-            
-            # Add individual Portuguese task scores
-            for task_name, task_data in portuguese_data.get("task_scores", {}).items():
-                row[f"portuguese_{task_name}"] = round(task_data["score"], 4)
-        
-        # Process Spanish scores
-        if "spanish" in categories:
-            spanish_data = categories["spanish"]
-            
-            # Get Spanish category score (latam_es)
-            spanish_score = None
-            if "latam_es" in spanish_data.get("category_scores", {}):
-                spanish_score = spanish_data["category_scores"]["latam_es"]["score"]
-                row["spanish_score"] = round(spanish_score, 4)
-            
-            # Add individual Spanish task scores
-            for task_name, task_data in spanish_data.get("task_scores", {}).items():
-                row[f"spanish_{task_name}"] = round(task_data["score"], 4)
-            
-            # Add Teleia subcategory scores if they exist
-            if "teleia" in spanish_data.get("category_scores", {}):
-                teleia_score = spanish_data["category_scores"]["teleia"]["score"]
-                row["teleia_score"] = round(teleia_score, 4)
-                
-                # Add individual Teleia task scores
-                for task_name, task_data in spanish_data.get("task_scores", {}).items():
-                    if task_name.startswith("teleia_"):
-                        row[f"teleia_{task_name}"] = round(task_data["score"], 4)
+        # Process each task using modular system
+        for task_name, task_config in task_definitions.items():
+            if task_name in categories:
+                process_task_scores(row, task_name, categories[task_name], task_config)
         
         leaderboard_data.append(row)
     
@@ -110,8 +119,12 @@ def generate_leaderboard_table(publish_dir: str) -> bool:
     
     print(f"Found {len(summaries)} model summaries")
     
+    # Load configuration
+    from .parse_model_results import load_config
+    config = load_config()
+    
     # Generate leaderboard table
-    leaderboard_data = create_leaderboard_table(summaries)
+    leaderboard_data = create_leaderboard_table(summaries, config)
     
     # Save as JSON
     output_file = publish_dir_path / "leaderboard_table.json"

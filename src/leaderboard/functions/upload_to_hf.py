@@ -29,21 +29,23 @@ def upload_to_huggingface(publish_dir: Path, dataset_name: str) -> bool:
         except Exception as e:
             print(f"ℹ️  Repository {dataset_name} already exists or error: {e}")
         
-        # Upload all files in publish directory
+        # Upload all files in publish directory (including subdirectories)
         uploaded_files = []
-        for file_path in publish_dir.glob("*"):
+        for file_path in publish_dir.rglob("*"):
             if file_path.is_file():
+                # Calculate relative path from publish directory
+                relative_path = file_path.relative_to(publish_dir)
                 try:
                     api.upload_file(
                         path_or_fileobj=str(file_path),
-                        path_in_repo=file_path.name,
+                        path_in_repo=str(relative_path),
                         repo_id=dataset_name,
                         repo_type="dataset"
                     )
-                    uploaded_files.append(file_path.name)
-                    print(f"  ✓ Uploaded {file_path.name}")
+                    uploaded_files.append(str(relative_path))
+                    print(f"  ✓ Uploaded {relative_path}")
                 except Exception as e:
-                    print(f"  ✗ Failed to upload {file_path.name}: {e}")
+                    print(f"  ✗ Failed to upload {relative_path}: {e}")
                     return False
         
         print(f"\n🎉 Successfully uploaded {len(uploaded_files)} files to {dataset_name}")
@@ -68,18 +70,19 @@ def upload_to_hf(publish_dir: str, dataset_name: str) -> bool:
         print("❌ Publish directory not found! Run the processing pipeline first.")
         return False
     
-    # Check if files exist
-    files = list(publish_dir_path.glob("*"))
-    if not files:
+    # Check if files exist (including subdirectories)
+    files = list(publish_dir_path.rglob("*"))
+    file_list = [f for f in files if f.is_file()]
+    if not file_list:
         print("❌ No files found in publish directory!")
         return False
     
-    print(f"📄 Found {len(files)} files to upload:")
-    for file in files:
-        if file.is_file():
-            size = file.stat().st_size
-            size_str = f"{size:,} bytes" if size < 1024 else f"{size/1024:.1f} KB"
-            print(f"  - {file.name} ({size_str})")
+    print(f"📄 Found {len(file_list)} files to upload:")
+    for file in file_list:
+        relative_path = file.relative_to(publish_dir_path)
+        size = file.stat().st_size
+        size_str = f"{size:,} bytes" if size < 1024 else f"{size/1024:.1f} KB"
+        print(f"  - {relative_path} ({size_str})")
     
     # Upload files
     success = upload_to_huggingface(publish_dir_path, dataset_name)

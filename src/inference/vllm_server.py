@@ -166,7 +166,8 @@ def start_vllm_server(
         "--port", str(port),
         "-tp", str(tensor_parallel_size),
         "--max-model-len", str(max_model_len),
-        "--gpu-memory-utilization", str(gpu_memory_utilization)
+        "--gpu-memory-utilization", str(gpu_memory_utilization),
+        "--uvicorn-log-level", "warning"
     ]
     
     # Handle version-specific multimodal arguments (only for multimodal models)
@@ -206,6 +207,16 @@ def start_vllm_server(
     
     # Add PyTorch CUDA memory management optimization
     env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+    
+    # Reduce vLLM server logging verbosity
+    env["VLLM_LOGGING_LEVEL"] = "WARNING"  # Only show warnings and errors
+    
+    # Disable nanobind leak checking to prevent shutdown warnings
+    env["NANOBIND_LEAK_CHECK"] = "0"
+    
+    # Additional cleanup environment variables
+    env["PYTHONUNBUFFERED"] = "1"  # Ensure clean output
+    env["CUDA_LAUNCH_BLOCKING"] = "0"  # Disable CUDA blocking for cleaner shutdown
     
     cmd_str = " ".join(cmd_parts)
     logger.info(f"Executing command: {cmd_str}")
@@ -364,12 +375,16 @@ def stop_vllm_server(server_info: Dict[str, Any], upload_result: Dict[str, Any])
     
     try:
         import psutil
+        import signal
         process = psutil.Process(pid)
-        process.terminate()
         
-        # Wait for graceful termination
+        # Try graceful shutdown first
         try:
-            process.wait(timeout=30)
+            # Send SIGTERM for graceful shutdown
+            process.terminate()
+            
+            # Wait for graceful termination
+            process.wait(timeout=15)
             logger.info("✅ vLLM server terminated gracefully")
             try:
                 file_logger.info("vLLM server terminated gracefully")
@@ -377,14 +392,25 @@ def stop_vllm_server(server_info: Dict[str, Any], upload_result: Dict[str, Any])
                 pass
             return {"status": "success", "method": "graceful", "pid": pid}
         except psutil.TimeoutExpired:
-            # Force kill if graceful termination fails
-            process.kill()
-            logger.warning("⚠️ vLLM server force-killed after timeout")
+            # If graceful termination fails, try SIGINT (Ctrl+C equivalent)
             try:
-                file_logger.warning("vLLM server force-killed after timeout")
-            except (RuntimeError, OSError):
-                pass
-            return {"status": "success", "method": "force_kill", "pid": pid}
+                process.send_signal(signal.SIGINT)
+                process.wait(timeout=10)
+                logger.info("✅ vLLM server terminated with SIGINT")
+                try:
+                    file_logger.info("vLLM server terminated with SIGINT")
+                except (RuntimeError, OSError):
+                    pass
+                return {"status": "success", "method": "sigint", "pid": pid}
+            except psutil.TimeoutExpired:
+                # Force kill as last resort
+                process.kill()
+                logger.warning("⚠️ vLLM server force-killed after timeout")
+                try:
+                    file_logger.warning("vLLM server force-killed after timeout")
+                except (RuntimeError, OSError):
+                    pass
+                return {"status": "success", "method": "force_kill", "pid": pid}
             
     except psutil.NoSuchProcess:
         logger.info("vLLM server process already terminated")

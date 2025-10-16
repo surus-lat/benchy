@@ -50,6 +50,19 @@ echo "✅ Root repository setup complete!"
 setup_venv "external/lm-evaluation-harness" "uv pip install -e .[api]" "lm-evaluation-harness"
 setup_venv "external/portuguese-bench" "uv pip install -e \".[anthropic,openai,sentencepiece]\"" "portuguese-bench"
 
+# Download structured extraction dataset
+echo ""
+echo "📊 Setting up structured extraction dataset..."
+DATASET_FILE="src/tasks/structured/.data/paraloq_data.jsonl"
+if [ -f "$DATASET_FILE" ]; then
+    echo "✅ Dataset already exists at $DATASET_FILE"
+else
+    echo "   Downloading paraloq dataset..."
+    source .venv/bin/activate
+    python -c "from src.tasks.structured.download_dataset import download_and_preprocess; download_and_preprocess('src/tasks/structured/.data', 'src/tasks/structured/cache')"
+    echo "✅ Dataset downloaded successfully!"
+fi
+
 echo ""
 echo "🎉 Setup complete!"
 echo ""

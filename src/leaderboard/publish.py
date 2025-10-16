@@ -5,6 +5,7 @@ Upload the contents of the publish directory to Hugging Face dataset.
 
 import os
 import yaml
+import argparse
 from pathlib import Path
 from huggingface_hub import HfApi, create_repo
 from dotenv import load_dotenv
@@ -23,6 +24,26 @@ def load_config(config_path: str = None) -> dict:
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Upload the contents of the publish directory to Hugging Face dataset",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python -m src.leaderboard.publish                    # Upload from config publish_dir
+  python -m src.leaderboard.publish --path custom/publish  # Upload from custom directory
+        """
+    )
+    
+    parser.add_argument(
+        '--path',
+        type=str,
+        help='Custom directory path to upload (overrides config publish_dir path)'
+    )
+    
+    return parser.parse_args()
+
 def load_env_file():
     """Load environment variables from .env file."""
     # Look for .env file in project root
@@ -39,14 +60,23 @@ def load_env_file():
 
 def main():
     """Main function to upload to Hugging Face."""
+    # Parse command line arguments
+    args = parse_args()
+    
     # Load environment variables
     load_env_file()
     
     # Load configuration
     config = load_config()
     
-    # Get paths from config
-    publish_dir = config["paths"]["publish_dir"]
+    # Determine the publish directory path based on custom directory or config
+    if args.path:
+        publish_dir = args.path
+        print(f"🎯 Using custom directory: {publish_dir}")
+    else:
+        publish_dir = config["paths"]["publish_dir"]
+        print(f"📁 Using config directory: {publish_dir}")
+    
     dataset_name = config["datasets"]["results"]
     
     # Check for HF token

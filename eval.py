@@ -19,6 +19,7 @@ from src.pipeline import benchmark_pipeline, test_vllm_server
 from prefect import serve
 from src.logging_utils import setup_file_logging
 from src.config_manager import ConfigManager
+from src.gpu_config import load_gpu_config
 import logging
 
 
@@ -188,6 +189,13 @@ def main():
     # Load centralized config for global settings
     central_config = load_config('configs/config.yaml')
     
+    # Load GPU configuration from central config
+    gpu_manager = load_gpu_config(central_config)
+    
+    # Log GPU configuration
+    gpu_summary = gpu_manager.get_config_summary()
+    logger.info(f"GPU Configuration: {gpu_summary}")
+    
     # Setup file logging using centralized config
     log_dir = central_config['logging']['log_dir']
     
@@ -201,7 +209,9 @@ def main():
     # Extract configuration values
     model_name = config['model']['name']
     vllm_config = config['vllm']
-    cuda_devices = vllm_config.get('cuda_devices', None)
+    
+    # Use GPU configuration from central config, with vLLM config override
+    cuda_devices = vllm_config.get('cuda_devices', gpu_manager.get_vllm_cuda_devices())
     
     # Prepare task defaults overrides
     task_defaults_overrides = {}
@@ -230,6 +240,12 @@ def main():
     
     logger.info(f"Model: {model_name}")
     tasks_to_run = config.get('tasks', ['spanish', 'portuguese'])
+    
+    # Expand task groups into individual tasks
+    expanded_tasks = config_manager.expand_task_groups(tasks_to_run, central_config)
+    logger.info(f"Task expansion: {tasks_to_run} -> {expanded_tasks}")
+    tasks_to_run = expanded_tasks
+    
     logger.info(f"Tasks to run: {tasks_to_run}")
     logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
     

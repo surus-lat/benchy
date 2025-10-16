@@ -7,6 +7,4 @@ vllm:
     kv_cache_memory: 0
 
 tasks:
-  - "spanish"
-  - "portuguese"
-  - "translation"
+  - "latam_board"

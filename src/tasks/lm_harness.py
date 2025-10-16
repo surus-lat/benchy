@@ -5,6 +5,8 @@ import subprocess
 import logging
 from typing import Dict, Any, Optional
 from prefect import task
+from ..generation_config import format_generation_params_for_lm_eval
+from ..task_completion_checker import write_task_done_file
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,7 @@ def _run_evaluation(
     lm_eval_path = task_config['lm_eval_path']
     tokenizer_backend = task_config.get('tokenizer_backend', 'huggingface')
     use_chat_completions = task_config.get('use_chat_completions', False)  # Default to False
+    generation_config = task_config.get('generation_config', None)
     
     # Get defaults from task config
     defaults = task_config.get('defaults', {})
@@ -142,6 +145,8 @@ def _run_evaluation(
         file_logger.info(f"Server URL: {server_url}")
         file_logger.info(f"Batch size: {batch_size}")
         file_logger.info(f"Concurrent requests: {num_concurrent}")
+        if generation_config:
+            file_logger.info(f"Using generation config: {generation_config}")
         if batch_size != "1":
             file_logger.info("Note: vLLM supports batched requests with varying sequence lengths")
         if limit:
@@ -173,6 +178,12 @@ def _run_evaluation(
     else:
         # Use huggingface but with optimizations for CPU-only usage
         model_args_parts.append("tokenizer_backend=huggingface")
+    
+    # Add generation config parameters if available
+    generation_params = format_generation_params_for_lm_eval(generation_config)
+    if generation_params:
+        model_args_parts.append(generation_params)
+        logger.info(f"Added generation config parameters: {generation_params}")
     
     model_args_str = ",".join(model_args_parts)
     
@@ -222,11 +233,20 @@ def _run_evaluation(
         # Activate the lm-eval venv and run command
         venv_cmd = f"source {lm_eval_path}/.venv/bin/activate && {env_vars} {cmd}"
         
-        # Set up CPU-only environment for lm-eval client
+        # Set up environment for lm-eval client based on GPU configuration
         env = os.environ.copy()
-        # Force PyTorch to use CPU only
-        env["CUDA_VISIBLE_DEVICES"] = ""
-        env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+        
+        # Configure CUDA devices based on task configuration
+        if cuda_devices:
+            # Use specified GPU for tasks
+            env["CUDA_VISIBLE_DEVICES"] = cuda_devices
+            env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+            logger.info(f"Tasks will use GPU(s): {cuda_devices}")
+        else:
+            # Use CPU only for tasks (current default behavior)
+            env["CUDA_VISIBLE_DEVICES"] = ""
+            env["PYTORCH_CUDA_ALLOC_CONF"] = ""  # Clear any CUDA memory settings
+            logger.info("Tasks will use CPU only")
         
         # Force multiprocessing and CPU optimization
         env["DISABLE_MULTIPROC"] = "0"  # Ensure multiprocessing is enabled
@@ -285,6 +305,9 @@ def _run_evaluation(
             file_logger.info(f"Output saved to: {task_output_path}")
         except (RuntimeError, OSError):
             pass
+        
+        # Write done file to mark task completion
+        write_task_done_file(task_output_path)
         
         return {
             "model_name": model_name,
