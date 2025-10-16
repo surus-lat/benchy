@@ -32,7 +32,7 @@ gpu_config:
   
   # Evaluation tasks GPU allocation  
   tasks:
-    devices: "1"  # GPU device for evaluation tasks (e.g., "1" or "0")
+    devices: "0"  # GPU device for evaluation tasks (e.g., "1" or "0")
     # Alternative configurations:
     # devices: "0"      # Use GPU 0 for tasks
     # devices: ""       # Use CPU only for tasks (current default)

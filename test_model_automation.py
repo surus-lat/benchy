@@ -63,6 +63,7 @@ class ModelTester:
         self.results = {
             'single_gpu_passed': [],
             'two_gpu_passed': [],
+            'minimal_gpu_passed': [],
             'failed': [],
             'total_tested': 0,
             'start_time': datetime.now().isoformat()
@@ -429,6 +430,14 @@ class ModelTester:
                 if not line or line.startswith('#'):
                     continue
                 
+                # Remove inline comments (everything after #)
+                if '#' in line:
+                    line = line.split('#')[0].strip()
+                
+                # Skip if line is empty after removing comments
+                if not line:
+                    continue
+                
                 # Extract model name from URL or use as-is
                 if line.startswith('https://huggingface.co/'):
                     model_name = line.replace('https://huggingface.co/', '')
@@ -740,6 +749,7 @@ class ModelTester:
             'model_name': model_name,
             'single_gpu_worked': False,
             'two_gpu_worked': False,
+            'minimal_gpu_worked': False,
             'suite_worked': False,
             'config_path': None,
             'gpu_type': None,
@@ -801,12 +811,35 @@ class ModelTester:
             
             return result
         
-        # Step 4: Model failed completely
-        result['error'] = f"Single GPU: {single_error}; Two GPU: {two_error}"
+        # Step 4: Try minimal fallback configuration
+        self.logger.info(f"🔄 Trying minimal fallback config for {model_name} (conservative settings)...")
+        minimal_gpu_config = self.generate_config(model_name, "configs/templates/test-model_minimal.yaml", "minimal")
+        minimal_worked, minimal_error = self.test_model_with_config(model_name, minimal_gpu_config, "minimal GPU")
+        
+        if minimal_worked:
+            result['minimal_gpu_worked'] = True
+            result['gpu_type'] = 'minimal'
+            result['config_path'] = minimal_gpu_config
+            
+            # Test full suite
+            suite_worked, suite_error = self.test_model_suite(model_name, minimal_gpu_config)
+            result['suite_worked'] = suite_worked
+            if not suite_worked:
+                result['error'] = f"Suite failed: {suite_error}"
+            
+            # Clean up other config files
+            for config_path in [single_gpu_config, two_gpu_config]:
+                if os.path.exists(config_path):
+                    os.remove(config_path)
+            
+            return result
+        
+        # Step 5: Model failed completely
+        result['error'] = f"Single GPU: {single_error}; Two GPU: {two_error}; Minimal: {minimal_error}"
         self.cleanup_model(model_name)
         
         # Clean up config files
-        for config_path in [single_gpu_config, two_gpu_config]:
+        for config_path in [single_gpu_config, two_gpu_config, minimal_gpu_config]:
             if os.path.exists(config_path):
                 os.remove(config_path)
         
@@ -862,11 +895,13 @@ class ModelTester:
                     self.results['single_gpu_passed'].append(result)
                 elif result['two_gpu_worked']:
                     self.results['two_gpu_passed'].append(result)
+                elif result['minimal_gpu_worked']:
+                    self.results['minimal_gpu_passed'].append(result)
                 else:
                     self.results['failed'].append(result)
                 
                 # Log result
-                if result['single_gpu_worked'] or result['two_gpu_worked']:
+                if result['single_gpu_worked'] or result['two_gpu_worked'] or result['minimal_gpu_worked']:
                     suite_status = "✅" if result['suite_worked'] else "⚠️"
                     self.logger.info(f"🎉 {model_name} WORKED with {result['gpu_type']} GPU {suite_status}")
                 else:
@@ -949,11 +984,13 @@ class ModelTester:
         total = self.results['total_tested']
         single_passed = len(self.results['single_gpu_passed'])
         two_passed = len(self.results['two_gpu_passed'])
+        minimal_passed = len(self.results['minimal_gpu_passed'])
         failed = len(self.results['failed'])
         
         self.logger.info(f"Total models tested: {total}")
         self.logger.info(f"Single GPU passed: {single_passed}")
         self.logger.info(f"Two GPU passed: {two_passed}")
+        self.logger.info(f"Minimal fallback passed: {minimal_passed}")
         self.logger.info(f"Failed: {failed}")
         
         # Single GPU results
@@ -967,6 +1004,13 @@ class ModelTester:
         if self.results['two_gpu_passed']:
             self.logger.info(f"\n✅ TWO GPU MODELS ({two_passed}):")
             for result in self.results['two_gpu_passed']:
+                suite_status = "✅" if result['suite_worked'] else "⚠️"
+                self.logger.info(f"  ✓ {result['model_name']} {suite_status}")
+        
+        # Minimal fallback results
+        if self.results['minimal_gpu_passed']:
+            self.logger.info(f"\n🔧 MINIMAL FALLBACK MODELS ({minimal_passed}):")
+            for result in self.results['minimal_gpu_passed']:
                 suite_status = "✅" if result['suite_worked'] else "⚠️"
                 self.logger.info(f"  ✓ {result['model_name']} {suite_status}")
         

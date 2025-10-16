@@ -1,0 +1,33 @@
+model:
+  name: "openai/gpt-oss-20b" # Updated by user
+vllm:
+  provider_config: vllm_two_cards
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.8  # Conservative memory usage
+    max_num_seqs: 64              # Reduced sequence count
+    #vllm_version: "0.8.0"
+    #transformers_version: "4.51.3"
+    #multimodal: false
+    port: 20502
+    # New parameters for better model compatibility
+    trust_remote_code: true
+    # Mistral-specific parameters (auto-detected for Mistral models)
+    # tokenizer_mode: "mistral"
+    # config_format: "mistral"
+    # load_format: "mistral"
+    # tool_call_parser: "mistral"
+    # enable_auto_tool_choice: true
+
+# Override task defaults across all tasks (optional)
+task_defaults:
+  log_samples: true          # Override log_samples for all tasks
+  # batch_size: "8"           # You can override any task default
+  # num_concurrent: 8         # Example: increase concurrency
+  # cache_requests: false     # Example: disable request caching
+  cuda_devices: "1"
+
+tasks:
+  - "latam_board"
+
+# Remember to use --limit 10 to test your model!
