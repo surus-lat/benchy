@@ -96,7 +96,14 @@ def start_vllm_server(
     vllm_version: Optional[str] = None,
     multimodal: bool = True,
     max_num_seqs: Optional[int] = None,
-    max_num_batched_tokens: Optional[int] = None
+    max_num_batched_tokens: Optional[int] = None,
+    # New parameters for better model compatibility
+    trust_remote_code: bool = True,
+    tokenizer_mode: Optional[str] = None,
+    config_format: Optional[str] = None,
+    load_format: Optional[str] = None,
+    tool_call_parser: Optional[str] = None,
+    enable_auto_tool_choice: bool = False
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -120,6 +127,12 @@ def start_vllm_server(
         multimodal: Whether the model supports multimodal features (default: True)
         max_num_seqs: Maximum number of concurrent sequences
         max_num_batched_tokens: Maximum number of tokens to batch
+        trust_remote_code: Whether to trust remote code (default: True)
+        tokenizer_mode: Tokenizer mode (e.g., "mistral")
+        config_format: Config format (e.g., "mistral")
+        load_format: Load format (e.g., "mistral")
+        tool_call_parser: Tool call parser (e.g., "mistral")
+        enable_auto_tool_choice: Enable auto tool choice (default: False)
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
@@ -182,6 +195,26 @@ def start_vllm_server(
     
     if enforce_eager:
         cmd_parts.append("--enforce-eager")
+    
+    # Add trust_remote_code parameter
+    if trust_remote_code:
+        cmd_parts.append("--trust-remote-code")
+    
+    # Add Mistral-specific parameters
+    if tokenizer_mode:
+        cmd_parts.extend(["--tokenizer-mode", tokenizer_mode])
+    
+    if config_format:
+        cmd_parts.extend(["--config-format", config_format])
+    
+    if load_format:
+        cmd_parts.extend(["--load-format", load_format])
+    
+    if tool_call_parser:
+        cmd_parts.extend(["--tool-call-parser", tool_call_parser])
+    
+    if enable_auto_tool_choice:
+        cmd_parts.append("--enable-auto-tool-choice")
     
     # Add performance optimization parameters
     if max_num_seqs is not None:

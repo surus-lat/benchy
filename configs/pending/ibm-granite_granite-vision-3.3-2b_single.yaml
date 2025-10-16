@@ -1,0 +1,22 @@
+model:
+  name: ibm-granite/granite-vision-3.3-2b
+vllm:
+  provider_config: vllm_single_card
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.95
+    port: 20502
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"images": 0, "audios": 0}'
+task_defaults:
+  log_samples: true
+  cuda_devices: '2'
+tasks:
+- latam_board
+metadata:
+  max_context_length: 8192
+  is_multimodal: true
+  model_type: llava_next
+  detected_from_config: true
+  generated_at: '2025-10-16T09:27:52.214170'
+  gpu_type: single

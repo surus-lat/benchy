@@ -1,0 +1,22 @@
+model:
+  name: microsoft/Phi-4-multimodal-instruct
+vllm:
+  provider_config: vllm_single_card
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.95
+    port: 20502
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"images": 0, "audios": 0}'
+task_defaults:
+  log_samples: true
+  cuda_devices: '2'
+tasks:
+- latam_board
+metadata:
+  max_context_length: 131072
+  is_multimodal: true
+  model_type: phi4mm
+  detected_from_config: true
+  generated_at: '2025-10-15T17:57:25.918692'
+  gpu_type: single

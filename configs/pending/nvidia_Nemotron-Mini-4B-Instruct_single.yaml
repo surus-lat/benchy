@@ -1,0 +1,22 @@
+model:
+  name: nvidia/Nemotron-Mini-4B-Instruct
+vllm:
+  provider_config: vllm_single_card
+  overrides:
+    kv_cache_memory: 0
+    gpu_memory_utilization: 0.95
+    port: 20502
+    trust_remote_code: true
+    max_model_len: 4096
+task_defaults:
+  log_samples: true
+  cuda_devices: '2'
+tasks:
+- latam_board
+metadata:
+  max_context_length: 4096
+  is_multimodal: false
+  model_type: nemotron
+  detected_from_config: true
+  generated_at: '2025-10-16T07:07:32.237369'
+  gpu_type: single

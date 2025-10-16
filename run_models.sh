@@ -5,13 +5,14 @@
 # Usage: ./run_models.sh [--help] [--quiet] [config_list.txt] [config_name.yaml]
 #
 # This script will:
-# 1. Find all .yaml files in configs/single_card/ (or use provided list/file)
+# 1. Find all .yaml files in configs/models/ (or use provided list/file)
 # 2. Run 'python eval.py -c <config>' for each model
 # 3. Provide detailed summary with lists of passed/failed models
 
 # Handle command line flags
 QUIET_MODE="false"
 CUSTOM_RUN_ID=""
+SUBFOLDER=""
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -20,10 +21,11 @@ while [[ $# -gt 0 ]]; do
             echo "🚀 Run Models Script"
             echo "==================="
             echo ""
-            echo "Usage: ./run_models.sh [--quiet] [--run-id ID] [config_list.txt] [config_name.yaml]"
+            echo "Usage: ./run_models.sh [--quiet] [--run-id ID] [--subfolder FOLDER] [config_list.txt] [config_name.yaml]"
             echo ""
             echo "This script runs evaluation on multiple model configurations by:"
-            echo "  • Finding all .yaml files in configs/single_card/ (default)"
+            echo "  • Finding all .yaml files in configs/models/ (default)"
+            echo "  • Optionally targeting a specific subfolder (e.g., configs/models/pending/)"
             echo "  • Running full evaluation for each model"
             echo "  • Providing detailed pass/fail summary with model names"
             echo ""
@@ -34,9 +36,11 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --quiet             Suppress detailed pipeline output (recommended for long runs)"
             echo "  --run-id ID         Use custom run ID for organizing outputs (default: auto-generated)"
+            echo "  --subfolder FOLDER  Run models from a specific subfolder (e.g., pending, completed)"
             echo ""
             echo "Features:"
-            echo "  • Automatic discovery of all single card configs"
+            echo "  • Automatic discovery of all model configs"
+            echo "  • Subfolder targeting for organized model groups"
             echo "  • Support for config list files"
             echo "  • Single config execution"
             echo "  • Automatic run ID generation for organized outputs"
@@ -53,14 +57,20 @@ while [[ $# -gt 0 ]]; do
             echo "      └── Config: broken-model.yaml"
             echo ""
             echo "Usage examples:"
-            echo "  # Run all models in configs/single_card/"
+            echo "  # Run all models in configs/models/"
             echo "  ./run_models.sh"
+            echo ""
+            echo "  # Run all models in configs/models/pending/"
+            echo "  ./run_models.sh --subfolder pending"
             echo ""
             echo "  # Run all models quietly"
             echo "  ./run_models.sh --quiet"
             echo ""
             echo "  # Run with custom run ID"
             echo "  ./run_models.sh --run-id my_experiment_001"
+            echo ""
+            echo "  # Run pending models with custom run ID"
+            echo "  ./run_models.sh --subfolder pending --run-id pending_batch_001"
             echo ""
             echo "  # Run specific model"
             echo "  ./run_models.sh my-model.yaml"
@@ -79,6 +89,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --run-id)
             CUSTOM_RUN_ID="$2"
+            shift 2
+            ;;
+        --subfolder)
+            SUBFOLDER="$2"
             shift 2
             ;;
         *)
@@ -103,6 +117,8 @@ else
     echo "📋 Generated run ID: $RUN_ID"
 fi
 echo "   All models in this batch will use the same run ID for organized outputs"
+echo "   Outputs will be organized under: outputs/benchmark_outputs/$RUN_ID"
+echo "   Logs will be organized under: logs/$RUN_ID"
 echo ""
 
 if [[ "$QUIET_MODE" == "true" ]]; then
@@ -125,14 +141,20 @@ echo "Current virtual environment: $VIRTUAL_ENV"
 echo ""
 
 # Determine which configs to run
-config_dir="./configs/single_card"
+if [[ -n "$SUBFOLDER" ]]; then
+    config_dir="./configs/models/$SUBFOLDER"
+    echo "📁 Using subfolder: $SUBFOLDER"
+    echo "   Target directory: $config_dir"
+else
+    config_dir="./configs/models"
+fi
 
 if [[ -n "$1" ]]; then
     # Check if it's a text file with config list
     if [[ -f "$1" && "$1" == *.txt ]]; then
         echo "📋 Loading config list from: $1"
         # Read config files from the text file
-        mapfile -t configs < <(grep -v '^#' "$1" | grep -v '^$' | sed 's|^|./configs/single_card/|')
+        mapfile -t configs < <(grep -v '^#' "$1" | grep -v '^$' | sed "s|^|$config_dir/|")
         echo "Found ${#configs[@]} configs in list file"
     else
         # Single config file specified
@@ -147,7 +169,7 @@ if [[ -n "$1" ]]; then
         echo "🎯 Running single config: $1"
     fi
 else
-    # Default: discover all configs in single_card directory
+    # Default: discover all configs in models directory (or subfolder)
     if [[ ! -d "$config_dir" ]]; then
         echo "❌ Directory not found: $config_dir"
         exit 1
