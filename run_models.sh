@@ -117,6 +117,8 @@ else
     echo "📋 Generated run ID: $RUN_ID"
 fi
 echo "   All models in this batch will use the same run ID for organized outputs"
+echo "   Outputs will be organized under: outputs/benchmark_outputs/$RUN_ID"
+echo "   Logs will be organized under: logs/$RUN_ID"
 echo ""
 
 if [[ "$QUIET_MODE" == "true" ]]; then

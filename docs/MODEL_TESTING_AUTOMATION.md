@@ -65,13 +65,13 @@ pkill -f test_model_automation
 ### Disk Space Management
 ```bash
 # Check disk space and find large models
-python check_disk_space.py
+python scripts/check_disk_space.py
 
 # Interactive cleanup of large models
-python check_disk_space.py --cleanup
+python scripts/check_disk_space.py --cleanup
 
 # Check specific path
-python check_disk_space.py --path /path/to/cache --min-size 2.0
+python scripts/check_disk_space.py --path /path/to/cache --min-size 2.0
 ```
 
 ### Recovery from Interruption

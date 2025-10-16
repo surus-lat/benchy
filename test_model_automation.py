@@ -9,7 +9,7 @@ This script automates the process of testing models to determine:
 4. Generates appropriate config files for working models
 
 Usage:
-    python test_model_automation.py --models-file next_models.txt [--start-from N] [--max-models N]
+    python test_model_automation.py --models-file next_models.txt [--start-from N] [--max-models N] [--run-id ID]
 """
 
 import os
@@ -28,14 +28,38 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+# Run ID generation functions (self-contained)
+def generate_run_id(custom_run_id: str = None, prefix: str = "") -> str:
+    """Generate a run ID for model testing."""
+    if custom_run_id:
+        return custom_run_id
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{prefix}{timestamp}" if prefix else timestamp
+
+def setup_run_directories(run_id: str):
+    """Create necessary directories for a run."""
+    os.makedirs(f"logs/{run_id}", exist_ok=True)
+    os.makedirs(f"configs/testing/{run_id}", exist_ok=True)
+    os.makedirs(f"outputs/benchmark_outputs/{run_id}", exist_ok=True)
+
 # Setup logging
-def setup_logging():
+def setup_logging(run_id: str = None):
     """Setup logging for the automation script."""
-    log_dir = Path("logs").joinpath("model_testing")
-    log_dir.mkdir(exist_ok=True)
+    if run_id:
+        # Use run_id-based directory structure
+        log_dir = Path("logs") / run_id
+    else:
+        # Fallback to old structure
+        log_dir = Path("logs").joinpath("model_testing")
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir.joinpath(f"model_testing_{timestamp}.log")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    if run_id:
+        log_file = log_dir / "model_testing.log"
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = log_dir.joinpath(f"model_testing_{timestamp}.log")
     
     logging.basicConfig(
         level=logging.INFO,
@@ -51,11 +75,12 @@ def setup_logging():
 class ModelTester:
     """Main class for testing models and generating configurations."""
     
-    def __init__(self, models_file: str, start_from: int = 0, max_models: Optional[int] = None, skip_downloads: bool = False):
+    def __init__(self, models_file: str, start_from: int = 0, max_models: Optional[int] = None, skip_downloads: bool = False, run_id: str = None):
         self.models_file = models_file
         self.start_from = start_from
         self.max_models = max_models
         self.skip_downloads = skip_downloads
+        self.run_id = run_id
         self.logger = logging.getLogger(__name__)
         self.running_processes = []  # Track running processes for cleanup
         
@@ -66,11 +91,17 @@ class ModelTester:
             'minimal_gpu_passed': [],
             'failed': [],
             'total_tested': 0,
-            'start_time': datetime.now().isoformat()
+            'start_time': datetime.now().isoformat(),
+            'run_id': run_id
         }
         
-        # Setup directories
-        self.config_dir = Path("configs/testing")
+        # Setup directories using run_id if available
+        if run_id:
+            setup_run_directories(run_id)
+            self.config_dir = Path("configs/testing") / run_id
+        else:
+            self.config_dir = Path("configs/testing")
+        
         self.config_dir.mkdir(parents=True, exist_ok=True)
         
         # Template configs
@@ -401,13 +432,18 @@ class ModelTester:
     def save_progress(self):
         """Save current progress to a recovery file."""
         try:
-            progress_file = Path("logs/model_testing_progress.json")
+            if self.run_id:
+                progress_file = Path("logs") / self.run_id / "model_testing_progress.json"
+            else:
+                progress_file = Path("logs/model_testing_progress.json")
+            
             progress_data = {
                 'timestamp': datetime.now().isoformat(),
                 'results': self.results,
                 'current_model_index': getattr(self, 'current_model_index', 0),
                 'total_models': getattr(self, 'total_models', 0),
-                'disk_space_check': self.check_disk_space()[1]
+                'disk_space_check': self.check_disk_space()[1],
+                'run_id': self.run_id
             }
             
             with open(progress_file, 'w') as f:
@@ -636,6 +672,10 @@ class ModelTester:
                 "--no-log-samples"
             ]
             
+            # Add run_id if available
+            if self.run_id:
+                cmd.extend(["--run-id", self.run_id])
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -671,6 +711,10 @@ class ModelTester:
                 "--limit", "10",
                 "--log-samples"
             ]
+            
+            # Add run_id if available
+            if self.run_id:
+                cmd.extend(["--run-id", self.run_id])
             
             result = subprocess.run(
                 cmd,
@@ -954,19 +998,26 @@ class ModelTester:
         self.logger.info(f"Failed: {failed}")
         
         # Save emergency results
-        emergency_file = Path("logs/model_testing_emergency_results.json")
+        if self.run_id:
+            emergency_file = Path("logs") / self.run_id / "model_testing_emergency_results.json"
+            progress_file_path = f"logs/{self.run_id}/model_testing_progress.json"
+        else:
+            emergency_file = Path("logs/model_testing_emergency_results.json")
+            progress_file_path = "logs/model_testing_progress.json"
+        
         emergency_data = {
             'interruption_reason': reason,
             'timestamp': datetime.now().isoformat(),
             'results': self.results,
-            'disk_space_check': self.check_disk_space()[1]
+            'disk_space_check': self.check_disk_space()[1],
+            'run_id': self.run_id
         }
         
         with open(emergency_file, 'w') as f:
             json.dump(emergency_data, f, indent=2)
         
         self.logger.info(f"📄 Emergency results saved to: {emergency_file}")
-        self.logger.info(f"💾 Progress file: logs/model_testing_progress.json")
+        self.logger.info(f"💾 Progress file: {progress_file_path}")
         
         if single_passed + two_passed > 0:
             self.logger.info(f"\n✅ {single_passed + two_passed} models were successfully tested before interruption")
@@ -1021,7 +1072,11 @@ class ModelTester:
                 self.logger.info(f"  ✗ {result['model_name']}: {result['error']}")
         
         # Save detailed results to JSON
-        results_file = Path("logs") / f"model_testing_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        if self.run_id:
+            results_file = Path("logs") / self.run_id / "model_testing_results.json"
+        else:
+            results_file = Path("logs") / f"model_testing_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
         self.results['end_time'] = datetime.now().isoformat()
         
         with open(results_file, 'w') as f:
@@ -1067,6 +1122,7 @@ Examples:
   python test_model_automation.py --models-file next_models.txt --max-models 10
   python test_model_automation.py --models-file next_models.txt --skip-downloads
   python test_model_automation.py --models-file next_models.txt --recover
+  python test_model_automation.py --models-file next_models.txt --run-id my_test_run
   nohup python test_model_automation.py --models-file next_models.txt > testing.log 2>&1 &
         """
     )
@@ -1102,10 +1158,23 @@ Examples:
         help='Recover from previous interrupted run using progress file'
     )
     
+    parser.add_argument(
+        '--run-id',
+        type=str,
+        default=None,
+        help='Run ID for organizing outputs (default: auto-generated with MODEL_TEST prefix)'
+    )
+    
     args = parser.parse_args()
     
-    # Setup logging
-    log_file = setup_logging()
+    # Generate run ID with MODEL_TEST prefix
+    run_id = generate_run_id(
+        custom_run_id=args.run_id,
+        prefix="MODEL_TEST_"
+    )
+    
+    # Setup logging with run_id
+    log_file = setup_logging(run_id)
     logger = logging.getLogger(__name__)
     
     # Create PID file for easy process management
@@ -1115,6 +1184,7 @@ Examples:
     
     logger.info("🤖 Starting Model Testing Automation")
     logger.info(f"📋 Models file: {args.models_file}")
+    logger.info(f"🆔 Run ID: {run_id}")
     logger.info(f"📊 Log file: {log_file}")
     logger.info(f"🆔 PID file: {pid_file} (PID: {os.getpid()})")
     logger.info(f"💡 To stop: kill {os.getpid()} or Ctrl+C")
@@ -1149,12 +1219,21 @@ Examples:
             models_file=args.models_file,
             start_from=args.start_from,
             max_models=args.max_models,
-            skip_downloads=args.skip_downloads
+            skip_downloads=args.skip_downloads,
+            run_id=run_id
         )
         
         # Handle recovery mode
         if args.recover:
-            progress_file = Path("logs/model_testing_progress.json")
+            # Try to find progress file in run_id directory first, then fallback to old location
+            progress_file = None
+            if run_id:
+                progress_file = Path("logs") / run_id / "model_testing_progress.json"
+                if not progress_file.exists():
+                    progress_file = Path("logs/model_testing_progress.json")
+            else:
+                progress_file = Path("logs/model_testing_progress.json")
+            
             if progress_file.exists():
                 try:
                     with open(progress_file, 'r') as f:
@@ -1162,6 +1241,7 @@ Examples:
                     
                     logger.info(f"📂 Loaded previous progress from: {progress_file}")
                     logger.info(f"   Previous run: {progress_data.get('timestamp', 'unknown')}")
+                    logger.info(f"   Previous run ID: {progress_data.get('run_id', 'unknown')}")
                     logger.info(f"   Models tested: {progress_data.get('current_model_index', 0)}")
                     logger.info(f"   Disk space: {progress_data.get('disk_space_check', 'unknown')}")
                     

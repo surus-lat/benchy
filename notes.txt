@@ -1,9 +1,0 @@
-
-
-lm-evaluation-harness requries:
-uv pip install -e .[api]
-
-
-portu requries:
-uv pip install -e ".[anthropic,openai,sentencepiece]"
-
