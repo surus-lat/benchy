@@ -1,0 +1,210 @@
+nohup: ignoring input
+🚀 Starting batch evaluation of multiple models
+==============================================
+📋 Using custom run ID: translate_all_v2
+   All models in this batch will use the same run ID for organized outputs
+
+🔇 Quiet mode enabled - suppressing detailed pipeline output
+   Individual model results will only show pass/fail status
+   Full logs are still saved by the pipeline to individual files
+
+✅ Activated benchy virtual environment
+Current virtual environment: /home/mauro/dev/benchy/.venv
+
+🔍 Auto-discovering configs in: ./configs/single_card
+Found 20 config files
+Planning to evaluate 20 models:
+  - arcee-ai/AFM-4.5B (AFM-4.5B.yaml)
+  - swiss-ai/Apertus-8B-Instruct-2509 (Apertus-8B-Instruct-2509.yaml)
+  - CohereLabs/aya-expanse-8b (aya8b.yaml)
+  - deepseek-ai/DeepSeek-R1-Distill-Llama-8B (DeepSeek-R1-Distill-Llama-8B.yaml)
+  - deepseek-ai/DeepSeek-R1-Distill-Qwen-7B (DeepSeek-R1-Distill-Qwen-7B.yaml)
+  - google/gemma-3n-E2B-it (gemma3n2.yaml)
+  - google/gemma-3n-E4B-it (gemma3n4.yaml)
+  - NousResearch/Hermes-3-Llama-3.1-8B (Hermes-3-Llama-3.1-8B.yaml)
+  - mann-e/Hormoz-8B (hormoz8b.yaml)
+  - tencent/Hunyuan-MT-7B (Hunyuan-MT-7B.yaml)
+  - meta-llama/Llama-3.1-8B-Instruct (llama3.1.yaml)
+  - meta-llama/Llama-3.2-3B-Instruct (llama3.2.yaml)
+  - mistralai/Ministral-8B-Instruct-2410 (ministral8b.yaml)
+  - microsoft/Phi-4-mini-instruct (phi4mini.yaml)
+  - Qwen/Qwen3-4B-Instruct-2507 (qwen34b.yaml)
+  - ByteDance-Seed/Seed-X-Instruct-7B (Seed-X-Instruct-7B.yaml)
+  - ByteDance-Seed/Seed-X-PPO-7B (Seed-X-PPO-7B.yaml)
+  - 01-ai/Yi-1.5-6B-Chat (Yi-1.5-6B-Chat.yaml)
+  - 01-ai/Yi-1.5-9B-Chat (Yi-1.5-9B-Chat.yaml)
+  - HuggingFaceH4/zephyr-7b-beta (zephyr-7b-beta.yaml)
+
+🔄 Running model 1/20: arcee-ai/AFM-4.5B
+   Config: AFM-4.5B.yaml
+   Started at: Fri Oct  3 09:34:12 PM UTC 2025
+✅ Model 1 completed successfully in 5706s
+   Finished at: Fri Oct  3 11:09:18 PM UTC 2025
+
+🔄 Running model 2/20: swiss-ai/Apertus-8B-Instruct-2509
+   Config: Apertus-8B-Instruct-2509.yaml
+   Started at: Fri Oct  3 11:09:18 PM UTC 2025
+✅ Model 2 completed successfully in 6225s
+   Finished at: Sat Oct  4 12:53:03 AM UTC 2025
+
+🔄 Running model 3/20: CohereLabs/aya-expanse-8b
+   Config: aya8b.yaml
+   Started at: Sat Oct  4 12:53:03 AM UTC 2025
+✅ Model 3 completed successfully in 6378s
+   Finished at: Sat Oct  4 02:39:21 AM UTC 2025
+
+🔄 Running model 4/20: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+   Config: DeepSeek-R1-Distill-Llama-8B.yaml
+   Started at: Sat Oct  4 02:39:21 AM UTC 2025
+✅ Model 4 completed successfully in 5667s
+   Finished at: Sat Oct  4 04:13:48 AM UTC 2025
+
+🔄 Running model 5/20: deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+   Config: DeepSeek-R1-Distill-Qwen-7B.yaml
+   Started at: Sat Oct  4 04:13:48 AM UTC 2025
+✅ Model 5 completed successfully in 5359s
+   Finished at: Sat Oct  4 05:43:07 AM UTC 2025
+
+🔄 Running model 6/20: google/gemma-3n-E2B-it
+   Config: gemma3n2.yaml
+   Started at: Sat Oct  4 05:43:07 AM UTC 2025
+✅ Model 6 completed successfully in 4226s
+   Finished at: Sat Oct  4 06:53:33 AM UTC 2025
+
+🔄 Running model 7/20: google/gemma-3n-E4B-it
+   Config: gemma3n4.yaml
+   Started at: Sat Oct  4 06:53:33 AM UTC 2025
+✅ Model 7 completed successfully in 4769s
+   Finished at: Sat Oct  4 08:13:02 AM UTC 2025
+
+🔄 Running model 8/20: NousResearch/Hermes-3-Llama-3.1-8B
+   Config: Hermes-3-Llama-3.1-8B.yaml
+   Started at: Sat Oct  4 08:13:03 AM UTC 2025
+✅ Model 8 completed successfully in 6546s
+   Finished at: Sat Oct  4 10:02:09 AM UTC 2025
+
+🔄 Running model 9/20: mann-e/Hormoz-8B
+   Config: hormoz8b.yaml
+   Started at: Sat Oct  4 10:02:09 AM UTC 2025
+✅ Model 9 completed successfully in 6289s
+   Finished at: Sat Oct  4 11:46:58 AM UTC 2025
+
+🔄 Running model 10/20: tencent/Hunyuan-MT-7B
+   Config: Hunyuan-MT-7B.yaml
+   Started at: Sat Oct  4 11:46:58 AM UTC 2025
+✅ Model 10 completed successfully in 5259s
+   Finished at: Sat Oct  4 01:14:37 PM UTC 2025
+
+🔄 Running model 11/20: meta-llama/Llama-3.1-8B-Instruct
+   Config: llama3.1.yaml
+   Started at: Sat Oct  4 01:14:37 PM UTC 2025
+✅ Model 11 completed successfully in 6405s
+   Finished at: Sat Oct  4 03:01:22 PM UTC 2025
+
+🔄 Running model 12/20: meta-llama/Llama-3.2-3B-Instruct
+   Config: llama3.2.yaml
+   Started at: Sat Oct  4 03:01:22 PM UTC 2025
+✅ Model 12 completed successfully in 4344s
+   Finished at: Sat Oct  4 04:13:46 PM UTC 2025
+
+🔄 Running model 13/20: mistralai/Ministral-8B-Instruct-2410
+   Config: ministral8b.yaml
+   Started at: Sat Oct  4 04:13:46 PM UTC 2025
+✅ Model 13 completed successfully in 5321s
+   Finished at: Sat Oct  4 05:42:27 PM UTC 2025
+
+🔄 Running model 14/20: microsoft/Phi-4-mini-instruct
+   Config: phi4mini.yaml
+   Started at: Sat Oct  4 05:42:27 PM UTC 2025
+✅ Model 14 completed successfully in 4292s
+   Finished at: Sat Oct  4 06:53:59 PM UTC 2025
+
+🔄 Running model 15/20: Qwen/Qwen3-4B-Instruct-2507
+   Config: qwen34b.yaml
+   Started at: Sat Oct  4 06:53:59 PM UTC 2025
+✅ Model 15 completed successfully in 4866s
+   Finished at: Sat Oct  4 08:15:05 PM UTC 2025
+
+🔄 Running model 16/20: ByteDance-Seed/Seed-X-Instruct-7B
+   Config: Seed-X-Instruct-7B.yaml
+   Started at: Sat Oct  4 08:15:05 PM UTC 2025
+✅ Model 16 completed successfully in 5405s
+   Finished at: Sat Oct  4 09:45:10 PM UTC 2025
+
+🔄 Running model 17/20: ByteDance-Seed/Seed-X-PPO-7B
+   Config: Seed-X-PPO-7B.yaml
+   Started at: Sat Oct  4 09:45:10 PM UTC 2025
+✅ Model 17 completed successfully in 5506s
+   Finished at: Sat Oct  4 11:16:56 PM UTC 2025
+
+🔄 Running model 18/20: 01-ai/Yi-1.5-6B-Chat
+   Config: Yi-1.5-6B-Chat.yaml
+   Started at: Sat Oct  4 11:16:56 PM UTC 2025
+✅ Model 18 completed successfully in 6124s
+   Finished at: Sun Oct  5 12:59:00 AM UTC 2025
+
+🔄 Running model 19/20: 01-ai/Yi-1.5-9B-Chat
+   Config: Yi-1.5-9B-Chat.yaml
+   Started at: Sun Oct  5 12:59:00 AM UTC 2025
+✅ Model 19 completed successfully in 7390s
+   Finished at: Sun Oct  5 03:02:10 AM UTC 2025
+
+🔄 Running model 20/20: HuggingFaceH4/zephyr-7b-beta
+   Config: zephyr-7b-beta.yaml
+   Started at: Sun Oct  5 03:02:10 AM UTC 2025
+✅ Model 20 completed successfully in 6173s
+   Finished at: Sun Oct  5 04:45:03 AM UTC 2025
+
+==============================================
+📊 DETAILED EVALUATION RESULTS SUMMARY
+==============================================
+Total models evaluated: 20
+Evaluations completed: 20
+Evaluations failed: 0
+
+✅ MODELS THAT COMPLETED SUCCESSFULLY (20):
+-----------------------------------------------
+  ✓ arcee-ai/AFM-4.5B
+    └── Config: AFM-4.5B.yaml
+  ✓ swiss-ai/Apertus-8B-Instruct-2509
+    └── Config: Apertus-8B-Instruct-2509.yaml
+  ✓ CohereLabs/aya-expanse-8b
+    └── Config: aya8b.yaml
+  ✓ deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    └── Config: DeepSeek-R1-Distill-Llama-8B.yaml
+  ✓ deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+    └── Config: DeepSeek-R1-Distill-Qwen-7B.yaml
+  ✓ google/gemma-3n-E2B-it
+    └── Config: gemma3n2.yaml
+  ✓ google/gemma-3n-E4B-it
+    └── Config: gemma3n4.yaml
+  ✓ NousResearch/Hermes-3-Llama-3.1-8B
+    └── Config: Hermes-3-Llama-3.1-8B.yaml
+  ✓ mann-e/Hormoz-8B
+    └── Config: hormoz8b.yaml
+  ✓ tencent/Hunyuan-MT-7B
+    └── Config: Hunyuan-MT-7B.yaml
+  ✓ meta-llama/Llama-3.1-8B-Instruct
+    └── Config: llama3.1.yaml
+  ✓ meta-llama/Llama-3.2-3B-Instruct
+    └── Config: llama3.2.yaml
+  ✓ mistralai/Ministral-8B-Instruct-2410
+    └── Config: ministral8b.yaml
+  ✓ microsoft/Phi-4-mini-instruct
+    └── Config: phi4mini.yaml
+  ✓ Qwen/Qwen3-4B-Instruct-2507
+    └── Config: qwen34b.yaml
+  ✓ ByteDance-Seed/Seed-X-Instruct-7B
+    └── Config: Seed-X-Instruct-7B.yaml
+  ✓ ByteDance-Seed/Seed-X-PPO-7B
+    └── Config: Seed-X-PPO-7B.yaml
+  ✓ 01-ai/Yi-1.5-6B-Chat
+    └── Config: Yi-1.5-6B-Chat.yaml
+  ✓ 01-ai/Yi-1.5-9B-Chat
+    └── Config: Yi-1.5-9B-Chat.yaml
+  ✓ HuggingFaceH4/zephyr-7b-beta
+    └── Config: zephyr-7b-beta.yaml
+
+🎉 ALL MODELS COMPLETED SUCCESSFULLY! Evaluation batch finished.
+Completed at: Sun Oct  5 04:45:03 AM UTC 2025
+==============================================

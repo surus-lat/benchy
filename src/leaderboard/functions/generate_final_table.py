@@ -21,7 +21,8 @@ def create_model_row(model_name: str, model_data: Dict[str, Any]) -> Dict[str, A
     
     row = {
         "model_name": model_name,
-        "provider": model_data.get("provider", "unknown"),
+        "publisher": model_data.get("publisher", "unknown"),
+        "full_model_name": model_data.get("full_model_name", model_name),
         "overall_latam_score": model_data.get("overall_latam_score"),
     }
     
@@ -98,7 +99,8 @@ def create_detailed_breakdown(summaries_data: Dict[str, Any]) -> Dict[str, Any]:
     for model_name, model_data in summaries_data.items():
         model_breakdown = {
             "model_name": model_name,
-            "provider": model_data.get("provider", "unknown"),
+            "publisher": model_data.get("publisher", "unknown"),
+            "full_model_name": model_data.get("full_model_name", model_name),
             "overall_latam_score": model_data.get("overall_latam_score"),
             "categories": {}
         }

@@ -2,6 +2,11 @@
 """
 Main script to orchestrate the entire processing pipeline.
 This runs all steps: copy raw data, parse results, and generate final table.
+
+Usage:
+    python -m src.leaderboard.process_all <run_id>
+    
+Where run_id is the specific run directory under outputs/benchmark_outputs/
 """
 
 import subprocess
@@ -9,6 +14,7 @@ import sys
 import argparse
 from pathlib import Path
 import yaml
+import argparse
 
 # Add the src directory to the path for imports
 current_dir = Path(__file__).parent
@@ -26,9 +32,11 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python process_all.py                    # Process all results in benchmark_outputs/
-  python process_all.py batch_20241201_143022  # Process specific run_id results
-  python process_all.py my_experiment_001  # Process custom run_id results
+  python process_all.py                                    # Process all results in benchmark_outputs/
+  python process_all.py batch_20241201_143022             # Process specific run_id results
+  python process_all.py my_experiment_001                 # Process custom run_id results
+  python process_all.py --input-path custom/input --output-path custom/output  # Use custom paths
+  python process_all.py --run-id exp_001 --input-path custom/input --output-path custom/output  # Custom paths with run_id
         """
     )
     
@@ -36,6 +44,18 @@ Examples:
         'run_id',
         nargs='?',  # Optional positional argument
         help='Run ID to process (looks in benchmark_outputs/run_id/). If not provided, processes all results in benchmark_outputs/'
+    )
+    
+    parser.add_argument(
+        '--input-path',
+        type=str,
+        help='Custom input path for benchmark results (overrides config benchmark_outputs path)'
+    )
+    
+    parser.add_argument(
+        '--output-path', 
+        type=str,
+        help='Custom output path for published results (overrides config publish_dir path)'
     )
     
     return parser.parse_args()
@@ -80,8 +100,13 @@ def main():
         print(f"❌ Error loading configuration: {e}")
         return False
     
-    # Determine the benchmark outputs path based on run_id
-    base_benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
+    # Determine the benchmark outputs path based on custom input path or config
+    if args.input_path:
+        base_benchmark_outputs = Path(args.input_path)
+        print(f"🎯 Using custom input path: {base_benchmark_outputs}")
+    else:
+        base_benchmark_outputs = Path(config["paths"]["benchmark_outputs"])
+        print(f"📁 Using config input path: {base_benchmark_outputs}")
     
     if args.run_id:
         # Use specific run_id subdirectory
@@ -112,12 +137,20 @@ def main():
     
     print(f"✓ Benchmark outputs directory found: {benchmark_outputs}")
     
+    # Determine the output path based on custom output path or config
+    if args.output_path:
+        publish_dir = args.output_path
+        print(f"🎯 Using custom output path: {publish_dir}")
+    else:
+        publish_dir = config["paths"]["publish_dir"]
+        print(f"📁 Using config output path: {publish_dir}")
+    
     # Step 1: Parse model results
     success = run_function(
         parse_model_results, 
         "Step 1: Parsing model results and generating summaries",
         str(benchmark_outputs),  # Use the determined path (with or without run_id)
-        config["paths"]["publish_dir"]
+        publish_dir
     )
     if not success:
         print("❌ Pipeline failed at Step 1")
@@ -127,7 +160,7 @@ def main():
     success = run_function(
         generate_leaderboard_table,
         "Step 2: Generating leaderboard table",
-        config["paths"]["publish_dir"]
+        publish_dir
     )
     if not success:
         print("❌ Pipeline failed at Step 2")
@@ -138,7 +171,7 @@ def main():
         copy_reference_files,
         "Step 3: Copying reference files to publish directory",
         config["paths"]["reference_dir"],
-        config["paths"]["publish_dir"]
+        publish_dir
     )
     if not success:
         print("❌ Pipeline failed at Step 3")
@@ -150,21 +183,25 @@ def main():
     print(f"{'='*70}")
     
     # Show final results
-    publish_dir = Path(config["paths"]["publish_dir"])
+    publish_dir_path = Path(publish_dir)
     
-    if publish_dir.exists():
-        print(f"\n📁 Results available in: {publish_dir}")
+    if publish_dir_path.exists():
+        print(f"\n📁 Results available in: {publish_dir_path}")
         if args.run_id:
             print(f"   Processed run ID: {args.run_id}")
+        if args.input_path:
+            print(f"   Used custom input path: {args.input_path}")
+        if args.output_path:
+            print(f"   Used custom output path: {args.output_path}")
         print("   Generated files:")
-        for file in sorted(publish_dir.glob("*")):
+        for file in sorted(publish_dir_path.glob("*")):
             size = file.stat().st_size
             size_str = f"{size:,} bytes" if size < 1024 else f"{size/1024:.1f} KB"
             print(f"     - {file.name} ({size_str})")
     
     print(f"\n✨ Ready for upload to Hugging Face dataset!")
     print(f"   Dataset: {config['datasets']['results']}")
-    print(f"   To upload: python upload_to_hf.py")
+    print(f"   To upload: python -m src.leaderboard.publish --path {publish_dir}")
     
     return True
 
