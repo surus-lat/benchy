@@ -25,16 +25,16 @@ logging:
 gpu_config:
   # vLLM server GPU allocation
   vllm:
-    devices: "3"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
+    devices: "2,3"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
     # Alternative configurations:
-    # devices: "2,3"    # Use GPUs 2 and 3 for vLLM
+    # devices: "3"      # Use single GPU 3 for vLLM
     # devices: "1,2,3,4" # Use all 4 GPUs for vLLM
   
   # Evaluation tasks GPU allocation  
   tasks:
-    devices: "2"  # GPU device for evaluation tasks (e.g., "2" or "1")
+    devices: "0"  # GPU device for evaluation tasks (e.g., "1" or "0")
     # Alternative configurations:
-    # devices: "1"      # Use GPU 1 for tasks
+    # devices: "0"      # Use GPU 0 for tasks
     # devices: ""       # Use CPU only for tasks (current default)
   
   # Validation settings

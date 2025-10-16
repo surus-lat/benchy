@@ -1,10 +1,11 @@
 model:
-  name: "HuggingFaceH4/zephyr-7b-beta"
+  name: "openai/gpt-oss-20b" # Updated by user
 vllm:
-  provider_config: vllm_single_card
+  provider_config: vllm_two_cards
   overrides:
     kv_cache_memory: 0
-    gpu_memory_utilization: 0.95
+    gpu_memory_utilization: 0.8  # Conservative memory usage
+    max_num_seqs: 64              # Reduced sequence count
     #vllm_version: "0.8.0"
     #transformers_version: "4.51.3"
     #multimodal: false
@@ -24,7 +25,7 @@ task_defaults:
   # batch_size: "8"           # You can override any task default
   # num_concurrent: 8         # Example: increase concurrency
   # cache_requests: false     # Example: disable request caching
-  cuda_devices: "2"
+  cuda_devices: "1"
 
 tasks:
   - "latam_board"

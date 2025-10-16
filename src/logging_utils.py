@@ -12,18 +12,30 @@ import logging
 class BenchyLoggingSetup:
     """Configure comprehensive logging for Benchy runs."""
     
-    def __init__(self, config: Dict[str, Any], log_dir: str = "logs"):
+    def __init__(self, config: Dict[str, Any], log_dir: str = "logs", run_id: Optional[str] = None):
         self.config = config
-        self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(exist_ok=True)
+        self.run_id = run_id
         
-        # Generate log file name with timestamp and model
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Use run_id for log directory structure if provided
+        if run_id:
+            self.log_dir = Path(log_dir) / run_id
+        else:
+            self.log_dir = Path(log_dir)
+        
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate log file name with model name
         model_name = config.get('model', {}).get('name', 'unknown_model')
         # Clean model name for filename
         safe_model_name = model_name.replace('/', '_').replace('\\', '_')
         
-        self.log_filename = f"benchy_{timestamp}_{safe_model_name}.log"
+        # Use run_id in filename if available, otherwise fall back to timestamp
+        if run_id:
+            self.log_filename = f"benchy_{safe_model_name}.log"
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.log_filename = f"benchy_{timestamp}_{safe_model_name}.log"
+        
         self.log_filepath = self.log_dir / self.log_filename
         
         self.setup_python_logging()
@@ -203,6 +215,6 @@ class BenchyLoggingSetup:
         logger.info("=== END SUMMARY ===")
 
 
-def setup_file_logging(config: Dict[str, Any], log_dir: str = "logs") -> BenchyLoggingSetup:
+def setup_file_logging(config: Dict[str, Any], log_dir: str = "logs", run_id: Optional[str] = None) -> BenchyLoggingSetup:
     """Setup file logging for a Benchy run."""
-    return BenchyLoggingSetup(config, log_dir)
+    return BenchyLoggingSetup(config, log_dir, run_id)
