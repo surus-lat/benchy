@@ -1,0 +1,115 @@
+nohup: ignoring input
+🚀 Starting batch evaluation of multiple models
+==============================================
+📋 Using custom run ID: new_batch2
+   All models in this batch will use the same run ID for organized outputs
+   Outputs will be organized under: outputs/benchmark_outputs/new_batch2
+   Logs will be organized under: logs/new_batch2
+
+🔇 Quiet mode enabled - suppressing detailed pipeline output
+   Individual model results will only show pass/fail status
+   Full logs are still saved by the pipeline to individual files
+
+✅ Activated benchy virtual environment
+Current virtual environment: /home/mauro/dev/benchy/.venv
+
+📁 Using subfolder: pending
+   Target directory: ./configs/models/pending
+🔍 Auto-discovering configs in: ./configs/models/pending
+Found 9 config files
+Planning to evaluate 9 models:
+  -   name: microsoft/Phi-4-multimodal-instruct (microsoft_Phi-4-multimodal-instruct_single.yaml)
+  -   name: mistralai/Ministral-8B-Instruct-2410 (mistralai_Ministral-8B-Instruct-2410_single.yaml)
+  -   name: NousResearch/Hermes-4-14B (NousResearch_Hermes-4-14B_two.yaml)
+  -   name: nvidia/Mistral-NeMo-Minitron-8B-Instruct (nvidia_Mistral-NeMo-Minitron-8B-Instruct_single.yaml)
+  -   name: nvidia/Nemotron-Mini-4B-Instruct (nvidia_Nemotron-Mini-4B-Instruct_single.yaml)
+  -   name: openai/gpt-oss-20b (openai_gpt-oss-20b_single.yaml)
+  -   name: Qwen/Qwen3-VL-4B-Instruct (Qwen_Qwen3-VL-4B-Instruct_single.yaml)
+  -   name: Qwen/Qwen3-VL-8B-Instruct (Qwen_Qwen3-VL-8B-Instruct_two.yaml)
+  -   name: upstage/SOLAR-10.7B-Instruct-v1.0 (upstage_SOLAR-10.7B-Instruct-v1.0_single.yaml)
+
+🔄 Running model 1/9:   name: microsoft/Phi-4-multimodal-instruct
+   Config: microsoft_Phi-4-multimodal-instruct_single.yaml
+   Started at: Sat Oct 18 02:20:31 PM -03 2025
+✅ Model 1 completed successfully in 5877s
+   Finished at: Sat Oct 18 03:58:28 PM -03 2025
+
+🔄 Running model 2/9:   name: mistralai/Ministral-8B-Instruct-2410
+   Config: mistralai_Ministral-8B-Instruct-2410_single.yaml
+   Started at: Sat Oct 18 03:58:28 PM -03 2025
+✅ Model 2 completed successfully in 7088s
+   Finished at: Sat Oct 18 05:56:36 PM -03 2025
+
+🔄 Running model 3/9:   name: NousResearch/Hermes-4-14B
+   Config: NousResearch_Hermes-4-14B_two.yaml
+   Started at: Sat Oct 18 05:56:36 PM -03 2025
+✅ Model 3 completed successfully in 9029s
+   Finished at: Sat Oct 18 08:27:05 PM -03 2025
+
+🔄 Running model 4/9:   name: nvidia/Mistral-NeMo-Minitron-8B-Instruct
+   Config: nvidia_Mistral-NeMo-Minitron-8B-Instruct_single.yaml
+   Started at: Sat Oct 18 08:27:05 PM -03 2025
+✅ Model 4 completed successfully in 7889s
+   Finished at: Sat Oct 18 10:38:34 PM -03 2025
+
+🔄 Running model 5/9:   name: nvidia/Nemotron-Mini-4B-Instruct
+   Config: nvidia_Nemotron-Mini-4B-Instruct_single.yaml
+   Started at: Sat Oct 18 10:38:34 PM -03 2025
+✅ Model 5 completed successfully in 6826s
+   Finished at: Sun Oct 19 12:32:20 AM -03 2025
+
+🔄 Running model 6/9:   name: openai/gpt-oss-20b
+   Config: openai_gpt-oss-20b_single.yaml
+   Started at: Sun Oct 19 12:32:20 AM -03 2025
+✅ Model 6 completed successfully in 9049s
+   Finished at: Sun Oct 19 03:03:09 AM -03 2025
+
+🔄 Running model 7/9:   name: Qwen/Qwen3-VL-4B-Instruct
+   Config: Qwen_Qwen3-VL-4B-Instruct_single.yaml
+   Started at: Sun Oct 19 03:03:09 AM -03 2025
+✅ Model 7 completed successfully in 5753s
+   Finished at: Sun Oct 19 04:39:02 AM -03 2025
+
+🔄 Running model 8/9:   name: Qwen/Qwen3-VL-8B-Instruct
+   Config: Qwen_Qwen3-VL-8B-Instruct_two.yaml
+   Started at: Sun Oct 19 04:39:02 AM -03 2025
+✅ Model 8 completed successfully in 7218s
+   Finished at: Sun Oct 19 06:39:20 AM -03 2025
+
+🔄 Running model 9/9:   name: upstage/SOLAR-10.7B-Instruct-v1.0
+   Config: upstage_SOLAR-10.7B-Instruct-v1.0_single.yaml
+   Started at: Sun Oct 19 06:39:20 AM -03 2025
+✅ Model 9 completed successfully in 11310s
+   Finished at: Sun Oct 19 09:47:50 AM -03 2025
+
+==============================================
+📊 DETAILED EVALUATION RESULTS SUMMARY
+==============================================
+Total models evaluated: 9
+Evaluations completed: 9
+Evaluations failed: 0
+
+✅ MODELS THAT COMPLETED SUCCESSFULLY (9):
+-----------------------------------------------
+  ✓   name: microsoft/Phi-4-multimodal-instruct
+    └── Config: microsoft_Phi-4-multimodal-instruct_single.yaml
+  ✓   name: mistralai/Ministral-8B-Instruct-2410
+    └── Config: mistralai_Ministral-8B-Instruct-2410_single.yaml
+  ✓   name: NousResearch/Hermes-4-14B
+    └── Config: NousResearch_Hermes-4-14B_two.yaml
+  ✓   name: nvidia/Mistral-NeMo-Minitron-8B-Instruct
+    └── Config: nvidia_Mistral-NeMo-Minitron-8B-Instruct_single.yaml
+  ✓   name: nvidia/Nemotron-Mini-4B-Instruct
+    └── Config: nvidia_Nemotron-Mini-4B-Instruct_single.yaml
+  ✓   name: openai/gpt-oss-20b
+    └── Config: openai_gpt-oss-20b_single.yaml
+  ✓   name: Qwen/Qwen3-VL-4B-Instruct
+    └── Config: Qwen_Qwen3-VL-4B-Instruct_single.yaml
+  ✓   name: Qwen/Qwen3-VL-8B-Instruct
+    └── Config: Qwen_Qwen3-VL-8B-Instruct_two.yaml
+  ✓   name: upstage/SOLAR-10.7B-Instruct-v1.0
+    └── Config: upstage_SOLAR-10.7B-Instruct-v1.0_single.yaml
+
+🎉 ALL MODELS COMPLETED SUCCESSFULLY! Evaluation batch finished.
+Completed at: Sun Oct 19 09:47:50 AM -03 2025
+==============================================
