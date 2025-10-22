@@ -22,10 +22,38 @@ from src.config_manager import ConfigManager
 from src.gpu_config import load_gpu_config
 from src.run_id_manager import generate_run_id, get_run_paths, setup_run_directories, get_prefect_flow_name
 import logging
-
+import signal
+import sys
 
 
 logger = logging.getLogger(__name__)
+
+# Global state for signal handling
+_active_server_info = None
+
+def signal_handler(signum, frame):
+    """Handle termination signals by cleaning up processes."""
+    logger.info(f"Received signal {signum}. Cleaning up...")
+    
+    # Import here to avoid circular dependency
+    from src.inference.vllm_server import stop_vllm_server, kill_lm_eval_processes
+    
+    # Kill lm-harness processes first
+    try:
+        kill_lm_eval_processes()
+    except Exception as e:
+        logger.warning(f"Error killing lm_eval processes: {e}")
+    
+    # Stop vLLM server
+    if _active_server_info is not None:
+        try:
+            logger.info("Stopping vLLM server...")
+            stop_vllm_server(_active_server_info, {})
+        except Exception as e:
+            logger.warning(f"Error stopping vLLM server: {e}")
+    
+    logger.info("Cleanup complete. Exiting.")
+    sys.exit(130)  # Standard exit code for SIGINT
 
 def load_config(config_path: str = None) -> dict:
     """Load configuration from YAML file."""
@@ -146,6 +174,10 @@ def main():
         return
     
     logger.info("Starting benchy - vLLM-powered ML model benchmarking")
+    
+    # Register signal handlers for clean termination
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     if args.verbose:
         logger.info(f"Command line arguments: {args}")

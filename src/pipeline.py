@@ -316,6 +316,10 @@ def benchmark_pipeline(
         tool_call_parser=tool_call_parser,
         enable_auto_tool_choice=enable_auto_tool_choice
     )
+    
+    # Store server info globally for signal handler
+    import eval
+    eval._active_server_info = server_info
         
     # Step 2: Test vLLM API
     api_test_result = test_vllm_api(
@@ -454,6 +458,10 @@ def benchmark_pipeline(
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
     
+    # Clear global server info
+    import eval
+    eval._active_server_info = None
+    
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result
 
@@ -581,6 +589,10 @@ def test_vllm_server(
         tool_call_parser=tool_call_parser,
         enable_auto_tool_choice=enable_auto_tool_choice
     )
+    
+    # Store server info globally for signal handler
+    import eval
+    eval._active_server_info = server_info
         
     # Step 2: Test vLLM API
     api_test_result = test_vllm_api(
@@ -590,6 +602,10 @@ def test_vllm_server(
     
     # Step 3: Stop vLLM server (cleanup) - depends on upload completion
     cleanup_result = stop_vllm_server(server_info=server_info, upload_result=api_test_result)
+    
+    # Clear global server info
+    import eval
+    eval._active_server_info = None
     
     logger.info("Test model config completed successfully")
     return cleanup_result
