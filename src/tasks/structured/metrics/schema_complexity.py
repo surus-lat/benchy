@@ -57,10 +57,20 @@ def compute_schema_complexity(schema: Dict[str, Any]) -> Dict[str, Any]:
             # Get field type
             field_type = field_schema.get('type')
             if field_type:
-                types_seen.add(field_type)
+                # Handle union types (type can be a list like ["string", "null"])
+                if isinstance(field_type, list):
+                    # Add each type in the union, and also add a tuple for tracking unions
+                    for t in field_type:
+                        if t:
+                            types_seen.add(t)
+                    types_seen.add(tuple(field_type))  # Track union types as tuples
+                else:
+                    types_seen.add(field_type)
             
             # Check for arrays
-            if field_type == 'array':
+            # For union types, check if 'array' is in the list
+            is_array = (field_type == 'array') or (isinstance(field_type, list) and 'array' in field_type)
+            if is_array:
                 features['has_arrays'] = True
                 features['array_fields'] += 1
                 
@@ -81,7 +91,8 @@ def compute_schema_complexity(schema: Dict[str, Any]) -> Dict[str, Any]:
                             field_count += analyze_properties(items_props, items_required, depth + 1)
             
             # Check for nested objects
-            elif field_type == 'object':
+            # For union types, check if 'object' is in the list
+            elif (field_type == 'object') or (isinstance(field_type, list) and 'object' in field_type):
                 features['has_nested_objects'] = True
                 features['object_fields'] += 1
                 nested_props = field_schema.get('properties', {})

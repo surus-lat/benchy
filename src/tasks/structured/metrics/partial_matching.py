@@ -32,34 +32,87 @@ class PartialMatcher:
             - match_type: 'exact', 'partial', or 'incorrect'
             - score: Float from 0.0 to 1.0
         """
+        result = self._compare_values_with_severity(predicted, expected)
+        return (result[0], result[1])
+    
+    def compare_values_with_severity(self, predicted: Any, expected: Any) -> Tuple[str, float, str]:
+        """Compare two values and return match type, score, and error severity.
+        
+        Public method that exposes severity classification.
+
+        Args:
+            predicted: Predicted value
+            expected: Expected value
+
+        Returns:
+            Tuple of (match_type, score, error_severity) where:
+            - match_type: 'exact', 'partial', or 'incorrect'
+            - score: Float from 0.0 to 1.0
+            - error_severity: 'none', 'minor', or 'critical'
+        """
+        return self._compare_values_with_severity(predicted, expected)
+    
+    def _compare_values_with_severity(self, predicted: Any, expected: Any) -> Tuple[str, float, str]:
+        """Compare two values and return match type, score, and error severity.
+
+        Args:
+            predicted: Predicted value
+            expected: Expected value
+
+        Returns:
+            Tuple of (match_type, score, error_severity) where:
+            - match_type: 'exact', 'partial', or 'incorrect'
+            - score: Float from 0.0 to 1.0
+            - error_severity: 'none', 'minor', or 'critical'
+        """
         # Handle None/null
         if predicted is None and expected is None:
-            return ('exact', 1.0)
+            return ('exact', 1.0, 'none')
         if predicted is None or expected is None:
-            return ('incorrect', 0.0)
+            return ('incorrect', 0.0, 'critical')  # Missing values are critical
 
         # Handle strings
         if isinstance(expected, str) and isinstance(predicted, str):
-            return self._compare_strings(predicted, expected)
+            match_type, score = self._compare_strings(predicted, expected)
+            # Determine severity for string mismatches
+            severity = 'none' if match_type == 'exact' else 'minor' if match_type == 'partial' else 'minor'
+            # Check if it's just a casing/whitespace issue
+            if match_type != 'exact' and self._normalize_string(predicted) == self._normalize_string(expected):
+                severity = 'minor'
+            elif match_type == 'incorrect':
+                severity = 'minor'  # String errors are generally minor unless they're completely wrong
+            return (match_type, score, severity)
 
         # Handle numbers
         if isinstance(expected, (int, float)) and isinstance(predicted, (int, float)):
-            return self._compare_numbers(predicted, expected)
+            match_type, score = self._compare_numbers(predicted, expected)
+            # Numeric errors are critical
+            severity = 'none' if match_type == 'exact' else 'critical'
+            return (match_type, score, severity)
 
         # Handle booleans
         if isinstance(expected, bool) and isinstance(predicted, bool):
             score = 1.0 if predicted == expected else 0.0
             match_type = 'exact' if score == 1.0 else 'incorrect'
-            return (match_type, score)
+            # Boolean errors are critical
+            severity = 'none' if match_type == 'exact' else 'critical'
+            return (match_type, score, severity)
+
+        # Handle type mismatches
+        if type(expected) != type(predicted):
+            return ('incorrect', 0.0, 'critical')  # Type mismatches are critical
 
         # Handle arrays
         if isinstance(expected, list) and isinstance(predicted, list):
-            return self._compare_arrays(predicted, expected)
+            match_type, score = self._compare_arrays(predicted, expected)
+            severity = 'none' if match_type == 'exact' else 'minor' if match_type == 'partial' else 'critical'
+            return (match_type, score, severity)
 
         # Exact match for other types
         score = 1.0 if predicted == expected else 0.0
         match_type = 'exact' if score == 1.0 else 'incorrect'
-        return (match_type, score)
+        severity = 'none' if match_type == 'exact' else 'critical'
+        return (match_type, score, severity)
 
     def _compare_strings(self, predicted: str, expected: str) -> Tuple[str, float]:
         """Compare two strings with composite scoring.

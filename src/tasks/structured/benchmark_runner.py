@@ -13,7 +13,6 @@ from scipy import stats
 
 from .llm import VLLMInterface
 from .metrics import MetricsCalculator, ReportGenerator, classify_complexity
-from .tasks import ParaloqTask
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +20,27 @@ logger = logging.getLogger(__name__)
 class BenchmarkRunner:
     """Manages benchmark execution with checkpointing and complexity analysis."""
     
-    def __init__(self, model_name: str, config: dict):
+    def __init__(self, model_name: str, config: dict, task=None):
+        """
+        Initialize benchmark runner.
+        
+        Args:
+            model_name: Name of the model being evaluated
+            config: Configuration dictionary
+            task: Task instance (if None, will try to create from config)
+        """
         self.model_name = model_name
         self.config = config
         self.llm = VLLMInterface(config, model_name)
-        self.task = ParaloqTask(config)
+        
+        # Initialize task - can be passed in or created from config
+        if task is not None:
+            self.task = task
+        else:
+            # Default to ParaloqTask for backward compatibility
+            from .tasks import ParaloqTask
+            self.task = ParaloqTask(config)
+        
         self.metrics_calc = MetricsCalculator(config)
         self.batch_size = config.get("performance", {}).get("batch_size", 20)
     
@@ -87,9 +102,16 @@ class BenchmarkRunner:
         results = {"samples": [], "per_sample_metrics": []}
         start_time = time.time()
         
+        # Log example message for first sample (before processing starts)
+        if samples:
+            first_sample = samples[0]
+            system_prompt, user_prompt = self.task.get_prompt(first_sample)
+            self._log_example_message(first_sample["id"], system_prompt, user_prompt, first_sample.get("schema"))
+        
         for batch_idx in range(0, len(samples), self.batch_size):
             batch = samples[batch_idx:batch_idx + self.batch_size]
-            logger.info(f"Processing batch {batch_idx//self.batch_size + 1}/"
+            batch_num = batch_idx//self.batch_size + 1
+            logger.info(f"Processing batch {batch_num}/"
                        f"{(len(samples) + self.batch_size - 1)//self.batch_size} "
                        f"({len(batch)} samples)...")
             
@@ -103,6 +125,9 @@ class BenchmarkRunner:
                 }
                 for s in batch
             ]
+            
+            # Only log samples from first batch
+            should_log_batch_samples = log_samples and batch_num == 1
             
             # Generate
             batch_start = time.time()
@@ -150,8 +175,9 @@ class BenchmarkRunner:
                     }
                 results["per_sample_metrics"].append(metrics)
                 
-                if log_samples:
+                if should_log_batch_samples:
                     # Store both parsed output and raw text for debugging
+                    # Only log first batch to reduce file size
                     sample_data = {
                         "id": sample["id"],
                         "title": sample["title"],
@@ -228,7 +254,9 @@ class BenchmarkRunner:
     def _get_checkpoint_path(self):
         """Get checkpoint file path."""
         checkpoint_dir = Path(self.config.get("output", {}).get("results_dir", "./results")) / ".checkpoints"
-        return checkpoint_dir / f"{self.model_name.replace('/', '_')}_checkpoint.json"
+        task_name = self.task.get_task_name()
+        safe_model_name = self.model_name.replace('/', '_')
+        return checkpoint_dir / f"{safe_model_name}_{task_name}_checkpoint.json"
     
     def _get_config_hash(self):
         """Generate config hash for checkpoint validation."""
@@ -287,6 +315,58 @@ class BenchmarkRunner:
         logger.info(f"Hallucination Rate: {metrics['hallucination_rate']:.2%}")
         logger.info(f"Error Rate: {metrics['error_rate']:.2%}")
         logger.info("=" * 60)
+    
+    def _log_example_message(self, sample_id: str, system_prompt: str, user_prompt: str, schema: dict = None):
+        """Log example message for the first sample."""
+        import json
+        
+        logger.info("=" * 80)
+        logger.info("EXAMPLE MESSAGE (First Sample)")
+        logger.info("=" * 80)
+        logger.info(f"Sample ID: {sample_id}")
+        logger.info(f"Task: {self.task.get_task_name()}")
+        logger.info("")
+        logger.info("System Prompt:")
+        logger.info("-" * 80)
+        for line in system_prompt.split('\n'):
+            logger.info(f"  {line}")
+        logger.info("")
+        logger.info("User Prompt:")
+        logger.info("-" * 80)
+        for line in user_prompt.split('\n'):
+            logger.info(f"  {line}")
+        logger.info("=" * 80)
+        
+        # Also save to file for traceability
+        output_dir = Path(self.config.get("output", {}).get("results_dir", "./results"))
+        task_name = self.task.get_task_name()
+        example_file = output_dir / f"example_message_{task_name}.txt"
+        example_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(example_file, "w", encoding="utf-8") as f:
+                f.write("=" * 80 + "\n")
+                f.write("EXAMPLE MESSAGE (First Sample)\n")
+                f.write("=" * 80 + "\n")
+                f.write(f"Sample ID: {sample_id}\n")
+                f.write(f"Task: {task_name}\n")
+                f.write(f"Model: {self.model_name}\n")
+                f.write("\n")
+                f.write("System Prompt:\n")
+                f.write("-" * 80 + "\n")
+                f.write(system_prompt + "\n")
+                f.write("\n")
+                f.write("User Prompt:\n")
+                f.write("-" * 80 + "\n")
+                f.write(user_prompt + "\n")
+                if schema:
+                    f.write("\n")
+                    f.write("Schema (JSON):\n")
+                    f.write("-" * 80 + "\n")
+                    f.write(json.dumps(schema, indent=2) + "\n")
+                f.write("=" * 80 + "\n")
+            logger.info(f"Example message saved to: {example_file}")
+        except Exception as e:
+            logger.warning(f"Could not save example message to file: {e}")
 
 
 def save_results(results: dict, output_dir: Path, model_name: str, log_samples: bool, config: dict):
@@ -305,10 +385,15 @@ def save_results(results: dict, output_dir: Path, model_name: str, log_samples: 
     report_file = output_dir / f"{safe_name}_{timestamp}_report.txt"
     ReportGenerator(config).generate_text_report(model_name, results["aggregate_metrics"], report_file)
     
-    # Save samples if requested
+    # Save samples if requested (only first batch is logged)
     if log_samples:
         samples_file = output_dir / f"{safe_name}_{timestamp}_samples.json"
         with open(samples_file, "w") as f:
-            json.dump({"model": model_name, "timestamp": timestamp, "samples": results["samples"]}, f, indent=2)
-        logging.info(f"Saved sample results to {samples_file}")
+            json.dump({
+                "model": model_name,
+                "timestamp": timestamp,
+                "note": "Only first batch of samples logged",
+                "samples": results["samples"]
+            }, f, indent=2)
+        logging.info(f"Saved sample results (first batch only) to {samples_file}")
 

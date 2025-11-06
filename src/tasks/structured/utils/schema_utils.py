@@ -26,6 +26,14 @@ def sanitize_schema_for_vllm(schema: Dict) -> Dict:
     for key in unsupported_keys:
         schema.pop(key, None)
     
+    # Remove allOf, oneOf, anyOf at top level - vLLM has limited support for these
+    # We validate with the full schema before sanitization, so removing these is safe
+    # for generation purposes
+    for combiner in ["allOf", "oneOf", "anyOf"]:
+        if combiner in schema:
+            logger.debug(f"Removing top-level {combiner} for vLLM compatibility")
+            schema.pop(combiner, None)
+    
     # Recursively sanitize the schema
     _sanitize_recursive(schema)
     
@@ -91,9 +99,11 @@ def _sanitize_recursive(obj: Any) -> None:
     if "additionalProperties" in obj and isinstance(obj["additionalProperties"], dict):
         _sanitize_recursive(obj["additionalProperties"])
     
-    # Recursively sanitize anyOf, oneOf, allOf
-    for key in ["anyOf", "oneOf", "allOf"]:
-        if key in obj and isinstance(obj[key], list):
-            for item in obj[key]:
-                _sanitize_recursive(item)
+    # Remove anyOf, oneOf, allOf - vLLM has limited support for these combiners
+    # We validate with the full schema before sanitization, so removing these is safe
+    # for generation purposes
+    for combiner in ["anyOf", "oneOf", "allOf"]:
+        if combiner in obj:
+            logger.debug(f"Removing {combiner} for vLLM compatibility")
+            obj.pop(combiner, None)
 
