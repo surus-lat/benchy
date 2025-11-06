@@ -4,7 +4,23 @@
 name: "structured_extraction"
 description: "Structured data extraction using guided JSON schema"
 
-# Task-specific parameters
+# List of tasks to run
+tasks:
+  - "chat_extract"
+#  - "paraloq"
+
+# Per-task configurations
+task_configs:
+  paraloq:
+    dataset_file: "paraloq_data.jsonl"
+    dataset_name: "paraloq/json_data_extraction"
+  
+  chat_extract:
+    dataset_file: "chat_extract_data.jsonl"
+    dataset_name: "mauroibz/chat_structured_extraction"
+    schema_file: "schema_expected_lead_data.json"
+
+# Legacy parameters (kept for backward compatibility)
 task_name: "structured_extraction"
 dataset_file: "paraloq_data.jsonl"
 dataset_name: "paraloq/json_data_extraction"
@@ -13,6 +29,12 @@ dataset_name: "paraloq/json_data_extraction"
 prompts:
   system: |
     You are a precise data extraction assistant. Extract information from the provided text according to the given JSON schema. Only extract information explicitly stated in the text. If information for a field is not present, use null as appropriate.
+    Extract the following fields from the input text:
+    - nombre (from nombre): The extracted nombre.
+    - tiene_negocio (from tiene_negocio): The extracted tiene negocio.
+    - negocio_descripcion_negocio (from negocio.descripcion_negocio): The descripcion negocio of the negocio.
+    - negocio_meses_en_negocio (from negocio.meses_en_negocio): The meses en negocio of the negocio.
+    - negocio_cantidad_empleados (from negocio.cantidad_empleados): The cantidad empleados of the negocio.
   user: |
     Text:
     {text}
@@ -25,7 +47,7 @@ prompts:
 # Default evaluation parameters
 defaults:
   batch_size: 20  # Number of concurrent async requests
-  log_samples: false
+  log_samples: true  # Log first batch of samples (reduced file size)
   temperature: 0.0
   max_tokens: 2048
   timeout: 120

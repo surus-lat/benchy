@@ -35,12 +35,24 @@ class ReportGenerator:
         lines = []
 
         # Header
+        total_samples = aggregate_metrics.get('total_samples', 0)
+        dataset_name = aggregate_metrics.get('dataset_name', 'structured_extraction')
         lines.append("┌" + "─" * 70 + "┐")
         lines.append(f"│  Model: {model_name:<60} │")
-        lines.append(f"│  Dataset: paraloq/json_data_extraction ({aggregate_metrics['total_samples']} samples){' ' * (60 - len(f'Dataset: paraloq/json_data_extraction ({aggregate_metrics['total_samples']} samples)'))}│")
+        dataset_line = f"Dataset: {dataset_name} ({total_samples} samples)"
+        lines.append(f"│  {dataset_line:<68} │")
         lines.append(f"│  Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S'):<58} │")
         lines.append("└" + "─" * 70 + "┘")
         lines.append("")
+        
+        # Handle empty results gracefully
+        if total_samples == 0:
+            lines.append("⚠️  WARNING: No samples processed")
+            lines.append("")
+            with open(output_path, "w") as f:
+                f.write("\n".join(lines))
+            logger.warning(f"Generated report with no samples: {output_path}")
+            return
 
         # Overall Score
         eqs = aggregate_metrics.get("extraction_quality_score", 0.0)
@@ -51,26 +63,44 @@ class ReportGenerator:
         
         # Confidence interval (approximation based on variance)
         eqs_std = aggregate_metrics.get("sample_level_variance", {}).get("eqs_stdev", 0.0)
-        ci_lower = max(0.0, eqs - 1.96 * eqs_std / (aggregate_metrics['total_samples'] ** 0.5))
-        ci_upper = min(1.0, eqs + 1.96 * eqs_std / (aggregate_metrics['total_samples'] ** 0.5))
-        lines.append(f"  95% CI: [{ci_lower:.3f}, {ci_upper:.3f}]")
+        if total_samples > 0:
+            ci_lower = max(0.0, eqs - 1.96 * eqs_std / (total_samples ** 0.5))
+            ci_upper = min(1.0, eqs + 1.96 * eqs_std / (total_samples ** 0.5))
+            lines.append(f"  95% CI: [{ci_lower:.3f}, {ci_upper:.3f}]")
         lines.append("")
 
-        # Primary Metrics
+        # Primary Metrics (NEW LAYOUT)
         lines.append("PRIMARY METRICS")
+        lines.append("━" * 72)
+        
+        # Question 1: How many are perfect?
+        exact_match = aggregate_metrics.get("exact_match_rate", 0.0)
+        em_count = int(exact_match * aggregate_metrics.get("total_samples", 0))
+        total_count = aggregate_metrics.get("total_samples", 0)
+        lines.append(f"  {self._emoji(exact_match)} Perfect Extractions:        {exact_match:5.1%}  ({em_count}/{total_count})  Grade: {self._grade_metric(exact_match)}")
+        
+        # Question 2: How bad are the imperfect ones?
+        imperfect_quality = aggregate_metrics.get("imperfect_sample_quality", 0.0)
+        imperfect_count = aggregate_metrics.get("imperfect_sample_count", 0)
+        if imperfect_count > 0:
+            lines.append(f"  {self._emoji(imperfect_quality)} Imperfect Sample Quality:   {imperfect_quality:.3f}             Grade: {self._grade_metric(imperfect_quality)}")
+        else:
+            lines.append(f"  {self._emoji(1.0)} Imperfect Sample Quality:   N/A (all perfect)    Grade: A+")
+        
+        # Overall EQS for model comparison
+        lines.append(f"  ⭐ Overall Quality (EQS):      {eqs:.3f}             {eqs_grade}")
+        lines.append("")
+        
+        # Additional Key Metrics
+        lines.append("ADDITIONAL KEY METRICS")
         lines.append("━" * 72)
         
         validity = aggregate_metrics.get("schema_validity_rate", 0.0)
         valid_count = aggregate_metrics.get("valid_samples", 0)
-        total_count = aggregate_metrics.get("total_samples", 0)
         lines.append(f"  {self._emoji(validity)} Schema Validity:     {validity:5.1%}  ({valid_count}/{total_count})  Grade: {self._grade_metric(validity)}")
         
         f1_partial = aggregate_metrics.get("field_f1_partial", 0.0)
         lines.append(f"  {self._emoji(f1_partial)} Field F1 (Partial):  {f1_partial:.3f}             Grade: {self._grade_metric(f1_partial)}")
-        
-        exact_match = aggregate_metrics.get("exact_match_rate", 0.0)
-        em_count = int(exact_match * total_count)
-        lines.append(f"  {self._emoji(exact_match)} Exact Match:         {exact_match:5.1%}  ({em_count}/{total_count})  Grade: {self._grade_metric(exact_match)}")
         
         halluc = aggregate_metrics.get("hallucination_rate", 0.0)
         lines.append(f"  {self._emoji(1 - halluc)} Hallucination Rate:  {halluc:5.1%}              Grade: {self._grade_metric(1 - halluc)}")
@@ -83,11 +113,33 @@ class ReportGenerator:
         precision = aggregate_metrics.get("field_precision_partial", 0.0)
         recall = aggregate_metrics.get("field_recall_partial", 0.0)
         type_acc = aggregate_metrics.get("type_accuracy", 0.0)
+        field_accuracy = aggregate_metrics.get("field_accuracy_score", 0.0)
         
         lines.append(f"  Field F1 (Strict):       {f1_strict:.3f}")
+        lines.append(f"  Field Accuracy Score:    {field_accuracy:.3f}  (exact matches only, no partial credit)")
         lines.append(f"  Field Precision:         {precision:.3f}")
         lines.append(f"  Field Recall:            {recall:.3f}")
         lines.append(f"  Type Accuracy:           {type_acc:5.1%}")
+        lines.append("")
+        
+        # ERROR ANALYSIS (NEW SECTION)
+        lines.append("ERROR ANALYSIS")
+        lines.append("━" * 72)
+        
+        critical_error_rate = aggregate_metrics.get("critical_error_rate", 0.0)
+        lines.append(f"  Critical Error Rate:     {critical_error_rate:5.1%}  {self._emoji(1 - critical_error_rate)}")
+        lines.append(f"    (wrong numerics, missing fields, type mismatches)")
+        
+        # Numeric field analysis
+        numeric_total = aggregate_metrics.get("numeric_fields_total", 0)
+        numeric_correct = aggregate_metrics.get("numeric_fields_correct", 0)
+        numeric_precision = aggregate_metrics.get("numeric_precision_rate", 0.0)
+        
+        if numeric_total > 0:
+            lines.append(f"  Numeric Field Precision: {numeric_precision:5.1%}  ({numeric_correct}/{numeric_total})  {self._emoji(numeric_precision)}")
+        else:
+            lines.append(f"  Numeric Field Precision: N/A (no numeric fields in dataset)")
+        
         lines.append("")
 
         # Match Distribution

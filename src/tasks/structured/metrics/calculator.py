@@ -183,14 +183,19 @@ class MetricsCalculator:
         for key, exp_value in exp_fields.items():
             if key in pred_fields:
                 pred_value = pred_fields[key]
-                match_type, score = self.partial_matcher.compare_values(pred_value, exp_value)
+                match_type, score, severity = self.partial_matcher.compare_values_with_severity(pred_value, exp_value)
                 type_match = type(pred_value) == type(exp_value)
+                
+                # Check if it's a numeric field
+                is_numeric = isinstance(exp_value, (int, float)) and not isinstance(exp_value, bool)
 
                 results[key] = {
                     "status": "matched",
                     "match_type": match_type,
                     "score": score,
                     "type_match": type_match,
+                    "error_severity": severity,
+                    "is_numeric": is_numeric,
                     "predicted": pred_value,
                     "expected": exp_value,
                 }
@@ -200,6 +205,8 @@ class MetricsCalculator:
                     "match_type": "missed",
                     "score": 0.0,
                     "type_match": False,
+                    "error_severity": "critical",  # Missed fields are critical
+                    "is_numeric": isinstance(exp_value, (int, float)) and not isinstance(exp_value, bool),
                     "predicted": None,
                     "expected": exp_value,
                 }
@@ -212,6 +219,8 @@ class MetricsCalculator:
                     "match_type": "spurious",
                     "score": 0.0,
                     "type_match": False,
+                    "error_severity": "critical",  # Spurious fields are critical (hallucination)
+                    "is_numeric": isinstance(pred_value, (int, float)) and not isinstance(pred_value, bool),
                     "predicted": pred_value,
                     "expected": None,
                 }
@@ -225,6 +234,9 @@ class MetricsCalculator:
         exp_fields: Dict
     ) -> Dict:
         """Aggregate field-level results into metrics."""
+        # Get configurable partial credit (default 0.3)
+        partial_credit = self.config.get("metrics", {}).get("partial_credit", 0.3)
+        
         # Counters for distribution
         exact_count = 0
         partial_count = 0
@@ -232,6 +244,12 @@ class MetricsCalculator:
         missed_count = 0
         spurious_count = 0
         type_correct_count = 0
+        
+        # New counters for enhanced metrics
+        critical_errors = 0
+        minor_errors = 0
+        numeric_fields_total = 0
+        numeric_fields_correct = 0
 
         # For composite score tracking
         composite_scores = []
@@ -257,13 +275,26 @@ class MetricsCalculator:
             # Track composite scores
             if result["score"] > 0:
                 composite_scores.append(result["score"])
+            
+            # Track error severity
+            error_severity = result.get("error_severity", "none")
+            if error_severity == "critical":
+                critical_errors += 1
+            elif error_severity == "minor":
+                minor_errors += 1
+            
+            # Track numeric field accuracy
+            if result.get("is_numeric", False):
+                numeric_fields_total += 1
+                if match_type == "exact":
+                    numeric_fields_correct += 1
 
         # Calculate F1 scores
         total_expected = len(exp_fields)
         total_predicted = len(pred_fields)
 
-        # Partial F1 (with partial credit)
-        correct_partial = exact_count + 0.5 * partial_count
+        # Partial F1 (with configurable partial credit)
+        correct_partial = exact_count + partial_credit * partial_count
         precision_partial = correct_partial / total_predicted if total_predicted > 0 else 0.0
         recall_partial = correct_partial / total_expected if total_expected > 0 else 0.0
         f1_partial = (2 * precision_partial * recall_partial /
@@ -282,6 +313,17 @@ class MetricsCalculator:
 
         # Hallucination rate
         hallucination_rate = spurious_count / total_predicted if total_predicted > 0 else 0.0
+        
+        # NEW METRICS
+        # Critical Error Rate
+        total_fields = total_expected  # Base on expected fields
+        critical_error_rate = critical_errors / total_fields if total_fields > 0 else 0.0
+        
+        # Field Accuracy Score (strict, no partial credit)
+        field_accuracy_score = exact_count / total_expected if total_expected > 0 else 0.0
+        
+        # Numeric Precision Rate
+        numeric_precision_rate = numeric_fields_correct / numeric_fields_total if numeric_fields_total > 0 else 1.0
 
         return {
             "field_f1_partial": f1_partial,
@@ -300,20 +342,31 @@ class MetricsCalculator:
                 "spurious": spurious_count,
             },
             "composite_scores": composite_scores,
+            # New metrics
+            "critical_error_rate": critical_error_rate,
+            "minor_error_count": minor_errors,
+            "critical_error_count": critical_errors,
+            "field_accuracy_score": field_accuracy_score,
+            "numeric_precision_rate": numeric_precision_rate,
+            "numeric_fields_total": numeric_fields_total,
+            "numeric_fields_correct": numeric_fields_correct,
         }
 
     def _calculate_eqs(self, metrics: Dict) -> float:
         """Calculate Extraction Quality Score (EQS).
 
-        EQS = 0.20 * schema_validity +
-              0.60 * field_f1_partial +
-              0.20 * (1 - hallucination_rate)
+        EQS = 0.15 * schema_validity +
+              0.70 * field_f1_partial +
+              0.15 * (1 - hallucination_rate)
+        
+        New weights emphasize F1 score more heavily to better differentiate
+        high-performing models in the 0.9-1.0 range.
         """
         weights = self.config.get("metrics", {}).get("extraction_quality_score", {}).get("weights", {})
 
-        validity_weight = weights.get("schema_validity", 0.20)
-        f1_weight = weights.get("field_f1_partial", 0.60)
-        anti_halluc_weight = weights.get("inverted_hallucination", 0.20)
+        validity_weight = weights.get("schema_validity", 0.15)
+        f1_weight = weights.get("field_f1_partial", 0.70)
+        anti_halluc_weight = weights.get("inverted_hallucination", 0.15)
 
         eqs = (validity_weight * metrics["schema_validity"] +
                f1_weight * metrics["field_f1_partial"] +
@@ -424,7 +477,30 @@ class MetricsCalculator:
             Dictionary of aggregated metrics
         """
         if not all_metrics:
-            return {}
+            return {
+                "total_samples": 0,
+                "valid_samples": 0,
+                "error_count": 0,
+                "error_rate": 0.0,
+                "extraction_quality_score": 0.0,
+                "schema_validity_rate": 0.0,
+                "hallucination_rate": 0.0,
+                "exact_match_rate": 0.0,
+                "field_f1_partial": 0.0,
+                "field_f1_strict": 0.0,
+                "field_precision_partial": 0.0,
+                "field_recall_partial": 0.0,
+                "field_precision_strict": 0.0,
+                "field_recall_strict": 0.0,
+                "type_accuracy": 0.0,
+                "match_distribution": {},
+                "match_distribution_counts": {},
+                "composite_score_stats": {"mean": 0.0, "median": 0.0, "stdev": 0.0, "min": 0.0, "max": 0.0},
+                "sample_level_variance": {
+                    "eqs_mean": 0.0, "eqs_stdev": 0.0, "eqs_min": 0.0, "eqs_max": 0.0,
+                    "f1_mean": 0.0, "f1_stdev": 0.0, "f1_min": 0.0, "f1_max": 0.0,
+                },
+            }
 
         total_samples = len(all_metrics)
 
@@ -445,11 +521,31 @@ class MetricsCalculator:
             avg_recall_strict = sum(m["field_recall_strict"] for m in valid_metrics) / len(valid_metrics)
             avg_type_accuracy = sum(m["type_accuracy"] for m in valid_metrics) / len(valid_metrics)
             avg_eqs = sum(m["extraction_quality_score"] for m in valid_metrics) / len(valid_metrics)
+            
+            # New metrics
+            avg_critical_error_rate = sum(m.get("critical_error_rate", 0.0) for m in valid_metrics) / len(valid_metrics)
+            avg_field_accuracy_score = sum(m.get("field_accuracy_score", 0.0) for m in valid_metrics) / len(valid_metrics)
+            
+            # Numeric precision (only count samples with numeric fields)
+            metrics_with_numeric = [m for m in valid_metrics if m.get("numeric_fields_total", 0) > 0]
+            if metrics_with_numeric:
+                avg_numeric_precision = sum(m.get("numeric_precision_rate", 0.0) for m in metrics_with_numeric) / len(metrics_with_numeric)
+                total_numeric_fields = sum(m.get("numeric_fields_total", 0) for m in valid_metrics)
+                total_numeric_correct = sum(m.get("numeric_fields_correct", 0) for m in valid_metrics)
+            else:
+                avg_numeric_precision = 1.0  # No numeric fields means 100% precision
+                total_numeric_fields = 0
+                total_numeric_correct = 0
         else:
             avg_f1_partial = avg_f1_strict = 0.0
             avg_precision_partial = avg_recall_partial = 0.0
             avg_precision_strict = avg_recall_strict = 0.0
             avg_type_accuracy = avg_eqs = 0.0
+            avg_critical_error_rate = 0.0
+            avg_field_accuracy_score = 0.0
+            avg_numeric_precision = 0.0
+            total_numeric_fields = 0
+            total_numeric_correct = 0
 
         # Tier 3: Match Distribution (aggregate counts)
         total_dist = defaultdict(int)
@@ -496,11 +592,28 @@ class MetricsCalculator:
                 "f1_min": min(f1_scores),
                 "f1_max": max(f1_scores),
             }
+            
+            # NEW: Imperfect Sample Quality (ISQ)
+            # Average quality of samples that are NOT exact matches
+            imperfect_samples = [m for m in valid_metrics if not m.get("exact_match", False)]
+            if imperfect_samples:
+                imperfect_eqs_scores = [m["extraction_quality_score"] for m in imperfect_samples]
+                imperfect_f1_scores = [m["field_f1_partial"] for m in imperfect_samples]
+                imperfect_sample_quality = statistics.mean(imperfect_eqs_scores)
+                imperfect_sample_quality_f1 = statistics.mean(imperfect_f1_scores)
+                imperfect_count = len(imperfect_samples)
+            else:
+                imperfect_sample_quality = 1.0  # All samples are perfect
+                imperfect_sample_quality_f1 = 1.0
+                imperfect_count = 0
         else:
             sample_variance = {
                 "eqs_mean": 0.0, "eqs_stdev": 0.0, "eqs_min": 0.0, "eqs_max": 0.0,
                 "f1_mean": 0.0, "f1_stdev": 0.0, "f1_min": 0.0, "f1_max": 0.0,
             }
+            imperfect_sample_quality = 0.0
+            imperfect_sample_quality_f1 = 0.0
+            imperfect_count = 0
 
         # Error count
         error_count = sum(1 for m in all_metrics if m["error"] is not None)
@@ -532,6 +645,18 @@ class MetricsCalculator:
             "match_distribution_counts": dict(total_dist),
             "composite_score_stats": composite_stats,
             "sample_level_variance": sample_variance,
+            
+            # NEW METRICS
+            "critical_error_rate": avg_critical_error_rate,
+            "field_accuracy_score": avg_field_accuracy_score,
+            "numeric_precision_rate": avg_numeric_precision,
+            "numeric_fields_total": total_numeric_fields,
+            "numeric_fields_correct": total_numeric_correct,
+            
+            # Imperfect Sample Quality (ISQ)
+            "imperfect_sample_quality": imperfect_sample_quality,
+            "imperfect_sample_quality_f1": imperfect_sample_quality_f1,
+            "imperfect_sample_count": imperfect_count,
         }
 
 

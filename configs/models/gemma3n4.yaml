@@ -6,4 +6,4 @@ vllm:
   overrides: {}
 
 tasks:
-  - "latam_board"
+  - "structured_extraction"
