@@ -29,12 +29,6 @@ dataset_name: "paraloq/json_data_extraction"
 prompts:
   system: |
     You are a precise data extraction assistant. Extract information from the provided text according to the given JSON schema. Only extract information explicitly stated in the text. If information for a field is not present, use null as appropriate.
-    Extract the following fields from the input text:
-    - nombre (from nombre): The extracted nombre.
-    - tiene_negocio (from tiene_negocio): The extracted tiene negocio.
-    - negocio_descripcion_negocio (from negocio.descripcion_negocio): The descripcion negocio of the negocio.
-    - negocio_meses_en_negocio (from negocio.meses_en_negocio): The meses en negocio of the negocio.
-    - negocio_cantidad_empleados (from negocio.cantidad_empleados): The cantidad empleados of the negocio.
   user: |
     Text:
     {text}

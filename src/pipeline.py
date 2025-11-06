@@ -140,7 +140,9 @@ def benchmark_pipeline(
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
     log_setup: Optional[Any] = None,
     run_id: Optional[str] = None,
-    # vLLM server configuration
+    provider_type: str = "vllm",
+    provider_config: Optional[Dict[str, Any]] = None,
+    # vLLM server configuration (only used if provider_type == 'vllm')
     host: str = "0.0.0.0",
     port: int = 8000,
     tensor_parallel_size: int = 1,
@@ -167,25 +169,24 @@ def benchmark_pipeline(
     enable_auto_tool_choice: bool = False
 ) -> Dict[str, Any]:
     """
-    Complete vLLM-based benchmarking pipeline.
+    Complete benchmarking pipeline for vLLM and cloud providers.
     
     The pipeline:
-    1. Starts a vLLM server with the specified model
-    2. Tests the API server to ensure it's working
-    3. Runs specified evaluation tasks (spanish, portuguese, etc.)
-    4. Gathers results
-    5. Stops the vLLM server (guaranteed cleanup)
+    - For vLLM: Starts server, tests API, runs tasks, stops server
+    - For cloud providers (OpenAI/Anthropic): Directly runs tasks using API
     
     Args:
         model_name: The model to evaluate
         tasks: List of task names to run (e.g., ["spanish", "portuguese"])
         output_path: Base output path for results
         limit: Limit number of examples per task (useful for testing)
-        use_chat_completions: Whether to use chat completions API (/v1/chat/completions) or completions API (/v1/completions)
-        task_defaults_overrides: Optional dict to override task default parameters (e.g., log_samples, batch_size)
+        use_chat_completions: Whether to use chat completions API
+        task_defaults_overrides: Optional dict to override task default parameters
         log_setup: Logging setup object
-        run_id: Optional run ID for organizing outputs. If not provided, auto-generated.
-        # vLLM server configuration
+        run_id: Optional run ID for organizing outputs
+        provider_type: Provider type ('vllm', 'openai', or 'anthropic')
+        provider_config: Provider configuration (for cloud providers)
+        # vLLM server configuration (only used if provider_type == 'vllm')
         host: Host to bind vLLM server to
         port: Port for vLLM server
         tensor_parallel_size: Number of GPUs for tensor parallelism
@@ -199,7 +200,8 @@ def benchmark_pipeline(
         cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
         kv_cache_memory: KV cache memory allocation
     """
-    logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
+    logger.info(f"Starting benchmark pipeline for model: {model_name}")
+    logger.info(f"Provider type: {provider_type}")
     logger.info(f"Tasks to run: {tasks}")
     logger.info(f"Using run_id: {run_id}")
     
@@ -248,12 +250,14 @@ def benchmark_pipeline(
     
     logger.info(f"Running {len(pending_tasks)} pending tasks: {pending_tasks}")
     
-    # Step 0: Fetch generation config from model repository
-    generation_config = fetch_generation_config(
-        model_name=model_name,
-        hf_cache=hf_cache,
-        hf_token=hf_token
-    )
+    # Step 0: Fetch generation config from model repository (only for vLLM)
+    generation_config = None
+    if provider_type == 'vllm':
+        generation_config = fetch_generation_config(
+            model_name=model_name,
+            hf_cache=hf_cache,
+            hf_token=hf_token
+        )
     
     # Write complete run configuration
     config_file_path = write_run_config(
@@ -285,47 +289,54 @@ def benchmark_pipeline(
         cuda_devices=cuda_devices
     )
     
-    # Step 1: Start vLLM server
-    # Use GPU configuration from central config, with command line override
-    vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
-    logger.info(f"Starting vLLM server with CUDA devices: {vllm_cuda_devices}")
+    # Initialize server_info and api_test_result
+    server_info = None
+    api_test_result = {"status": "skipped"}
     
-    server_info = start_vllm_server(
-        model_name=model_name,
-        host=host,
-        port=port,
-        tensor_parallel_size=tensor_parallel_size,
-        max_model_len=max_model_len,
-        gpu_memory_utilization=gpu_memory_utilization,
-        enforce_eager=enforce_eager,
-        limit_mm_per_prompt=limit_mm_per_prompt,
-        hf_cache=hf_cache,
-        hf_token=hf_token,
-        vllm_venv_path=vllm_venv_path,
-        startup_timeout=startup_timeout,
-        cuda_devices=vllm_cuda_devices,
-        kv_cache_memory=kv_cache_memory,
-        vllm_version=vllm_version,
-        multimodal=multimodal,
-        max_num_seqs=max_num_seqs,
-        max_num_batched_tokens=max_num_batched_tokens,
-        trust_remote_code=trust_remote_code,
-        tokenizer_mode=tokenizer_mode,
-        config_format=config_format,
-        load_format=load_format,
-        tool_call_parser=tool_call_parser,
-        enable_auto_tool_choice=enable_auto_tool_choice
-    )
-    
-    # Store server info globally for signal handler
-    import eval
-    eval._active_server_info = server_info
+    # Step 1 & 2: Start and test server (only for vLLM)
+    if provider_type == 'vllm':
+        # Use GPU configuration from central config, with command line override
+        vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
+        logger.info(f"Starting vLLM server with CUDA devices: {vllm_cuda_devices}")
         
-    # Step 2: Test vLLM API
-    api_test_result = test_vllm_api(
-        server_info=server_info,
-        model_name=model_name
-    )
+        server_info = start_vllm_server(
+            model_name=model_name,
+            host=host,
+            port=port,
+            tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
+            limit_mm_per_prompt=limit_mm_per_prompt,
+            hf_cache=hf_cache,
+            hf_token=hf_token,
+            vllm_venv_path=vllm_venv_path,
+            startup_timeout=startup_timeout,
+            cuda_devices=vllm_cuda_devices,
+            kv_cache_memory=kv_cache_memory,
+            vllm_version=vllm_version,
+            multimodal=multimodal,
+            max_num_seqs=max_num_seqs,
+            max_num_batched_tokens=max_num_batched_tokens,
+            trust_remote_code=trust_remote_code,
+            tokenizer_mode=tokenizer_mode,
+            config_format=config_format,
+            load_format=load_format,
+            tool_call_parser=tool_call_parser,
+            enable_auto_tool_choice=enable_auto_tool_choice
+        )
+        
+        # Store server info globally for signal handler
+        import eval
+        eval._active_server_info = server_info
+            
+        # Step 2: Test vLLM API
+        api_test_result = test_vllm_api(
+            server_info=server_info,
+            model_name=model_name
+        )
+    else:
+        logger.info(f"Using cloud provider {provider_type}, skipping vLLM server startup")
     
     # Create run-specific output directory structure: {output_path}/{run_id}/{model_name}
     model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
@@ -424,6 +435,15 @@ def benchmark_pipeline(
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("structured_extraction", structured_task_config)
+        
+        # Add provider info to provider_config if using cloud provider
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
         structured_results = run_structured_extraction(
             model_name=model_name,
             output_path=model_output_path,
@@ -431,7 +451,8 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=structured_task_config,
             limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices()
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
         )
         task_results["structured_extraction"] = structured_results
             
@@ -442,8 +463,16 @@ def benchmark_pipeline(
         translation_results=task_results.get("translation", {})
     )
     
-    # Step 5: Stop vLLM server (cleanup)
-    cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
+    # Step 5: Stop vLLM server (cleanup) - only for vLLM
+    if provider_type == 'vllm' and server_info:
+        cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
+        
+        # Clear global server info
+        import eval
+        eval._active_server_info = None
+    else:
+        # For cloud providers, just return the gather result
+        cleanup_result = gather_result
     
     # Log final completion summary
     newly_completed = [task for task in pending_tasks if task in task_results]
@@ -457,10 +486,6 @@ def benchmark_pipeline(
     logger.info(f"Newly completed: {len(newly_completed)}")
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
-    
-    # Clear global server info
-    import eval
-    eval._active_server_info = None
     
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result

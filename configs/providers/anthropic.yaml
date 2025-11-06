@@ -1,0 +1,13 @@
+# Base Anthropic (Claude) API configuration
+# This config is used for Claude models accessed via Anthropic's API
+
+provider_type: anthropic
+base_url: "https://api.anthropic.com/v1"
+api_key_env: "ANTHROPIC_API_KEY"  # Environment variable to read API key from
+timeout: 120
+max_retries: 3
+
+# Default generation parameters (can be overridden in model config)
+temperature: 0.0
+max_tokens: 2048
+

@@ -28,8 +28,18 @@ class ConfigManager:
         with open(config_path, 'r') as f:
             model_config = yaml.safe_load(f)
         
+        # Handle OpenAI config merging
+        if 'openai' in model_config:
+            self._merge_cloud_provider_config(model_config, 'openai')
+            model_config['provider_type'] = 'openai'
+        
+        # Handle Anthropic config merging
+        elif 'anthropic' in model_config:
+            self._merge_cloud_provider_config(model_config, 'anthropic')
+            model_config['provider_type'] = 'anthropic'
+        
         # Handle vLLM config merging
-        if 'vllm' in model_config:
+        elif 'vllm' in model_config:
             vllm_config = model_config['vllm']
             
             # Check if this is a new format config with provider_config
@@ -93,8 +103,49 @@ class ConfigManager:
             # If no provider_config, assume it's an old format config (backward compatibility)
             else:
                 logger.info("Using legacy vLLM config format")
+            
+            # Mark as vLLM provider
+            model_config['provider_type'] = 'vllm'
         
         return model_config
+    
+    def _merge_cloud_provider_config(self, model_config: Dict[str, Any], provider: str):
+        """
+        Merge cloud provider configuration with base provider config.
+        
+        Args:
+            model_config: Model configuration dictionary to modify in-place
+            provider: Provider name ('openai' or 'anthropic')
+        """
+        provider_config = model_config[provider]
+        
+        # Check if this is a new format config with provider_config
+        if 'provider_config' in provider_config:
+            provider_name = provider_config['provider_config']
+            logger.info(f"Loading {provider} provider config: {provider_name}")
+            
+            # Load base provider config
+            provider_path = self.configs_dir / "providers" / f"{provider_name}.yaml"
+            
+            if not provider_path.exists():
+                raise FileNotFoundError(f"Provider config not found: {provider_path}")
+            
+            with open(provider_path, 'r') as f:
+                base_provider_config = yaml.safe_load(f)
+            
+            # Merge with overrides
+            overrides = provider_config.get('overrides', {})
+            merged_config = {**base_provider_config, **overrides}
+            
+            # Log what was overridden
+            if overrides:
+                logger.info(f"Applied overrides: {list(overrides.keys())}")
+            
+            # Replace provider section with merged config
+            model_config[provider] = merged_config
+        else:
+            # If no provider_config, assume it's a complete config (backward compatibility)
+            logger.info(f"Using inline {provider} config format")
     
     def get_provider_config(self, provider_name: str) -> Dict[str, Any]:
         """

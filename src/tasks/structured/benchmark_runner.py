@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class BenchmarkRunner:
     """Manages benchmark execution with checkpointing and complexity analysis."""
     
-    def __init__(self, model_name: str, config: dict, task=None):
+    def __init__(self, model_name: str, config: dict, task=None, provider_type: str = "vllm"):
         """
         Initialize benchmark runner.
         
@@ -28,10 +28,12 @@ class BenchmarkRunner:
             model_name: Name of the model being evaluated
             config: Configuration dictionary
             task: Task instance (if None, will try to create from config)
+            provider_type: Type of provider ('vllm', 'openai', or 'anthropic')
         """
         self.model_name = model_name
         self.config = config
-        self.llm = VLLMInterface(config, model_name)
+        self.provider_type = provider_type
+        self.llm = VLLMInterface(config, model_name, provider_type=provider_type)
         
         # Initialize task - can be passed in or created from config
         if task is not None:
