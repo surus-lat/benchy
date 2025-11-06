@@ -1,0 +1,18 @@
+model:
+  name: gpt-4o-mini
+openai:
+  provider_config: openai  # Uses configs/providers/openai.yaml
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+task_defaults:
+  log_samples: true
+tasks:
+- structured_extraction
+metadata:
+  max_context_length: 128000
+  is_multimodal: false
+  model_type: gpt4o_mini
+  provider: openai
+  description: "GPT-4o Mini - Fast and cheap GPT-4 class model"
+

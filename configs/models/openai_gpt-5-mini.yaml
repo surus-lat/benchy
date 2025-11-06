@@ -1,0 +1,17 @@
+model:
+  name: gpt-5-mini
+openai:
+  provider_config: openai
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+task_defaults:
+  log_samples: true
+tasks:
+- structured_extraction
+metadata:
+  provider: openai
+  model_type: gpt5_mini
+  is_cloud: true
+  description: "GPT-5 Mini - Latest small model from OpenAI"
+

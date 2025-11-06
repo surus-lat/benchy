@@ -13,11 +13,12 @@ logger = logging.getLogger(__name__)
 def run_structured_extraction(
     model_name: str,
     output_path: str,
-    server_info: Dict[str, Any],
+    server_info: Optional[Dict[str, Any]],
     api_test_result: Dict[str, Any],
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
-    cuda_devices: Optional[str] = None
+    cuda_devices: Optional[str] = None,
+    provider_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Run structured data extraction evaluation.
@@ -25,11 +26,12 @@ def run_structured_extraction(
     Args:
         model_name: The model to evaluate
         output_path: Base output path for results
-        server_info: Dictionary containing server info from start_vllm_server
+        server_info: Dictionary containing server info from start_vllm_server (None for cloud providers)
         api_test_result: API test result (unused but kept for compatibility)
         task_config: Task configuration dictionary
         limit: Limit number of examples per task (useful for testing)
         cuda_devices: CUDA devices to use (unused for this task)
+        provider_config: Provider configuration (for cloud providers)
         
     Returns:
         Dictionary with execution results and metadata
@@ -42,14 +44,38 @@ def run_structured_extraction(
         download_and_preprocess_chat_extraction,
     )
     from ..task_completion_checker import write_task_done_file
+    import os
     
     logger.info(f"Starting structured extraction evaluation for model: {model_name}")
+    
+    # Determine provider type and base URL
+    provider_type = "vllm"  # Default
+    base_url = None
+    api_key = "EMPTY"  # For vLLM only
+    api_key_env = None
+    
+    if provider_config:
+        provider_type = provider_config.get('provider_type', 'vllm')
+        if provider_type in ['openai', 'anthropic']:
+            base_url = provider_config.get('base_url')
+            api_key_env = provider_config.get('api_key_env')
+            api_key = None  # Let interface load from env
+            logger.info(f"Using cloud provider: {provider_type}")
+            logger.info(f"Base URL: {base_url}")
+    
+    if base_url is None and server_info:
+        base_url = server_info['url'] + '/v1'
+        logger.info(f"Using vLLM server URL: {base_url}")
     
     file_logger = logging.getLogger('benchy.structured')
     try:
         file_logger.info("=== Starting Structured Extraction Evaluation ===")
         file_logger.info(f"Model: {model_name}")
-        file_logger.info(f"Server URL: {server_info['url']}")
+        file_logger.info(f"Provider: {provider_type}")
+        if server_info:
+            file_logger.info(f"Server URL: {server_info['url']}")
+        else:
+            file_logger.info(f"Base URL: {base_url}")
     except (RuntimeError, OSError):
         pass
     
@@ -137,8 +163,9 @@ def run_structured_extraction(
             # Prepare the config for BenchmarkRunner
             benchmark_config = {
                 'model': {
-                    'base_url': server_info['url'] + '/v1',
-                    'api_key': 'EMPTY',
+                    'base_url': base_url,
+                    'api_key': api_key,
+                    'api_key_env': api_key_env,
                     'temperature': defaults.get('temperature', 0.0),
                     'max_tokens': defaults.get('max_tokens', 2048),
                     'timeout': defaults.get('timeout', 120),
@@ -156,8 +183,15 @@ def run_structured_extraction(
                 'metrics': task_config.get('metrics', {}),
             }
             
+            # Merge provider-specific config if available
+            if provider_config and provider_type in ['openai', 'anthropic']:
+                # Add any provider-specific settings
+                for key in ['temperature', 'max_tokens', 'timeout', 'max_retries']:
+                    if key in provider_config:
+                        benchmark_config['model'][key] = provider_config[key]
+            
             # Create and run benchmark for this task
-            runner = BenchmarkRunner(model_name, benchmark_config, task=task_instance)
+            runner = BenchmarkRunner(model_name, benchmark_config, task=task_instance, provider_type=provider_type)
             
             # Run async benchmark in sync context
             task_results = asyncio.run(runner.run(
