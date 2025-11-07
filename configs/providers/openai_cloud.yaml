@@ -6,3 +6,10 @@ max_retries: 3
 temperature: 0.0
 max_tokens: 4096
 
+# API endpoint selection
+# - "chat": Use chat completions API (default for OpenAI, supports conversation format)
+# - "completions": Use completions API (legacy, simpler prompt format)
+# - "auto": Try chat first, fallback to completions on error (useful for vLLM)
+api_endpoint: "chat"  # Options: "chat", "completions", "auto"
+
+

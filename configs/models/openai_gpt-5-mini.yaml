@@ -5,6 +5,9 @@ openai:
   overrides:
     temperature: 0.0
     max_tokens: 4096
+    # API endpoint: "chat" (default), "completions", or "auto"
+    # OpenAI models only support chat completions API
+    api_endpoint: "chat"
 task_defaults:
   log_samples: true
 tasks:
@@ -14,4 +17,5 @@ metadata:
   model_type: gpt5_mini
   is_cloud: true
   description: "GPT-5 Mini - Latest small model from OpenAI"
+
 
