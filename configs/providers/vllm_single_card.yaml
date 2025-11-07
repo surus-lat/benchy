@@ -15,6 +15,13 @@ hf_cache: "/mnt/Hiksemi-2Tb/.cache/huggingface"
 hf_token: ""
 startup_timeout: 900
 # cuda_devices: "3"  # Now configured centrally in configs/config.yaml under gpu_config.vllm.devices
+
+# API endpoint selection (for structured extraction tasks)
+# - "chat": Use chat completions API (requires chat template)
+# - "completions": Use completions API (works with any model)
+# - "auto": Try chat first, fallback to completions on error (recommended for vLLM)
+api_endpoint: "auto"
+
 # Additional parameters you can override
 #vllm_version: "0.8.0" # uses latest vLLM version from main project environment overwise
 #multimodal: false # true by default

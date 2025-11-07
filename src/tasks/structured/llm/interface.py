@@ -94,6 +94,10 @@ class VLLMInterface:
             "ByteDance-Seed/Seed-X-PPO-7B"
         ]
         self.is_problematic_model = any(model in self.model_name for model in known_chat_template_issues)
+        
+        # Get API endpoint preference from config (default to "auto" for backward compatibility)
+        # Options: "chat", "completions", "auto"
+        self.api_endpoint = self.config.get("api_endpoint", "auto")
 
     def _extract_json_from_output(self, raw_output: str) -> str:
         """Extract JSON from model output, handling various formats.
@@ -170,14 +174,24 @@ class VLLMInterface:
         if self.provider_type == "anthropic":
             return await self._generate_single_anthropic(system_prompt, user_prompt, schema, sample_id)
 
-        # Use the flag set in __init__
-        use_completions_fallback = self.is_problematic_model
+        # Determine which API to use based on config
+        # - "completions": Always use completions API
+        # - "chat": Always use chat API
+        # - "auto": Try chat first, fallback to completions on error (for problematic models)
+        use_completions_api = (
+            self.api_endpoint == "completions" or 
+            (self.api_endpoint == "auto" and self.is_problematic_model)
+        )
+        force_chat_only = self.api_endpoint == "chat"
         
         for attempt in range(self.config["max_retries"]):
             try:
-                # For models with known chat template issues, try completions API first
-                if use_completions_fallback and attempt == 0:
-                    logger.info(f"[{sample_id}] Using completions API fallback for model with known chat template issues")
+                # Use completions API if configured or for problematic models on first attempt
+                if use_completions_api and attempt == 0:
+                    if self.api_endpoint == "completions":
+                        logger.debug(f"[{sample_id}] Using completions API (configured)")
+                    else:
+                        logger.info(f"[{sample_id}] Using completions API fallback for model with known chat template issues")
                     combined_prompt = f"{system_prompt}\n\n{user_prompt}"
                     
                     response = await self.client.completions.create(
@@ -196,7 +210,7 @@ class VLLMInterface:
                         # Clean the output by removing markdown code blocks and extracting JSON
                         cleaned_output = self._extract_json_from_output(raw_output)
                         result["output"] = json.loads(cleaned_output)
-                        logger.info(f"[{sample_id}] ✓ Completions API successful - JSON parsed")
+                        logger.debug(f"[{sample_id}] ✓ Completions API successful - JSON parsed")
                     except json.JSONDecodeError as e:
                         logger.warning(f"[{sample_id}] ⚠️ Completions API successful but JSON parse failed: {e}")
                         logger.info(f"[{sample_id}] Raw output (first 200 chars): {raw_output[:200]}...")
@@ -204,19 +218,25 @@ class VLLMInterface:
 
                     return result
                 else:
-                    # Try chat completions (with guided JSON for vLLM only)
+                    # Use chat completions API (with guided JSON for vLLM only)
                     chat_params = {
                         "model": self.model_name,
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        "temperature": self.config["temperature"],
                         "timeout": self.config["timeout"],
                     }
                     
+                    # Some OpenAI models don't support custom temperature (GPT-5, o-series)
+                    if self.provider_type == "openai" and any(model in self.model_name.lower() for model in ["gpt-5", "o1", "o3", "o4"]):
+                        # These models only support default temperature, don't include parameter
+                        pass
+                    else:
+                        # Other models support custom temperature
+                        chat_params["temperature"] = self.config["temperature"]
+                    
                     # Handle max_tokens vs max_completion_tokens (GPT-5+ uses new parameter)
-                    # Try new parameter first, fall back to old if rejected
                     if self.provider_type == "openai" and any(model in self.model_name.lower() for model in ["gpt-5", "o1", "o3", "o4"]):
                         # Newer models use max_completion_tokens
                         chat_params["max_completion_tokens"] = self.config["max_tokens"]
@@ -255,15 +275,19 @@ class VLLMInterface:
                     if attempt < self.config["max_retries"] - 1:
                         continue
                 
-                # Check if this is a chat template error - try completions API as fallback (vLLM only)
-                # Don't try completions fallback for OpenAI models (they're chat-only)
+                # Check if this is a chat template error - try completions API as fallback
+                # Only fallback if api_endpoint is "auto" (not when "chat" is forced)
                 is_chat_template_error = (
                     "chat template" in error_str.lower() and "not allowed" in error_str.lower()
                 ) or (
                     "400" in error_str and "bad request" in error_str.lower() and self.provider_type == "vllm"
                 )
                 
-                if is_chat_template_error and self.provider_type == "vllm":
+                # Only attempt fallback if:
+                # - It's a chat template error
+                # - api_endpoint is "auto" (allows fallback)
+                # - Not forcing chat-only mode
+                if is_chat_template_error and self.api_endpoint == "auto" and not force_chat_only:
                     logger.info(f"[{sample_id}] Chat template error detected, trying completions API fallback...")
                     try:
                         # Fallback to completions API (no chat template required)

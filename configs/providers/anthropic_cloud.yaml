@@ -7,3 +7,7 @@ temperature: 0.0
 max_tokens: 4096
 api_version: "2023-06-01"  # Anthropic API version
 
+# API endpoint selection (Anthropic only supports messages/chat format)
+api_endpoint: "chat"  # Anthropic uses messages API (similar to chat completions)
+
+
