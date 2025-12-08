@@ -271,6 +271,11 @@ def main():
         vllm_config = None
         cuda_devices = None
         logger.info(f"Using Anthropic cloud provider for model: {model_name}")
+    elif provider_type == 'surus':
+        provider_config = config.get('surus', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using SURUS AI provider for extraction tasks")
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
     
@@ -311,6 +316,9 @@ def main():
     elif provider_type in ['openai', 'anthropic']:
         logger.info(f"Cloud provider: {provider_type}")
         logger.info(f"Base URL: {provider_config.get('base_url', 'N/A')}")
+    elif provider_type == 'surus':
+        logger.info(f"SURUS AI system")
+        logger.info(f"Endpoint: {provider_config.get('endpoint', 'N/A')}")
     logger.info(f"Output path: {run_paths['output_path']}")
     logger.info(f"Log path: {run_paths['log_path']}")
     

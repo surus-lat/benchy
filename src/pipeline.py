@@ -436,9 +436,9 @@ def benchmark_pipeline(
         if log_setup:
             log_setup.log_task_config("structured_extraction", structured_task_config)
         
-        # Add provider info to provider_config if using cloud provider
+        # Add provider info to provider_config if using non-vLLM provider
         cloud_provider_config = None
-        if provider_type in ['openai', 'anthropic'] and provider_config:
+        if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
             cloud_provider_config = {
                 **provider_config,
                 'provider_type': provider_type

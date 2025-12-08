@@ -285,7 +285,35 @@ def preprocess_sample(sample: Dict, idx: int) -> Dict[str, Any]:
 
 ## Using Common Infrastructure
 
-### LLM Interface
+### Interface Pattern (LLM and HTTP)
+
+**Key Insight**: Interfaces handle request formatting, not tasks. This keeps tasks provider-agnostic.
+
+#### Request Preparation
+
+All interfaces implement `prepare_request(sample, task)`:
+
+```python
+# Tasks provide raw data and a get_prompt() method
+class MyTask:
+    def get_prompt(self, sample: Dict) -> tuple[str, str]:
+        """Build prompts for LLM interfaces."""
+        system_prompt = self.config["prompts"]["system"]
+        user_prompt = self.config["prompts"]["user"].format(**sample)
+        return system_prompt, user_prompt
+
+# Interface decides what it needs
+# LLMInterface calls task.get_prompt() and formats with prompts
+# HTTPInterface uses raw sample data (text, schema) directly
+
+# In your runner code:
+requests = [
+    interface.prepare_request(sample, task)
+    for sample in batch
+]
+```
+
+#### LLM Interface Usage
 
 ```python
 from ...interfaces.llm_interface import LLMInterface
@@ -312,19 +340,78 @@ llm = LLMInterface(config, model_name, provider_type=provider_type)
 if not await llm.test_connection():
     raise ConnectionError("Cannot connect to LLM provider")
 
-# Generate batch
+# Prepare requests (interface handles formatting)
 requests = [
-    {
-        "system_prompt": system_prompt,
-        "user_prompt": user_prompt,
-        "schema": schema,  # For structured output tasks
-        "sample_id": sample["id"],
-    }
+    llm.prepare_request(sample, task)
     for sample in batch
 ]
 
+# Generate
 results = await llm.generate_batch(requests)
 ```
+
+#### HTTP Interface Usage
+
+```python
+from ...interfaces.surus_interface import SurusInterface
+
+# Configure interface
+config = {
+    "surus": {
+        "endpoint": "https://api.surus.dev/functions/v1/extract",
+        "api_key_env": "SURUS_API_KEY",
+        "timeout": 30,
+        "max_retries": 3,
+    },
+}
+
+# Initialize
+interface = SurusInterface(config, "surus-extract", provider_type="surus")
+
+# Test connection
+if not await interface.test_connection():
+    raise ConnectionError("Cannot connect to SURUS")
+
+# Prepare requests (interface uses raw data, not prompts)
+requests = [
+    interface.prepare_request(sample, task)  # Uses sample["text"] directly
+    for sample in batch
+]
+
+# Generate
+results = await interface.generate_batch(requests)
+```
+
+#### Task Requirements
+
+For maximum compatibility, tasks should provide:
+
+1. **Raw data** in samples: `text`, `schema`, `expected`, `id`
+2. **Prompt method**: `get_prompt(sample) -> tuple[str, str]` for LLM interfaces
+3. **Task identifier**: `get_task_name() -> str`
+
+Example:
+```python
+class MyTask:
+    def load(self) -> None:
+        """Load dataset with raw data."""
+        self.dataset = [
+            {
+                "id": "sample_0",
+                "text": "Raw input text",
+                "schema": {...},
+                "expected": {...},
+            }
+        ]
+    
+    def get_prompt(self, sample: Dict) -> tuple[str, str]:
+        """For LLM interfaces - build prompts."""
+        return system_prompt, user_prompt
+    
+    # Sample dict already has "text" for HTTP interfaces
+```
+
+This design ensures tasks work with **any interface type** without modification.
 
 ### Checkpointing
 

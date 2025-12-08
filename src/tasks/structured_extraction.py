@@ -56,12 +56,12 @@ def run_structured_extraction(
     
     if provider_config:
         provider_type = provider_config.get('provider_type', 'vllm')
-        if provider_type in ['openai', 'anthropic']:
-            base_url = provider_config.get('base_url')
+        if provider_type in ['openai', 'anthropic', 'surus']:
+            base_url = provider_config.get('base_url') or provider_config.get('endpoint')
             api_key_env = provider_config.get('api_key_env')
             api_key = None  # Let interface load from env
-            logger.info(f"Using cloud provider: {provider_type}")
-            logger.info(f"Base URL: {base_url}")
+            logger.info(f"Using cloud/HTTP provider: {provider_type}")
+            logger.info(f"Endpoint: {base_url}")
     
     if base_url is None and server_info:
         base_url = server_info['url'] + '/v1'
@@ -183,12 +183,21 @@ def run_structured_extraction(
                 'metrics': task_config.get('metrics', {}),
             }
             
-            # Merge provider-specific config if available
-            if provider_config and provider_type in ['openai', 'anthropic']:
-                # Add any provider-specific settings
-                for key in ['temperature', 'max_tokens', 'timeout', 'max_retries']:
-                    if key in provider_config:
-                        benchmark_config['model'][key] = provider_config[key]
+            # Add provider-specific config
+            if provider_config:
+                if provider_type == 'surus':
+                    # HTTPInterface expects config[provider_type] structure
+                    benchmark_config['surus'] = {
+                        'endpoint': provider_config.get('endpoint'),
+                        'api_key_env': provider_config.get('api_key_env'),
+                        'timeout': provider_config.get('timeout', 30),
+                        'max_retries': provider_config.get('max_retries', 3),
+                    }
+                elif provider_type in ['openai', 'anthropic']:
+                    # Merge provider-specific settings for LLM providers
+                    for key in ['temperature', 'max_tokens', 'timeout', 'max_retries']:
+                        if key in provider_config:
+                            benchmark_config['model'][key] = provider_config[key]
             
             # Create and run benchmark for this task
             runner = BenchmarkRunner(model_name, benchmark_config, task=task_instance, provider_type=provider_type)
