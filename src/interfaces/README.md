@@ -95,18 +95,116 @@ results = await llm.generate_batch(requests)
 - No guided JSON support (prompt-based only)
 - Uses different parameter names internally
 
+## HTTPInterface
+
+Base class for HTTP-based AI systems with custom endpoints.
+
+**Supported Systems:**
+- `surus`: SURUS AI /extract endpoint
+- Custom HTTP endpoints (extend HTTPInterface)
+
+**Features:**
+- Async HTTP requests using httpx
+- Configurable endpoints
+- Custom request/response mapping
+- Retry logic
+- Connection testing
+
+**Usage Example:**
+
+```python
+from src.interfaces.surus_interface import SurusInterface
+
+# Configuration
+config = {
+    "surus": {
+        "endpoint": "https://api.surus.dev/functions/v1/extract",
+        "api_key_env": "SURUS_API_KEY",
+        "timeout": 30,
+        "max_retries": 3,
+    }
+}
+
+# Initialize
+interface = SurusInterface(config, "surus-extract", provider_type="surus")
+
+# Test connection
+connected = await interface.test_connection()
+
+# Prepare requests (uses raw data, not prompts)
+requests = [
+    interface.prepare_request(sample, task)
+    for sample in batch
+]
+
+# Generate
+results = await interface.generate_batch(requests)
+```
+
+**Key Methods:**
+
+```python
+def prepare_request(self, sample: Dict, task) -> Dict:
+    """Prepare request for HTTP endpoint."""
+    return {
+        "text": sample["text"],
+        "schema": sample["schema"],
+        "sample_id": sample["id"],
+    }
+```
+
+**SurusInterface:**
+
+Specialized interface for SURUS AI /extract endpoint.
+
+- Uses raw text, not prompts
+- Returns clean JSON (no markdown)
+- OpenAI-compatible response format
+- Optimized for structured extraction
+
+## Request Preparation Pattern
+
+All interfaces implement `prepare_request(sample, task)`:
+
+```python
+# LLMInterface - needs prompts
+def prepare_request(self, sample, task):
+    system_prompt, user_prompt = task.get_prompt(sample)
+    return {
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "schema": sample["schema"],
+        "sample_id": sample["id"],
+    }
+
+# HTTPInterface - uses raw data
+def prepare_request(self, sample, task):
+    return {
+        "text": sample["text"],
+        "schema": sample["schema"],
+        "sample_id": sample["id"],
+    }
+```
+
+This pattern ensures:
+- Tasks stay provider-agnostic
+- Interface-specific logic in interfaces
+- No conditional code in tasks
+- Easy to add new interfaces
+
 ## Future Interfaces
 
 Additional interfaces can be added for:
-- Custom HTTP APIs
+- Custom HTTP APIs (extend HTTPInterface)
 - Multimodal systems
 - Agent-based systems
 - Code execution environments
 
 All interfaces should implement:
-1. `async def generate_batch(requests: List[Dict]) -> List[Dict]`
-2. `async def test_connection() -> bool`
-3. Consistent error handling and logging
+1. `def prepare_request(sample, task) -> Dict` - Format requests
+2. `async def generate_batch(requests: List[Dict]) -> List[Dict]` - Generate responses
+3. `async def test_connection() -> bool` - Test endpoint
+4. Consistent error handling and logging
 
 ## Adding a New Interface
 

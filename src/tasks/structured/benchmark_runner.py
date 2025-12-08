@@ -22,6 +22,25 @@ from .metrics import MetricsCalculator, ReportGenerator, classify_complexity
 logger = logging.getLogger(__name__)
 
 
+def _get_interface(config: Dict[str, Any], model_name: str, provider_type: str):
+    """Factory function for interface selection based on provider type.
+    
+    Args:
+        config: Configuration dictionary
+        model_name: Model/system identifier
+        provider_type: Provider type ('vllm', 'openai', 'anthropic', 'surus', etc.)
+        
+    Returns:
+        Appropriate interface instance
+    """
+    if provider_type == "surus":
+        from ...interfaces.surus_interface import SurusInterface
+        return SurusInterface(config, model_name, provider_type)
+    else:
+        # Default to LLM interface for vllm, openai, anthropic
+        return LLMInterface(config, model_name, provider_type)
+
+
 class BenchmarkRunner:
     """Manages benchmark execution with checkpointing and complexity analysis."""
     
@@ -32,12 +51,12 @@ class BenchmarkRunner:
             model_name: Name of the model being evaluated
             config: Configuration dictionary
             task: Task instance (if None, will try to create from config)
-            provider_type: Type of provider ('vllm', 'openai', or 'anthropic')
+            provider_type: Type of provider ('vllm', 'openai', 'anthropic', 'surus', etc.)
         """
         self.model_name = model_name
         self.config = config
         self.provider_type = provider_type
-        self.llm = LLMInterface(config, model_name, provider_type=provider_type)
+        self.llm = _get_interface(config, model_name, provider_type)
         
         # Initialize task - can be passed in or created from config
         if task is not None:
@@ -137,14 +156,10 @@ class BenchmarkRunner:
                        f"{(len(samples) + self.batch_size - 1)//self.batch_size} "
                        f"({len(batch)} samples)...")
             
-            # Prepare requests
+            # Prepare requests using interface's format
+            # Interface handles whether it needs prompts (LLM) or raw data (HTTP)
             requests = [
-                {
-                    "system_prompt": self.task.get_prompt(s)[0],
-                    "user_prompt": self.task.get_prompt(s)[1],
-                    "schema": s["schema"],
-                    "sample_id": s["id"],
-                }
+                self.llm.prepare_request(s, self.task)
                 for s in batch
             ]
             

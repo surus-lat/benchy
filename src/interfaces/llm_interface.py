@@ -55,6 +55,26 @@ class LLMInterface:
         # Get API endpoint preference (default: "auto")
         self.api_endpoint = self.config.get("api_endpoint", "auto")
 
+    def prepare_request(self, sample: Dict, task) -> Dict:
+        """Prepare request for LLM provider.
+        
+        LLM interfaces need system and user prompts from the task.
+        
+        Args:
+            sample: Raw sample with text, schema, expected, etc.
+            task: Task instance that provides get_prompt() method
+            
+        Returns:
+            Dict formatted for this interface's generate_batch()
+        """
+        system_prompt, user_prompt = task.get_prompt(sample)
+        return {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "schema": sample["schema"],
+            "sample_id": sample["id"],
+        }
+    
     def _get_api_key(self, env_var: str) -> str:
         """Get API key from config or environment.
         
