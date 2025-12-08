@@ -1,4 +1,4 @@
-"""Generic dataset download and preprocessing utilities."""
+"""Task-specific dataset download and preprocessing utilities for structured extraction."""
 
 import json
 import logging
@@ -9,6 +9,7 @@ from datasets import load_dataset
 from jsonschema import validate, ValidationError
 from huggingface_hub import hf_hub_download
 
+from ....common.dataset_utils import download_huggingface_dataset, save_to_jsonl
 from ..utils.schema_utils import sanitize_schema_for_vllm
 from ..metrics.schema_complexity import compute_schema_complexity, compute_complexity_score
 
@@ -23,7 +24,7 @@ def download_and_preprocess_dataset(
     max_input_chars: int = 20000,
     process_sample_fn: Optional[Callable[[Dict[str, Any], int], Dict[str, Any]]] = None,
 ) -> Dict[str, int]:
-    """Download and preprocess a HuggingFace dataset.
+    """Download and preprocess a HuggingFace dataset (Paraloq-specific).
     
     Args:
         dataset_name: HuggingFace dataset identifier
@@ -38,9 +39,8 @@ def download_and_preprocess_dataset(
     """
     output_file.parent.mkdir(parents=True, exist_ok=True)
     
-    logger.info(f"Downloading {dataset_name} dataset...")
-    dataset = load_dataset(dataset_name, split=split, cache_dir=cache_dir)
-    logger.info(f"Downloaded {len(dataset)} samples")
+    # Use common utility to download dataset
+    dataset = download_huggingface_dataset(dataset_name, split=split, cache_dir=cache_dir)
     
     processed_count = 0
     skipped_count = 0
