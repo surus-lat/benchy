@@ -1,17 +1,22 @@
 """Core benchmark runner logic."""
 
 import asyncio
-import hashlib
 import json
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 import numpy as np
 from scipy import stats
 
-from .llm import VLLMInterface
+from ...interfaces.llm_interface import LLMInterface
+from ...common.checkpoint_utils import (
+    get_checkpoint_path,
+    get_config_hash,
+    save_checkpoint,
+    load_checkpoint,
+)
 from .metrics import MetricsCalculator, ReportGenerator, classify_complexity
 
 logger = logging.getLogger(__name__)
@@ -20,9 +25,8 @@ logger = logging.getLogger(__name__)
 class BenchmarkRunner:
     """Manages benchmark execution with checkpointing and complexity analysis."""
     
-    def __init__(self, model_name: str, config: dict, task=None, provider_type: str = "vllm"):
-        """
-        Initialize benchmark runner.
+    def __init__(self, model_name: str, config: Dict[str, Any], task=None, provider_type: str = "vllm"):
+        """Initialize benchmark runner.
         
         Args:
             model_name: Name of the model being evaluated
@@ -33,7 +37,7 @@ class BenchmarkRunner:
         self.model_name = model_name
         self.config = config
         self.provider_type = provider_type
-        self.llm = VLLMInterface(config, model_name, provider_type=provider_type)
+        self.llm = LLMInterface(config, model_name, provider_type=provider_type)
         
         # Initialize task - can be passed in or created from config
         if task is not None:
@@ -48,29 +52,39 @@ class BenchmarkRunner:
     
     async def run(
         self,
-        limit: int = None,
+        limit: Optional[int] = None,
         log_samples: bool = False,
         no_resume: bool = False,
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """Execute benchmark with optional checkpointing."""
         logger.info(f"Starting benchmark for model: {self.model_name}")
         
         # Test connection
         if not await self.llm.test_connection(max_retries=3, timeout=30):
-            logger.error("Cannot establish connection to vLLM server")
-            raise ConnectionError("vLLM server unavailable")
+            logger.error("Cannot establish connection to LLM provider")
+            raise ConnectionError("LLM provider unavailable")
         
         # Load dataset
         self.task.load()
         all_samples = list(self.task.get_samples(limit=limit))
         
         # Handle checkpointing
-        checkpoint_path = self._get_checkpoint_path()
-        config_hash = self._get_config_hash()
-        completed_ids = set()
+        results_dir = self.config.get("output", {}).get("results_dir", "./results")
+        task_name = self.task.get_task_name()
+        checkpoint_path = get_checkpoint_path(results_dir, self.model_name, task_name)
         
+        config_for_hash = {
+            "model": self.model_name,
+            "base_url": self.config.get("model", {}).get("base_url"),
+            "temperature": self.config.get("model", {}).get("temperature"),
+            "max_tokens": self.config.get("model", {}).get("max_tokens"),
+            "batch_size": self.batch_size,
+        }
+        config_hash = get_config_hash(config_for_hash)
+        
+        completed_ids = set()
         if not no_resume:
-            completed_ids = self._load_checkpoint(checkpoint_path, config_hash)
+            completed_ids = load_checkpoint(checkpoint_path, config_hash)
         
         # Filter completed samples
         samples = [s for s in all_samples if s["id"] not in completed_ids]
@@ -98,8 +112,14 @@ class BenchmarkRunner:
         return results
     
     async def _evaluate_samples(
-        self, samples, checkpoint_path, config_hash, no_resume, log_samples, completed_ids
-    ):
+        self,
+        samples: List[Dict],
+        checkpoint_path: Path,
+        config_hash: str,
+        no_resume: bool,
+        log_samples: bool,
+        completed_ids: List[str]
+    ) -> Dict[str, Any]:
         """Evaluate samples in batches."""
         results = {"samples": [], "per_sample_metrics": []}
         start_time = time.time()
@@ -196,7 +216,7 @@ class BenchmarkRunner:
             
             # Checkpoint
             if not no_resume and len(completed_ids) > 0 and len(completed_ids) % 50 == 0:
-                self._save_checkpoint(checkpoint_path, completed_ids, config_hash)
+                save_checkpoint(checkpoint_path, completed_ids, config_hash)
         
         # Aggregate
         logger.info("Calculating aggregate metrics...")
@@ -208,7 +228,11 @@ class BenchmarkRunner:
         self._log_summary(aggregate)
         return results
     
-    def _compute_complexity(self, samples, metrics_list):
+    def _compute_complexity(
+        self,
+        samples: List[Dict],
+        metrics_list: List[Dict]
+    ) -> Dict[str, Any]:
         """Compute schema complexity analysis."""
         valid_pairs = [
             (s, m) for s, m in zip(samples, metrics_list)
@@ -253,56 +277,7 @@ class BenchmarkRunner:
         
         return {"bins": bin_stats, "correlations": correlations}
     
-    def _get_checkpoint_path(self):
-        """Get checkpoint file path."""
-        checkpoint_dir = Path(self.config.get("output", {}).get("results_dir", "./results")) / ".checkpoints"
-        task_name = self.task.get_task_name()
-        safe_model_name = self.model_name.replace('/', '_')
-        return checkpoint_dir / f"{safe_model_name}_{task_name}_checkpoint.json"
-    
-    def _get_config_hash(self):
-        """Generate config hash for checkpoint validation."""
-        relevant = {
-            "model": self.model_name,
-            "base_url": self.config.get("model", {}).get("base_url"),
-            "temperature": self.config.get("model", {}).get("temperature"),
-            "max_tokens": self.config.get("model", {}).get("max_tokens"),
-            "batch_size": self.batch_size,
-        }
-        return hashlib.md5(json.dumps(relevant, sort_keys=True).encode()).hexdigest()
-    
-    def _save_checkpoint(self, path, completed_ids, config_hash):
-        """Save checkpoint."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump({
-                "completed_sample_ids": completed_ids,
-                "config_hash": config_hash,
-                "timestamp": datetime.now().isoformat(),
-                "count": len(completed_ids),
-            }, f, indent=2)
-    
-    def _load_checkpoint(self, path, config_hash):
-        """Load and validate checkpoint."""
-        if not path.exists():
-            return set()
-        
-        try:
-            with open(path) as f:
-                checkpoint = json.load(f)
-            
-            if checkpoint.get("config_hash") != config_hash:
-                logger.warning("Checkpoint found but config changed - ignoring")
-                return set()
-            
-            ids = set(checkpoint.get("completed_sample_ids", []))
-            logger.info(f"✓ Loaded checkpoint: {len(ids)} samples completed")
-            return ids
-        except Exception as e:
-            logger.warning(f"Failed to load checkpoint: {e}")
-            return set()
-    
-    def _log_summary(self, metrics):
+    def _log_summary(self, metrics: Dict[str, Any]) -> None:
         """Log benchmark summary."""
         logger.info("=" * 60)
         logger.info("BENCHMARK RESULTS")
@@ -318,9 +293,14 @@ class BenchmarkRunner:
         logger.info(f"Error Rate: {metrics['error_rate']:.2%}")
         logger.info("=" * 60)
     
-    def _log_example_message(self, sample_id: str, system_prompt: str, user_prompt: str, schema: dict = None):
+    def _log_example_message(
+        self,
+        sample_id: str,
+        system_prompt: str,
+        user_prompt: str,
+        schema: Optional[Dict] = None
+    ) -> None:
         """Log example message for the first sample."""
-        import json
         
         logger.info("=" * 80)
         logger.info("EXAMPLE MESSAGE (First Sample)")
@@ -344,35 +324,42 @@ class BenchmarkRunner:
         task_name = self.task.get_task_name()
         example_file = output_dir / f"example_message_{task_name}.txt"
         example_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with open(example_file, "w", encoding="utf-8") as f:
-                f.write("=" * 80 + "\n")
-                f.write("EXAMPLE MESSAGE (First Sample)\n")
-                f.write("=" * 80 + "\n")
-                f.write(f"Sample ID: {sample_id}\n")
-                f.write(f"Task: {task_name}\n")
-                f.write(f"Model: {self.model_name}\n")
+        
+        with open(example_file, "w", encoding="utf-8") as f:
+            f.write("=" * 80 + "\n")
+            f.write("EXAMPLE MESSAGE (First Sample)\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Sample ID: {sample_id}\n")
+            f.write(f"Task: {task_name}\n")
+            f.write(f"Model: {self.model_name}\n")
+            f.write("\n")
+            f.write("System Prompt:\n")
+            f.write("-" * 80 + "\n")
+            f.write(system_prompt + "\n")
+            f.write("\n")
+            f.write("User Prompt:\n")
+            f.write("-" * 80 + "\n")
+            f.write(user_prompt + "\n")
+            if schema:
                 f.write("\n")
-                f.write("System Prompt:\n")
+                f.write("Schema (JSON):\n")
                 f.write("-" * 80 + "\n")
-                f.write(system_prompt + "\n")
-                f.write("\n")
-                f.write("User Prompt:\n")
-                f.write("-" * 80 + "\n")
-                f.write(user_prompt + "\n")
-                if schema:
-                    f.write("\n")
-                    f.write("Schema (JSON):\n")
-                    f.write("-" * 80 + "\n")
-                    f.write(json.dumps(schema, indent=2) + "\n")
-                f.write("=" * 80 + "\n")
-            logger.info(f"Example message saved to: {example_file}")
-        except Exception as e:
-            logger.warning(f"Could not save example message to file: {e}")
+                f.write(json.dumps(schema, indent=2) + "\n")
+            f.write("=" * 80 + "\n")
+        
+        logger.info(f"Example message saved to: {example_file}")
 
 
-def save_results(results: dict, output_dir: Path, model_name: str, log_samples: bool, config: dict):
+def save_results(
+    results: Dict[str, Any],
+    output_dir: Path,
+    model_name: str,
+    log_samples: bool,
+    config: Dict[str, Any]
+) -> None:
     """Save benchmark results to files."""
+    from datetime import datetime
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = model_name.replace("/", "_")
