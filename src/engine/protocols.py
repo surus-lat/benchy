@@ -1,0 +1,177 @@
+"""Protocol definitions for tasks and interfaces.
+
+These protocols define the contracts that tasks and interfaces must follow.
+Tasks are interface-agnostic - they just provide data, prompts, and metrics.
+Interfaces handle the specifics of communicating with different AI systems.
+"""
+
+from typing import Dict, Iterator, List, Optional, Protocol, Tuple, Any
+
+
+class BaseTask(Protocol):
+    """Protocol for benchmark tasks.
+    
+    Tasks are responsible for:
+    - Loading and providing dataset samples
+    - Building prompts from samples (for LLM interfaces)
+    - Calculating task-specific metrics
+    - Declaring capabilities (multimodal, schema requirements, etc.)
+    
+    Tasks should NOT know about interfaces - they just provide data.
+    """
+    
+    def load(self) -> None:
+        """Load the dataset. Called once before evaluation starts."""
+        ...
+    
+    def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
+        """Iterate over dataset samples.
+        
+        Each sample should include at minimum:
+        - id: Unique identifier for the sample
+        - text: Input text (for text-based tasks)
+        - expected: Expected output for metrics calculation
+        
+        Additional fields depend on the task type.
+        
+        Args:
+            limit: Maximum number of samples to return (None for all)
+            
+        Yields:
+            Sample dictionaries
+        """
+        ...
+    
+    def get_prompt(self, sample: Dict) -> Tuple[str, str]:
+        """Build prompt messages for a sample.
+        
+        This is used by LLM interfaces to construct chat messages.
+        HTTP interfaces may ignore this and use raw sample data.
+        
+        Args:
+            sample: Sample dictionary from get_samples()
+            
+        Returns:
+            Tuple of (system_prompt, user_prompt)
+        """
+        ...
+    
+    def get_task_name(self) -> str:
+        """Get the task identifier for logging and checkpointing."""
+        ...
+    
+    def calculate_metrics(
+        self,
+        prediction: Any,
+        expected: Any,
+        sample: Dict,
+    ) -> Dict[str, Any]:
+        """Calculate task-specific metrics for a single prediction.
+        
+        Args:
+            prediction: Model output (parsed if applicable)
+            expected: Expected output from sample
+            sample: Full sample dictionary for additional context
+            
+        Returns:
+            Dictionary of metric names to values
+        """
+        ...
+    
+    def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
+        """Aggregate per-sample metrics into summary statistics.
+        
+        Args:
+            all_metrics: List of per-sample metric dictionaries
+            
+        Returns:
+            Aggregated metrics dictionary
+        """
+        ...
+    
+    # Optional capability flags - implement as properties
+    @property
+    def is_multimodal(self) -> bool:
+        """Whether this task requires multimodal inputs (images, audio)."""
+        return False
+    
+    @property
+    def requires_schema(self) -> bool:
+        """Whether samples include a JSON schema for structured output."""
+        return False
+
+
+class BaseInterface(Protocol):
+    """Protocol for AI system interfaces.
+    
+    Interfaces are responsible for:
+    - Preparing requests from task samples
+    - Communicating with the AI system
+    - Parsing responses to standard format
+    
+    Interfaces should use task.get_prompt() if they need prompts,
+    or access raw sample data for custom endpoints.
+    """
+    
+    def prepare_request(self, sample: Dict, task: BaseTask) -> Dict:
+        """Prepare a request from a task sample.
+        
+        This method adapts task data to the interface's needs:
+        - LLM interfaces call task.get_prompt() for chat messages
+        - HTTP interfaces may use sample["text"] directly
+        
+        Args:
+            sample: Sample dictionary from task.get_samples()
+            task: Task instance for accessing get_prompt() if needed
+            
+        Returns:
+            Request dictionary ready for generate_batch()
+        """
+        ...
+    
+    async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
+        """Generate outputs for a batch of requests.
+        
+        Args:
+            requests: List of request dicts from prepare_request()
+            
+        Returns:
+            List of result dicts with keys:
+            - output: Parsed output (or None on error)
+            - raw: Raw response string
+            - error: Error message (or None on success)
+        """
+        ...
+    
+    async def test_connection(self, max_retries: int = 3, timeout: int = 30) -> bool:
+        """Test connection to the AI system.
+        
+        Args:
+            max_retries: Maximum connection attempts
+            timeout: Timeout per attempt in seconds
+            
+        Returns:
+            True if connection successful
+        """
+        ...
+
+
+def check_compatibility(task: BaseTask, interface: BaseInterface) -> Tuple[bool, str]:
+    """Check if a task and interface are compatible.
+    
+    Args:
+        task: Task instance
+        interface: Interface instance
+        
+    Returns:
+        Tuple of (is_compatible, reason_if_not)
+    """
+    # For now, all combinations are compatible
+    # Add checks here as needed (e.g., multimodal task + text-only interface)
+    
+    if hasattr(task, 'is_multimodal') and task.is_multimodal:
+        if not hasattr(interface, 'supports_multimodal') or not interface.supports_multimodal:
+            return False, "Task requires multimodal support but interface doesn't provide it"
+    
+    return True, ""
+

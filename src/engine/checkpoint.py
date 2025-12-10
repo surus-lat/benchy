@@ -83,6 +83,6 @@ def load_checkpoint(path: Path, expected_config_hash: str) -> Set[str]:
         return set()
     
     completed_ids = set(checkpoint.get("completed_sample_ids", []))
-    logger.info(f"✓ Loaded checkpoint: {len(completed_ids)} samples completed")
+    logger.info(f"Loaded checkpoint: {len(completed_ids)} samples completed")
     return completed_ids
 

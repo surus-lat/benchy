@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
-from .tasks.structured_extraction import run_structured_extraction
+from .tasks.structured import run_structured_extraction
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config

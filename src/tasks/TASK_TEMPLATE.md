@@ -1,111 +1,256 @@
 # Task Implementation Guide
 
-This guide provides templates and best practices for implementing new benchmark tasks in benchy.
+This guide shows how to implement new benchmark tasks using the modular engine.
 
-## Overview
-
-Tasks are modular evaluation units that:
-1. Load and preprocess datasets
-2. Generate prompts for AI systems
-3. Perform inference via interfaces
-4. Calculate metrics
-5. Report results
-
-## Task Structure
-
-### Simple Tasks (Single File)
-
-For straightforward benchmarks with one dataset and simple metrics:
+## Architecture Overview
 
 ```
-src/tasks/
-└── my_task.py  # Single file with @task decorator
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Pipeline                                   │
+│  - Manages provider (vLLM server, cloud APIs)                       │
+│  - Builds connection_info dict                                       │
+│  - Dispatches tasks                                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+┌─────────────────────────┐    ┌─────────────────────────┐
+│   Prefect Task Wrapper   │    │   Generic Engine         │
+│   (thin orchestration)   │───▶│   - BenchmarkRunner      │
+│   run_my_task()          │    │   - Checkpointing        │
+└─────────────────────────┘    │   - Batching             │
+                                └─────────────────────────┘
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
+         ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+         │   Task Class    │  │    Interface    │  │    Results      │
+         │   - load()      │  │   - prepare_    │  │   - metrics     │
+         │   - get_samples │  │     request()   │  │   - samples     │
+         │   - get_prompt  │  │   - generate_   │  │   - aggregates  │
+         │   - calculate_  │  │     batch()     │  │                 │
+         │     metrics     │  │                 │  │                 │
+         └─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
-### Complex Tasks (Directory)
+## Key Principle: Tasks are Interface-Agnostic
 
-For tasks with multiple datasets, subtasks, or complex metrics:
+Tasks define:
+- **Data**: How to load and iterate samples
+- **Prompts**: How to format inputs for LLMs
+- **Metrics**: How to evaluate predictions
 
-```
-src/tasks/
-└── my_task/
-    ├── __init__.py           # Exports main task function
-    ├── my_task.py            # Main task entrypoint (@task decorator)
-    ├── tasks/                # Subtask implementations
-    │   ├── __init__.py
-    │   ├── subtask1.py
-    │   └── subtask2.py
-    ├── metrics/              # Task-specific metrics
-    │   ├── __init__.py
-    │   └── custom_metrics.py
-    ├── utils/                # Task-specific preprocessing
-    │   ├── __init__.py
-    │   └── preprocessing.py
-    └── README.md             # Task documentation
-```
+Tasks do NOT know about:
+- Which provider is being used
+- How requests are formatted
+- Network communication details
 
-## Required Components
+The BenchmarkRunner bridges tasks and interfaces.
 
-### 1. Task Configuration (`configs/tasks/my_task.yaml`)
+## Adding a New Task
+
+### 1. Create Task Config (`configs/tasks/my_task.yaml`)
 
 ```yaml
-# Task identification
 name: "my_task"
-description: "Brief description of the task"
+description: "Brief description of what this task evaluates"
 
-# Subtasks to run (for complex tasks)
+# Optional subtasks (for multi-dataset tasks)
 tasks:
   - "subtask1"
   - "subtask2"
 
-# Per-subtask configurations
 task_configs:
   subtask1:
     dataset_file: "subtask1_data.jsonl"
-    dataset_name: "org/dataset-name"
-  subtask2:
-    dataset_file: "subtask2_data.jsonl"
-    dataset_name: "org/other-dataset"
+    dataset_name: "org/dataset-name"  # HuggingFace dataset
 
 # Prompt templates
 prompts:
   system: |
-    System instruction here.
+    You are a helpful assistant for [task description].
   user: |
-    User prompt template with {placeholders}.
+    Input:
+    {text}
+    
+    Please respond with [expected format].
 
-# Default evaluation parameters
+# Evaluation parameters
 defaults:
   batch_size: 20
-  log_samples: true
+  log_samples: false
   temperature: 0.0
   max_tokens: 2048
   timeout: 120
   max_retries: 3
 
-# Metrics configuration
+# Task-specific metrics config (optional)
 metrics:
-  primary_metric:
-    enabled: true
-    weights:
-      component1: 0.5
-      component2: 0.5
+  my_metric:
+    threshold: 0.5
 
-# Output configuration
 output:
   subdirectory: "my_task"
 ```
 
-### 2. Task Entrypoint Function
+### 2. Create Task Class (`src/tasks/my_task/task.py`)
 
 ```python
-from typing import Dict, Any, Optional
-from prefect import task
-from ...interfaces.llm_interface import LLMInterface
-from ...common.dataset_utils import load_jsonl_dataset
+"""My Task implementation."""
+
+import json
 import logging
+from pathlib import Path
+from typing import Dict, Iterator, Optional, Any, List
 
 logger = logging.getLogger(__name__)
+
+
+class MyTask:
+    """Task for my_task evaluation.
+    
+    Implements the BaseTask protocol.
+    """
+
+    def __init__(self, config: Dict):
+        """Initialize task with config."""
+        self.config = config
+        self.data_file = Path(config["dataset"]["data_file"])
+        self.dataset = None
+
+    def load(self) -> None:
+        """Load dataset from JSONL file."""
+        logger.info(f"Loading dataset from {self.data_file}")
+        
+        if not self.data_file.exists():
+            raise FileNotFoundError(f"Dataset not found: {self.data_file}")
+        
+        self.dataset = []
+        with open(self.data_file, "r") as f:
+            for line in f:
+                self.dataset.append(json.loads(line))
+        
+        logger.info(f"Loaded {len(self.dataset)} samples")
+
+    def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
+        """Iterate over samples.
+        
+        Each sample should have at minimum:
+        - id: Unique identifier
+        - text: Input text
+        - expected: Expected output for metrics
+        """
+        if self.dataset is None:
+            raise RuntimeError("Call load() first")
+        
+        data = self.dataset[:limit] if limit else self.dataset
+        for sample in data:
+            yield sample
+
+    def get_prompt(self, sample: Dict) -> tuple[str, str]:
+        """Build prompts for LLM interfaces.
+        
+        This is called by interfaces that need prompts.
+        HTTP interfaces may use sample["text"] directly instead.
+        
+        Returns:
+            (system_prompt, user_prompt)
+        """
+        system = self.config["prompts"]["system"]
+        user_template = self.config["prompts"]["user"]
+        
+        user = user_template.format(
+            text=sample["text"],
+            # Add other placeholders as needed
+        )
+        
+        return system, user
+
+    def get_task_name(self) -> str:
+        """Return task identifier."""
+        return "my_task"
+
+    def calculate_metrics(
+        self,
+        prediction: Any,
+        expected: Any,
+        sample: Dict,
+    ) -> Dict[str, Any]:
+        """Calculate metrics for one prediction.
+        
+        Args:
+            prediction: Model output (parsed)
+            expected: Expected output from sample
+            sample: Full sample dict for context
+            
+        Returns:
+            Dict of metric_name -> value
+        """
+        if prediction is None:
+            return {"valid": False, "score": 0.0, "error": "No prediction"}
+        
+        # Example: simple exact match
+        exact_match = prediction == expected
+        
+        return {
+            "valid": True,
+            "exact_match": exact_match,
+            "score": 1.0 if exact_match else 0.0,
+        }
+
+    def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
+        """Aggregate per-sample metrics into summary.
+        
+        Args:
+            all_metrics: List of per-sample metric dicts
+            
+        Returns:
+            Aggregated summary metrics
+        """
+        if not all_metrics:
+            return {"total_samples": 0, "score": 0.0}
+        
+        valid = [m for m in all_metrics if m.get("valid")]
+        
+        return {
+            "total_samples": len(all_metrics),
+            "valid_samples": len(valid),
+            "exact_match_rate": sum(m["exact_match"] for m in valid) / len(valid) if valid else 0,
+            "score": sum(m["score"] for m in valid) / len(valid) if valid else 0,
+        }
+
+    # Optional capability flags
+    @property
+    def is_multimodal(self) -> bool:
+        """Does this task use images/audio?"""
+        return False
+    
+    @property
+    def requires_schema(self) -> bool:
+        """Does this task use JSON schemas?"""
+        return False
+```
+
+### 3. Create Prefect Wrapper (`src/tasks/my_task.py`)
+
+```python
+"""My Task benchmark wrapper."""
+
+import asyncio
+import logging
+from typing import Dict, Any, Optional
+from pathlib import Path
+from prefect import task
+
+from ..engine import (
+    BenchmarkRunner,
+    save_results,
+    build_connection_info,
+    get_interface_for_provider,
+)
+
+logger = logging.getLogger(__name__)
+
 
 @task
 def run_my_task(
@@ -120,342 +265,80 @@ def run_my_task(
 ) -> Dict[str, Any]:
     """Run my_task evaluation.
     
-    Args:
-        model_name: The model to evaluate
-        output_path: Base output path for results
-        server_info: Server info (None for cloud providers)
-        api_test_result: API test result
-        task_config: Task configuration dictionary
-        limit: Limit number of examples
-        cuda_devices: CUDA devices to use
-        provider_config: Provider configuration (for cloud providers)
-        
-    Returns:
-        Dictionary with execution results and metrics
+    This is a thin wrapper around the generic benchmark engine.
     """
-    logger.info(f"Starting my_task evaluation for model: {model_name}")
+    logger.info(f"Starting my_task for model: {model_name}")
     
-    # Determine provider and base URL
-    provider_type = "vllm"
-    base_url = None
+    # Build connection info
+    provider_type = provider_config.get('provider_type', 'vllm') if provider_config else 'vllm'
+    connection_info = build_connection_info(
+        provider_type=provider_type,
+        provider_config=provider_config or {},
+        server_info=server_info,
+        model_config=task_config.get('defaults', {}),
+    )
     
-    if provider_config:
-        provider_type = provider_config.get('provider_type', 'vllm')
-        if provider_type in ['openai', 'anthropic']:
-            base_url = provider_config.get('base_url')
+    # Create output directory
+    output_dir = Path(output_path) / task_config.get('output', {}).get('subdirectory', 'my_task')
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    if base_url is None and server_info:
-        base_url = server_info['url'] + '/v1'
+    # Create task instance
+    from .my_task.task import MyTask
+    task_instance = MyTask({
+        'dataset': {'data_file': str(Path(__file__).parent / 'my_task' / '.data' / 'data.jsonl')},
+        'prompts': task_config.get('prompts', {}),
+    })
     
-    # Create task-specific output path
-    output_subdir = task_config.get('output', {}).get('subdirectory', 'my_task')
-    task_output_path = f"{output_path}/{output_subdir}"
+    # Create interface
+    interface = get_interface_for_provider(
+        provider_type=provider_type,
+        connection_info=connection_info,
+        model_name=model_name,
+    )
     
-    # Load dataset and run evaluation
-    # ... implementation details ...
+    # Run benchmark
+    runner = BenchmarkRunner(task_instance, interface, {
+        "model_name": model_name,
+        "batch_size": task_config.get('defaults', {}).get('batch_size', 20),
+        "output_dir": str(output_dir),
+        "log_samples": task_config.get('defaults', {}).get('log_samples', False),
+    })
+    
+    results = asyncio.run(runner.run(limit=limit))
+    
+    # Save results (automatically marks task complete)
+    save_results(
+        results=results,
+        output_dir=output_dir,
+        model_name=model_name,
+        task_name=task_instance.get_task_name(),
+        log_samples=task_config.get('defaults', {}).get('log_samples', False),
+    )
     
     return {
         "model_name": model_name,
         "task": "my_task",
-        "output_path": task_output_path,
-        "metrics": metrics,
+        "output_path": str(output_dir),
+        "metrics": results.get('aggregate_metrics', {}),
     }
 ```
 
-### 3. Subtask Classes (for complex tasks)
+### 4. Register Task in Pipeline (`src/pipeline.py`)
 
-```python
-from pathlib import Path
-from typing import Dict, Iterator, Optional
-import json
-
-class MySubtask:
-    """Subtask for specific dataset."""
-
-    def __init__(self, config: Dict):
-        """Initialize subtask.
-        
-        Args:
-            config: Configuration dictionary
-        """
-        self.config = config
-        self.data_file = Path(config["dataset"]["data_file"])
-        self.dataset = None
-
-    def load(self) -> None:
-        """Load the dataset from local JSONL file."""
-        from ...common.dataset_utils import load_jsonl_dataset
-        self.dataset = load_jsonl_dataset(self.data_file)
-
-    def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
-        """Iterate over dataset samples."""
-        from ...common.dataset_utils import iterate_samples
-        yield from iterate_samples(self.dataset, limit=limit)
-
-    def get_prompt(self, sample: Dict) -> tuple[str, str]:
-        """Build prompt messages for a sample.
-        
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-        """
-        system_prompt = self.config["prompts"]["system"]
-        user_template = self.config["prompts"]["user"]
-        
-        user_prompt = user_template.format(
-            field1=sample["field1"],
-            field2=sample["field2"]
-        )
-        
-        return system_prompt, user_prompt
-
-    def get_task_name(self) -> str:
-        """Get the subtask identifier."""
-        return "my_subtask"
-```
-
-### 4. Dataset Preprocessing
-
-```python
-from pathlib import Path
-from typing import Dict, Any
-from ...common.dataset_utils import (
-    download_huggingface_dataset,
-    save_to_jsonl
-)
-
-def download_and_preprocess_my_dataset(
-    dataset_name: str,
-    output_file: Path,
-    cache_dir: str = "./cache",
-    split: str = "train",
-) -> Dict[str, int]:
-    """Download and preprocess dataset.
-    
-    Args:
-        dataset_name: HuggingFace dataset identifier
-        output_file: Path to save processed JSONL
-        cache_dir: Cache directory
-        split: Dataset split to use
-        
-    Returns:
-        Dictionary with processing statistics
-    """
-    # Download dataset using common utility
-    dataset = download_huggingface_dataset(
-        dataset_name,
-        split=split,
-        cache_dir=cache_dir
-    )
-    
-    # Task-specific preprocessing
-    processed_samples = []
-    skipped = 0
-    
-    for idx, sample in enumerate(dataset):
-        processed = preprocess_sample(sample, idx)
-        if processed:
-            processed_samples.append(processed)
-        else:
-            skipped += 1
-    
-    # Save using common utility
-    save_to_jsonl(processed_samples, output_file)
-    
-    return {
-        "processed": len(processed_samples),
-        "skipped": skipped,
-    }
-
-def preprocess_sample(sample: Dict, idx: int) -> Dict[str, Any]:
-    """Task-specific sample preprocessing logic."""
-    # Validation
-    if not sample.get("required_field"):
-        return None
-    
-    # Transform
-    processed = {
-        "id": f"sample_{idx}",
-        "text": sample["text"],
-        "expected": sample["label"],
-        "metadata": sample.get("metadata", {}),
-    }
-    
-    return processed
-```
-
-## Using Common Infrastructure
-
-### Interface Pattern (LLM and HTTP)
-
-**Key Insight**: Interfaces handle request formatting, not tasks. This keeps tasks provider-agnostic.
-
-#### Request Preparation
-
-All interfaces implement `prepare_request(sample, task)`:
-
-```python
-# Tasks provide raw data and a get_prompt() method
-class MyTask:
-    def get_prompt(self, sample: Dict) -> tuple[str, str]:
-        """Build prompts for LLM interfaces."""
-        system_prompt = self.config["prompts"]["system"]
-        user_prompt = self.config["prompts"]["user"].format(**sample)
-        return system_prompt, user_prompt
-
-# Interface decides what it needs
-# LLMInterface calls task.get_prompt() and formats with prompts
-# HTTPInterface uses raw sample data (text, schema) directly
-
-# In your runner code:
-requests = [
-    interface.prepare_request(sample, task)
-    for sample in batch
-]
-```
-
-#### LLM Interface Usage
-
-```python
-from ...interfaces.llm_interface import LLMInterface
-
-# Configure interface
-config = {
-    "model": {
-        "base_url": base_url,
-        "api_key": api_key,
-        "temperature": defaults.get('temperature', 0.0),
-        "max_tokens": defaults.get('max_tokens', 2048),
-        "timeout": defaults.get('timeout', 120),
-        "max_retries": defaults.get('max_retries', 3),
-    },
-    "performance": {
-        "batch_size": defaults.get('batch_size', 20),
-    },
-}
-
-# Initialize
-llm = LLMInterface(config, model_name, provider_type=provider_type)
-
-# Test connection
-if not await llm.test_connection():
-    raise ConnectionError("Cannot connect to LLM provider")
-
-# Prepare requests (interface handles formatting)
-requests = [
-    llm.prepare_request(sample, task)
-    for sample in batch
-]
-
-# Generate
-results = await llm.generate_batch(requests)
-```
-
-#### HTTP Interface Usage
-
-```python
-from ...interfaces.surus_interface import SurusInterface
-
-# Configure interface
-config = {
-    "surus": {
-        "endpoint": "https://api.surus.dev/functions/v1/extract",
-        "api_key_env": "SURUS_API_KEY",
-        "timeout": 30,
-        "max_retries": 3,
-    },
-}
-
-# Initialize
-interface = SurusInterface(config, "surus-extract", provider_type="surus")
-
-# Test connection
-if not await interface.test_connection():
-    raise ConnectionError("Cannot connect to SURUS")
-
-# Prepare requests (interface uses raw data, not prompts)
-requests = [
-    interface.prepare_request(sample, task)  # Uses sample["text"] directly
-    for sample in batch
-]
-
-# Generate
-results = await interface.generate_batch(requests)
-```
-
-#### Task Requirements
-
-For maximum compatibility, tasks should provide:
-
-1. **Raw data** in samples: `text`, `schema`, `expected`, `id`
-2. **Prompt method**: `get_prompt(sample) -> tuple[str, str]` for LLM interfaces
-3. **Task identifier**: `get_task_name() -> str`
-
-Example:
-```python
-class MyTask:
-    def load(self) -> None:
-        """Load dataset with raw data."""
-        self.dataset = [
-            {
-                "id": "sample_0",
-                "text": "Raw input text",
-                "schema": {...},
-                "expected": {...},
-            }
-        ]
-    
-    def get_prompt(self, sample: Dict) -> tuple[str, str]:
-        """For LLM interfaces - build prompts."""
-        return system_prompt, user_prompt
-    
-    # Sample dict already has "text" for HTTP interfaces
-```
-
-This design ensures tasks work with **any interface type** without modification.
-
-### Checkpointing
-
-```python
-from ...common.checkpoint_utils import (
-    get_checkpoint_path,
-    get_config_hash,
-    save_checkpoint,
-    load_checkpoint
-)
-
-# Setup
-checkpoint_path = get_checkpoint_path(output_dir, model_name, "my_task")
-config_hash = get_config_hash({
-    "model": model_name,
-    "temperature": temperature,
-})
-
-# Load existing
-completed_ids = load_checkpoint(checkpoint_path, config_hash)
-
-# Save periodically
-if len(completed_ids) % 50 == 0:
-    save_checkpoint(checkpoint_path, list(completed_ids), config_hash)
-```
-
-## Integration with Pipeline
-
-Tasks are called from `src/pipeline.py`:
+Add to the task dispatch section:
 
 ```python
 if "my_task" in pending_tasks:
     logger.info("Running my_task evaluation...")
     my_task_config = config_manager.get_task_config("my_task", task_defaults_overrides)
     
-    # Add system configuration
-    my_task_config['use_chat_completions'] = use_chat_completions
-    my_task_config['generation_config'] = generation_config
-    
-    # Log configuration
     if log_setup:
         log_setup.log_task_config("my_task", my_task_config)
     
-    # Run task
+    cloud_provider_config = None
+    if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
+        cloud_provider_config = {**provider_config, 'provider_type': provider_type}
+    
     my_task_results = run_my_task(
         model_name=model_name,
         output_path=model_output_path,
@@ -463,63 +346,76 @@ if "my_task" in pending_tasks:
         api_test_result=api_test_result,
         task_config=my_task_config,
         limit=limit,
-        cuda_devices=gpu_manager.get_task_cuda_devices(),
+        cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
         provider_config=cloud_provider_config
     )
     task_results["my_task"] = my_task_results
 ```
 
-## Best Practices
+## Sample Data Format
 
-### Code Style
-1. Add type hints to all functions
-2. Keep functions focused and simple
-3. Avoid excessive try-except blocks
-4. Use clear, descriptive variable names
-5. Document with concise docstrings
+Samples should be stored in JSONL with at minimum:
 
-### Task Design
-1. Keep task logic separate from interface logic
-2. Make prompts configurable via YAML
-3. Support both cloud and local providers
-4. Include example outputs in README
-5. Test with `--limit 10` before full runs
+```json
+{"id": "sample_001", "text": "Input text here", "expected": "Expected output"}
+{"id": "sample_002", "text": "Another input", "expected": {"key": "structured output"}}
+```
 
-### Performance
-1. Use async/await for I/O operations
-2. Process in batches (default: 20)
-3. Implement checkpointing for long tasks
-4. Log progress regularly
-5. Handle errors gracefully
+For structured extraction tasks, include schema:
 
-### Configuration
-1. Use meaningful default values
-2. Document all config parameters
-3. Support task-specific overrides
-4. Keep provider configuration separate
-5. Validate inputs early
+```json
+{"id": "001", "text": "...", "schema": {"type": "object", ...}, "expected": {...}}
+```
+
+## Dataset Preprocessing
+
+For HuggingFace datasets, create a download script:
+
+```python
+# src/tasks/my_task/download.py
+from datasets import load_dataset
+import json
+
+def download_and_preprocess(output_file, cache_dir="./cache"):
+    dataset = load_dataset("org/dataset-name", cache_dir=cache_dir)
+    
+    samples = []
+    for idx, item in enumerate(dataset["train"]):
+        samples.append({
+            "id": f"sample_{idx}",
+            "text": item["input"],
+            "expected": item["output"],
+        })
+    
+    with open(output_file, "w") as f:
+        for s in samples:
+            f.write(json.dumps(s) + "\n")
+```
 
 ## Testing Your Task
 
 ```bash
-# Test with limited samples
-python eval.py --config configs/models/my-model.yaml --limit 10
+# Test with few samples
+python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 5
 
-# Test specific task only
-# (Edit config to include only your task)
-python eval.py --config configs/models/my-model.yaml
-
-# Test with different providers
-export OPENAI_API_KEY="sk-..."
-python eval.py --config configs/models/gpt-4.yaml --limit 5
+# Full run
+python eval.py --config configs/models/openai_gpt-4o-mini.yaml
 ```
 
-## Complete Example
+## Example: Complete Reference
 
-See `src/tasks/structured/` for a complete implementation reference with:
+See `src/tasks/structured/` for a complete implementation with:
 - Multiple subtasks (paraloq, chat_extract)
-- Custom metrics
+- Custom metrics calculator
 - Dataset preprocessing
 - Checkpoint support
 - Multi-provider compatibility
 
+## Quick Checklist
+
+- [ ] Create `configs/tasks/my_task.yaml`
+- [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
+- [ ] Create thin Prefect wrapper using generic engine
+- [ ] Register in `src/pipeline.py`
+- [ ] Add dataset download script if using HuggingFace
+- [ ] Test with `--limit 5`

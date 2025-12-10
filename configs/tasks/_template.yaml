@@ -1,0 +1,45 @@
+# Template task configuration - copy and customize for new tasks
+#
+# To create a new task config:
+# 1. Copy this file: cp configs/tasks/_template.yaml configs/tasks/my_task.yaml
+# 2. Update all fields marked with "CHANGE THIS"
+# 3. Add task to your model config's tasks list
+# 4. Run: python eval.py --config configs/models/your-model.yaml --limit 5
+
+# Task identification
+name: "template_task"  # CHANGE THIS: unique task name
+description: "Template task - describe what this evaluates"  # CHANGE THIS
+
+# Dataset configuration
+dataset_file: "data.jsonl"  # CHANGE THIS: JSONL file in task's .data/ folder
+# dataset_name: "org/dataset-name"  # Optional: HuggingFace dataset for auto-download
+
+# Prompt templates - CHANGE THESE for your task
+prompts:
+  system: |
+    You are a helpful assistant. Respond concisely and accurately.
+  user: |
+    Input:
+    {text}
+    
+    Please provide your response.
+
+# Default evaluation parameters
+defaults:
+  batch_size: 20        # Concurrent requests
+  log_samples: false    # Log first batch details
+  temperature: 0.0      # Generation temperature
+  max_tokens: 2048      # Max output tokens
+  timeout: 120          # Request timeout (seconds)
+  max_retries: 3        # Retry attempts
+
+# Optional: task-specific metrics configuration
+metrics:
+  # Add custom metric settings here
+  # example_metric:
+  #   threshold: 0.5
+
+# Output configuration
+output:
+  subdirectory: "template_task"  # CHANGE THIS: output folder name
+
