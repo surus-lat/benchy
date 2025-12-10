@@ -1,121 +1,62 @@
 # Interfaces
 
-This directory contains interfaces for communicating with AI systems during evaluation.
+Interfaces handle communication with AI systems during evaluation. They are provider-agnostic and work with standardized `connection_info` dicts.
 
-## Purpose
+## Architecture
 
-The interfaces layer provides a clean separation between:
-- **Task definition**: What to evaluate (prompts, metrics, datasets)
-- **System interface**: How to communicate with the system being evaluated
+```
+Pipeline (resolves provider) → connection_info → Interface → AI System
+                                    ↓
+                              BenchmarkRunner
+                                    ↓
+                                  Task
+```
 
-This design enables benchy to evaluate various AI systems (LLMs, multimodal models, or custom HTTP APIs) using the same task definitions.
+Key principle: **Interfaces adapt task data to their API format**.
+- LLM interfaces call `task.get_prompt()` to build chat messages
+- HTTP interfaces use raw `sample["text"]` directly
+- Tasks don't know which interface is being used
 
 ## Available Interfaces
 
-### LLMInterface
+### ChatCompletionsInterface
 
-Async client for LLM providers using OpenAI-compatible APIs.
-
-**Supported Providers:**
-- `vllm`: Local vLLM server with guided JSON schema support
-- `openai`: OpenAI cloud API
-- `anthropic`: Anthropic cloud API
-
-**Features:**
-- Async batch processing for high throughput
-- Automatic retry with exponential backoff
-- JSON extraction from markdown code blocks
-- Connection testing before evaluation
-- Multi-provider support with unified API
-
-**Usage Example:**
+For OpenAI-compatible chat APIs (vLLM, OpenAI, Anthropic, etc.)
 
 ```python
-from src.interfaces.llm_interface import LLMInterface
+from src.interfaces import ChatCompletionsInterface
 
-# Configuration
-config = {
-    "model": {
-        "base_url": "http://localhost:8000/v1",
-        "api_key": "EMPTY",
-        "temperature": 0.0,
-        "max_tokens": 2048,
-        "timeout": 120,
-        "max_retries": 3,
-    },
-    "performance": {
-        "batch_size": 20,
-    }
+# Connection info from engine.build_connection_info()
+connection_info = {
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY",
+    "timeout": 120,
+    "max_retries": 3,
+    "temperature": 0.0,
+    "max_tokens": 2048,
+    "use_guided_json": False,  # True for vLLM
 }
 
-# Initialize interface
-llm = LLMInterface(config, model_name="my-model", provider_type="vllm")
+interface = ChatCompletionsInterface(connection_info, model_name="gpt-4o-mini")
 
 # Test connection
-connected = await llm.test_connection(max_retries=3, timeout=30)
+connected = await interface.test_connection()
 
-# Generate batch
-requests = [
-    {
-        "system_prompt": "You are a helpful assistant.",
-        "user_prompt": "Extract data from: ...",
-        "schema": {"type": "object", "properties": {...}},
-        "sample_id": "sample_0",
-    }
-]
+# Prepare requests (interface calls task.get_prompt())
+requests = [interface.prepare_request(sample, task) for sample in batch]
 
-results = await llm.generate_batch(requests)
+# Generate
+results = await interface.generate_batch(requests)
 ```
 
-**Configuration Options:**
+### HTTPInterface / SurusInterface
 
-- `base_url`: API endpoint (e.g., "http://localhost:8000/v1")
-- `api_key`: API key ("EMPTY" for vLLM, required for cloud providers)
-- `api_key_env`: Environment variable name for API key (default: provider-specific)
-- `temperature`: Sampling temperature
-- `max_tokens`: Maximum tokens to generate
-- `timeout`: Request timeout in seconds
-- `max_retries`: Number of retry attempts on failure
-- `api_endpoint`: API preference - "auto" (default), "chat", or "completions"
-
-**Provider-Specific Notes:**
-
-**vLLM:**
-- Supports guided JSON schema via `extra_body` parameter
-- Set `api_key` to "EMPTY"
-- Use `api_endpoint: "completions"` for models with chat template issues
-
-**OpenAI:**
-- Requires valid `OPENAI_API_KEY` environment variable
-- Newer models (GPT-5, o-series) have parameter restrictions
-- No guided JSON support (prompt-based only)
-
-**Anthropic:**
-- Requires valid `ANTHROPIC_API_KEY` environment variable
-- No guided JSON support (prompt-based only)
-- Uses different parameter names internally
-
-## HTTPInterface
-
-Base class for HTTP-based AI systems with custom endpoints.
-
-**Supported Systems:**
-- `surus`: SURUS AI /extract endpoint
-- Custom HTTP endpoints (extend HTTPInterface)
-
-**Features:**
-- Async HTTP requests using httpx
-- Configurable endpoints
-- Custom request/response mapping
-- Retry logic
-- Connection testing
-
-**Usage Example:**
+For custom HTTP endpoints that don't use chat completions.
 
 ```python
-from src.interfaces.surus_interface import SurusInterface
+from src.interfaces import SurusInterface
 
-# Configuration
+# SURUS-specific config
 config = {
     "surus": {
         "endpoint": "https://api.surus.dev/functions/v1/extract",
@@ -125,92 +66,139 @@ config = {
     }
 }
 
-# Initialize
 interface = SurusInterface(config, "surus-extract", provider_type="surus")
 
-# Test connection
-connected = await interface.test_connection()
-
-# Prepare requests (uses raw data, not prompts)
-requests = [
-    interface.prepare_request(sample, task)
-    for sample in batch
-]
+# Prepare requests (uses raw sample data, not prompts)
+requests = [interface.prepare_request(sample, task) for sample in batch]
 
 # Generate
 results = await interface.generate_batch(requests)
 ```
 
-**Key Methods:**
+## Integration with Benchmark Engine
+
+The recommended way to get an interface is via the engine:
 
 ```python
-def prepare_request(self, sample: Dict, task) -> Dict:
-    """Prepare request for HTTP endpoint."""
-    return {
-        "text": sample["text"],
-        "schema": sample["schema"],
-        "sample_id": sample["id"],
-    }
+from src.engine import build_connection_info, get_interface_for_provider
+
+# Build standardized connection info from provider config
+connection_info = build_connection_info(
+    provider_type="openai",  # or "vllm", "anthropic", "surus"
+    provider_config={"base_url": "https://api.openai.com/v1"},
+    server_info=None,  # For vLLM, pass server_info here
+)
+
+# Get appropriate interface
+interface = get_interface_for_provider(
+    provider_type="openai",
+    connection_info=connection_info,
+    model_name="gpt-4o-mini",
+)
 ```
 
-**SurusInterface:**
+## Creating a New Interface
 
-Specialized interface for SURUS AI /extract endpoint.
-
-- Uses raw text, not prompts
-- Returns clean JSON (no markdown)
-- OpenAI-compatible response format
-- Optimized for structured extraction
-
-## Request Preparation Pattern
-
-All interfaces implement `prepare_request(sample, task)`:
+### 1. Implement the BaseInterface Protocol
 
 ```python
-# LLMInterface - needs prompts
-def prepare_request(self, sample, task):
-    system_prompt, user_prompt = task.get_prompt(sample)
-    return {
-        "system_prompt": system_prompt,
-        "user_prompt": user_prompt,
-        "schema": sample["schema"],
-        "sample_id": sample["id"],
-    }
+# src/interfaces/my_interface.py
+from typing import Dict, List, Any
 
-# HTTPInterface - uses raw data
-def prepare_request(self, sample, task):
-    return {
-        "text": sample["text"],
-        "schema": sample["schema"],
-        "sample_id": sample["id"],
-    }
+class MyInterface:
+    """Interface for MyService API."""
+    
+    def __init__(self, connection_info: Dict[str, Any], model_name: str):
+        """Initialize with connection info."""
+        self.base_url = connection_info["base_url"]
+        self.model_name = model_name
+        # ... setup client
+    
+    def prepare_request(self, sample: Dict, task) -> Dict:
+        """Prepare request from task sample.
+        
+        For LLM-like interfaces, call task.get_prompt():
+            system, user = task.get_prompt(sample)
+            return {"system": system, "user": user, ...}
+        
+        For HTTP interfaces, use raw sample data:
+            return {"text": sample["text"], "schema": sample["schema"], ...}
+        """
+        # Implement based on your API's needs
+        pass
+    
+    async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
+        """Generate outputs for batch of requests.
+        
+        Returns list of dicts with:
+        - output: Parsed output (or None on error)
+        - raw: Raw response string
+        - error: Error message (or None on success)
+        """
+        pass
+    
+    async def test_connection(self, max_retries: int = 3, timeout: int = 30) -> bool:
+        """Test connection to the API."""
+        pass
 ```
 
-This pattern ensures:
-- Tasks stay provider-agnostic
-- Interface-specific logic in interfaces
-- No conditional code in tasks
-- Easy to add new interfaces
+### 2. Register in `__init__.py`
 
-## Future Interfaces
+```python
+# src/interfaces/__init__.py
+from .my_interface import MyInterface
 
-Additional interfaces can be added for:
-- Custom HTTP APIs (extend HTTPInterface)
-- Multimodal systems
-- Agent-based systems
-- Code execution environments
+__all__ = [..., "MyInterface"]
+```
 
-All interfaces should implement:
-1. `def prepare_request(sample, task) -> Dict` - Format requests
-2. `async def generate_batch(requests: List[Dict]) -> List[Dict]` - Generate responses
-3. `async def test_connection() -> bool` - Test endpoint
-4. Consistent error handling and logging
+### 3. Add to Connection Factory (Optional)
 
-## Adding a New Interface
+If your interface should be auto-selected for a provider type:
 
-1. Create new file: `src/interfaces/my_interface.py`
-2. Implement required methods: `generate_batch()` and `test_connection()`
-3. Add to `__init__.py`: `from .my_interface import MyInterface`
-4. Document configuration and usage patterns
-5. Use in tasks via configuration: `provider_type: "my_provider"`
+```python
+# src/engine/connection.py
+def get_interface_for_provider(provider_type, connection_info, model_name):
+    if provider_type == "my_service":
+        from ..interfaces.my_interface import MyInterface
+        return MyInterface(connection_info, model_name)
+    # ... existing providers
+```
 
+## Response Format
+
+All interfaces must return results in this format:
+
+```python
+{
+    "output": {...},  # Parsed output (dict, list, str, etc.) or None
+    "raw": "...",     # Raw response text
+    "error": None,    # Error message string or None
+}
+```
+
+## Best Practices
+
+1. **Keep interfaces stateless** - Don't store sample data between calls
+2. **Use async for I/O** - All network calls should be async
+3. **Handle errors gracefully** - Return error in result dict, don't raise
+4. **Log appropriately** - Info for progress, debug for details, warning for retries
+5. **Support batch processing** - Implement concurrent requests in `generate_batch()`
+
+## Connection Info Format
+
+Interfaces receive a standardized `connection_info` dict:
+
+```python
+{
+    "base_url": "https://api.example.com/v1",
+    "api_key": "...",        # Direct key, or None
+    "api_key_env": "API_KEY", # Env var name for key
+    "timeout": 120,
+    "max_retries": 3,
+    "temperature": 0.0,
+    "max_tokens": 2048,
+    "use_guided_json": False,  # vLLM-specific
+}
+```
+
+This is built by `engine.build_connection_info()` from provider configs.

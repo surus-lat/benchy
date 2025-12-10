@@ -3,13 +3,18 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterator, Optional, Any, List
+
+from ..base import StructuredExtractionTaskBase
 
 logger = logging.getLogger(__name__)
 
 
-class ChatExtractTask:
-    """Task for mauroibz/chat_structured_extraction dataset."""
+class ChatExtractTask(StructuredExtractionTaskBase):
+    """Task for mauroibz/chat_structured_extraction dataset.
+    
+    Implements the BaseTask protocol for the generic benchmark runner.
+    """
 
     def __init__(self, config: Dict):
         """Initialize the ChatExtract task.
@@ -17,7 +22,7 @@ class ChatExtractTask:
         Args:
             config: Configuration dictionary with dataset settings
         """
-        self.config = config
+        super().__init__(config)
         self.data_file = Path(config["dataset"]["data_file"])
         self.schema_file = Path(config["dataset"].get("schema_file", ""))
         self.dataset = None

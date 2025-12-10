@@ -1,0 +1,319 @@
+"""Structured data extraction benchmark - Prefect task entry point.
+
+This is the main entry point for the structured extraction task.
+It uses the generic benchmark engine to run evaluation.
+"""
+
+import asyncio
+import json
+import logging
+from datetime import datetime
+from typing import Dict, Any, Optional
+from pathlib import Path
+from prefect import task
+
+from ...engine import (
+    BenchmarkRunner,
+    save_results,
+    build_connection_info,
+    get_interface_for_provider,
+    mark_task_complete,
+)
+from .tasks import ParaloqTask, ChatExtractTask
+from .utils.dataset_download import (
+    download_and_preprocess_dataset,
+    download_and_preprocess_chat_extraction,
+)
+
+logger = logging.getLogger(__name__)
+
+# Data and cache directories relative to this module
+DATA_DIR = Path(__file__).parent / '.data'
+CACHE_DIR = Path(__file__).parent / 'cache'
+
+
+@task
+def run_structured_extraction(
+    model_name: str,
+    output_path: str,
+    server_info: Optional[Dict[str, Any]],
+    api_test_result: Dict[str, Any],
+    task_config: Dict[str, Any],
+    limit: Optional[int] = None,
+    cuda_devices: Optional[str] = None,
+    provider_config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Run structured data extraction evaluation.
+    
+    This is a Prefect task that wraps the generic benchmark runner.
+    
+    Args:
+        model_name: The model to evaluate
+        output_path: Base output path for results
+        server_info: Server info from vLLM (None for cloud providers)
+        api_test_result: API test result (unused, for interface compatibility)
+        task_config: Task configuration from configs/tasks/structured_extraction.yaml
+        limit: Limit number of examples (for testing)
+        cuda_devices: CUDA devices (unused for this task)
+        provider_config: Provider configuration (for cloud providers)
+        
+    Returns:
+        Dictionary with execution results and metrics
+    """
+    logger.info(f"Starting structured extraction evaluation for model: {model_name}")
+    
+    # Determine provider type
+    provider_type = "vllm"
+    if provider_config:
+        provider_type = provider_config.get('provider_type', 'vllm')
+    
+    # Build connection info from provider config
+    connection_info = build_connection_info(
+        provider_type=provider_type,
+        provider_config=provider_config or {},
+        server_info=server_info,
+        model_config=task_config.get('defaults', {}),
+    )
+    
+    logger.info(f"Provider: {provider_type}")
+    logger.info(f"Base URL: {connection_info.get('base_url')}")
+    
+    # Create output directory
+    output_subdir = task_config.get('output', {}).get('subdirectory', 'structured_extraction')
+    task_output_path = Path(output_path) / output_subdir
+    task_output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Get list of subtasks to run
+    subtasks_to_run = task_config.get('tasks', ['paraloq'])
+    subtask_configs = task_config.get('task_configs', {})
+    defaults = task_config.get('defaults', {})
+    
+    # Store results for each subtask
+    all_results = {}
+    all_metrics = {}
+    
+    try:
+        for subtask_name in subtasks_to_run:
+            logger.info(f"Running subtask: {subtask_name}")
+            
+            # Create task instance
+            task_instance = _create_task_instance(
+                subtask_name=subtask_name,
+                subtask_config=subtask_configs.get(subtask_name, {}),
+                task_config=task_config,
+            )
+            
+            # Create interface
+            interface = get_interface_for_provider(
+                provider_type=provider_type,
+                connection_info=connection_info,
+                model_name=model_name,
+            )
+            
+            # Create runner config
+            runner_config = {
+                "model_name": model_name,
+                "batch_size": defaults.get('batch_size', 20),
+                "output_dir": str(task_output_path / subtask_name),
+                "log_samples": defaults.get('log_samples', False),
+            }
+            
+            # Run benchmark using generic engine
+            runner = BenchmarkRunner(task_instance, interface, runner_config)
+            subtask_results = asyncio.run(runner.run(limit=limit, no_resume=False))
+            
+            # Save results (don't mark subtask complete - parent handles that)
+            save_results(
+                results=subtask_results,
+                output_dir=task_output_path / subtask_name,
+                model_name=model_name,
+                task_name=subtask_name,
+                log_samples=defaults.get('log_samples', False),
+                mark_complete=False,  # Parent task handles completion
+            )
+            
+            all_results[subtask_name] = subtask_results
+            all_metrics[subtask_name] = subtask_results.get('aggregate_metrics', {})
+            
+            logger.info(f"Subtask {subtask_name} completed")
+        
+        # Aggregate metrics across all subtasks
+        aggregated = _aggregate_subtask_metrics(all_metrics, subtasks_to_run)
+        
+        # Save aggregated summary
+        _save_aggregated_summary(
+            aggregated_metrics=aggregated,
+            subtask_metrics=all_metrics,
+            output_dir=task_output_path,
+            model_name=model_name,
+            subtasks=subtasks_to_run,
+        )
+        
+        # Mark parent task complete (subtasks marked by save_results)
+        mark_task_complete(task_output_path)
+        
+        logger.info("Structured extraction evaluation completed successfully")
+        
+        return {
+            "model_name": model_name,
+            "task": "structured_extraction",
+            "output_path": str(task_output_path),
+            "metrics": aggregated,
+            "subtask_metrics": all_metrics,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error running structured extraction: {e}")
+        raise
+
+
+def _create_task_instance(
+    subtask_name: str,
+    subtask_config: Dict,
+    task_config: Dict,
+):
+    """Create a task instance for a subtask."""
+    if subtask_name == 'paraloq':
+        dataset_file = DATA_DIR / subtask_config.get('dataset_file', 'paraloq_data.jsonl')
+        
+        # Auto-download if needed
+        if not dataset_file.exists():
+            logger.info(f"Downloading paraloq dataset to {dataset_file}")
+            download_and_preprocess_dataset(
+                dataset_name=subtask_config.get('dataset_name', 'paraloq/json_data_extraction'),
+                output_file=dataset_file,
+                cache_dir=str(CACHE_DIR),
+                split="train",
+                max_input_chars=20000,
+            )
+        
+        return ParaloqTask({
+            'dataset': {'data_file': str(dataset_file)},
+            'prompts': task_config.get('prompts', {}),
+            'metrics': task_config.get('metrics', {}),
+        })
+        
+    elif subtask_name == 'chat_extract':
+        dataset_file = DATA_DIR / subtask_config.get('dataset_file', 'chat_extract_data.jsonl')
+        schema_file = DATA_DIR / subtask_config.get('schema_file', 'schema_expected_lead_data.json')
+        
+        # Auto-download if needed
+        if not dataset_file.exists():
+            logger.info(f"Downloading chat_extract dataset to {dataset_file}")
+            download_and_preprocess_chat_extraction(
+                dataset_name=subtask_config.get('dataset_name', 'mauroibz/chat_structured_extraction'),
+                output_file=dataset_file,
+                schema_file=schema_file,
+                cache_dir=str(CACHE_DIR),
+                split="train",
+                max_input_chars=20000,
+            )
+        
+        return ChatExtractTask({
+            'dataset': {
+                'data_file': str(dataset_file),
+                'schema_file': str(schema_file),
+            },
+            'prompts': task_config.get('prompts', {}),
+            'metrics': task_config.get('metrics', {}),
+        })
+        
+    else:
+        raise ValueError(f"Unknown subtask: {subtask_name}")
+
+
+def _aggregate_subtask_metrics(subtask_metrics: Dict[str, Dict], subtask_names: list) -> Dict:
+    """Aggregate metrics across subtasks."""
+    if not subtask_metrics:
+        return {}
+    
+    total_samples = sum(m.get('total_samples', 0) for m in subtask_metrics.values())
+    valid_samples = sum(m.get('valid_samples', 0) for m in subtask_metrics.values())
+    error_count = sum(m.get('error_count', 0) for m in subtask_metrics.values())
+    
+    aggregated = {
+        'total_samples': total_samples,
+        'valid_samples': valid_samples,
+        'error_count': error_count,
+        'error_rate': error_count / total_samples if total_samples > 0 else 0.0,
+        'subtasks': subtask_metrics,
+    }
+    
+    # Weighted average for key metrics
+    valid_subtasks = {k: v for k, v in subtask_metrics.items() if v.get('valid_samples', 0) > 0}
+    
+    if valid_subtasks:
+        total_valid = sum(m.get('valid_samples', 0) for m in valid_subtasks.values())
+        
+        for metric in ['extraction_quality_score', 'field_f1_partial', 'field_f1_strict',
+                       'schema_validity_rate', 'exact_match_rate', 'hallucination_rate']:
+            weighted_sum = sum(
+                m.get(metric, 0) * m.get('valid_samples', 0)
+                for m in valid_subtasks.values()
+            )
+            aggregated[metric] = weighted_sum / total_valid if total_valid > 0 else 0.0
+    else:
+        for metric in ['extraction_quality_score', 'field_f1_partial', 'field_f1_strict',
+                       'schema_validity_rate', 'exact_match_rate', 'hallucination_rate']:
+            aggregated[metric] = 0.0
+    
+    return aggregated
+
+
+def _save_aggregated_summary(
+    aggregated_metrics: Dict,
+    subtask_metrics: Dict[str, Dict],
+    output_dir: Path,
+    model_name: str,
+    subtasks: list,
+):
+    """Save aggregated results summary."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = model_name.replace("/", "_")
+    
+    # JSON summary
+    summary_file = output_dir / f"{safe_name}_{timestamp}_summary.json"
+    with open(summary_file, "w") as f:
+        json.dump({
+            "model": model_name,
+            "timestamp": timestamp,
+            "subtasks": subtasks,
+            "aggregated_metrics": aggregated_metrics,
+            "per_subtask_metrics": subtask_metrics,
+        }, f, indent=2)
+    
+    logger.info(f"Saved summary to {summary_file}")
+    
+    # Text summary
+    text_file = output_dir / f"{safe_name}_{timestamp}_summary.txt"
+    with open(text_file, "w") as f:
+        f.write("=" * 60 + "\n")
+        f.write("STRUCTURED EXTRACTION BENCHMARK SUMMARY\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Model: {model_name}\n")
+        f.write(f"Timestamp: {timestamp}\n")
+        f.write(f"Subtasks: {', '.join(subtasks)}\n\n")
+        
+        f.write("AGGREGATED METRICS\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"Total Samples: {aggregated_metrics.get('total_samples', 0)}\n")
+        f.write(f"Valid Samples: {aggregated_metrics.get('valid_samples', 0)}\n")
+        f.write(f"Error Rate: {aggregated_metrics.get('error_rate', 0):.2%}\n\n")
+        f.write(f"EQS: {aggregated_metrics.get('extraction_quality_score', 0):.3f}\n")
+        f.write(f"F1 (Partial): {aggregated_metrics.get('field_f1_partial', 0):.3f}\n")
+        f.write(f"Schema Validity: {aggregated_metrics.get('schema_validity_rate', 0):.2%}\n")
+        f.write(f"Exact Match: {aggregated_metrics.get('exact_match_rate', 0):.2%}\n")
+        f.write(f"Hallucination Rate: {aggregated_metrics.get('hallucination_rate', 0):.2%}\n\n")
+        
+        f.write("PER-SUBTASK BREAKDOWN\n")
+        f.write("-" * 40 + "\n")
+        for name, metrics in subtask_metrics.items():
+            f.write(f"\n{name.upper()}:\n")
+            f.write(f"  Samples: {metrics.get('total_samples', 0)}\n")
+            f.write(f"  EQS: {metrics.get('extraction_quality_score', 0):.3f}\n")
+            f.write(f"  F1: {metrics.get('field_f1_partial', 0):.3f}\n")
+        f.write("=" * 60 + "\n")
+    
+    logger.info(f"Saved text summary to {text_file}")
+
