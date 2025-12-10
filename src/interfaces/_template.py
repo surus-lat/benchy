@@ -10,15 +10,17 @@ To create a new interface:
 import asyncio
 import logging
 import os
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
+
+from ..engine.protocols import BaseInterface
 
 logger = logging.getLogger(__name__)
 
 
-class TemplateInterface:
+class TemplateInterface(BaseInterface):
     """Template interface for custom AI systems.
     
-    Implements the BaseInterface protocol required by BenchmarkRunner.
+    Inherits from BaseInterface protocol for IDE autocompletion and type checking.
     
     Copy this and customize for your specific API.
     """

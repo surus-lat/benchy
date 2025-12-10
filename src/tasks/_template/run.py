@@ -2,12 +2,17 @@
 
 This is the main entry point called by the pipeline.
 It creates the task instance, interface, and runs the benchmark.
+
+The task class (TemplateTask) handles:
+- Auto-downloading data from HuggingFace if needed
+- Preprocessing samples to eval format
+- Metrics calculation
+
+This file just wires everything together.
 """
 
 import asyncio
-import json
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
 from prefect import task
@@ -21,9 +26,6 @@ from ...engine import (
 from .task import TemplateTask
 
 logger = logging.getLogger(__name__)
-
-# Data directory relative to this module
-DATA_DIR = Path(__file__).parent / '.data'
 
 
 @task
@@ -43,7 +45,7 @@ def run_template_task(
         model_name: The model to evaluate
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
-        api_test_result: API test result (unused)
+        api_test_result: API test result (unused, kept for interface compatibility)
         task_config: Task configuration from configs/tasks/
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused)
@@ -54,7 +56,7 @@ def run_template_task(
     """
     logger.info(f"Starting template task for model: {model_name}")
     
-    # Get provider type and build connection info
+    # Build connection info from provider config
     provider_type = provider_config.get('provider_type', 'vllm') if provider_config else 'vllm'
     
     connection_info = build_connection_info(
@@ -72,14 +74,9 @@ def run_template_task(
     # Get config defaults
     defaults = task_config.get('defaults', {})
     
-    # Ensure data directory exists
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
     # Create task instance
-    data_file = DATA_DIR / task_config.get('dataset_file', 'data.jsonl')
-    
+    # Task handles auto-download if data file doesn't exist
     task_instance = TemplateTask({
-        'dataset': {'data_file': str(data_file)},
         'prompts': task_config.get('prompts', {}),
     })
     
@@ -115,8 +112,7 @@ def run_template_task(
     
     return {
         "model_name": model_name,
-        "task": "template_task",
+        "task": task_instance.get_task_name(),
         "output_path": str(task_output_path),
         "metrics": results.get('aggregate_metrics', {}),
     }
-
