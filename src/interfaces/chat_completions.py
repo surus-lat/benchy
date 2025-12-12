@@ -63,8 +63,8 @@ class ChatCompletionsInterface:
         
         self.client = AsyncOpenAI(base_url=self.base_url, api_key=api_key)
         
-        # Optional: guided JSON for vLLM
-        self.use_guided_json = connection_info.get("use_guided_json", False)
+        # Optional: structured outputs for vLLM (v0.12.0+ API)
+        self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
         
         logger.info(f"Initialized ChatCompletionsInterface for {model_name}")
         logger.info(f"  Base URL: {self.base_url}")
@@ -182,12 +182,12 @@ class ChatCompletionsInterface:
                     "timeout": self.timeout,
                 }
                 
-                # Add guided JSON for vLLM if schema provided and enabled
-                if schema and self.use_guided_json:
-                    params["extra_body"] = {"guided_json": schema}
+                # Add structured outputs for vLLM if schema provided and enabled (v0.12.0+ API)
+                if schema and self.use_structured_outputs:
+                    params["extra_body"] = {"structured_outputs": {"json": schema}}
                 
                 # For OpenAI with schema, use response_format (not for vLLM)
-                if schema and not self.use_guided_json:
+                if schema and not self.use_structured_outputs:
                     params["response_format"] = {
                         "type": "json_schema",
                         "json_schema": {

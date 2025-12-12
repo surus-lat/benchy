@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def sanitize_schema_for_vllm(schema: Dict) -> Dict:
-    """Sanitize a JSON schema to be compatible with vLLM's guided_json.
+    """Sanitize a JSON schema to be compatible with vLLM's structured_outputs.
     
     vLLM uses grammar-based structured generation which doesn't support all
     JSON Schema features. This function removes or fixes unsupported features.
