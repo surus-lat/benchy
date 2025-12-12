@@ -123,7 +123,10 @@ def start_vllm_server(
     config_format: Optional[str] = None,
     load_format: Optional[str] = None,
     tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = False,
+    kv_cache_dtype: Optional[str] = None,
+    kv_offloading_size: Optional[int] = None,
+    skip_mm_profiling: bool = False
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -153,6 +156,9 @@ def start_vllm_server(
         load_format: Load format (e.g., "mistral")
         tool_call_parser: Tool call parser (e.g., "mistral")
         enable_auto_tool_choice: Enable auto tool choice (default: False)
+        kv_cache_dtype: KV cache data type (e.g., "fp8")
+        kv_offloading_size: KV cache offloading size in GB
+        skip_mm_profiling: Skip multimodal profiling (default: False)
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
@@ -235,6 +241,16 @@ def start_vllm_server(
     
     if enable_auto_tool_choice:
         cmd_parts.append("--enable-auto-tool-choice")
+    
+    # Add KV cache optimization parameters
+    if kv_cache_dtype:
+        cmd_parts.extend(["--kv-cache-dtype", kv_cache_dtype])
+    
+    if kv_offloading_size is not None:
+        cmd_parts.extend(["--kv-offloading-size", str(kv_offloading_size)])
+    
+    if skip_mm_profiling:
+        cmd_parts.append("--skip-mm-profiling")
     
     # Add performance optimization parameters
     if max_num_seqs is not None:

@@ -108,3 +108,6 @@ connection_info = {
 3. **Runner is the bridge**: Orchestrates task + interface without knowing specifics of either
 4. **Connection info abstracts providers**: Tasks/runner don't care if it's vLLM, OpenAI, or Anthropic
 
+
+
+

@@ -1,0 +1,59 @@
+# Image extraction evaluation task configuration
+
+# Task identification
+name: "image_extraction"
+description: "Extract structured data from images following a JSON schema"
+
+# Source directory for data (images, schema, expected values)
+# This directory should contain:
+#   - schema.json: JSON schema for extraction
+#   - datos.json: Array of expected results with 'filename' field
+#   - jpgs/: Directory with images named {filename}.jpg
+source_dir: "/home/mauro/dev/benchy/test_image_request"
+
+# Prompt templates
+prompts:
+  system: |
+    You are an expert in analyzing argentinian invoices. Extract all the required fields from this factura following the required schema.
+    
+    Some clarifications:
+    - razon_social refers to who generated the factura, not who got it.
+    - fecha_factura should be in format YYYY-MM-DDT00:00:00
+  user: |
+    Extract the data from this invoice image following the provided schema.
+    Return valid JSON matching the schema exactly.
+
+# Default evaluation parameters
+defaults:
+  batch_size: 5  # Lower batch size for vision requests (more expensive)
+  log_samples: true
+  temperature: 0.0
+  max_tokens: 2048
+  timeout: 120
+  max_retries: 3
+
+# Metrics configuration (uses structured extraction metrics)
+metrics:
+  extraction_quality_score:
+    enabled: true
+    weights:
+      schema_validity: 0.20
+      field_f1_partial: 0.60
+      inverted_hallucination: 0.20
+  
+  partial_matching:
+    string:
+      token_overlap_weight: 0.5
+      levenshtein_weight: 0.3
+      containment_weight: 0.2
+      exact_threshold: 0.95
+      partial_threshold: 0.50
+    number:
+      relative_tolerance: 0.001
+      absolute_tolerance: 1e-6
+
+# Output configuration
+output:
+  subdirectory: "image_extraction"
+
+
