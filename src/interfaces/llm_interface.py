@@ -226,9 +226,9 @@ class LLMInterface:
             else:
                 chat_params["max_tokens"] = self.config["max_tokens"]
             
-            # Only add guided_json for vLLM
+            # Only add structured_outputs for vLLM (v0.12.0+ API)
             if self.provider_type == "vllm":
-                chat_params["extra_body"] = {"guided_json": schema}
+                chat_params["extra_body"] = {"structured_outputs": {"json": schema}}
             
             response = await self.client.chat.completions.create(**chat_params)
 
@@ -269,7 +269,7 @@ class LLMInterface:
         """
         result = {"output": None, "raw": None, "error": None}
         
-        # Add JSON schema to prompt (Anthropic doesn't support guided_json)
+        # Add JSON schema to prompt (Anthropic doesn't support structured_outputs)
         schema_str = json.dumps(schema, indent=2)
         enhanced_user_prompt = f"{user_prompt}\n\nPlease respond with valid JSON matching this schema:\n{schema_str}"
         

@@ -38,7 +38,7 @@ def build_connection_info(
         - max_retries: Max retry attempts
         - temperature: Generation temperature
         - max_tokens: Max tokens to generate
-        - use_guided_json: Whether to use vLLM's guided JSON (vllm only)
+        - use_structured_outputs: Whether to use vLLM's structured outputs (vllm only)
     """
     provider_config = provider_config or {}
     model_config = model_config or {}
@@ -62,28 +62,28 @@ def build_connection_info(
             connection_info["base_url"] = f"http://{host}:{port}/v1"
         
         connection_info["api_key"] = "EMPTY"  # vLLM doesn't need real key
-        connection_info["use_guided_json"] = True  # vLLM supports this
+        connection_info["use_structured_outputs"] = True  # vLLM v0.12.0+ structured outputs
         
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
-        connection_info["use_guided_json"] = False
+        connection_info["use_structured_outputs"] = False
         
     elif provider_type == "anthropic":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.anthropic.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "ANTHROPIC_API_KEY")
-        connection_info["use_guided_json"] = False
+        connection_info["use_structured_outputs"] = False
         
     elif provider_type == "surus":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
-        connection_info["use_guided_json"] = False
+        connection_info["use_structured_outputs"] = False
         
     else:
         # Generic HTTP provider
         connection_info["base_url"] = provider_config.get("base_url", provider_config.get("endpoint"))
         connection_info["api_key_env"] = provider_config.get("api_key_env")
-        connection_info["use_guided_json"] = False
+        connection_info["use_structured_outputs"] = False
     
     logger.debug(f"Built connection_info for {provider_type}: base_url={connection_info.get('base_url')}")
     return connection_info

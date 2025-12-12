@@ -34,7 +34,7 @@ connection_info = {
     "max_retries": 3,
     "temperature": 0.0,
     "max_tokens": 2048,
-    "use_guided_json": False,  # True for vLLM
+    "use_structured_outputs": False,  # True for vLLM (v0.12.0+)
 }
 
 interface = ChatCompletionsInterface(connection_info, model_name="gpt-4o-mini")
@@ -197,7 +197,7 @@ Interfaces receive a standardized `connection_info` dict:
     "max_retries": 3,
     "temperature": 0.0,
     "max_tokens": 2048,
-    "use_guided_json": False,  # vLLM-specific
+    "use_structured_outputs": False,  # vLLM-specific (v0.12.0+)
 }
 ```
 

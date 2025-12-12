@@ -97,7 +97,7 @@ connection_info = {
     "max_retries": 3,
     "temperature": 0.0,
     "max_tokens": 2048,
-    "use_guided_json": False,  # True for vLLM
+    "use_structured_outputs": False,  # True for vLLM (v0.12.0+)
 }
 ```
 
