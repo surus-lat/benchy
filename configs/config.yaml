@@ -58,6 +58,11 @@ task_groups:
     tasks:
       - "structured_extraction"
   
+  image_extraction_only:
+    description: "Image extraction (multimodal) only"
+    tasks:
+      - "image_extraction"
+  
   # Example of additional task groups you can define:
   # language_only:
   #   description: "Language evaluation tasks only"

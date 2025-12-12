@@ -7,13 +7,16 @@ This interface works with any OpenAI-compatible endpoint:
 - Other OpenAI-compatible services
 
 The interface is provider-agnostic - it just needs a base_url and api_key.
+Supports multimodal (vision) requests when samples include image_path.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from openai import AsyncOpenAI
@@ -71,25 +74,65 @@ class ChatCompletionsInterface:
         
         Args:
             sample: Sample dictionary with id, text, expected, etc.
+                    May include image_path for multimodal requests.
             task: Task instance with get_prompt() method
             
         Returns:
-            Request dict with system_prompt, user_prompt, schema, sample_id
+            Request dict with system_prompt, user_prompt, schema, sample_id,
+            and optionally image_path for multimodal requests.
         """
         system_prompt, user_prompt = task.get_prompt(sample)
-        return {
+        request = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
             "schema": sample.get("schema"),  # May be None for non-schema tasks
             "sample_id": sample["id"],
         }
+        
+        # Include image_path for multimodal requests
+        if "image_path" in sample:
+            request["image_path"] = sample["image_path"]
+        
+        return request
     
+    def _encode_image(self, image_path: str) -> str:
+        """Encode image file to base64 string.
+        
+        Args:
+            image_path: Path to image file
+            
+        Returns:
+            Base64 encoded string
+        """
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+    
+    def _get_image_media_type(self, image_path: str) -> str:
+        """Get media type from image file extension.
+        
+        Args:
+            image_path: Path to image file
+            
+        Returns:
+            Media type string (e.g., "image/jpeg")
+        """
+        ext = Path(image_path).suffix.lower()
+        media_types = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+        }
+        return media_types.get(ext, "image/jpeg")
+
     async def _generate_single(
         self,
         system_prompt: str,
         user_prompt: str,
         schema: Optional[Dict],
         sample_id: str,
+        image_path: Optional[str] = None,
     ) -> Dict:
         """Generate output for a single request.
         
@@ -98,6 +141,7 @@ class ChatCompletionsInterface:
             user_prompt: User message
             schema: Optional JSON schema for guided generation
             sample_id: Sample ID for logging
+            image_path: Optional path to image for multimodal requests
             
         Returns:
             Dict with 'output', 'raw', 'error'
@@ -106,10 +150,28 @@ class ChatCompletionsInterface:
         
         for attempt in range(self.max_retries):
             try:
-                # Build request
+                # Build user content - multimodal or text-only
+                if image_path:
+                    # Multimodal request with image
+                    base64_image = self._encode_image(image_path)
+                    media_type = self._get_image_media_type(image_path)
+                    
+                    user_content = [
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media_type};base64,{base64_image}"
+                            }
+                        }
+                    ]
+                else:
+                    user_content = user_prompt
+                
+                # Build messages
                 messages = [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
+                    {"role": "user", "content": user_content},
                 ]
                 
                 params = {
@@ -123,6 +185,17 @@ class ChatCompletionsInterface:
                 # Add guided JSON for vLLM if schema provided and enabled
                 if schema and self.use_guided_json:
                     params["extra_body"] = {"guided_json": schema}
+                
+                # For OpenAI with schema, use response_format (not for vLLM)
+                if schema and not self.use_guided_json:
+                    params["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "extraction",
+                            "strict": True,
+                            "schema": schema
+                        }
+                    }
                 
                 response = await self.client.chat.completions.create(**params)
                 raw_output = response.choices[0].message.content
@@ -185,6 +258,7 @@ class ChatCompletionsInterface:
                 user_prompt=req["user_prompt"],
                 schema=req.get("schema"),
                 sample_id=req["sample_id"],
+                image_path=req.get("image_path"),  # Pass image for multimodal
             )
             for req in requests
         ]
@@ -249,5 +323,5 @@ class ChatCompletionsInterface:
     @property
     def supports_multimodal(self) -> bool:
         """Whether this interface supports multimodal inputs."""
-        return False  # Override in subclass for multimodal support
+        return True  # Supports OpenAI vision API
 

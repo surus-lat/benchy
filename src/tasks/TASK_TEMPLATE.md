@@ -75,7 +75,7 @@ prompts:
     
     Please respond with [expected format].
 
-# Evaluation parameters
+# Evaluation parameters (if required)
 defaults:
   batch_size: 20
   log_samples: false

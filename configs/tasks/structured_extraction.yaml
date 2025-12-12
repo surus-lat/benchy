@@ -7,7 +7,7 @@ description: "Structured data extraction using guided JSON schema"
 # List of tasks to run
 tasks:
   - "chat_extract"
-#  - "paraloq"
+  - "paraloq"
 
 # Per-task configurations
 task_configs:

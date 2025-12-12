@@ -6,6 +6,7 @@ from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
 from .tasks.structured import run_structured_extraction
+from .tasks.image_extraction import run_image_extraction
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
@@ -166,7 +167,10 @@ def benchmark_pipeline(
     config_format: Optional[str] = None,
     load_format: Optional[str] = None,
     tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = False,
+    kv_cache_dtype: Optional[str] = None,
+    kv_offloading_size: Optional[int] = None,
+    skip_mm_profiling: bool = False
 ) -> Dict[str, Any]:
     """
     Complete benchmarking pipeline for vLLM and cloud providers.
@@ -323,7 +327,10 @@ def benchmark_pipeline(
             config_format=config_format,
             load_format=load_format,
             tool_call_parser=tool_call_parser,
-            enable_auto_tool_choice=enable_auto_tool_choice
+            enable_auto_tool_choice=enable_auto_tool_choice,
+            kv_cache_dtype=kv_cache_dtype,
+            kv_offloading_size=kv_offloading_size,
+            skip_mm_profiling=skip_mm_profiling
         )
         
         # Store server info globally for signal handler
@@ -455,6 +462,34 @@ def benchmark_pipeline(
             provider_config=cloud_provider_config
         )
         task_results["structured_extraction"] = structured_results
+    
+    if "image_extraction" in pending_tasks:
+        logger.info("Running image extraction evaluation...")
+        image_extraction_config = config_manager.get_task_config("image_extraction", task_defaults_overrides)
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("image_extraction", image_extraction_config)
+        
+        # Add provider info to provider_config if using non-vLLM provider
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
+        image_extraction_results = run_image_extraction(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=image_extraction_config,
+            limit=limit,
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
+        )
+        task_results["image_extraction"] = image_extraction_results
             
     # Step 4: Gather results
     gather_result = gather_results(
@@ -518,7 +553,10 @@ def test_vllm_server(
     config_format: Optional[str] = None,
     load_format: Optional[str] = None,
     tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = False,
+    kv_cache_dtype: Optional[str] = None,
+    kv_offloading_size: Optional[int] = None,
+    skip_mm_profiling: bool = False
 ) -> Dict[str, Any]:
     """
     Test vLLM server functionality without running full evaluation.
@@ -612,7 +650,10 @@ def test_vllm_server(
         config_format=config_format,
         load_format=load_format,
         tool_call_parser=tool_call_parser,
-        enable_auto_tool_choice=enable_auto_tool_choice
+        enable_auto_tool_choice=enable_auto_tool_choice,
+        kv_cache_dtype=kv_cache_dtype,
+        kv_offloading_size=kv_offloading_size,
+        skip_mm_profiling=skip_mm_profiling
     )
     
     # Store server info globally for signal handler

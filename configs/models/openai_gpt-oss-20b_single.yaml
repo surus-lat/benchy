@@ -11,7 +11,7 @@ task_defaults:
   log_samples: true
   cuda_devices: '2'
 tasks:
-- structured_extraction
+- latam_board
 metadata:
   max_context_length: 131072
   is_multimodal: false

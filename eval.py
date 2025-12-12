@@ -397,6 +397,9 @@ def main():
                     'load_format': vllm_config.get('load_format', None),
                     'tool_call_parser': vllm_config.get('tool_call_parser', None),
                     'enable_auto_tool_choice': vllm_config.get('enable_auto_tool_choice', False),
+                    'kv_cache_dtype': vllm_config.get('kv_cache_dtype', None),
+                    'kv_offloading_size': vllm_config.get('kv_offloading_size', None),
+                    'skip_mm_profiling': vllm_config.get('skip_mm_profiling', False)
                 }
             
             result = benchmark_pipeline(
