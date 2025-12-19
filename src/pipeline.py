@@ -445,7 +445,7 @@ def benchmark_pipeline(
         
         # Add provider info to provider_config if using non-vLLM provider
         cloud_provider_config = None
-        if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
+        if provider_type in ['openai', 'anthropic', 'surus', 'together'] and provider_config:
             cloud_provider_config = {
                 **provider_config,
                 'provider_type': provider_type
@@ -473,7 +473,7 @@ def benchmark_pipeline(
         
         # Add provider info to provider_config if using non-vLLM provider
         cloud_provider_config = None
-        if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
+        if provider_type in ['openai', 'anthropic', 'surus', 'surus_ocr', 'surus_factura', 'together'] and provider_config:
             cloud_provider_config = {
                 **provider_config,
                 'provider_type': provider_type

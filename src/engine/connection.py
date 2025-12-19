@@ -44,11 +44,14 @@ def build_connection_info(
     model_config = model_config or {}
     
     # Build base connection info
+    # Priority: provider_config (with model overrides) > task defaults (model_config)
+    # This ensures model-specific requirements (like gpt-5-mini temperature) take precedence
     connection_info = {
         "timeout": provider_config.get("timeout", 120),
         "max_retries": provider_config.get("max_retries", 3),
-        "temperature": model_config.get("temperature", provider_config.get("temperature", 0.0)),
-        "max_tokens": model_config.get("max_tokens", provider_config.get("max_tokens", 2048)),
+        "temperature": provider_config.get("temperature", model_config.get("temperature", 0.0)),
+        "max_tokens": provider_config.get("max_tokens", model_config.get("max_tokens", 2048)),
+        "max_tokens_param_name": provider_config.get("max_tokens_param_name", model_config.get("max_tokens_param_name", "max_tokens")),
     }
     
     if provider_type == "vllm":
@@ -73,8 +76,23 @@ def build_connection_info(
         connection_info["base_url"] = provider_config.get("base_url", "https://api.anthropic.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "ANTHROPIC_API_KEY")
         connection_info["use_structured_outputs"] = False
+    
+    elif provider_type == "together":
+        connection_info["base_url"] = provider_config.get("base_url", "https://api.together.xyz/v1")
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "TOGETHER_API_KEY")
+        connection_info["use_structured_outputs"] = False
         
     elif provider_type == "surus":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
+        connection_info["use_structured_outputs"] = False
+        
+    elif provider_type == "surus_ocr":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
+        connection_info["use_structured_outputs"] = False
+        
+    elif provider_type == "surus_factura":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
@@ -116,6 +134,32 @@ def get_interface_for_provider(
             }
         }
         return SurusInterface(surus_config, model_name, "surus")
+    
+    elif provider_type == "surus_ocr":
+        from ..interfaces.surus_ocr_interface import SurusOCRInterface
+        # SurusOCRInterface has its own config format, adapt connection_info
+        surus_ocr_config = {
+            "surus_ocr": {
+                "endpoint": connection_info["base_url"],
+                "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
+                "timeout": connection_info.get("timeout", 60),
+                "max_retries": connection_info.get("max_retries", 3),
+            }
+        }
+        return SurusOCRInterface(surus_ocr_config, model_name, "surus_ocr")
+    
+    elif provider_type == "surus_factura":
+        from ..interfaces.surus_factura_interface import SurusFacturaInterface
+        # SurusFacturaInterface has its own config format, adapt connection_info
+        surus_factura_config = {
+            "surus_factura": {
+                "endpoint": connection_info["base_url"],
+                "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
+                "timeout": connection_info.get("timeout", 60),
+                "max_retries": connection_info.get("max_retries", 3),
+            }
+        }
+        return SurusFacturaInterface(surus_factura_config, model_name, "surus_factura")
     
     else:
         # Use ChatCompletionsInterface for vllm, openai, anthropic

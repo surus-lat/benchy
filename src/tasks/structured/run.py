@@ -162,8 +162,13 @@ def run_structured_extraction(
             "subtask_metrics": all_metrics,
         }
         
+    except ConnectionError as e:
+        # Clean error for connection failures (no traceback needed)
+        logger.error(f"Connection failed: {e}")
+        logger.error(f"Check that the endpoint is accessible and responding")
+        raise
     except Exception as e:
-        logger.error(f"Error running structured extraction: {e}")
+        logger.error(f"Error running structured extraction: {type(e).__name__}: {e}")
         raise
 
 
@@ -316,4 +321,32 @@ def _save_aggregated_summary(
         f.write("=" * 60 + "\n")
     
     logger.info(f"Saved text summary to {text_file}")
+    
+    # Log a concise, auditable view of the aggregated metrics in the main run log
+    logger.info("Structured extraction - aggregated metrics across subtasks:")
+    logger.info(
+        "  total_samples=%d, valid_samples=%d, error_rate=%.4f",
+        aggregated_metrics.get("total_samples", 0),
+        aggregated_metrics.get("valid_samples", 0),
+        aggregated_metrics.get("error_count", 0)
+        / aggregated_metrics.get("total_samples", 1)
+        if aggregated_metrics.get("total_samples", 0) > 0
+        else 0.0,
+    )
+    logger.info(
+        "  EQS=%.4f, F1_partial=%.4f, schema_validity=%.4f, exact_match=%.4f, hallucination_rate=%.4f",
+        aggregated_metrics.get("extraction_quality_score", 0.0),
+        aggregated_metrics.get("field_f1_partial", 0.0),
+        aggregated_metrics.get("schema_validity_rate", 0.0),
+        aggregated_metrics.get("exact_match_rate", 0.0),
+        aggregated_metrics.get("hallucination_rate", 0.0),
+    )
+    for name, metrics in subtask_metrics.items():
+        logger.info(
+            "Subtask %s -> samples=%d, EQS=%.4f, F1_partial=%.4f",
+            name,
+            metrics.get("total_samples", 0),
+            metrics.get("extraction_quality_score", 0.0),
+            metrics.get("field_f1_partial", 0.0),
+        )
 

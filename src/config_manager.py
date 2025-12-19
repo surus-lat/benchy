@@ -38,6 +38,11 @@ class ConfigManager:
             self._merge_cloud_provider_config(model_config, 'anthropic')
             model_config['provider_type'] = 'anthropic'
         
+        # Handle Together AI config merging
+        elif 'together' in model_config:
+            self._merge_cloud_provider_config(model_config, 'together')
+            model_config['provider_type'] = 'together'
+        
         # Handle vLLM config merging
         elif 'vllm' in model_config:
             vllm_config = model_config['vllm']

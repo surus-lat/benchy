@@ -193,6 +193,8 @@ class TemplateTask(BaseTask):
         prediction: Any,
         expected: Any,
         sample: Dict,
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Calculate metrics for a single prediction.
         
@@ -202,17 +204,19 @@ class TemplateTask(BaseTask):
             prediction: Model output (parsed if applicable)
             expected: Expected output from sample
             sample: Full sample dict for additional context
+            error: Error message if generation failed (optional)
+            error_type: Type of error ('connectivity_error' or 'invalid_response') (optional)
             
         Returns:
             Dictionary of metric names to values.
             Must include 'valid' (bool) to indicate if prediction was usable.
         """
-        if prediction is None:
-            return {
-                "valid": False,
-                "score": 0.0,
-                "error": "No prediction",
-            }
+        # Handle errors - pass through to get_error_metrics for consistency
+        if error or prediction is None:
+            return self.get_error_metrics(
+                error=error or "No prediction",
+                error_type=error_type,
+            )
         
         # Default: simple exact match
         # Override for more sophisticated metrics
@@ -222,6 +226,31 @@ class TemplateTask(BaseTask):
             "valid": True,
             "exact_match": exact_match,
             "score": 1.0 if exact_match else 0.0,
+        }
+    
+    def get_error_metrics(
+        self,
+        error: str,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get error metrics structure for failed predictions.
+        
+        Override this to provide task-specific error metric structures.
+        The engine calls this when calculate_metrics() raises an exception.
+        
+        Args:
+            error: Error message
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
+            
+        Returns:
+            Dictionary of error metrics matching your task's metric structure.
+        """
+        return {
+            "valid": False,
+            "error": error,
+            "error_type": error_type,
+            "score": 0.0,
+            "exact_match": False,
         }
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:

@@ -65,6 +65,8 @@ class BaseTask(Protocol):
         prediction: Any,
         expected: Any,
         sample: Dict,
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Calculate task-specific metrics for a single prediction.
         
@@ -72,9 +74,12 @@ class BaseTask(Protocol):
             prediction: Model output (parsed if applicable)
             expected: Expected output from sample
             sample: Full sample dictionary for additional context
+            error: Error message if generation failed (optional)
+            error_type: Type of error ('connectivity_error' or 'invalid_response') (optional)
             
         Returns:
-            Dictionary of metric names to values
+            Dictionary of metric names to values. Must include 'valid' (bool) to indicate
+            if prediction was usable for metrics calculation.
         """
         ...
     
@@ -88,6 +93,33 @@ class BaseTask(Protocol):
             Aggregated metrics dictionary
         """
         ...
+    
+    def get_error_metrics(
+        self,
+        error: str,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get error metrics structure for failed predictions.
+        
+        This method is called by the engine when calculate_metrics() raises an exception
+        or when a connectivity error occurs. Tasks can override this to provide
+        task-specific error metric structures.
+        
+        Args:
+            error: Error message
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
+            
+        Returns:
+            Dictionary of error metrics with the same structure as calculate_metrics()
+            would return. Must include 'valid': False.
+        """
+        # Default implementation - tasks can override
+        return {
+            "valid": False,
+            "error": error,
+            "error_type": error_type,
+            "score": 0.0,
+        }
     
     # Optional capability flags - implement as properties
     @property

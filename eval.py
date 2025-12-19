@@ -276,6 +276,21 @@ def main():
         vllm_config = None
         cuda_devices = None
         logger.info(f"Using SURUS AI provider for extraction tasks")
+    elif provider_type == 'surus_ocr':
+        provider_config = config.get('surus_ocr', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using SURUS AI OCR provider for image extraction tasks")
+    elif provider_type == 'surus_factura':
+        provider_config = config.get('surus_factura', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using SURUS AI Factura provider for image extraction tasks")
+    elif provider_type == 'together':
+        provider_config = config.get('together', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using Together AI cloud provider for model: {model_name}")
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
     
@@ -313,7 +328,7 @@ def main():
     logger.info(f"Tasks to run: {tasks_to_run}")
     if provider_type == 'vllm' and vllm_config:
         logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
-    elif provider_type in ['openai', 'anthropic']:
+    elif provider_type in ['openai', 'anthropic', 'together']:
         logger.info(f"Cloud provider: {provider_type}")
         logger.info(f"Base URL: {provider_config.get('base_url', 'N/A')}")
     elif provider_type == 'surus':

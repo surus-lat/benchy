@@ -38,17 +38,53 @@ class ImageExtractionTask:
         self.data_dir = DATA_DIR
         self.dataset: Optional[List[Dict]] = None
         self.schema: Optional[Dict] = None
+        self.dataset_metrics_config: Optional[Dict] = None
         
         # Lazy init metrics calculator
         self._metrics_calc = None
     
     @property
     def metrics_calculator(self):
-        """Lazy initialization of metrics calculator from structured extraction."""
+        """Lazy initialization of document extraction metrics."""
         if self._metrics_calc is None:
-            from ..structured.metrics import MetricsCalculator
-            self._metrics_calc = MetricsCalculator(self.config)
+            from .metrics import DocumentExtractionMetrics
+            # Merge dataset-specific metrics config with task config
+            merged_config = self._get_merged_config()
+            self._metrics_calc = DocumentExtractionMetrics(merged_config)
         return self._metrics_calc
+    
+    def _get_merged_config(self) -> Dict:
+        """Get merged configuration with dataset-specific metrics config.
+        
+        Dataset config (from .data/metrics_config.json) overrides task config.
+        
+        Returns:
+            Merged configuration dictionary
+        """
+        import copy
+        merged = copy.deepcopy(self.config)
+        
+        # Merge dataset metrics config if available
+        if self.dataset_metrics_config:
+            if "metrics" not in merged:
+                merged["metrics"] = {}
+            # Deep merge metrics config (dataset overrides task)
+            self._deep_merge(merged["metrics"], self.dataset_metrics_config)
+        
+        return merged
+    
+    def _deep_merge(self, base: Dict, override: Dict) -> None:
+        """Recursively merge override dict into base dict.
+        
+        Args:
+            base: Base dictionary (modified in place)
+            override: Override dictionary
+        """
+        for key, value in override.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                self._deep_merge(base[key], value)
+            else:
+                base[key] = value
 
     def load(self) -> None:
         """Load dataset, copying from source if needed."""
@@ -74,6 +110,18 @@ class ImageExtractionTask:
         with open(datos_file, "r", encoding="utf-8") as f:
             raw_data = json.load(f)
         
+        # Load dataset-specific metrics configuration if available
+        metrics_config_file = self.data_dir / "metrics_config.json"
+        if metrics_config_file.exists():
+            logger.info(f"Loading dataset metrics config from {metrics_config_file}")
+            with open(metrics_config_file, "r", encoding="utf-8") as f:
+                self.dataset_metrics_config = json.load(f)
+            # Reset metrics calculator to use new config
+            self._metrics_calc = None
+        else:
+            logger.debug("No dataset-specific metrics config found, using task config only")
+            self.dataset_metrics_config = None
+        
         # Build dataset with image paths
         self.dataset = []
         jpgs_dir = self.data_dir / "jpgs"
@@ -87,7 +135,7 @@ class ImageExtractionTask:
                 continue
             
             # Remove filename from expected (not part of extraction)
-            expected = {k: v for k, v in item.items() if k != "filename"}
+            expected = {k: v for k, v in item.items() if (k != "filename" and k != "cae")}
             
             self.dataset.append({
                 "id": f"img_{idx:04d}_{filename}",
@@ -126,6 +174,12 @@ class ImageExtractionTask:
             shutil.copytree(src_jpgs, dst_jpgs)
         else:
             raise FileNotFoundError(f"jpgs directory not found in {self.source_dir}")
+        
+        # Copy metrics_config.json if it exists (optional)
+        src_metrics_config = self.source_dir / "metrics_config.json"
+        if src_metrics_config.exists():
+            shutil.copy2(src_metrics_config, self.data_dir / "metrics_config.json")
+            logger.info(f"Copied metrics_config.json from source")
         
         logger.info(f"Copied source data to {self.data_dir}")
 
@@ -182,24 +236,57 @@ class ImageExtractionTask:
         prediction: Any,
         expected: Any,
         sample: Dict,
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Calculate metrics for a single prediction.
         
         Uses MetricsCalculator from structured extraction for consistency.
+        Simply passes error/error_type through to the calculator.
         
         Args:
             prediction: Model output
             expected: Expected output
             sample: Full sample dict (contains schema)
+            error: Error message if generation failed (optional)
+            error_type: Type of error ('connectivity_error' or 'invalid_response') (optional)
             
         Returns:
             Metrics dictionary
         """
+        # Pass through to metrics calculator - it handles error cases
         return self.metrics_calculator.calculate_all(
             prediction=prediction,
             expected=expected,
             schema=sample.get("schema", {}),
-            error=None if prediction is not None else "No prediction",
+            error=error,
+            error_type=error_type,
+        )
+    
+    def get_error_metrics(
+        self,
+        error: str,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get error metrics structure for failed predictions.
+        
+        Returns the same structure as metrics calculator would for error cases,
+        ensuring consistency with calculate_metrics() output.
+        
+        Args:
+            error: Error message
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
+            
+        Returns:
+            Dictionary of error metrics matching document extraction format
+        """
+        # Use metrics calculator to get consistent error structure
+        return self.metrics_calculator.calculate_all(
+            prediction=None,
+            expected={},
+            schema={},
+            error=error,
+            error_type=error_type,
         )
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:

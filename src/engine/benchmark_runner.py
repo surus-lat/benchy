@@ -193,18 +193,21 @@ class BenchmarkRunner:
                         prediction=output.get("output"),
                         expected=sample.get("expected"),
                         sample=sample,
+                        error=output.get("error"),
+                        error_type=output.get("error_type"),
                     )
-                    # Add error info if present
-                    if output.get("error"):
-                        metrics["error"] = output["error"]
                 except Exception as e:
                     logger.error(f"Error calculating metrics for {sample['id']}: {e}")
-                    metrics = {"error": str(e)}
+                    # Use task's error metrics structure for fallback
+                    # This ensures task-specific metric structures are preserved
+                    error_msg = str(e)
+                    error_type = output.get("error_type", "connectivity_error")
+                    metrics = self.task.get_error_metrics(error_msg, error_type)
                 
                 results["per_sample_metrics"].append(metrics)
                 
-                # Log sample details if requested (first batch only to save space)
-                if self.log_samples and batch_num == 1:
+                # Log sample details if requested
+                if self.log_samples:
                     sample_data = {
                         "id": sample["id"],
                         "prediction": output.get("output"),
@@ -365,10 +368,10 @@ def save_results(
                 "model": model_name,
                 "task": task_name,
                 "timestamp": timestamp,
-                "note": "First batch only",
+                "total_samples": len(results["samples"]),
                 "samples": results["samples"],
             }, f, indent=2)
-        logger.info(f"Saved samples to {samples_file}")
+        logger.info(f"Saved {len(results['samples'])} samples to {samples_file}")
     
     # Save text report
     report_file = output_dir / f"{safe_name}_{timestamp}_report.txt"

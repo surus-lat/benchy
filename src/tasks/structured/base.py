@@ -4,7 +4,7 @@ This module provides a base class that wraps existing task classes
 (ParaloqTask, ChatExtractTask) to conform to the BaseTask protocol.
 """
 
-from typing import Dict, Any, List, Optional, Iterator
+from typing import Dict, Any, List, Optional
 from .metrics import MetricsCalculator
 
 
@@ -42,24 +42,57 @@ class StructuredExtractionTaskBase:
         prediction: Any,
         expected: Any,
         sample: Dict,
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Calculate metrics for a single prediction.
         
         Uses the existing MetricsCalculator for consistency.
+        Simply passes error/error_type through to the calculator.
         
         Args:
             prediction: Model output
             expected: Expected output
             sample: Full sample dict (contains schema)
+            error: Error message if generation failed (optional)
+            error_type: Type of error ('connectivity_error' or 'invalid_response') (optional)
             
         Returns:
             Metrics dictionary
         """
+        # Pass through to metrics calculator - it handles error cases
         return self.metrics_calculator.calculate_all(
             prediction=prediction,
             expected=expected,
             schema=sample.get("schema", {}),
-            error=None if prediction is not None else "No prediction",
+            error=error,
+            error_type=error_type,
+        )
+    
+    def get_error_metrics(
+        self,
+        error: str,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get error metrics structure for failed predictions.
+        
+        Returns the same structure as MetricsCalculator would for error cases,
+        ensuring consistency with calculate_metrics() output.
+        
+        Args:
+            error: Error message
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
+            
+        Returns:
+            Dictionary of error metrics matching structured extraction format
+        """
+        # Use metrics calculator to get consistent error structure
+        return self.metrics_calculator.calculate_all(
+            prediction=None,
+            expected={},
+            schema={},
+            error=error,
+            error_type=error_type,
         )
     
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
