@@ -7,7 +7,14 @@ api_key_env: "OPENAI_API_KEY"  # Environment variable to read API key from
 timeout: 120
 max_retries: 3
 
+# Rate limiting to avoid 429 errors
+# Limits concurrent requests (lower = safer but slower)
+max_concurrent: 3
+
 # Default generation parameters (can be overridden in model config)
-temperature: 0.0
-max_tokens: 2048
+temperature: 1.0
+
+# Parameter name for max tokens (some models like gpt-5-mini use 'max_completion_tokens' instead of 'max_tokens')
+# Can be overridden in model config overrides
+max_tokens_param_name: "max_tokens"  # Options: "max_tokens" or "max_completion_tokens"
 

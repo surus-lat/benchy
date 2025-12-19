@@ -3,15 +3,15 @@ model:
 openai:
   provider_config: openai
   overrides:
-    temperature: 0.0
-    max_tokens: 4096
+    max_tokens_param_name: "max_completion_tokens"  # gpt-5-mini requires max_completion_tokens instead of max_tokens
+    # max_tokens: 4096
     # API endpoint: "chat" (default), "completions", or "auto"
     # OpenAI models only support chat completions API
-    api_endpoint: "chat"
+    # api_endpoint: "chat"
 task_defaults:
   log_samples: true
 tasks:
-- structured_extraction
+- image_extraction
 metadata:
   provider: openai
   model_type: gpt5_mini

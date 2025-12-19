@@ -4,7 +4,6 @@ base_url: https://api.openai.com/v1
 timeout: 120
 max_retries: 3
 temperature: 0.0
-max_tokens: 4096
 
 # API endpoint selection
 # - "chat": Use chat completions API (default for OpenAI, supports conversation format)

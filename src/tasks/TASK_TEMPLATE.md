@@ -175,6 +175,8 @@ class MyTask:
         prediction: Any,
         expected: Any,
         sample: Dict,
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Calculate metrics for one prediction.
         
@@ -182,12 +184,18 @@ class MyTask:
             prediction: Model output (parsed)
             expected: Expected output from sample
             sample: Full sample dict for context
+            error: Error message if generation failed (optional)
+            error_type: Type of error ('connectivity_error' or 'invalid_response') (optional)
             
         Returns:
-            Dict of metric_name -> value
+            Dict of metric_name -> value. Must include 'valid' (bool).
         """
-        if prediction is None:
-            return {"valid": False, "score": 0.0, "error": "No prediction"}
+        # Handle errors - delegate to get_error_metrics for consistency
+        if error or prediction is None:
+            return self.get_error_metrics(
+                error=error or "No prediction",
+                error_type=error_type,
+            )
         
         # Example: simple exact match
         exact_match = prediction == expected
@@ -196,6 +204,33 @@ class MyTask:
             "valid": True,
             "exact_match": exact_match,
             "score": 1.0 if exact_match else 0.0,
+        }
+    
+    def get_error_metrics(
+        self,
+        error: str,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get error metrics structure for failed predictions.
+        
+        The engine calls this when calculate_metrics() raises an exception
+        or when handling connectivity errors. Override to provide task-specific
+        error metric structures.
+        
+        Args:
+            error: Error message
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
+            
+        Returns:
+            Dict of error metrics matching your task's metric structure.
+            Must include 'valid': False.
+        """
+        return {
+            "valid": False,
+            "error": error,
+            "error_type": error_type,
+            "score": 0.0,
+            "exact_match": False,
         }
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
@@ -411,10 +446,67 @@ See `src/tasks/structured/` for a complete implementation with:
 - Checkpoint support
 - Multi-provider compatibility
 
+## Error Handling
+
+The engine handles errors from interfaces and passes them to tasks via `error` and `error_type` parameters:
+
+- **`error`**: Error message string (or None if successful)
+- **`error_type`**: Either `'connectivity_error'` (network/timeout issues) or `'invalid_response'` (API returned error)
+
+### Best Practices
+
+1. **In `calculate_metrics()`**: Check for errors first and delegate to `get_error_metrics()`:
+   ```python
+   if error or prediction is None:
+       return self.get_error_metrics(error=error or "No prediction", error_type=error_type)
+   ```
+
+2. **Implement `get_error_metrics()`**: Return error metrics matching your task's structure:
+   ```python
+   def get_error_metrics(self, error: str, error_type: Optional[str] = None) -> Dict[str, Any]:
+       return {
+           "valid": False,
+           "error": error,
+           "error_type": error_type,
+           # ... other task-specific error metrics with default values
+       }
+   ```
+
+3. **Keep it simple**: Tasks should just pass errors through. The engine handles:
+   - Catching exceptions from `calculate_metrics()`
+   - Calling `get_error_metrics()` for fallback
+   - Logging and reporting
+
+### Example: Using a Metrics Calculator
+
+If your task uses a metrics calculator (like structured extraction), simply pass errors through:
+
+```python
+def calculate_metrics(self, prediction, expected, sample, error=None, error_type=None):
+    return self.metrics_calculator.calculate_all(
+        prediction=prediction,
+        expected=expected,
+        schema=sample.get("schema", {}),
+        error=error,
+        error_type=error_type,
+    )
+
+def get_error_metrics(self, error: str, error_type: Optional[str] = None):
+    # Use calculator to get consistent error structure
+    return self.metrics_calculator.calculate_all(
+        prediction=None,
+        expected={},
+        schema={},
+        error=error,
+        error_type=error_type,
+    )
+```
+
 ## Quick Checklist
 
 - [ ] Create `configs/tasks/my_task.yaml`
 - [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
+- [ ] Implement `get_error_metrics()` for error handling
 - [ ] Create thin Prefect wrapper using generic engine
 - [ ] Register in `src/pipeline.py`
 - [ ] Add dataset download script if using HuggingFace

@@ -1,0 +1,18 @@
+model:
+  name: Qwen/Qwen3-VL-32B-Instruct
+together:
+  provider_config: together  # Uses configs/providers/together.yaml
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+task_defaults:
+  log_samples: true
+tasks:
+- image_extraction
+metadata:
+  max_context_length: 128000
+  is_multimodal: true
+  model_type: qwen3_vl
+  provider: together
+  description: "Qwen3-VL-32B-Instruct via Together AI - Multimodal vision-language model"
+

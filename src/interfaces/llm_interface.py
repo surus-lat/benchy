@@ -54,6 +54,15 @@ class LLMInterface:
         
         # Get API endpoint preference (default: "auto")
         self.api_endpoint = self.config.get("api_endpoint", "auto")
+        
+        # Rate limiting for cloud providers (avoid 429 errors)
+        # vLLM can handle high concurrency, cloud APIs cannot
+        if provider_type in ["openai", "anthropic"]:
+            max_concurrent = self.config.get("max_concurrent", 3)
+            self._semaphore = asyncio.Semaphore(max_concurrent)
+            logger.info(f"Rate limiting enabled: max {max_concurrent} concurrent requests")
+        else:
+            self._semaphore = None
 
     def prepare_request(self, sample: Dict, task) -> Dict:
         """Prepare request for LLM provider.
@@ -298,6 +307,24 @@ class LLMInterface:
         result["error"] = "All retry attempts exhausted"
         return result
 
+    async def _generate_with_limit(self, req: Dict) -> Dict:
+        """Generate with optional rate limiting."""
+        if self._semaphore:
+            async with self._semaphore:
+                return await self._generate_single(
+                    system_prompt=req["system_prompt"],
+                    user_prompt=req["user_prompt"],
+                    schema=req["schema"],
+                    sample_id=req["sample_id"],
+                )
+        else:
+            return await self._generate_single(
+                system_prompt=req["system_prompt"],
+                user_prompt=req["user_prompt"],
+                schema=req["schema"],
+                sample_id=req["sample_id"],
+            )
+
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
         """Generate structured outputs for a batch of samples.
 
@@ -311,15 +338,7 @@ class LLMInterface:
         Returns:
             List of result dictionaries in same order as requests
         """
-        tasks = [
-            self._generate_single(
-                system_prompt=req["system_prompt"],
-                user_prompt=req["user_prompt"],
-                schema=req["schema"],
-                sample_id=req["sample_id"],
-            )
-            for req in requests
-        ]
+        tasks = [self._generate_with_limit(req) for req in requests]
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         

@@ -43,6 +43,8 @@ class ChatCompletionsInterface:
                 - max_retries: Max retry attempts (default: 3)
                 - temperature: Generation temperature (default: 0.0)
                 - max_tokens: Max tokens to generate (default: 2048)
+                - max_tokens_param_name: Parameter name to use ("max_tokens" or "max_completion_tokens", default: "max_tokens")
+                - max_concurrent: Max concurrent requests (default: 2 for cloud)
             model_name: Name of the model to use
         """
         self.model_name = model_name
@@ -51,6 +53,7 @@ class ChatCompletionsInterface:
         self.max_retries = connection_info.get("max_retries", 3)
         self.temperature = connection_info.get("temperature", 0.0)
         self.max_tokens = connection_info.get("max_tokens", 2048)
+        self.max_tokens_param_name = connection_info.get("max_tokens_param_name", "max_tokens")
         
         # Get API key
         api_key = connection_info.get("api_key")
@@ -66,8 +69,18 @@ class ChatCompletionsInterface:
         # Optional: structured outputs for vLLM (v0.12.0+ API)
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
         
+        # Rate limiting for cloud APIs (avoid 429 errors)
+        # Default to 2 concurrent for cloud APIs, higher for local vLLM
+        is_cloud = "openai.com" in self.base_url or "anthropic.com" in self.base_url
+        default_concurrent = 2 if is_cloud else 20
+        max_concurrent = connection_info.get("max_concurrent", default_concurrent)
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._is_cloud = is_cloud
+        
         logger.info(f"Initialized ChatCompletionsInterface for {model_name}")
         logger.info(f"  Base URL: {self.base_url}")
+        if is_cloud:
+            logger.info(f"  Rate limit: max {max_concurrent} concurrent requests")
     
     def prepare_request(self, sample: Dict, task) -> Dict:
         """Prepare request by getting prompts from task.
@@ -148,74 +161,66 @@ class ChatCompletionsInterface:
         """
         result = {"output": None, "raw": None, "error": None}
         
+        # Build user content once (multimodal or text-only)
+        if image_path:
+            base64_image = self._encode_image(image_path)
+            media_type = self._get_image_media_type(image_path)
+            user_content = [
+                {"type": "text", "text": user_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{base64_image}"}}
+            ]
+        else:
+            user_content = user_prompt
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+        
+        params = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": self.temperature,
+            self.max_tokens_param_name: self.max_tokens,
+            "timeout": self.timeout,
+        }
+        
+        if schema and self.use_structured_outputs:
+            params["extra_body"] = {"structured_outputs": {"json": schema}}
+        elif schema:
+            params["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "extraction", "strict": True, "schema": schema}
+            }
+        
         for attempt in range(self.max_retries):
             try:
-                # Build user content - multimodal or text-only
-                if image_path:
-                    # Multimodal request with image
-                    base64_image = self._encode_image(image_path)
-                    media_type = self._get_image_media_type(image_path)
-                    
-                    user_content = [
-                        {"type": "text", "text": user_prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{media_type};base64,{base64_image}"
-                            }
-                        }
-                    ]
-                else:
-                    user_content = user_prompt
-                
-                # Build messages
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ]
-                
-                params = {
-                    "model": self.model_name,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens,
-                    "timeout": self.timeout,
-                }
-                
-                # Add structured outputs for vLLM if schema provided and enabled (v0.12.0+ API)
-                if schema and self.use_structured_outputs:
-                    params["extra_body"] = {"structured_outputs": {"json": schema}}
-                
-                # For OpenAI with schema, use response_format (not for vLLM)
-                if schema and not self.use_structured_outputs:
-                    params["response_format"] = {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "extraction",
-                            "strict": True,
-                            "schema": schema
-                        }
-                    }
-                
                 response = await self.client.chat.completions.create(**params)
                 raw_output = response.choices[0].message.content
                 result["raw"] = raw_output
                 
-                # Try to parse JSON from output
                 cleaned = self._extract_json(raw_output)
                 try:
                     result["output"] = json.loads(cleaned)
-                except json.JSONDecodeError as e:
-                    logger.debug(f"[{sample_id}] JSON parse failed: {e}")
-                    # Keep raw output even if parsing fails
+                except json.JSONDecodeError:
                     result["output"] = raw_output
                 
                 return result
                 
             except Exception as e:
-                logger.warning(f"[{sample_id}] Attempt {attempt + 1} failed: {e}")
+                error_str = str(e)
+                is_rate_limit = "429" in error_str or "rate_limit" in error_str.lower()
+                
+                if is_rate_limit and self._is_cloud:
+                    # Exponential backoff for rate limits: 5s, 15s, 45s
+                    wait_time = 5 * (3 ** attempt)
+                    logger.warning(f"[{sample_id}] Rate limited, waiting {wait_time}s before retry {attempt + 2}")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.warning(f"[{sample_id}] Attempt {attempt + 1} failed: {e}")
+                
                 if attempt == self.max_retries - 1:
-                    result["error"] = str(e)
+                    result["error"] = error_str
         
         return result
     
@@ -243,6 +248,17 @@ class ChatCompletionsInterface:
         
         return text
     
+    async def _generate_with_limit(self, req: Dict) -> Dict:
+        """Generate with rate limiting via semaphore."""
+        async with self._semaphore:
+            return await self._generate_single(
+                system_prompt=req["system_prompt"],
+                user_prompt=req["user_prompt"],
+                schema=req.get("schema"),
+                sample_id=req["sample_id"],
+                image_path=req.get("image_path"),
+            )
+
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
         """Generate outputs for a batch of requests.
         
@@ -252,17 +268,7 @@ class ChatCompletionsInterface:
         Returns:
             List of result dicts with 'output', 'raw', 'error'
         """
-        tasks = [
-            self._generate_single(
-                system_prompt=req["system_prompt"],
-                user_prompt=req["user_prompt"],
-                schema=req.get("schema"),
-                sample_id=req["sample_id"],
-                image_path=req.get("image_path"),  # Pass image for multimodal
-            )
-            for req in requests
-        ]
-        
+        tasks = [self._generate_with_limit(req) for req in requests]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         processed = []
@@ -298,21 +304,41 @@ class ChatCompletionsInterface:
         
         for attempt in range(max_retries):
             try:
-                # Try to list models
-                models = await asyncio.wait_for(
-                    self.client.models.list(),
-                    timeout=timeout
-                )
-                logger.info(f"Connected to API at {self.base_url}")
-                
-                # Check if our model is available
-                model_ids = [m.id for m in models.data]
-                if self.model_name in model_ids:
-                    logger.info(f"Model '{self.model_name}' is available")
-                else:
-                    logger.warning(f"Model '{self.model_name}' not in list, but may still work")
-                
-                return True
+                # Try to list models (works for OpenAI, may fail for other providers)
+                try:
+                    models = await asyncio.wait_for(
+                        self.client.models.list(),
+                        timeout=timeout
+                    )
+                    logger.info(f"Connected to API at {self.base_url}")
+                    
+                    # Check if our model is available
+                    model_ids = [m.id for m in models.data]
+                    if self.model_name in model_ids:
+                        logger.info(f"Model '{self.model_name}' is available")
+                    else:
+                        logger.warning(f"Model '{self.model_name}' not in list, but may still work")
+                    
+                    return True
+                except (AttributeError, TypeError) as e:
+                    # Some providers (Together AI, etc.) return different formats
+                    # Fall back to a simple completion test
+                    logger.info(f"Models list not compatible, testing with simple completion...")
+                    
+                    test_params = {
+                        "model": self.model_name,
+                        "messages": [{"role": "user", "content": "Hi"}],
+                        self.max_tokens_param_name: 5,
+                    }
+                    response = await asyncio.wait_for(
+                        self.client.chat.completions.create(**test_params),
+                        timeout=timeout
+                    )
+                    
+                    if response.choices and response.choices[0].message:
+                        logger.info(f"Connected to API at {self.base_url}")
+                        logger.info(f"Model '{self.model_name}' responded successfully")
+                        return True
                 
             except Exception as e:
                 logger.warning(f"Connection attempt {attempt + 1} failed: {e}")

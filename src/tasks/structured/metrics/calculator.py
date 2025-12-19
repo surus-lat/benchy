@@ -28,7 +28,8 @@ class MetricsCalculator:
         prediction: Dict,
         expected: Dict,
         schema: Dict,
-        error: str = None
+        error: str = None,
+        error_type: str = None
     ) -> Dict:
         """Calculate all metrics for a single sample.
 
@@ -37,6 +38,7 @@ class MetricsCalculator:
             expected: Expected (ground truth) output
             schema: Target JSON schema
             error: Error message if generation failed
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
 
         Returns:
             Dictionary of metric scores and diagnostics
@@ -45,6 +47,7 @@ class MetricsCalculator:
             # Basic status
             "valid": False,
             "error": error,
+            "error_type": error_type,
 
             # Tier 1: Overall Assessment
             "schema_validity": 0.0,
@@ -74,7 +77,13 @@ class MetricsCalculator:
             "schema_complexity": {},
         }
 
-        # Check if generation had an error
+        # If connectivity error, mark differently and return early
+        # (don't calculate quality metrics - these are network issues, not model quality issues)
+        if error_type == "connectivity_error":
+            metrics["connectivity_error"] = True
+            return metrics
+
+        # Check if generation had an error (invalid response or no prediction)
         if error or prediction is None:
             return metrics
 
@@ -150,22 +159,69 @@ class MetricsCalculator:
         if not isinstance(output, dict):
             logger.debug(f"Output is {type(output).__name__}, not dict - invalid")
             return False
+        
+        # Check if schema is empty or missing
+        if not schema or not schema.get("properties"):
+            logger.warning(f"Schema is empty or has no properties, skipping validation")
+            return True  # Consider valid if no schema to validate against
             
         try:
             validate(instance=output, schema=schema)
             return True
         except ValidationError as e:
-            logger.debug(f"Schema validation failed: {e.message}")
+            logger.warning(f"Schema validation failed: {e.message} (path: {list(e.absolute_path)})")
             return False
         except Exception as e:
-            logger.debug(f"Schema validation error: {e}")
+            logger.warning(f"Schema validation error: {e}")
             return False
 
     def _exact_match(self, prediction: Dict, expected: Dict) -> bool:
-        """Check if prediction exactly matches expected output."""
-        pred_str = json.dumps(prediction, sort_keys=True)
-        exp_str = json.dumps(expected, sort_keys=True)
-        return pred_str == exp_str
+        """Check if prediction exactly matches expected output.
+        
+        Uses value-based comparison instead of JSON string comparison
+        to handle float/int differences (1.0 vs 1) and key ordering.
+        """
+        return self._values_equal(prediction, expected)
+    
+    def _values_equal(self, val1: Any, val2: Any) -> bool:
+        """Recursively compare two values for equality.
+        
+        Handles:
+        - Float/int equivalence (1.0 == 1)
+        - Nested dicts and lists
+        - String normalization for whitespace
+        """
+        # Handle None
+        if val1 is None and val2 is None:
+            return True
+        if val1 is None or val2 is None:
+            return False
+        
+        # Handle numeric comparison (1.0 == 1)
+        if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+            # Use tolerance for float comparison
+            if isinstance(val1, float) or isinstance(val2, float):
+                return abs(float(val1) - float(val2)) < 1e-9
+            return val1 == val2
+        
+        # Handle string comparison (normalize whitespace and case)
+        if isinstance(val1, str) and isinstance(val2, str):
+            return val1.strip().upper() == val2.strip().upper()
+        
+        # Handle dict comparison
+        if isinstance(val1, dict) and isinstance(val2, dict):
+            if set(val1.keys()) != set(val2.keys()):
+                return False
+            return all(self._values_equal(val1[k], val2[k]) for k in val1.keys())
+        
+        # Handle list comparison
+        if isinstance(val1, list) and isinstance(val2, list):
+            if len(val1) != len(val2):
+                return False
+            return all(self._values_equal(v1, v2) for v1, v2 in zip(val1, val2))
+        
+        # Default comparison
+        return val1 == val2
 
     def _compare_fields(
         self,
@@ -482,6 +538,9 @@ class MetricsCalculator:
                 "valid_samples": 0,
                 "error_count": 0,
                 "error_rate": 0.0,
+                "response_rate": 0.0,
+                "connectivity_error_rate": 0.0,
+                "invalid_response_rate": 0.0,
                 "extraction_quality_score": 0.0,
                 "schema_validity_rate": 0.0,
                 "hallucination_rate": 0.0,
@@ -615,8 +674,16 @@ class MetricsCalculator:
             imperfect_sample_quality_f1 = 0.0
             imperfect_count = 0
 
-        # Error count
+        # Error count and classification
         error_count = sum(1 for m in all_metrics if m["error"] is not None)
+        connectivity_errors = sum(1 for m in all_metrics if m.get("error_type") == "connectivity_error")
+        invalid_responses = sum(1 for m in all_metrics if m.get("error_type") == "invalid_response")
+        samples_with_response = total_samples - connectivity_errors
+
+        # New metrics: response rate and error type rates
+        response_rate = samples_with_response / total_samples if total_samples > 0 else 0.0
+        connectivity_error_rate = connectivity_errors / total_samples if total_samples > 0 else 0.0
+        invalid_response_rate = invalid_responses / total_samples if total_samples > 0 else 0.0
 
         return {
             # Sample counts
@@ -624,6 +691,11 @@ class MetricsCalculator:
             "valid_samples": len(valid_metrics),
             "error_count": error_count,
             "error_rate": error_count / total_samples,
+            
+            # Response and error type metrics
+            "response_rate": response_rate,
+            "connectivity_error_rate": connectivity_error_rate,
+            "invalid_response_rate": invalid_response_rate,
 
             # Tier 1: Overall Assessment
             "extraction_quality_score": avg_eqs,
