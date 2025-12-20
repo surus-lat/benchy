@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
-from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
+from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results
 from .tasks.structured import run_structured_extraction
 from .tasks.image_extraction import run_image_extraction
 from .config_manager import ConfigManager
@@ -414,24 +414,31 @@ def benchmark_pipeline(
         task_results["portuguese"] = portuguese_results
     
     if "translation" in pending_tasks:
-        logger.info("Running translation language evaluation...")
+        logger.info("Running translation evaluation...")
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
-        # Merge use_chat_completions from model config into task config
-        translation_task_config['use_chat_completions'] = use_chat_completions
-        # Add generation config
-        translation_task_config['generation_config'] = generation_config
         
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("translation", translation_task_config)
-        translation_results = run_translation_evaluation(
+        
+        # Add provider info to provider_config if using non-vLLM provider
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'together'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
+        from src.tasks.translation import run_translation
+        translation_results = run_translation(
             model_name=model_name,
             output_path=model_output_path,
             server_info=server_info,
             api_test_result=api_test_result,
             task_config=translation_task_config,
             limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices()
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
         )
         task_results["translation"] = translation_results
     

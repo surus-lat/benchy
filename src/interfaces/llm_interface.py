@@ -80,7 +80,7 @@ class LLMInterface:
         return {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
-            "schema": sample["schema"],
+            "schema": sample.get("schema"),  # May be None for non-structured tasks
             "sample_id": sample["id"],
         }
     
@@ -157,7 +157,7 @@ class LLMInterface:
         self,
         system_prompt: str,
         user_prompt: str,
-        schema: Dict,
+        schema: Optional[Dict],
         sample_id: str,
     ) -> Dict:
         """Generate structured output for a single sample.
@@ -205,13 +205,19 @@ class LLMInterface:
                 raw_output = response.choices[0].text
                 result["raw"] = raw_output
 
-                cleaned_output = self._extract_json_from_output(raw_output)
-                try:
-                    result["output"] = json.loads(cleaned_output)
-                    logger.debug(f"[{sample_id}] ✓ Completions API successful")
-                except json.JSONDecodeError as e:
-                    logger.warning(f"[{sample_id}] ⚠️ JSON parse failed: {e}")
-                    result["error"] = f"JSON parse error: {e}"
+                # For translation tasks (no schema), output is just the text
+                if schema:
+                    cleaned_output = self._extract_json_from_output(raw_output)
+                    try:
+                        result["output"] = json.loads(cleaned_output)
+                        logger.debug(f"[{sample_id}] ✓ Completions API successful")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"[{sample_id}] ⚠️ JSON parse failed: {e}")
+                        result["error"] = f"JSON parse error: {e}"
+                else:
+                    # No schema - output is plain text (e.g., translation)
+                    result["output"] = raw_output.strip()
+                    logger.debug(f"[{sample_id}] ✓ Completions API successful (text output)")
 
                 return result
             
@@ -235,8 +241,8 @@ class LLMInterface:
             else:
                 chat_params["max_tokens"] = self.config["max_tokens"]
             
-            # Only add structured_outputs for vLLM (v0.12.0+ API)
-            if self.provider_type == "vllm":
+            # Only add structured_outputs for vLLM (v0.12.0+ API) if schema is provided
+            if self.provider_type == "vllm" and schema:
                 chat_params["extra_body"] = {"structured_outputs": {"json": schema}}
             
             response = await self.client.chat.completions.create(**chat_params)
@@ -262,7 +268,7 @@ class LLMInterface:
         self,
         system_prompt: str,
         user_prompt: str,
-        schema: Dict,
+        schema: Optional[Dict],
         sample_id: str,
     ) -> Dict:
         """Generate structured output using Anthropic API.
@@ -278,9 +284,12 @@ class LLMInterface:
         """
         result = {"output": None, "raw": None, "error": None}
         
-        # Add JSON schema to prompt (Anthropic doesn't support structured_outputs)
-        schema_str = json.dumps(schema, indent=2)
-        enhanced_user_prompt = f"{user_prompt}\n\nPlease respond with valid JSON matching this schema:\n{schema_str}"
+        # Add JSON schema to prompt if provided (Anthropic doesn't support structured_outputs)
+        if schema:
+            schema_str = json.dumps(schema, indent=2)
+            enhanced_user_prompt = f"{user_prompt}\n\nPlease respond with valid JSON matching this schema:\n{schema_str}"
+        else:
+            enhanced_user_prompt = user_prompt
         
         for attempt in range(self.config["max_retries"]):
             response = await self.anthropic_client.messages.create(
@@ -294,12 +303,17 @@ class LLMInterface:
             raw_output = response.content[0].text
             result["raw"] = raw_output
             
-            cleaned_output = self._extract_json_from_output(raw_output)
-            try:
-                result["output"] = json.loads(cleaned_output)
-            except json.JSONDecodeError as e:
-                logger.debug(f"[{sample_id}] Failed to parse JSON: {e}")
-                result["error"] = f"JSON parse error: {e}"
+            # For translation tasks (no schema), output is just the text
+            if schema:
+                cleaned_output = self._extract_json_from_output(raw_output)
+                try:
+                    result["output"] = json.loads(cleaned_output)
+                except json.JSONDecodeError as e:
+                    logger.debug(f"[{sample_id}] Failed to parse JSON: {e}")
+                    result["error"] = f"JSON parse error: {e}"
+            else:
+                # No schema - output is plain text (e.g., translation)
+                result["output"] = raw_output.strip()
             
             return result
         
