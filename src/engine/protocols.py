@@ -59,6 +59,16 @@ class BaseTask(Protocol):
     def get_task_name(self) -> str:
         """Get the task identifier for logging and checkpointing."""
         ...
+
+    @property
+    def answer_type(self) -> str:
+        """Expected answer type: 'freeform', 'structured', or 'multiple_choice'."""
+        ...
+
+    @property
+    def requires_logprobs(self) -> bool:
+        """Whether this task requires logprobs-based scoring."""
+        ...
     
     def calculate_metrics(
         self,
@@ -187,6 +197,16 @@ class BaseInterface(Protocol):
         """
         ...
 
+    @property
+    def supports_multimodal(self) -> bool:
+        """Whether this interface supports multimodal inputs."""
+        return False
+
+    @property
+    def supports_logprobs(self) -> bool:
+        """Whether this interface supports logprobs-based scoring."""
+        return False
+
 
 def check_compatibility(task: BaseTask, interface: BaseInterface) -> Tuple[bool, str]:
     """Check if a task and interface are compatible.
@@ -204,6 +224,11 @@ def check_compatibility(task: BaseTask, interface: BaseInterface) -> Tuple[bool,
     if hasattr(task, 'is_multimodal') and task.is_multimodal:
         if not hasattr(interface, 'supports_multimodal') or not interface.supports_multimodal:
             return False, "Task requires multimodal support but interface doesn't provide it"
+
+    answer_type = getattr(task, "answer_type", None)
+    requires_logprobs = getattr(task, "requires_logprobs", answer_type == "multiple_choice")
+    if requires_logprobs:
+        if not getattr(interface, "supports_logprobs", False):
+            return False, "Task requires logprobs for multiple-choice scoring but interface doesn't support logprobs"
     
     return True, ""
-

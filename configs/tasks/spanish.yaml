@@ -1,23 +1,80 @@
 # Spanish language evaluation task configuration
 
-# Task identification
 name: "spanish"
-description: "Spanish language evaluation using lm-evaluation-harness"
+description: "Spanish language evaluation benchmark"
 
-# Task-specific parameters
-task_name: "latam_es"
-lm_eval_path: "/home/mauro/dev/benchy/external/lm-evaluation-harness"
-tokenizer_backend: "huggingface"
+# List of subtasks to run
+tasks:
+  - copa_es
+  - escola
+  - mgsm_direct_es_spanish_bench
+  - openbookqa_es
+  - paws_es_spanish_bench
+  - teleia_pce
+  - teleia_cervantes_ave
+  - teleia_siele
+  - wnli_es
+  - xnli_es_spanish_bench
+
+# Configuration for each subtask
+task_configs:
+  copa_es:
+    dataset_path: BSC-LT/COPA-es
+    split: test
+  
+  escola:
+    dataset_path: nbel/EsCoLA
+    split: validation
+  
+  mgsm_direct_es_spanish_bench:
+    dataset_path: juletxara/mgsm
+    dataset_name: es
+    split: test
+  
+  openbookqa_es:
+    dataset_path: BSC-LT/openbookqa-es
+    split: test
+  
+  paws_es_spanish_bench:
+    dataset_path: paws-x
+    dataset_name: es
+    split: test
+  
+  teleia_pce:
+    dataset_path: migonsa/teleia
+    split: test
+  
+  teleia_cervantes_ave:
+    dataset_path: migonsa/teleia
+    split: test
+  
+  teleia_siele:
+    dataset_path: migonsa/teleia
+    split: test
+  
+  wnli_es:
+    dataset_path: PlanTL-GOB-ES/wnli-es
+    split: validation
+  
+  xnli_es_spanish_bench:
+    dataset_path: xnli
+    dataset_name: es
+    split: validation
+
+# Prompt templates (most tasks use default formatting)
+prompts:
+  system: ""
+  user: ""
 
 # Default evaluation parameters
 defaults:
-  batch_size: "10"
+  batch_size: 20
   log_samples: false
-  cache_requests: true
-  trust_remote_code: false
-  num_concurrent: 20
-  max_length: 2048
+  temperature: 0.0
+  max_tokens: 512
+  timeout: 120
+  max_retries: 3
 
 # Output configuration
 output:
-  subdirectory: "spanish"  # Will be appended to main output path
+  subdirectory: "spanish"

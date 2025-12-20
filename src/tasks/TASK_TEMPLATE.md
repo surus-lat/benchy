@@ -39,6 +39,7 @@ Tasks define:
 - **Data**: How to load and iterate samples
 - **Prompts**: How to format inputs for LLMs
 - **Metrics**: How to evaluate predictions
+- **Answer type**: Whether outputs are freeform, structured, or multiple-choice
 
 Tasks do NOT know about:
 - Which provider is being used
@@ -135,10 +136,10 @@ class MyTask:
     def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
         """Iterate over samples.
         
-        Each sample should have at minimum:
-        - id: Unique identifier
-        - text: Input text
-        - expected: Expected output for metrics
+Each sample should have at minimum:
+- id: Unique identifier
+- text: Input text
+- expected: Expected output for metrics
         """
         if self.dataset is None:
             raise RuntimeError("Call load() first")
@@ -263,6 +264,16 @@ class MyTask:
     @property
     def requires_schema(self) -> bool:
         """Does this task use JSON schemas?"""
+        return False
+
+    @property
+    def answer_type(self) -> str:
+        """Expected answer type: 'freeform', 'structured', or 'multiple_choice'."""
+        return "freeform"
+
+    @property
+    def requires_logprobs(self) -> bool:
+        """Whether this task requires logprobs-based scoring."""
         return False
 ```
 
@@ -402,6 +413,12 @@ For structured extraction tasks, include schema:
 {"id": "001", "text": "...", "schema": {"type": "object", ...}, "expected": {...}}
 ```
 
+For multiple-choice tasks, include choices and the expected index:
+
+```json
+{"id": "mcq_001", "text": "Question text", "choices": ["A", "B", "C"], "expected": 1}
+```
+
 ## Dataset Preprocessing
 
 For HuggingFace datasets, create a download script:
@@ -477,6 +494,19 @@ The engine handles errors from interfaces and passes them to tasks via `error` a
    - Calling `get_error_metrics()` for fallback
    - Logging and reporting
 
+## Answer Types and Logprobs
+
+Tasks must declare what kind of answer they expect:
+
+- `freeform`: raw text output (default)
+- `structured`: JSON output with a schema
+- `multiple_choice`: select one of N choices
+
+For multiple-choice tasks:
+- Populate `sample["choices"]` and set `sample["expected"]` to the correct index.
+- Set `answer_type = "multiple_choice"`.
+- Set `requires_logprobs = True` to enable logprob scoring and compatibility checks.
+
 ### Example: Using a Metrics Calculator
 
 If your task uses a metrics calculator (like structured extraction), simply pass errors through:
@@ -507,6 +537,7 @@ def get_error_metrics(self, error: str, error_type: Optional[str] = None):
 - [ ] Create `configs/tasks/my_task.yaml`
 - [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
 - [ ] Implement `get_error_metrics()` for error handling
+- [ ] Set `answer_type` and `requires_logprobs` if applicable
 - [ ] Create thin Prefect wrapper using generic engine
 - [ ] Register in `src/pipeline.py`
 - [ ] Add dataset download script if using HuggingFace

@@ -291,3 +291,13 @@ class TemplateTask(BaseTask):
     def requires_schema(self) -> bool:
         """Whether samples include JSON schema for structured output."""
         return False
+
+    @property
+    def answer_type(self) -> str:
+        """Expected answer type for this task."""
+        return "freeform"
+
+    @property
+    def requires_logprobs(self) -> bool:
+        """Whether this task requires logprobs-based scoring."""
+        return False

@@ -68,6 +68,8 @@ class ChatCompletionsInterface:
         
         # Optional: structured outputs for vLLM (v0.12.0+ API)
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
+        self._supports_logprobs = connection_info.get("supports_logprobs", False)
+        self.logprobs_top_k = connection_info.get("logprobs_top_k", 20)
         
         # Rate limiting for cloud APIs (avoid 429 errors)
         # Default to 2 concurrent for cloud APIs, higher for local vLLM
@@ -94,12 +96,23 @@ class ChatCompletionsInterface:
             Request dict with system_prompt, user_prompt, schema, sample_id,
             and optionally image_path for multimodal requests.
         """
-        system_prompt, user_prompt = task.get_prompt(sample)
+        answer_type = getattr(task, "answer_type", None)
+        use_logprobs = answer_type == "multiple_choice"
+        requires_logprobs = getattr(task, "requires_logprobs", use_logprobs)
+        use_logprobs = use_logprobs and requires_logprobs
+        if use_logprobs and hasattr(task, "get_prompt_for_logprobs"):
+            system_prompt, user_prompt = task.get_prompt_for_logprobs(sample)
+        else:
+            system_prompt, user_prompt = task.get_prompt(sample)
+        if use_logprobs and not sample.get("choices"):
+            raise ValueError("Multiple-choice sample missing choices for logprobs scoring")
         request = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
             "schema": sample.get("schema"),  # May be None for non-schema tasks
             "sample_id": sample["id"],
+            "use_logprobs": use_logprobs,
+            "choices": sample.get("choices") if use_logprobs else None,
         }
         
         # Include image_path for multimodal requests
@@ -146,6 +159,8 @@ class ChatCompletionsInterface:
         schema: Optional[Dict],
         sample_id: str,
         image_path: Optional[str] = None,
+        use_logprobs: bool = False,
+        choices: Optional[List[str]] = None,
     ) -> Dict:
         """Generate output for a single request.
         
@@ -160,6 +175,14 @@ class ChatCompletionsInterface:
             Dict with 'output', 'raw', 'error'
         """
         result = {"output": None, "raw": None, "error": None}
+
+        if use_logprobs:
+            return await self._generate_with_logprobs(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                choices=choices or [],
+                sample_id=sample_id,
+            )
         
         # Build user content once (multimodal or text-only)
         if image_path:
@@ -247,6 +270,104 @@ class ChatCompletionsInterface:
             return text[first_brace:last_brace + 1]
         
         return text
+
+    def _choice_labels(self, count: int) -> List[str]:
+        """Return letter labels for multiple-choice options."""
+        return [chr(ord("A") + i) for i in range(count)]
+
+    def _letter_variants(self, letter: str) -> List[str]:
+        """Return token variants that may represent a choice letter."""
+        variants = {letter, f" {letter}", letter.lower(), f" {letter.lower()}"}
+        for suffix in [")", ".", ":"]:
+            variants.update({
+                f"{letter}{suffix}",
+                f" {letter}{suffix}",
+                f"{letter.lower()}{suffix}",
+                f" {letter.lower()}{suffix}",
+            })
+        return list(variants)
+
+    def _coerce_top_logprobs(self, top_logprobs: Any) -> Dict[str, float]:
+        """Normalize top_logprobs into a token->logprob mapping."""
+        if isinstance(top_logprobs, dict):
+            return top_logprobs
+        if isinstance(top_logprobs, list):
+            mapping: Dict[str, float] = {}
+            for entry in top_logprobs:
+                if isinstance(entry, dict):
+                    if "token" in entry and "logprob" in entry:
+                        mapping[entry["token"]] = entry["logprob"]
+                    else:
+                        for token, logprob in entry.items():
+                            if isinstance(logprob, (int, float)):
+                                mapping[token] = float(logprob)
+                else:
+                    token = getattr(entry, "token", None)
+                    logprob = getattr(entry, "logprob", None)
+                    if token is not None and logprob is not None:
+                        mapping[token] = float(logprob)
+            return mapping
+        return {}
+
+    async def _generate_with_logprobs(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        choices: List[str],
+        sample_id: str,
+    ) -> Dict:
+        """Generate prediction using log probabilities for multiple choice."""
+        result = {"output": None, "raw": None, "error": None}
+        if not self.supports_logprobs:
+            result["error"] = "Logprobs not supported by interface"
+            return result
+        if not choices:
+            result["error"] = "No choices provided for logprobs scoring"
+            return result
+
+        combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
+        if not combined_prompt.endswith((" ", "\n")):
+            combined_prompt = combined_prompt + " "
+
+        try:
+            response = await self.client.completions.create(
+                model=self.model_name,
+                prompt=combined_prompt,
+                temperature=0.0,
+                max_tokens=1,
+                logprobs=self.logprobs_top_k,
+                timeout=self.timeout,
+            )
+        except Exception as e:
+            result["error"] = str(e)
+            return result
+
+        logprobs = getattr(response.choices[0], "logprobs", None)
+        if not logprobs or not getattr(logprobs, "top_logprobs", None):
+            result["error"] = "No logprobs returned from provider"
+            return result
+
+        top_logprobs = logprobs.top_logprobs
+        first_token = top_logprobs[0] if isinstance(top_logprobs, list) and top_logprobs else top_logprobs
+        token_logprobs = self._coerce_top_logprobs(first_token)
+
+        labels = self._choice_labels(len(choices))
+        letter_scores = {}
+        for idx, letter in enumerate(labels):
+            variants = self._letter_variants(letter)
+            best = max((token_logprobs.get(v, float("-inf")) for v in variants), default=float("-inf"))
+            letter_scores[letter] = best
+
+        best_letter = max(letter_scores.items(), key=lambda item: item[1])
+        if best_letter[1] == float("-inf"):
+            result["error"] = "No candidate letters found in logprobs"
+            result["raw"] = f"tokens={list(token_logprobs.keys())[:10]}"
+            return result
+
+        selected_idx = labels.index(best_letter[0])
+        result["output"] = selected_idx
+        result["raw"] = f"logprobs={letter_scores} selected={best_letter[0]}"
+        return result
     
     async def _generate_with_limit(self, req: Dict) -> Dict:
         """Generate with rate limiting via semaphore."""
@@ -257,6 +378,8 @@ class ChatCompletionsInterface:
                 schema=req.get("schema"),
                 sample_id=req["sample_id"],
                 image_path=req.get("image_path"),
+                use_logprobs=req.get("use_logprobs", False),
+                choices=req.get("choices"),
             )
 
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
@@ -351,3 +474,7 @@ class ChatCompletionsInterface:
         """Whether this interface supports multimodal inputs."""
         return True  # Supports OpenAI vision API
 
+    @property
+    def supports_logprobs(self) -> bool:
+        """Whether this interface supports logprobs-based scoring."""
+        return self._supports_logprobs

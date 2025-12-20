@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
-from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results
+from .tasks.lm_harness import run_portuguese_evaluation, gather_results
+from .tasks.spanish import run_spanish
 from .tasks.structured import run_structured_extraction
 from .tasks.image_extraction import run_image_extraction
 from .config_manager import ConfigManager
@@ -380,14 +381,24 @@ def benchmark_pipeline(
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("spanish", spanish_task_config)
-        spanish_results = run_spanish_evaluation(
+        
+        # Get provider config
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'surus', 'together'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
+        spanish_results = run_spanish(
             model_name=model_name,
             output_path=model_output_path,
             server_info=server_info,
             api_test_result=api_test_result,
             task_config=spanish_task_config,
             limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices()
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
         )
         task_results["spanish"] = spanish_results
     
