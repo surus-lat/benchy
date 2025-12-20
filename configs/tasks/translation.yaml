@@ -1,23 +1,41 @@
-# Spanish language evaluation task configuration
+# Translation evaluation task configuration
 
 # Task identification
 name: "translation"
-description: "Translation evaluation using lm-evaluation-harness"
+description: "Translation evaluation using OPUS and FLORES datasets"
 
-# Task-specific parameters
-task_name: "translation"
-lm_eval_path: "/home/mauro/dev/benchy/external/lm-evaluation-harness"
-tokenizer_backend: "huggingface"
+# List of tasks to run
+tasks:
+  - "opus"
+  - "flores"
+
+# Per-task configurations
+task_configs:
+  opus:
+    language_pairs: ["en-es", "en-pt"]
+    dataset_name: "Helsinki-NLP/opus-100"
+  
+  flores:
+    language_pairs: []  # Empty = auto-detect from .data/flores/ or use build_dataset.py output
+    dataset_name: "openlanguagedata/flores_plus"
+    split: "devtest"  # Use devtest for evaluation
+
+# Prompt templates
+prompts:
+  system: |
+    You are a professional translator. Translate the given text accurately and naturally.
+  user: |
+    Translate this sentence from {source_language} to {target_language}: {source_text}. Translation:
 
 # Default evaluation parameters
 defaults:
-  batch_size: "10"
-  log_samples: false
-  cache_requests: true
-  trust_remote_code: false
-  num_concurrent: 20
-  max_length: 2048
+  batch_size: 20  # Number of concurrent async requests
+  log_samples: false  # Log sample details (can be large for translation)
+  temperature: 0.0
+  max_tokens: 250  # Translation outputs are typically short
+  timeout: 120
+  max_retries: 3
 
 # Output configuration
 output:
-  subdirectory: "translation"  # Will be appended to main output path
+  subdirectory: "translation"
