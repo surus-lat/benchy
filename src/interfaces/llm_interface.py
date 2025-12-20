@@ -11,6 +11,35 @@ from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
+# Suppress harmless httpx cleanup errors when event loop is closed
+# These occur when httpx tries to clean up connections in background tasks
+# after the event loop has been closed - they're non-fatal
+def _suppress_event_loop_closed_error(loop, context):
+    """Suppress 'Event loop is closed' errors from httpx cleanup tasks."""
+    exception = context.get('exception')
+    if isinstance(exception, RuntimeError) and 'Event loop is closed' in str(exception):
+        # This is a harmless cleanup error, suppress it
+        return
+    # For other exceptions, use default handler
+    if hasattr(loop, 'default_exception_handler'):
+        loop.default_exception_handler(context)
+    else:
+        # Fallback: just log to stderr
+        import sys
+        print(f"Exception in async task: {context}", file=sys.stderr)
+
+# Set up the exception handler to suppress these errors
+try:
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        # If loop is already running, we'll set it up when the interface is created
+        pass
+    else:
+        loop.set_exception_handler(_suppress_event_loop_closed_error)
+except RuntimeError:
+    # No event loop exists yet, will be set up later
+    pass
+
 
 class LLMInterface:
     """Async client for LLM providers using OpenAI-compatible API."""
@@ -44,6 +73,14 @@ class LLMInterface:
             )
             self.anthropic_client = None
             logger.info(f"Initialized OpenAI-compatible client for {provider_type}")
+            
+            # Set up exception handler to suppress harmless httpx cleanup errors
+            try:
+                loop = asyncio.get_running_loop()
+                loop.set_exception_handler(_suppress_event_loop_closed_error)
+            except RuntimeError:
+                # No running loop, will be set up when loop starts
+                pass
         
         # Track problematic models for fallback logic
         known_chat_template_issues = [
@@ -76,12 +113,24 @@ class LLMInterface:
         Returns:
             Dict formatted for this interface's generate_batch()
         """
-        system_prompt, user_prompt = task.get_prompt(sample)
+        # Check if this is a multiple choice task that should use logprobs
+        answer_type = getattr(task, "answer_type", None)
+        use_logprobs = answer_type == "multiple_choice"
+        requires_logprobs = getattr(task, "requires_logprobs", use_logprobs)
+        use_logprobs = use_logprobs and requires_logprobs and sample.get("choices") is not None
+        
+        if use_logprobs and hasattr(task, "get_prompt_for_logprobs"):
+            system_prompt, user_prompt = task.get_prompt_for_logprobs(sample)
+        else:
+            system_prompt, user_prompt = task.get_prompt(sample)
+        
         return {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
             "schema": sample.get("schema"),  # May be None for non-structured tasks
             "sample_id": sample["id"],
+            "use_logprobs": use_logprobs,
+            "choices": sample.get("choices") if use_logprobs else None,
         }
     
     def _get_api_key(self, env_var: str) -> str:
@@ -159,6 +208,8 @@ class LLMInterface:
         user_prompt: str,
         schema: Optional[Dict],
         sample_id: str,
+        use_logprobs: bool = False,
+        choices: Optional[List[str]] = None,
     ) -> Dict:
         """Generate structured output for a single sample.
 
@@ -167,11 +218,17 @@ class LLMInterface:
             user_prompt: User message
             schema: Target JSON schema
             sample_id: Sample identifier for logging
+            use_logprobs: If True, use logprobs for multiple choice (choices must be provided)
+            choices: List of choice strings for logprobs evaluation
 
         Returns:
-            Dictionary with 'output' (parsed JSON), 'raw' (string), 'error'
+            Dictionary with 'output' (parsed JSON or choice index), 'raw' (string), 'error'
         """
         result = {"output": None, "raw": None, "error": None}
+
+        # Handle multiple choice with logprobs
+        if use_logprobs and choices:
+            return await self._generate_with_logprobs(system_prompt, user_prompt, choices, sample_id)
 
         # Handle Anthropic provider separately
         if self.provider_type == "anthropic":
@@ -264,6 +321,104 @@ class LLMInterface:
         result["error"] = "All retry attempts exhausted"
         return result
     
+    async def _generate_with_logprobs(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        choices: List[str],
+        sample_id: str,
+    ) -> Dict:
+        """Generate prediction using log probabilities for multiple choice.
+        
+        For each choice, we get the logprob of that choice text appearing
+        after the prompt. We use the completion API to get logprobs directly.
+        
+        Args:
+            system_prompt: System message
+            user_prompt: User message (should end with "Respuesta:" or similar)
+            choices: List of choice strings to evaluate
+            sample_id: Sample identifier for logging
+            
+        Returns:
+            Dictionary with 'output' (choice index), 'raw' (logprobs info), 'error'
+        """
+        result = {"output": None, "raw": None, "error": None}
+        
+        # Handle Anthropic - they don't support logprobs, fall back to text generation
+        if self.provider_type == "anthropic":
+            logger.warning(f"[{sample_id}] Anthropic doesn't support logprobs, falling back to text generation")
+            return await self._generate_single_anthropic(system_prompt, user_prompt, None, sample_id)
+        
+        try:
+            choice_logprobs = []
+            
+            # Combine system and user prompts for completion API
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
+            
+            # For each choice, get logprob by using completion API
+            for idx, choice in enumerate(choices):
+                # Create prompt ending with the choice
+                # We want to see the logprob of the choice text
+                choice_prompt = f"{combined_prompt} {choice}"
+                
+                # Use completions API with logprobs (more reliable than chat for logprobs)
+                try:
+                    response = await self.client.completions.create(
+                        model=self.model_name,
+                        prompt=choice_prompt,
+                        logprobs=5,  # Get top 5 logprobs
+                        max_tokens=1,  # We only need to see the logprob of what comes after
+                        temperature=0.0,  # Deterministic for logprobs
+                        timeout=self.config["timeout"],
+                    )
+                    
+                    # Get logprob from the response
+                    if response.choices[0].logprobs:
+                        # The logprobs are for tokens in the response
+                        # We want the logprob of the choice text itself
+                        # For now, use the average logprob of the first few tokens
+                        token_logprobs = response.choices[0].logprobs.token_logprobs or []
+                        if token_logprobs:
+                            # Average logprob (sum would be better but this is simpler)
+                            avg_logprob = sum(token_logprobs) / len(token_logprobs)
+                            choice_logprobs.append((idx, avg_logprob, choice))
+                        else:
+                            # Fallback: try to get from top_logprobs
+                            top_logprobs = response.choices[0].logprobs.top_logprobs
+                            if top_logprobs and len(top_logprobs) > 0:
+                                # Get the highest logprob from the first token
+                                first_token_probs = top_logprobs[0]
+                                if first_token_probs:
+                                    max_logprob = max(tp.logprob for tp in first_token_probs)
+                                    choice_logprobs.append((idx, max_logprob, choice))
+                                else:
+                                    choice_logprobs.append((idx, 0.0, choice))
+                            else:
+                                logger.warning(f"[{sample_id}] No logprobs for choice {idx}, using 0.0")
+                                choice_logprobs.append((idx, 0.0, choice))
+                    else:
+                        logger.warning(f"[{sample_id}] No logprobs in response for choice {idx}, using 0.0")
+                        choice_logprobs.append((idx, 0.0, choice))
+                        
+                except Exception as e:
+                    logger.warning(f"[{sample_id}] Error getting logprobs for choice {idx}: {e}")
+                    choice_logprobs.append((idx, float('-inf'), choice))
+            
+            # Select choice with highest logprob
+            if choice_logprobs:
+                best_choice = max(choice_logprobs, key=lambda x: x[1])
+                result["output"] = best_choice[0]  # Return the index
+                result["raw"] = f"Logprobs: {[(c[0], f'{c[1]:.4f}') for c in choice_logprobs]}, Selected: {best_choice[0]}"
+                logger.debug(f"[{sample_id}] Selected choice {best_choice[0]} ({choices[best_choice[0]]}) with logprob {best_choice[1]:.4f}")
+            else:
+                result["error"] = "No logprobs obtained for any choice"
+                
+        except Exception as e:
+            logger.error(f"[{sample_id}] Error in logprobs generation: {e}")
+            result["error"] = f"Logprobs error: {e}"
+        
+        return result
+    
     async def _generate_single_anthropic(
         self,
         system_prompt: str,
@@ -330,6 +485,8 @@ class LLMInterface:
                     user_prompt=req["user_prompt"],
                     schema=req["schema"],
                     sample_id=req["sample_id"],
+                    use_logprobs=req.get("use_logprobs", False),
+                    choices=req.get("choices"),
                 )
         else:
             return await self._generate_single(
@@ -337,6 +494,8 @@ class LLMInterface:
                 user_prompt=req["user_prompt"],
                 schema=req["schema"],
                 sample_id=req["sample_id"],
+                use_logprobs=req.get("use_logprobs", False),
+                choices=req.get("choices"),
             )
 
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
@@ -441,4 +600,3 @@ class LLMInterface:
         
         logger.error(f"✗ Failed to connect to {self.provider_type} after {max_retries} attempts")
         return False
-

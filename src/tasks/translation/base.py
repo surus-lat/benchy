@@ -118,3 +118,13 @@ class TranslationTaskBase:
         """Translation tasks don't use JSON schemas."""
         return False
 
+    @property
+    def answer_type(self) -> str:
+        """Translation tasks return freeform text."""
+        return "freeform"
+
+    @property
+    def requires_logprobs(self) -> bool:
+        """Translation tasks do not require logprobs."""
+        return False
+

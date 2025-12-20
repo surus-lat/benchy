@@ -116,3 +116,12 @@ class StructuredExtractionTaskBase:
         """Structured extraction tasks use JSON schemas."""
         return True
 
+    @property
+    def answer_type(self) -> str:
+        """Structured extraction tasks return JSON outputs."""
+        return "structured"
+
+    @property
+    def requires_logprobs(self) -> bool:
+        """Structured extraction tasks do not require logprobs."""
+        return False

@@ -53,6 +53,7 @@ def build_connection_info(
         "max_tokens": provider_config.get("max_tokens", model_config.get("max_tokens", 2048)),
         "max_tokens_param_name": provider_config.get("max_tokens_param_name", model_config.get("max_tokens_param_name", "max_tokens")),
     }
+    supports_logprobs = provider_config.get("supports_logprobs", model_config.get("supports_logprobs"))
     
     if provider_type == "vllm":
         # vLLM: Get URL from server_info
@@ -66,42 +67,60 @@ def build_connection_info(
         
         connection_info["api_key"] = "EMPTY"  # vLLM doesn't need real key
         connection_info["use_structured_outputs"] = True  # vLLM v0.12.0+ structured outputs
+        if supports_logprobs is None:
+            supports_logprobs = True
         
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
         
     elif provider_type == "anthropic":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.anthropic.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "ANTHROPIC_API_KEY")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
     
     elif provider_type == "together":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.together.xyz/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "TOGETHER_API_KEY")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
         
     elif provider_type == "surus":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
         
     elif provider_type == "surus_ocr":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
         
     elif provider_type == "surus_factura":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
         
     else:
         # Generic HTTP provider
         connection_info["base_url"] = provider_config.get("base_url", provider_config.get("endpoint"))
         connection_info["api_key_env"] = provider_config.get("api_key_env")
         connection_info["use_structured_outputs"] = False
+        if supports_logprobs is None:
+            supports_logprobs = False
+
+    connection_info["supports_logprobs"] = supports_logprobs
     
     logger.debug(f"Built connection_info for {provider_type}: base_url={connection_info.get('base_url')}")
     return connection_info
@@ -165,4 +184,3 @@ def get_interface_for_provider(
         # Use ChatCompletionsInterface for vllm, openai, anthropic
         from ..interfaces.chat_completions import ChatCompletionsInterface
         return ChatCompletionsInterface(connection_info, model_name)
-
