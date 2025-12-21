@@ -293,6 +293,8 @@ def main():
         logger.info(f"Using Together AI cloud provider for model: {model_name}")
     else:
         raise ValueError(f"Unknown provider type: {provider_type}")
+
+    api_endpoint = provider_config.get('api_endpoint', config.get('api_endpoint', "completions"))
     
     # Prepare task defaults overrides
     task_defaults_overrides = {}
@@ -422,7 +424,7 @@ def main():
                 tasks=tasks_to_run,  # Use expanded task list
                 output_path=run_paths['output_path'],  # Use run-specific output path
                 limit=args.limit,  # Use command line limit parameter
-                use_chat_completions=config.get('use_chat_completions', False),  # Default to False
+                api_endpoint=api_endpoint,
                 task_defaults_overrides=task_defaults_overrides or None,  # Pass task overrides
                 log_setup=log_setup,  # Pass log setup for task config logging
                 run_id=run_id,  # Pass generated run_id for organizing outputs

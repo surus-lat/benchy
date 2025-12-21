@@ -17,3 +17,4 @@ class TeleiaCervantesAveTask(TeleiaTaskBase):
         """Return task identifier."""
         return "teleia_cervantes_ave"
 
+

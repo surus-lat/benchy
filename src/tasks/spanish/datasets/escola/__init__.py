@@ -4,3 +4,4 @@ from .task import EscolaTask
 
 __all__ = ["EscolaTask"]
 
+

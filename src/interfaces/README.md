@@ -19,12 +19,12 @@ Key principle: **Interfaces adapt task data to their API format**.
 
 ## Available Interfaces
 
-### ChatCompletionsInterface
+### OpenAIInterface
 
-For OpenAI-compatible chat APIs (vLLM, OpenAI, Anthropic, etc.)
+For OpenAI-compatible chat/completions APIs (vLLM, OpenAI, Anthropic, etc.)
 
 ```python
-from src.interfaces import ChatCompletionsInterface
+from src.interfaces import OpenAIInterface
 
 # Connection info from engine.build_connection_info()
 connection_info = {
@@ -37,7 +37,7 @@ connection_info = {
     "use_structured_outputs": False,  # True for vLLM (v0.12.0+)
 }
 
-interface = ChatCompletionsInterface(connection_info, model_name="gpt-4o-mini")
+interface = OpenAIInterface(connection_info, model_name="gpt-4o-mini")
 
 # Test connection
 connected = await interface.test_connection()
@@ -48,6 +48,7 @@ requests = [interface.prepare_request(sample, task) for sample in batch]
 # Generate
 results = await interface.generate_batch(requests)
 ```
+
 
 ### HTTPInterface / SurusInterface
 
@@ -173,8 +174,19 @@ All interfaces must return results in this format:
     "output": {...},  # Parsed output (dict, list, str, etc.) or None
     "raw": "...",     # Raw response text
     "error": None,    # Error message string or None
+    "error_type": None,  # "connectivity_error", "invalid_response", "rate_limit", or None
 }
 ```
+
+## Capability Matrix
+
+| Interface | Multimodal | Logprobs | Schema | Files |
+| --- | --- | --- | --- | --- |
+| OpenAIInterface | yes | config | yes | yes |
+| HTTPInterface | no | no | yes | no |
+| SurusInterface | no | no | yes | no |
+| SurusOCRInterface | yes | no | yes | yes |
+| SurusFacturaInterface | yes | no | no | yes |
 
 ## Best Practices
 

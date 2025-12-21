@@ -116,7 +116,7 @@ def _run_evaluation(
     tasks = task_config['task_name']
     lm_eval_path = task_config['lm_eval_path']
     tokenizer_backend = task_config.get('tokenizer_backend', 'huggingface')
-    use_chat_completions = task_config.get('use_chat_completions', False)  # Default to False
+    api_endpoint = task_config.get('api_endpoint', 'completions')
     generation_config = task_config.get('generation_config', None)
     
     # Get defaults from task config
@@ -155,8 +155,8 @@ def _run_evaluation(
         pass
     
     # Build model_args string with optimizations for API-only usage
-    # Determine the correct endpoint based on use_chat_completions
-    endpoint = "/v1/chat/completions" if use_chat_completions else "/v1/completions"
+    use_chat_endpoint = api_endpoint == "chat"
+    endpoint = "/v1/chat/completions" if use_chat_endpoint else "/v1/completions"
     
     model_args_parts = [
         f"model={model_name}",
@@ -188,8 +188,7 @@ def _run_evaluation(
     model_args_str = ",".join(model_args_parts)
     
     # Build the lm_eval command for API mode
-    # Determine the correct model type based on use_chat_completions
-    model_type = "local-chat-completions" if use_chat_completions else "local-completions"
+    model_type = "local-chat-completions" if use_chat_endpoint else "local-completions"
     
     cmd_parts = [
         "lm_eval",
@@ -201,7 +200,7 @@ def _run_evaluation(
     ]
     
     # Add --apply_chat_template only if using chat completions
-    if use_chat_completions:
+    if use_chat_endpoint:
         cmd_parts.append("--apply_chat_template")
         
     if log_samples:

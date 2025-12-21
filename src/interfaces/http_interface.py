@@ -1,18 +1,22 @@
 """HTTP interface for task-optimized AI systems."""
 
 import asyncio
-import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import httpx
+
+from ..engine.protocols import InterfaceCapabilities
+from ..engine.retry import RetryableError, classify_http_exception, run_with_retries
 
 logger = logging.getLogger(__name__)
 
 
 class HTTPInterface:
     """Base interface for HTTP-based AI systems with custom endpoints."""
+
+    capabilities = InterfaceCapabilities(supports_schema=True)
 
     def __init__(self, config: Dict, model_name: str, provider_type: str = "http"):
         """Initialize HTTP interface.
@@ -30,6 +34,8 @@ class HTTPInterface:
         self.endpoint = self.config["endpoint"]
         self.timeout = self.config.get("timeout", 30)
         self.max_retries = self.config.get("max_retries", 3)
+        self.retry_invalid_response = self.config.get("retry_invalid_response", True)
+        self.retry_on_4xx = self.config.get("retry_on_4xx", False)
         
         # Get API key
         api_key_env = self.config.get("api_key_env", f"{provider_type.upper()}_API_KEY")
@@ -61,106 +67,76 @@ class HTTPInterface:
             "sample_id": sample["id"],
         }
 
-    async def _make_request(self, text: str, schema: Dict) -> Dict:
-        """Make HTTP request to endpoint.
-        
-        Override this in subclasses for provider-specific formatting.
-        
-        Args:
-            text: Text to process
-            schema: JSON schema for extraction
-            
-        Returns:
-            Response dictionary
-        """
-        raise NotImplementedError("Subclasses must implement _make_request")
+    def build_test_request(self) -> Dict[str, Any]:
+        """Build a minimal request payload for connection tests."""
+        return {
+            "text": "Test connection.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string"}
+                }
+            },
+            "sample_id": "connection_test",
+        }
 
     async def _generate_single(
         self,
-        text: str,
-        schema: Dict,
-        sample_id: str,
+        request: Dict,
     ) -> Dict:
         """Generate structured output for a single sample.
 
         Args:
-            text: Input text
-            schema: Target JSON schema
-            sample_id: Sample identifier for logging
+            request: Request dict from prepare_request()
 
         Returns:
             Dictionary with 'output' (parsed JSON), 'raw' (string), 'error', 'error_type'
         """
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
-        last_error = None
-        last_error_type = None
+        sample_id = request.get("sample_id", "unknown")
+        last_result: Optional[Dict[str, Any]] = None
 
-        for attempt in range(self.max_retries):
-            try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await self._make_request_with_client(client, text, schema)
-                    
-                    if response:
-                        result = self._parse_response(response)
-                        if result["output"] is not None:
-                            return result
-                        # If we got a response but couldn't parse it, that's an invalid_response
-                        last_error = result.get("error", "Empty response")
-                        last_error_type = result.get("error_type", "invalid_response")
-            except httpx.TimeoutException:
-                last_error = f"Timeout after {self.timeout}s"
-                last_error_type = "connectivity_error"
-                logger.debug(f"[{sample_id}] Attempt {attempt + 1} timed out")
-                # Exponential backoff for connectivity errors
-                if attempt < self.max_retries - 1:
-                    delay = min(2 ** attempt, 16)  # 1s, 2s, 4s, 8s, 16s max
-                    logger.debug(f"[{sample_id}] Waiting {delay}s before retry...")
-                    await asyncio.sleep(delay)
-            except httpx.ConnectError as e:
-                last_error = f"Connection failed: {e}"
-                last_error_type = "connectivity_error"
-                logger.debug(f"[{sample_id}] Attempt {attempt + 1} connection failed")
-                # Exponential backoff for connectivity errors
-                if attempt < self.max_retries - 1:
-                    delay = min(2 ** attempt, 16)  # 1s, 2s, 4s, 8s, 16s max
-                    logger.debug(f"[{sample_id}] Waiting {delay}s before retry...")
-                    await asyncio.sleep(delay)
-            except httpx.HTTPStatusError as e:
-                status_code = e.response.status_code
-                last_error = f"HTTP {status_code}"
-                # 5xx errors are connectivity errors, others are invalid responses
-                if status_code >= 500:
-                    last_error_type = "connectivity_error"
-                    logger.debug(f"[{sample_id}] Attempt {attempt + 1} got HTTP {status_code} (connectivity error)")
-                    # Exponential backoff for connectivity errors
-                    if attempt < self.max_retries - 1:
-                        delay = min(2 ** attempt, 16)  # 1s, 2s, 4s, 8s, 16s max
-                        logger.debug(f"[{sample_id}] Waiting {delay}s before retry...")
-                        await asyncio.sleep(delay)
-                else:
-                    last_error_type = "invalid_response"
-                    logger.debug(f"[{sample_id}] Attempt {attempt + 1} got HTTP {status_code} (invalid response)")
-            except Exception as e:
-                last_error = f"{type(e).__name__}: {e}"
-                # Unknown exceptions are treated as connectivity errors (might be network-related)
-                last_error_type = "connectivity_error"
-                logger.debug(f"[{sample_id}] Attempt {attempt + 1} failed: {last_error}")
-                # Exponential backoff for connectivity errors
-                if attempt < self.max_retries - 1:
-                    delay = min(2 ** attempt, 16)  # 1s, 2s, 4s, 8s, 16s max
-                    logger.debug(f"[{sample_id}] Waiting {delay}s before retry...")
-                    await asyncio.sleep(delay)
-        
-        result["error"] = last_error or "All retry attempts exhausted"
-        result["error_type"] = last_error_type
-        logger.warning(f"[{sample_id}] All {self.max_retries} attempts failed: {result['error']} (type: {result['error_type']})")
-        return result
+        async def attempt_fn(_: int) -> Dict:
+            nonlocal last_result
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await self._make_request_with_client(client, request)
+                if not response:
+                    raise RetryableError("Empty response", error_type="invalid_response", retry_after=0.0)
+                result = self._parse_response(response)
+                last_result = result
+                if result.get("output") is None and self.retry_invalid_response:
+                    raise RetryableError(
+                        result.get("error", "Invalid response"),
+                        error_type=result.get("error_type", "invalid_response"),
+                        retry_after=0.0,
+                    )
+                return result
+
+        result, error, error_type = await run_with_retries(
+            attempt_fn,
+            max_retries=self.max_retries,
+            classify_error=lambda exc, attempt: classify_http_exception(
+                exc,
+                attempt,
+                retry_on_4xx=self.retry_on_4xx,
+            ),
+        )
+
+        if result is not None:
+            return result
+
+        fallback = last_result or {"output": None, "raw": None, "error": None, "error_type": None}
+        fallback["output"] = None
+        fallback["error"] = error
+        fallback["error_type"] = error_type
+        logger.warning(
+            f"[{sample_id}] All {self.max_retries} attempts failed: {fallback['error']} (type: {fallback['error_type']})"
+        )
+        return fallback
 
     async def _make_request_with_client(
         self,
         client: httpx.AsyncClient,
-        text: str,
-        schema: Dict
+        request: Dict,
     ) -> Optional[Dict]:
         """Make request with given client. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement _make_request_with_client")
@@ -173,19 +149,14 @@ class HTTPInterface:
         """Generate structured outputs for a batch of samples.
 
         Args:
-            requests: List of request dicts with keys:
-                - text: Input text
-                - schema: Target JSON schema
-                - sample_id: Sample identifier
+            requests: List of request dicts from prepare_request()
 
         Returns:
             List of result dictionaries in same order as requests
         """
         tasks = [
             self._generate_single(
-                text=req["text"],
-                schema=req["schema"],
-                sample_id=req["sample_id"],
+                request=req,
             )
             for req in requests
         ]
@@ -214,7 +185,7 @@ class HTTPInterface:
                 else:
                     errors += 1
         
-        logger.info(f"📊 Batch: {successful}/{len(requests)} successful, {errors} errors")
+        logger.info(f"Batch: {successful}/{len(requests)} successful, {errors} errors")
         
         return processed_results
 
@@ -228,42 +199,32 @@ class HTTPInterface:
         Returns:
             True if connection successful, False otherwise
         """
-        logger.info(f"🚀 Testing {self.provider_type} API at {self.endpoint}")
+        logger.info(f"Testing {self.provider_type} API at {self.endpoint}")
         
-        # Simple test request
-        test_text = "Test connection."
-        test_schema = {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string"}
-            }
-        }
-        
-        last_error = None
-        for attempt in range(max_retries):
-            logger.info(f"Connection test attempt {attempt + 1}/{max_retries}...")
-            
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    response = await self._make_request_with_client(client, test_text, test_schema)
-                    if response:
-                        logger.info(f"✓ Connected to {self.provider_type} at {self.endpoint}")
-                        return True
-            except httpx.TimeoutException as e:
-                last_error = f"Timeout after {timeout}s"
-                logger.warning(f"  ⏱ Attempt {attempt + 1} timed out after {timeout}s")
-            except httpx.ConnectError as e:
-                last_error = f"Connection failed: {e}"
-                logger.warning(f"  🔌 Attempt {attempt + 1} connection failed: {e}")
-            except httpx.HTTPStatusError as e:
-                last_error = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
-                logger.warning(f"  ❌ Attempt {attempt + 1} got HTTP {e.response.status_code}")
-            except Exception as e:
-                last_error = str(e)
-                logger.warning(f"  ⚠ Attempt {attempt + 1} failed: {type(e).__name__}: {e}")
-        
-        logger.error(f"✗ Failed to connect to {self.provider_type} after {max_retries} attempts")
-        if last_error:
-            logger.error(f"  Last error: {last_error}")
-        return False
+        test_request = self.build_test_request()
 
+        async def attempt_fn(_: int) -> bool:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await self._make_request_with_client(client, test_request)
+                if response:
+                    return True
+            raise RetryableError("Empty response", error_type="invalid_response", retry_after=0.0)
+
+        result, error, _ = await run_with_retries(
+            attempt_fn,
+            max_retries=max_retries,
+            classify_error=lambda exc, attempt: classify_http_exception(
+                exc,
+                attempt,
+                retry_on_4xx=self.retry_on_4xx,
+            ),
+        )
+
+        if result:
+            logger.info(f"Connected to {self.provider_type} at {self.endpoint}")
+            return True
+
+        logger.error(f"Failed to connect to {self.provider_type} after {max_retries} attempts")
+        if error:
+            logger.error(f"  Last error: {error}")
+        return False
