@@ -12,7 +12,8 @@ import logging
 import os
 from typing import Dict, List, Any
 
-from ..engine.protocols import BaseInterface
+from ..engine.protocols import BaseInterface, InterfaceCapabilities
+from ..engine.retry import classify_http_exception, run_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -92,10 +93,7 @@ class TemplateInterface(BaseInterface):
             # Add any other fields your API needs
         }
 
-    async def _generate_single(
-        self,
-        request: Dict,
-    ) -> Dict:
+    async def _generate_single(self, request: Dict) -> Dict:
         """Generate output for a single request.
         
         Args:
@@ -104,28 +102,26 @@ class TemplateInterface(BaseInterface):
         Returns:
             Result dict with 'output', 'raw', 'error'
         """
-        result = {"output": None, "raw": None, "error": None}
-        
-        for attempt in range(self.max_retries):
-            try:
-                # Make your API call here
-                # response = await self.client.generate(...)
-                
-                # Parse response
-                # raw_output = response.text
-                # result["raw"] = raw_output
-                # result["output"] = parse_output(raw_output)
-                
-                # Placeholder - replace with real implementation
-                result["error"] = "Not implemented"
-                return result
-                
-            except Exception as e:
-                logger.warning(f"[{request['sample_id']}] Attempt {attempt + 1} failed: {e}")
-                if attempt == self.max_retries - 1:
-                    result["error"] = str(e)
-        
-        return result
+        result = {"output": None, "raw": None, "error": None, "error_type": None}
+
+        async def attempt_fn(_: int) -> Dict:
+            # Make your API call here
+            # response = await self.client.generate(...)
+            # raw_output = response.text
+            # result["raw"] = raw_output
+            # result["output"] = parse_output(raw_output)
+            result["error"] = "Not implemented"
+            return result
+
+        response, error, _ = await run_with_retries(
+            attempt_fn,
+            max_retries=self.max_retries,
+            classify_error=classify_http_exception,
+        )
+
+        fallback = dict(result)
+        fallback["error"] = error
+        return response or fallback
 
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
         """Generate outputs for a batch of requests.
@@ -148,7 +144,12 @@ class TemplateInterface(BaseInterface):
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Request {requests[i]['sample_id']} failed: {result}")
-                processed.append({"output": None, "raw": None, "error": str(result)})
+                processed.append({
+                    "output": None,
+                    "raw": None,
+                    "error": str(result),
+                    "error_type": "connectivity_error",
+                })
                 errors += 1
             else:
                 processed.append(result)
@@ -191,3 +192,12 @@ class TemplateInterface(BaseInterface):
         """Whether this interface supports multimodal inputs."""
         return False  # Override if your API supports images/audio
 
+    @property
+    def capabilities(self) -> InterfaceCapabilities:
+        """Structured capability flags for compatibility checks."""
+        return InterfaceCapabilities(
+            supports_multimodal=self.supports_multimodal,
+            supports_logprobs=False,
+            supports_schema=False,
+            supports_files=False,
+        )

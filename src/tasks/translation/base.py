@@ -128,3 +128,4 @@ class TranslationTaskBase:
         """Translation tasks do not require logprobs."""
         return False
 
+

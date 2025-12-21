@@ -477,7 +477,7 @@ from .tasks.<task_name>.run import run_<task_name>
 if "<task_name>" in pending_tasks:
     logger.info("Running <task_name> evaluation...")
     task_config = config_manager.get_task_config("<task_name>", task_defaults_overrides)
-    task_config['use_chat_completions'] = use_chat_completions
+    task_config['api_endpoint'] = api_endpoint
     task_config['generation_config'] = generation_config
     
     if log_setup:
@@ -595,4 +595,3 @@ See `src/tasks/translation/` for a complete example with:
 - Review `src/tasks/structured/` for structured output example
 - Review `src/tasks/translation/` for multi-dataset example
 - Check `src/engine/protocols.py` for BaseTask interface
-

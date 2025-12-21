@@ -17,3 +17,4 @@ class TeleiaSieleTask(TeleiaTaskBase):
         """Return task identifier."""
         return "teleia_siele"
 
+

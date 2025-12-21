@@ -122,3 +122,4 @@ def process_docs_copa_es(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc["choice2"] = lowercase_first_letter(doc.get("choice2", ""))
     return doc
 
+

@@ -14,7 +14,6 @@ tasks:
   - teleia_cervantes_ave
   - teleia_siele
   - wnli_es
-  - xnli_es_spanish_bench
 
 # Configuration for each subtask
 task_configs:
@@ -56,11 +55,6 @@ task_configs:
     dataset_path: PlanTL-GOB-ES/wnli-es
     split: validation
   
-  xnli_es_spanish_bench:
-    dataset_path: xnli
-    dataset_name: es
-    split: validation
-
 # Prompt templates (most tasks use default formatting)
 prompts:
   system: ""

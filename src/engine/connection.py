@@ -47,11 +47,16 @@ def build_connection_info(
     # Priority: provider_config (with model overrides) > task defaults (model_config)
     # This ensures model-specific requirements (like gpt-5-mini temperature) take precedence
     connection_info = {
+        "provider_type": provider_type,
         "timeout": provider_config.get("timeout", 120),
         "max_retries": provider_config.get("max_retries", 3),
         "temperature": provider_config.get("temperature", model_config.get("temperature", 0.0)),
         "max_tokens": provider_config.get("max_tokens", model_config.get("max_tokens", 2048)),
         "max_tokens_param_name": provider_config.get("max_tokens_param_name", model_config.get("max_tokens_param_name", "max_tokens")),
+        "max_concurrent": provider_config.get("max_concurrent", model_config.get("max_concurrent")),
+        "api_endpoint": provider_config.get("api_endpoint", model_config.get("api_endpoint")),
+        "logprobs_top_k": provider_config.get("logprobs_top_k", model_config.get("logprobs_top_k")),
+        "problematic_models": provider_config.get("problematic_models", model_config.get("problematic_models")),
     }
     supports_logprobs = provider_config.get("supports_logprobs", model_config.get("supports_logprobs"))
     
@@ -142,7 +147,7 @@ def get_interface_for_provider(
         Interface instance
     """
     if provider_type == "surus":
-        from ..interfaces.surus_interface import SurusInterface
+        from ..interfaces.surus.surus_interface import SurusInterface
         # SurusInterface has its own config format, adapt connection_info
         surus_config = {
             "surus": {
@@ -155,7 +160,7 @@ def get_interface_for_provider(
         return SurusInterface(surus_config, model_name, "surus")
     
     elif provider_type == "surus_ocr":
-        from ..interfaces.surus_ocr_interface import SurusOCRInterface
+        from ..interfaces.surus.surus_ocr_interface import SurusOCRInterface
         # SurusOCRInterface has its own config format, adapt connection_info
         surus_ocr_config = {
             "surus_ocr": {
@@ -168,7 +173,7 @@ def get_interface_for_provider(
         return SurusOCRInterface(surus_ocr_config, model_name, "surus_ocr")
     
     elif provider_type == "surus_factura":
-        from ..interfaces.surus_factura_interface import SurusFacturaInterface
+        from ..interfaces.surus.surus_factura_interface import SurusFacturaInterface
         # SurusFacturaInterface has its own config format, adapt connection_info
         surus_factura_config = {
             "surus_factura": {
@@ -181,6 +186,6 @@ def get_interface_for_provider(
         return SurusFacturaInterface(surus_factura_config, model_name, "surus_factura")
     
     else:
-        # Use ChatCompletionsInterface for vllm, openai, anthropic
-        from ..interfaces.chat_completions import ChatCompletionsInterface
-        return ChatCompletionsInterface(connection_info, model_name)
+        # Use OpenAIInterface for vllm, openai, anthropic, together
+        from ..interfaces.openai_interface import OpenAIInterface
+        return OpenAIInterface(connection_info, model_name)

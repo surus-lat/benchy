@@ -54,7 +54,7 @@ def write_run_config(
     output_path: str,
     tasks: list,
     limit: Optional[int],
-    use_chat_completions: bool,
+    api_endpoint: str,
     task_defaults_overrides: Optional[Dict[str, Any]],
     vllm_config: Dict[str, Any],
     cuda_devices: Optional[str] = None
@@ -68,7 +68,7 @@ def write_run_config(
         output_path: Base output path
         tasks: List of tasks to run
         limit: Limit for examples per task
-        use_chat_completions: Whether to use chat completions API
+        api_endpoint: API endpoint mode ("completions" or "chat")
         task_defaults_overrides: Task configuration overrides
         vllm_config: vLLM server configuration
         cuda_devices: CUDA devices used
@@ -86,7 +86,7 @@ def write_run_config(
         },
         'model': {
             'name': model_name,
-            'use_chat_completions': use_chat_completions
+            'api_endpoint': api_endpoint
         },
         'tasks': tasks,
         'evaluation': {
@@ -138,7 +138,7 @@ def benchmark_pipeline(
     tasks: list,
     output_path: str,
     limit: Optional[int] = None,
-    use_chat_completions: bool = False,
+    api_endpoint: str = "completions",
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
     log_setup: Optional[Any] = None,
     run_id: Optional[str] = None,
@@ -185,7 +185,7 @@ def benchmark_pipeline(
         tasks: List of task names to run (e.g., ["spanish", "portuguese"])
         output_path: Base output path for results
         limit: Limit number of examples per task (useful for testing)
-        use_chat_completions: Whether to use chat completions API
+        api_endpoint: API endpoint mode ("completions" or "chat")
         task_defaults_overrides: Optional dict to override task default parameters
         log_setup: Logging setup object
         run_id: Optional run ID for organizing outputs
@@ -271,7 +271,7 @@ def benchmark_pipeline(
         output_path=output_path,
         tasks=tasks,
         limit=limit,
-        use_chat_completions=use_chat_completions,
+        api_endpoint=api_endpoint,
         task_defaults_overrides=task_defaults_overrides,
         vllm_config={
             'host': host,
@@ -373,8 +373,8 @@ def benchmark_pipeline(
     if "spanish" in pending_tasks:
         logger.info("Running Spanish language evaluation...")
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
-        # Merge use_chat_completions from model config into task config
-        spanish_task_config['use_chat_completions'] = use_chat_completions
+        # Merge api_endpoint from model config into task config
+        spanish_task_config['api_endpoint'] = api_endpoint
         # Add generation config
         spanish_task_config['generation_config'] = generation_config
         
@@ -405,8 +405,8 @@ def benchmark_pipeline(
     if "portuguese" in pending_tasks:
         logger.info("Running Portuguese language evaluation...")
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
-        # Merge use_chat_completions from model config into task config
-        portuguese_task_config['use_chat_completions'] = use_chat_completions
+        # Merge api_endpoint from model config into task config
+        portuguese_task_config['api_endpoint'] = api_endpoint
         # Add generation config
         portuguese_task_config['generation_config'] = generation_config
         

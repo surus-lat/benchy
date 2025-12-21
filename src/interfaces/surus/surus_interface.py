@@ -6,7 +6,8 @@ from typing import Dict, Optional
 
 import httpx
 
-from .http_interface import HTTPInterface
+from ..http_interface import HTTPInterface
+from ...engine.retry import classify_http_exception, run_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +29,13 @@ class SurusInterface(HTTPInterface):
     async def _make_request_with_client(
         self,
         client: httpx.AsyncClient,
-        text: str,
-        schema: Dict
+        request: Dict,
     ) -> Optional[Dict]:
         """Make request to SURUS /extract endpoint.
 
         Args:
             client: HTTP client
-            text: Input text
-            schema: JSON schema
+            request: Request dict with text and schema
 
         Returns:
             Response dictionary or None on error
@@ -46,6 +45,8 @@ class SurusInterface(HTTPInterface):
             httpx.ConnectError: On connection failure
             httpx.HTTPStatusError: On HTTP error responses
         """
+        text = request["text"]
+        schema = request["schema"]
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -111,57 +112,28 @@ class SurusInterface(HTTPInterface):
         Returns:
             True if connection successful, False otherwise
         """
-        logger.info(f"🚀 Testing SURUS /extract API at {self.endpoint}")
-        
-        # Simple test request
-        test_text = "Test connection."
-        test_schema = {
-            "type": "object",
-            "properties": {
-                "status": {"type": "string"}
-            }
-        }
-        
-        last_error = None
-        for attempt in range(max_retries):
-            logger.info(f"Connection test attempt {attempt + 1}/{max_retries}...")
-            
-            try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
-                    response = await self._make_request_with_client(client, test_text, test_schema)
-                    if response:
-                        logger.info(f"✓ Connected to SURUS /extract at {self.endpoint}")
-                        return True
-            except httpx.TimeoutException as e:
-                last_error = f"Timeout after {timeout}s"
-                logger.warning(f"  ⏱ Attempt {attempt + 1} timed out after {timeout}s")
-            except httpx.ConnectError as e:
-                last_error = f"Connection failed: {e}"
-                logger.warning(f"  🔌 Attempt {attempt + 1} connection failed: {e}")
-            except httpx.HTTPStatusError as e:
-                status_code = e.response.status_code
-                error_text = e.response.text[:200] if hasattr(e.response, 'text') else ""
-                
-                # Only accept 2xx as success
-                # 401/403 indicate auth/quota issues - these should fail the connection test
-                if 200 <= status_code < 300:
-                    logger.info(f"✓ Connected to SURUS /extract at {self.endpoint}")
-                    return True
-                elif status_code == 401:
-                    last_error = f"HTTP 401 Unauthorized: Invalid API key or authentication failed. {error_text}"
-                    logger.error(f"  🔑 Attempt {attempt + 1} authentication failed (HTTP 401)")
-                elif status_code == 403:
-                    last_error = f"HTTP 403 Forbidden: API key valid but access denied (quota exhausted or insufficient permissions). {error_text}"
-                    logger.error(f"  🚫 Attempt {attempt + 1} access denied (HTTP 403): {error_text}")
-                else:
-                    last_error = f"HTTP {status_code}: {error_text}"
-                    logger.warning(f"  ❌ Attempt {attempt + 1} got HTTP {status_code}: {error_text}")
-            except Exception as e:
-                last_error = str(e)
-                logger.warning(f"  ⚠ Attempt {attempt + 1} failed: {type(e).__name__}: {e}")
-        
-        logger.error(f"✗ Failed to connect to SURUS /extract after {max_retries} attempts")
-        if last_error:
-            logger.error(f"  Last error: {last_error}")
-        return False
+        logger.info(f"Testing SURUS /extract API at {self.endpoint}")
 
+        test_request = self.build_test_request()
+
+        async def attempt_fn(_: int) -> bool:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await self._make_request_with_client(client, test_request)
+                if response:
+                    return True
+            raise ValueError("Empty response")
+
+        result, error, _ = await run_with_retries(
+            attempt_fn,
+            max_retries=max_retries,
+            classify_error=classify_http_exception,
+        )
+
+        if result:
+            logger.info(f"Connected to SURUS /extract at {self.endpoint}")
+            return True
+
+        logger.error(f"Failed to connect to SURUS /extract after {max_retries} attempts")
+        if error:
+            logger.error(f"  Last error: {error}")
+        return False

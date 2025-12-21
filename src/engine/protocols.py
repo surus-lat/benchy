@@ -5,7 +5,19 @@ Tasks are interface-agnostic - they just provide data, prompts, and metrics.
 Interfaces handle the specifics of communicating with different AI systems.
 """
 
+from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional, Protocol, Tuple, Any
+
+
+@dataclass(frozen=True)
+class InterfaceCapabilities:
+    """Capabilities exposed by an interface implementation."""
+
+    supports_multimodal: bool = False
+    supports_logprobs: bool = False
+    supports_schema: bool = False
+    supports_files: bool = False
+    supports_batch: bool = True
 
 
 class BaseTask(Protocol):
@@ -207,6 +219,14 @@ class BaseInterface(Protocol):
         """Whether this interface supports logprobs-based scoring."""
         return False
 
+    @property
+    def capabilities(self) -> InterfaceCapabilities:
+        """Structured capability flags for compatibility checks."""
+        return InterfaceCapabilities(
+            supports_multimodal=self.supports_multimodal,
+            supports_logprobs=self.supports_logprobs,
+        )
+
 
 def check_compatibility(task: BaseTask, interface: BaseInterface) -> Tuple[bool, str]:
     """Check if a task and interface are compatible.
@@ -221,14 +241,25 @@ def check_compatibility(task: BaseTask, interface: BaseInterface) -> Tuple[bool,
     # For now, all combinations are compatible
     # Add checks here as needed (e.g., multimodal task + text-only interface)
     
+    capabilities = getattr(interface, "capabilities", None)
+    supports_multimodal = (
+        capabilities.supports_multimodal
+        if capabilities is not None
+        else getattr(interface, "supports_multimodal", False)
+    )
+    supports_logprobs = (
+        capabilities.supports_logprobs
+        if capabilities is not None
+        else getattr(interface, "supports_logprobs", False)
+    )
     if hasattr(task, 'is_multimodal') and task.is_multimodal:
-        if not hasattr(interface, 'supports_multimodal') or not interface.supports_multimodal:
+        if not supports_multimodal:
             return False, "Task requires multimodal support but interface doesn't provide it"
 
     answer_type = getattr(task, "answer_type", None)
     requires_logprobs = getattr(task, "requires_logprobs", answer_type == "multiple_choice")
     if requires_logprobs:
-        if not getattr(interface, "supports_logprobs", False):
+        if not supports_logprobs:
             return False, "Task requires logprobs for multiple-choice scoring but interface doesn't support logprobs"
     
     return True, ""

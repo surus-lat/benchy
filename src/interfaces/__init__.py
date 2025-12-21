@@ -1,7 +1,7 @@
 """Interfaces for AI system evaluation.
 
 Interfaces handle communication with different AI systems:
-- ChatCompletionsInterface: OpenAI-compatible chat APIs (vLLM, OpenAI, etc.)
+- OpenAIInterface: OpenAI-compatible chat/completions APIs (vLLM, OpenAI, etc.)
 - HTTPInterface: Custom HTTP endpoints
 - SurusInterface: SURUS AI /extract endpoint
 - SurusOCRInterface: SURUS AI /ocr endpoint (image extraction)
@@ -11,21 +11,16 @@ that contain base_url, api_key, etc. The pipeline resolves provider
 configuration to connection_info before passing to interfaces.
 """
 
-from .chat_completions import ChatCompletionsInterface
 from .http_interface import HTTPInterface
-from .surus_interface import SurusInterface
-from .surus_ocr_interface import SurusOCRInterface
-from .surus_factura_interface import SurusFacturaInterface
-
-# Backward compatibility alias
-from .llm_interface import LLMInterface
+from .openai_interface import OpenAIInterface
+from .surus.surus_interface import SurusInterface
+from .surus.surus_ocr_interface import SurusOCRInterface
+from .surus.surus_factura_interface import SurusFacturaInterface
 
 __all__ = [
-    "ChatCompletionsInterface",
+    "OpenAIInterface",
     "HTTPInterface",
     "SurusInterface",
     "SurusOCRInterface",
     "SurusFacturaInterface",
-    "LLMInterface",  # Deprecated, use ChatCompletionsInterface
 ]
-
