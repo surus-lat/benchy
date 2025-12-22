@@ -56,10 +56,15 @@ class ReportGenerator:
 
         # Overall Score
         eqs = aggregate_metrics.get("extraction_quality_score", 0.0)
+        overall_eqs = aggregate_metrics.get("overall_extraction_quality_score", eqs)
         eqs_grade = self._grade_eqs(eqs)
+        overall_eqs_grade = self._grade_eqs(overall_eqs)
         lines.append("OVERALL SCORE")
         lines.append("━" * 72)
         lines.append(f"  Extraction Quality Score (EQS): {eqs:.3f}  {eqs_grade}")
+        lines.append(f"    (quality of valid samples only)")
+        lines.append(f"  Overall Extraction Quality Score: {overall_eqs:.3f}  {overall_eqs_grade}")
+        lines.append(f"    (accounts for invalid responses)")
         
         # Confidence interval (approximation based on variance)
         eqs_std = aggregate_metrics.get("sample_level_variance", {}).get("eqs_stdev", 0.0)
@@ -87,8 +92,8 @@ class ReportGenerator:
         else:
             lines.append(f"  {self._emoji(1.0)} Imperfect Sample Quality:   N/A (all perfect)    Grade: A+")
         
-        # Overall EQS for model comparison
-        lines.append(f"  ⭐ Overall Quality (EQS):      {eqs:.3f}             {eqs_grade}")
+        # Overall EQS for model comparison (use overall score that accounts for invalid responses)
+        lines.append(f"  ⭐ Overall Quality (EQS):      {overall_eqs:.3f}             {overall_eqs_grade}")
         lines.append("")
         
         # Additional Key Metrics

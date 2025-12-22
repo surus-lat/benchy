@@ -685,6 +685,11 @@ class MetricsCalculator:
         connectivity_error_rate = connectivity_errors / total_samples if total_samples > 0 else 0.0
         invalid_response_rate = invalid_responses / total_samples if total_samples > 0 else 0.0
 
+        # Calculate overall EQS accounting for invalid responses
+        # Connectivity errors are excluded (they're infrastructure, not model quality)
+        success_rate = 1.0 - invalid_response_rate
+        overall_eqs = avg_eqs * success_rate
+
         return {
             # Sample counts
             "total_samples": total_samples,
@@ -699,6 +704,7 @@ class MetricsCalculator:
 
             # Tier 1: Overall Assessment
             "extraction_quality_score": avg_eqs,
+            "overall_extraction_quality_score": overall_eqs,
             "schema_validity_rate": validity_rate,
             "hallucination_rate": avg_hallucination,
 
