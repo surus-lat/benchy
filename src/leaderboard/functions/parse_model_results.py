@@ -446,7 +446,9 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
         metrics = metrics_data.get("metrics", {})
         
         # Get EQS as main metric for leaderboard (better than composite score)
-        eqs = metrics.get("extraction_quality_score", 0.0)
+        # Use overall_extraction_quality_score if available (accounts for invalid responses)
+        # Fall back to extraction_quality_score for backward compatibility
+        eqs = metrics.get("overall_extraction_quality_score", metrics.get("extraction_quality_score", 0.0))
         
         # Get composite score stats for reference
         composite_stats = metrics.get("composite_score_stats", {})

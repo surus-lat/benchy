@@ -305,7 +305,10 @@ def _save_aggregated_summary(
         f.write(f"Total Samples: {aggregated_metrics.get('total_samples', 0)}\n")
         f.write(f"Valid Samples: {aggregated_metrics.get('valid_samples', 0)}\n")
         f.write(f"Error Rate: {aggregated_metrics.get('error_rate', 0):.2%}\n\n")
-        f.write(f"EQS: {aggregated_metrics.get('extraction_quality_score', 0):.3f}\n")
+        eqs = aggregated_metrics.get('extraction_quality_score', 0)
+        overall_eqs = aggregated_metrics.get('overall_extraction_quality_score', eqs)
+        f.write(f"EQS: {eqs:.3f}\n")
+        f.write(f"Overall EQS: {overall_eqs:.3f} (accounts for invalid responses)\n")
         f.write(f"F1 (Partial): {aggregated_metrics.get('field_f1_partial', 0):.3f}\n")
         f.write(f"Schema Validity: {aggregated_metrics.get('schema_validity_rate', 0):.2%}\n")
         f.write(f"Exact Match: {aggregated_metrics.get('exact_match_rate', 0):.2%}\n")
@@ -333,9 +336,12 @@ def _save_aggregated_summary(
         if aggregated_metrics.get("total_samples", 0) > 0
         else 0.0,
     )
+    eqs = aggregated_metrics.get("extraction_quality_score", 0.0)
+    overall_eqs = aggregated_metrics.get("overall_extraction_quality_score", eqs)
     logger.info(
-        "  EQS=%.4f, F1_partial=%.4f, schema_validity=%.4f, exact_match=%.4f, hallucination_rate=%.4f",
-        aggregated_metrics.get("extraction_quality_score", 0.0),
+        "  EQS=%.4f, Overall_EQS=%.4f, F1_partial=%.4f, schema_validity=%.4f, exact_match=%.4f, hallucination_rate=%.4f",
+        eqs,
+        overall_eqs,
         aggregated_metrics.get("field_f1_partial", 0.0),
         aggregated_metrics.get("schema_validity_rate", 0.0),
         aggregated_metrics.get("exact_match_rate", 0.0),
