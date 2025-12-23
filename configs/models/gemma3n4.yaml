@@ -6,4 +6,7 @@ vllm:
   overrides: {}
 
 tasks:
-  - "structured_extraction"
+  - "portuguese"
+
+task_defaults:
+  log_samples: true

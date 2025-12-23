@@ -1,24 +1,95 @@
 # Portuguese language evaluation task configuration
 
-# Task identification
 name: "portuguese"
-description: "Portuguese language evaluation using Portuguese benchmark"
+description: "Portuguese language evaluation benchmark"
 
-# Task-specific parameters
-task_name: "latam_pr"
-lm_eval_path: "/home/mauro/dev/benchy/external/portuguese-bench"
-tokenizer_backend: "huggingface"
+# List of subtasks to run
+tasks:
+  - assin2_rte
+  - assin2_sts
+  - bluex
+  - enem_challenge
+  - oab_exams
+
+# Configuration for each subtask
+task_configs:
+  assin2_rte:
+    dataset_path: assin2
+    split: test
+    description: |
+      Abaixo estão pares de premissa e hipótese. Para cada par, indique se a hipótese
+      pode ser inferida a partir da premissa, responda apenas com "Sim" ou "Não".
+    fewshot:
+      split: train
+      id_column: sentence_pair_id
+      id_list: []
+      num_fewshot: 0
+
+  assin2_sts:
+    dataset_path: assin2
+    split: test
+    description: |
+      Abaixo estão pares de frases que você deve avaliar o grau de similaridade.
+      Dê uma pontuação entre 1,0 e 5,0, sendo 1,0 pouco similar e 5,0 muito similar.
+    fewshot:
+      split: train
+      id_column: sentence_pair_id
+      id_list: []
+      num_fewshot: 0
+
+  bluex:
+    dataset_path: eduagarcia-temp/BLUEX_without_images
+    split: train
+    description: |
+      As perguntas a seguir são questões de múltipla escolha de provas de vestibular
+      de universidades brasileiras, selecione a única alternativa correta e responda
+      apenas com as letras "A", "B", "C", "D" ou "E".
+    fewshot:
+      split: train
+      id_column: id
+      id_list: []
+      num_fewshot: 0
+
+  enem_challenge:
+    dataset_path: eduagarcia/enem_challenge
+    split: train
+    description: |
+      As perguntas a seguir são questões de múltipla escolha do Exame Nacional do Ensino
+      Médio (ENEM), selecione a única alternativa correta e responda apenas com as letras
+      "A", "B", "C", "D" ou "E".
+    fewshot:
+      split: train
+      id_column: id
+      id_list: []
+      num_fewshot: 0
+
+  oab_exams:
+    dataset_path: eduagarcia/oab_exams
+    split: train
+    description: |
+      As perguntas a seguir são questões de múltipla escolha do Exame de Ordem da Ordem
+      dos Advogados do Brasil (OAB), selecione a única alternativa correta e responda
+      apenas com as letras "A", "B", "C" ou "D".
+    fewshot:
+      split: train
+      id_column: id
+      id_list: []
+      num_fewshot: 0
+
+# Prompt templates (system is optional)
+prompts:
+  system: ""
+  user: ""
 
 # Default evaluation parameters
 defaults:
-  batch_size: "10"
+  batch_size: 20
   log_samples: false
-  cache_requests: true
-  trust_remote_code: true  # Portuguese requires trust_remote_code
-  num_concurrent: 20
-  max_length: 2048
+  temperature: 0.0
+  max_tokens: 512
+  timeout: 120
+  max_retries: 3
 
 # Output configuration
 output:
-  subdirectory: "portuguese"  # Will be appended to main output path
-
+  subdirectory: "portuguese"
