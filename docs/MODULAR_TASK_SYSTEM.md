@@ -96,7 +96,7 @@ from .tasks.your_new_task import run_your_new_task_evaluation
 if "your_new_task" in tasks:
     logger.info("Running your new task evaluation...")
     your_new_task_config = config_manager.get_task_config("your_new_task", task_defaults_overrides)
-    your_new_task_config['use_chat_completions'] = use_chat_completions
+    your_new_task_config['api_endpoint'] = api_endpoint
     your_new_task_config['generation_config'] = generation_config
     
     if log_setup:

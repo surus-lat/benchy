@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
-from .tasks.lm_harness import run_portuguese_evaluation, gather_results
+from .tasks.lm_harness import gather_results
+from .tasks.portuguese import run_portuguese
 from .tasks.spanish import run_spanish
 from .tasks.structured import run_structured_extraction
 from .tasks.image_extraction import run_image_extraction
@@ -413,7 +414,7 @@ def benchmark_pipeline(
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("portuguese", portuguese_task_config)
-        portuguese_results = run_portuguese_evaluation(
+        portuguese_results = run_portuguese(
             model_name=model_name,
             output_path=model_output_path,
             server_info=server_info,
