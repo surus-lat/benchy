@@ -48,6 +48,75 @@ def load_config(config_path: str = None) -> dict:
 logger = logging.getLogger(__name__)
 
 
+SUMMARY_SKIP_KEYS = {
+    "total_samples",
+    "valid_samples",
+    "error_count",
+    "throughput",
+    "total_duration",
+    "samples_with_type_errors",
+    "numeric_fields_total",
+    "numeric_fields_correct",
+    "imperfect_sample_count",
+    "match_distribution_counts",
+    "subtasks",
+}
+
+
+def _summarize_task_metrics(
+    metrics: Dict[str, Any],
+    metrics_manifest: Optional[list] = None,
+) -> Dict[str, float]:
+    """Filter aggregate metrics to numeric values excluding counts/metadata."""
+    summarized: Dict[str, float] = {}
+    if metrics_manifest:
+        for key in metrics_manifest:
+            value = metrics.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                summarized[key] = float(value)
+        return summarized
+
+    for key, value in metrics.items():
+        if key in SUMMARY_SKIP_KEYS:
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            summarized[key] = float(value)
+    return summarized
+
+
+def _write_run_summary(
+    model_output_path: str,
+    model_name: str,
+    run_id: Optional[str],
+    tasks: list,
+    task_results: Dict[str, Any],
+    task_configs_by_name: Dict[str, Any],
+) -> None:
+    summary = {
+        "model": model_name,
+        "run_id": run_id,
+        "timestamp": datetime.now().isoformat(),
+        "tasks": {},
+    }
+
+    for task_name in tasks:
+        metrics = task_results.get(task_name, {}).get("metrics", {}) or {}
+        task_config = task_configs_by_name.get(task_name, {})
+        metrics_manifest = task_config.get("metrics_manifest") or None
+        summary["tasks"][task_name] = (
+            _summarize_task_metrics(metrics, metrics_manifest) if metrics else {}
+        )
+
+    summary_path = os.path.join(model_output_path, "run_summary.json")
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    logger.info(f"Wrote run summary to {summary_path}")
+
+
 def write_run_config(
     model_name: str,
     run_id: str,
@@ -356,6 +425,7 @@ def benchmark_pipeline(
     
     # Step 3: Run evaluation tasks (only pending ones)
     task_results = {}
+    task_configs_by_name: Dict[str, Any] = {}
     
     # Load results from already completed tasks
     completed_tasks = [task for task, completed in completion_status.items() if completed]
@@ -373,6 +443,7 @@ def benchmark_pipeline(
     if "spanish" in pending_tasks:
         logger.info("Running Spanish language evaluation...")
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
+        task_configs_by_name["spanish"] = spanish_task_config
         # Merge api_endpoint from model config into task config
         spanish_task_config['api_endpoint'] = api_endpoint
         # Add generation config
@@ -405,6 +476,7 @@ def benchmark_pipeline(
     if "portuguese" in pending_tasks:
         logger.info("Running Portuguese language evaluation...")
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
+        task_configs_by_name["portuguese"] = portuguese_task_config
         # Merge api_endpoint from model config into task config
         portuguese_task_config['api_endpoint'] = api_endpoint
         # Add generation config
@@ -427,6 +499,7 @@ def benchmark_pipeline(
     if "translation" in pending_tasks:
         logger.info("Running translation evaluation...")
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
+        task_configs_by_name["translation"] = translation_task_config
         
         # Log task configuration
         if log_setup:
@@ -456,6 +529,7 @@ def benchmark_pipeline(
     if "structured_extraction" in pending_tasks:
         logger.info("Running structured data extraction evaluation...")
         structured_task_config = config_manager.get_task_config("structured_extraction", task_defaults_overrides)
+        task_configs_by_name["structured_extraction"] = structured_task_config
         
         # Log task configuration
         if log_setup:
@@ -484,6 +558,7 @@ def benchmark_pipeline(
     if "image_extraction" in pending_tasks:
         logger.info("Running image extraction evaluation...")
         image_extraction_config = config_manager.get_task_config("image_extraction", task_defaults_overrides)
+        task_configs_by_name["image_extraction"] = image_extraction_config
         
         # Log task configuration
         if log_setup:
@@ -539,6 +614,15 @@ def benchmark_pipeline(
     logger.info(f"Newly completed: {len(newly_completed)}")
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
+
+    _write_run_summary(
+        model_output_path=model_output_path,
+        model_name=model_name,
+        run_id=run_id,
+        tasks=tasks,
+        task_results=task_results,
+        task_configs_by_name=task_configs_by_name,
+    )
     
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result

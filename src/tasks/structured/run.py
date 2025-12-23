@@ -52,7 +52,7 @@ def run_structured_extraction(
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
         api_test_result: API test result (unused, for interface compatibility)
-        task_config: Task configuration from configs/tasks/structured_extraction.yaml
+        task_config: Task configuration from src/tasks/structured/task.json
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused for this task)
         provider_config: Provider configuration (for cloud providers)
@@ -355,4 +355,3 @@ def _save_aggregated_summary(
             metrics.get("extraction_quality_score", 0.0),
             metrics.get("field_f1_partial", 0.0),
         )
-

@@ -1,5 +1,6 @@
 """Simple configuration manager for merging model and provider configs."""
 
+import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -187,25 +188,43 @@ class ConfigManager:
             return []
         
         return [f.stem for f in models_dir.glob("*.yaml")]
-    
+
+    def _get_tasks_root(self) -> Path:
+        """Return the root directory that contains task.json configs."""
+        return Path(__file__).resolve().parent / "tasks"
+
+    def _load_task_config_from_tasks_root(self, task_name: str) -> Dict[str, Any]:
+        tasks_root = self._get_tasks_root()
+
+        if not tasks_root.exists():
+            raise FileNotFoundError(f"Tasks directory not found: {tasks_root}")
+
+        for task_path in tasks_root.rglob("task.json"):
+            if task_path.parent.name == "_template":
+                continue
+            try:
+                with open(task_path, "r") as f:
+                    task_config = json.load(f)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON in task config: {task_path}") from exc
+
+            if task_config.get("name") == task_name:
+                return task_config
+
+        raise FileNotFoundError(f"Task config not found for: {task_name}")
+
     def get_task_config(self, task_name: str, task_defaults_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Load a task configuration file and apply any overrides.
         
         Args:
-            task_name: Name of the task config (without .yaml)
+            task_name: Name of the task config
             task_defaults_overrides: Optional dictionary to override task defaults
             
         Returns:
             Task configuration dictionary with overrides applied
         """
-        task_path = self.configs_dir / "tasks" / f"{task_name}.yaml"
-        
-        if not task_path.exists():
-            raise FileNotFoundError(f"Task config not found: {task_path}")
-        
-        with open(task_path, 'r') as f:
-            task_config = yaml.safe_load(f)
+        task_config = self._load_task_config_from_tasks_root(task_name)
         
         # Apply task defaults overrides if provided
         if task_defaults_overrides:
@@ -220,12 +239,25 @@ class ConfigManager:
     
     def list_available_tasks(self) -> list:
         """List all available task configurations."""
-        tasks_dir = self.configs_dir / "tasks"
-        
-        if not tasks_dir.exists():
+        tasks_root = self._get_tasks_root()
+
+        if not tasks_root.exists():
             return []
-        
-        return [f.stem for f in tasks_dir.glob("*.yaml")]
+
+        task_names = []
+        for task_path in tasks_root.rglob("task.json"):
+            if task_path.parent.name == "_template":
+                continue
+            try:
+                with open(task_path, "r") as f:
+                    task_config = json.load(f)
+            except json.JSONDecodeError:
+                continue
+            name = task_config.get("name")
+            if name and name != "template_task":
+                task_names.append(name)
+
+        return sorted(set(task_names))
     
     def expand_task_groups(self, tasks: list, central_config: Dict[str, Any]) -> list:
         """

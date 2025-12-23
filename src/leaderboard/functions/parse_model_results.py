@@ -10,7 +10,7 @@ MODULAR STRUCTURE:
 - New tasks can be easily added by:
   1. Creating a process_<task>_results function
   2. Adding it to get_available_task_processors()
-  3. Creating a task config file in configs/tasks/
+  3. Creating a task config file in src/tasks/<task>/task.json
 """
 
 import os
@@ -31,19 +31,24 @@ def load_config(config_path: str = None) -> Dict:
         return yaml.safe_load(f)
 
 def load_task_config(task_name: str) -> Dict:
-    """Load task-specific configuration from YAML file."""
-    # Try multiple possible paths for the config
-    possible_paths = [
-        Path(__file__).parent.parent.parent / "configs" / "tasks" / f"{task_name}.yaml",
-        Path("configs") / "tasks" / f"{task_name}.yaml",
-        Path("benchy") / "configs" / "tasks" / f"{task_name}.yaml",
-    ]
-    
-    for config_path in possible_paths:
-        if config_path.exists():
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-    
+    """Load task-specific configuration from src/tasks/<task>/task.json."""
+    project_root = Path(__file__).resolve().parents[3]
+    tasks_root = project_root / "src" / "tasks"
+
+    if not tasks_root.exists():
+        return {}
+
+    for config_path in tasks_root.rglob("task.json"):
+        if config_path.parent.name == "_template":
+            continue
+        try:
+            with open(config_path, "r") as f:
+                task_config = json.load(f)
+        except json.JSONDecodeError:
+            continue
+        if task_config.get("name") == task_name:
+            return task_config
+
     return {}
 
 def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:

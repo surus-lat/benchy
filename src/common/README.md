@@ -6,8 +6,6 @@ This directory contains shared utilities for benchmark tasks.
 
 Common utilities provide reusable building blocks for:
 - Dataset downloading and preprocessing
-- Checkpoint management for resumable benchmarks
-- File I/O operations
 
 These utilities are task-agnostic and can be used across all benchmark implementations.
 
@@ -72,84 +70,6 @@ processed = [preprocess(s) for s in samples]
 save_to_jsonl(processed, Path("./data/processed.jsonl"))
 ```
 
-### checkpoint_utils.py
-
-Checkpoint management for resumable benchmarks.
-
-**Functions:**
-
-```python
-def get_checkpoint_path(
-    output_dir: str,
-    model_name: str,
-    task_name: str
-) -> Path
-```
-Get standardized checkpoint file path.
-
-```python
-def get_config_hash(config_dict: Dict[str, Any]) -> str
-```
-Generate MD5 hash of configuration for validation.
-
-```python
-def save_checkpoint(
-    path: Path,
-    completed_ids: List[str],
-    config_hash: str
-) -> None
-```
-Save checkpoint with completed sample IDs.
-
-```python
-def load_checkpoint(
-    path: Path,
-    expected_config_hash: str
-) -> Set[str]
-```
-Load and validate checkpoint. Returns set of completed sample IDs.
-
-**Usage Example:**
-
-```python
-from src.common.checkpoint_utils import (
-    get_checkpoint_path,
-    get_config_hash,
-    save_checkpoint,
-    load_checkpoint
-)
-
-# Setup checkpoint
-checkpoint_path = get_checkpoint_path(
-    output_dir="./results",
-    model_name="my-model",
-    task_name="my_task"
-)
-
-config_hash = get_config_hash({
-    "model": "my-model",
-    "temperature": 0.0,
-    "batch_size": 20,
-})
-
-# Load existing checkpoint
-completed_ids = load_checkpoint(checkpoint_path, config_hash)
-
-# Process samples (skip completed)
-for sample in samples:
-    if sample["id"] not in completed_ids:
-        # Process sample
-        completed_ids.add(sample["id"])
-        
-        # Periodic checkpoint
-        if len(completed_ids) % 50 == 0:
-            save_checkpoint(
-                checkpoint_path,
-                list(completed_ids),
-                config_hash
-            )
-```
-
 ## Best Practices
 
 **Dataset Utilities:**
@@ -157,23 +77,3 @@ for sample in samples:
 2. Implement task-specific preprocessing logic separately
 3. Save preprocessed data to JSONL for faster loading
 4. Use `iterate_samples()` with `limit` for testing
-
-**Checkpoint Utilities:**
-1. Include all relevant config in hash (model, temperature, etc.)
-2. Checkpoint every 50-100 samples for long benchmarks
-3. Delete checkpoint file on successful completion
-4. Handle config changes gracefully (checkpoint invalidation)
-
-**Task-Specific vs Common:**
-- **Common**: Generic file I/O, dataset downloading, checkpointing
-- **Task-Specific**: Dataset schema validation, metric calculation, prompt formatting
-
-## Contributing
-
-When adding new utilities:
-1. Keep functions simple and focused
-2. Add type hints to all parameters and return values
-3. Document with clear docstrings
-4. Avoid task-specific logic
-5. Test with multiple tasks before committing
-

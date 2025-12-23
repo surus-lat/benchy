@@ -132,21 +132,24 @@ The metrics system applies smart normalization before comparison:
 
 ### Task Configuration
 
-Task-level configuration (typically in `configs/tasks/image_extraction.yaml`):
+Task-level configuration (typically in `src/tasks/image_extraction/task.json`):
 
-```yaml
-source_dir: /path/to/data  # Optional: copy data from here
-
-prompts:
-  system: "Extract structured data from the document image."
-  user: "Extract data following this schema:"
-
-# Task-level metrics config (optional, can be overridden by dataset config)
-metrics:
-  partial_matching:
-    string:
-      exact_threshold: 0.85
-      partial_threshold: 0.40
+```json
+{
+  "source_dir": "/path/to/data",
+  "prompts": {
+    "system": "Extract structured data from the document image.",
+    "user": "Extract data following this schema:"
+  },
+  "metrics": {
+    "partial_matching": {
+      "string": {
+        "exact_threshold": 0.85,
+        "partial_threshold": 0.4
+      }
+    }
+  }
+}
 ```
 
 ### Dataset-Specific Configuration
@@ -224,5 +227,4 @@ for sample in task.get_samples(limit=10):
     # ... run model inference ...
     metrics = task.calculate_metrics(prediction, sample['expected'], sample)
 ```
-
 

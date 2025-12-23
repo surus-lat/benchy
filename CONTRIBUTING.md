@@ -55,36 +55,37 @@ def run_spanish_evaluation(
 
 #### Task Configuration System
 
-Each task is configured through YAML files in `configs/tasks/`:
+Each task is configured through JSON files in `src/tasks/<task>/task.json`:
 
-```yaml
-# configs/tasks/my_new_task.yaml
-name: "my_new_task"
-description: "Description of what this task evaluates"
+```json
+{
+  "name": "my_new_task",
+  "description": "Description of what this task evaluates",
 
-# Task-specific parameters
-tasks:
-  - "subtask_a"
-  - "subtask_b"
+  "tasks": [
+    "subtask_a",
+    "subtask_b"
+  ],
 
-# Default evaluation parameters
-defaults:
-  batch_size: 20
-  log_samples: false
-  temperature: 0.0
-  max_tokens: 512
-  timeout: 120
-  max_retries: 3
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 512,
+    "timeout": 120,
+    "max_retries": 3
+  },
 
-# Output configuration
-output:
-  subdirectory: "my_new_task"  # Will be appended to main output path
+  "output": {
+    "subdirectory": "my_new_task"
+  }
+}
 ```
 
 #### Adding a New Task to the Pipeline
 
-1. **Implement task processor** in `src/tasks/my_task.py`
-2. **Create task config** in `configs/tasks/my_task.yaml`
+1. **Implement task processor** in `src/tasks/my_task/`
+2. **Create task config** in `src/tasks/my_task/task.json`
 3. **Add to pipeline** in `src/pipeline.py`
 4. **Update task registry** in `src/leaderboard/functions/parse_model_results.py`
 
@@ -157,14 +158,14 @@ Before coding, please:
 
 1. **Create task configuration**:
    ```bash
-   # Create new task config
-   cp configs/tasks/spanish.yaml configs/tasks/my_new_task.yaml
-   # Edit the configuration
+   # Create new task folder from the template
+   cp -r src/tasks/_template src/tasks/my_new_task
+   # Edit src/tasks/my_new_task/task.json
    ```
 
 2. **Implement task processor**:
    ```python
-   # src/tasks/my_new_task.py
+   # src/tasks/my_new_task/run.py
    @task()
    def run_my_new_task_evaluation(
        model_name: str,
