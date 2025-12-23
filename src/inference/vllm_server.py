@@ -77,26 +77,6 @@ def kill_existing_vllm_processes(model_name: str, port: int = 8000) -> None:
         logger.info("No existing vLLM processes found")
 
 
-def kill_lm_eval_processes() -> None:
-    """Kill any running lm_eval processes owned by current user."""
-    current_user = os.getenv('USER', '')
-    killed_count = 0
-    
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username']):
-        try:
-            if (proc.info['username'] == current_user and proc.info['cmdline']):
-                cmdline = ' '.join(proc.info['cmdline'])
-                if 'lm_eval' in cmdline or 'lm-evaluation-harness' in cmdline:
-                    logger.info(f"Terminating lm_eval process (PID: {proc.info['pid']})")
-                    proc.terminate()
-                    killed_count += 1
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
-    
-    if killed_count > 0:
-        logger.info(f"Terminated {killed_count} lm_eval process(es)")
-
-
 @task(cache_policy=NO_CACHE)
 def start_vllm_server(
     model_name: str,
@@ -123,7 +103,10 @@ def start_vllm_server(
     config_format: Optional[str] = None,
     load_format: Optional[str] = None,
     tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = False,
+    kv_cache_dtype: Optional[str] = None,
+    kv_offloading_size: Optional[int] = None,
+    skip_mm_profiling: bool = False
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
@@ -153,6 +136,9 @@ def start_vllm_server(
         load_format: Load format (e.g., "mistral")
         tool_call_parser: Tool call parser (e.g., "mistral")
         enable_auto_tool_choice: Enable auto tool choice (default: False)
+        kv_cache_dtype: KV cache data type (e.g., "fp8")
+        kv_offloading_size: KV cache offloading size in GB
+        skip_mm_profiling: Skip multimodal profiling (default: False)
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
@@ -235,6 +221,16 @@ def start_vllm_server(
     
     if enable_auto_tool_choice:
         cmd_parts.append("--enable-auto-tool-choice")
+    
+    # Add KV cache optimization parameters
+    if kv_cache_dtype:
+        cmd_parts.extend(["--kv-cache-dtype", kv_cache_dtype])
+    
+    if kv_offloading_size is not None:
+        cmd_parts.extend(["--kv-offloading-size", str(kv_offloading_size)])
+    
+    if skip_mm_profiling:
+        cmd_parts.append("--skip-mm-profiling")
     
     # Add performance optimization parameters
     if max_num_seqs is not None:

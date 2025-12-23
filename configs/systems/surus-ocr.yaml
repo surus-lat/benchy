@@ -1,0 +1,34 @@
+# SURUS AI /ocr endpoint configuration for image extraction
+# Tests multimodal (vision) capabilities with structured output
+
+# System identification
+system_name: "surus-ocr"
+provider_type: "surus_ocr"
+
+# SURUS OCR configuration
+surus_ocr:
+  endpoint: "https://api.surus.dev/functions/v1/ocr"
+  api_key_env: "SURUS_API_KEY"
+  timeout: 60  # Longer timeout for image processing
+  max_retries: 3
+
+# Model configuration (for tracking purposes)
+model:
+  name: "surus-ocr"  # System identifier, not the backend model
+
+# Tasks to run (only image extraction compatible)
+tasks:
+  - "image_extraction"
+
+# Task defaults
+task_defaults:
+  log_samples: true
+
+# Task-specific configuration
+image_extraction:
+  defaults:
+    batch_size: 5  # Conservative for image uploads
+    log_samples: true
+    timeout: 60
+    max_retries: 3
+

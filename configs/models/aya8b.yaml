@@ -6,4 +6,8 @@ vllm:
   overrides: {}
 
 tasks:
-  - "latam_board"
+  - "spanish"
+  - "structured_extraction"
+  
+task_defaults:
+  log_samples: true

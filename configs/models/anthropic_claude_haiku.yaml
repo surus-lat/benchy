@@ -1,0 +1,17 @@
+model:
+  name: claude-haiku-4-5-20251001
+anthropic:
+  provider_config: anthropic_cloud
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+task_defaults:
+  log_samples: true
+tasks:
+- structured_extraction
+metadata:
+  provider: anthropic
+  model_type: claude_haiku
+  is_cloud: true
+
+

@@ -1,0 +1,13 @@
+# Anthropic (Claude) Cloud API Provider Configuration
+api_key_env: ANTHROPIC_API_KEY  # Environment variable containing API key
+base_url: https://api.anthropic.com
+timeout: 120
+max_retries: 3
+temperature: 0.0
+max_tokens: 4096
+api_version: "2023-06-01"  # Anthropic API version
+
+# API endpoint selection (Anthropic only supports messages/chat format)
+api_endpoint: "chat"  # Anthropic uses messages API (similar to chat completions)
+
+

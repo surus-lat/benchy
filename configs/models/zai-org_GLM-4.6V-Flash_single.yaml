@@ -1,0 +1,30 @@
+model:
+  name: zai-org/GLM-4.6V-Flash
+vllm:
+  provider_config: vllm_single_card
+  overrides:
+    max_model_len: 12000
+    enable_auto_tool_choice: true
+    max_num_seqs: 16
+    kv_cache_dtype: fp8
+    kv_offloading_size: 8
+    skip_mm_profiling: true
+    tool_call_parser: glm45
+    gpu_memory_utilization: 0.95
+    port: 20502
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"images": 0, "audios": 0}'
+task_defaults:
+  log_samples: true
+  cuda_devices: '2'
+tasks:
+- image_extraction
+metadata:
+  max_context_length: 12000
+  is_multimodal: true
+  model_type: glm46v
+  detected_from_config: true
+  generated_at: '2025-01-27T00:00:00.000000'
+  gpu_type: single
+
+
