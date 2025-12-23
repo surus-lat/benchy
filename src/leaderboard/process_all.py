@@ -28,7 +28,7 @@ from leaderboard.functions.copy_reference_files import copy_reference_files
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Process LM-Evaluation-Harness results and generate leaderboard",
+        description="Process Benchy results and generate leaderboard",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -89,7 +89,7 @@ def main():
     # Parse command line arguments
     args = parse_args()
     
-    print("🚀 Starting LM-Evaluation-Harness Results Processing Pipeline")
+    print("🚀 Starting Benchy Results Processing Pipeline")
     print("=" * 70)
     
     # Load configuration

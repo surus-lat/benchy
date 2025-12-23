@@ -39,13 +39,7 @@ def signal_handler(signum, frame):
     logger.info(f"Received signal {signum}. Cleaning up...")
     
     # Import here to avoid circular dependency
-    from src.inference.vllm_server import stop_vllm_server, kill_lm_eval_processes
-    
-    # Kill lm-harness processes first
-    try:
-        kill_lm_eval_processes()
-    except Exception as e:
-        logger.warning(f"Error killing lm_eval processes: {e}")
+    from src.inference.vllm_server import stop_vllm_server
     
     # Stop vLLM server
     if _active_server_info is not None:

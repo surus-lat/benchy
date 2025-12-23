@@ -62,20 +62,19 @@ Each task is configured through YAML files in `configs/tasks/`:
 name: "my_new_task"
 description: "Description of what this task evaluates"
 
-# Task-specific parameters 
-#Our tasks curretly use lm-evaluation-harness, but these section can change
-task_name: "my_custom_benchmark"
-lm_eval_path: "/path/to/evaluation/suite"
-tokenizer_backend: "huggingface"
+# Task-specific parameters
+tasks:
+  - "subtask_a"
+  - "subtask_b"
 
 # Default evaluation parameters
 defaults:
-  batch_size: "4"
-  log_samples: true
-  cache_requests: true
-  trust_remote_code: false
-  num_concurrent: 8
-  max_length: 2048
+  batch_size: 20
+  log_samples: false
+  temperature: 0.0
+  max_tokens: 512
+  timeout: 120
+  max_retries: 3
 
 # Output configuration
 output:
@@ -89,44 +88,13 @@ output:
 3. **Add to pipeline** in `src/pipeline.py`
 4. **Update task registry** in `src/leaderboard/functions/parse_model_results.py`
 
-### LM-Evaluation-Harness Integration
+### Benchy Task Structure
 
-#### Current Repositories
+Each Benchy task consists of:
 
-- **`lm-evaluation-surus`**: Up-to-date with EleutherAI upstream, **preferred for new tasks**
-- **`portuguese-bench`**: Fork of the open Portuguese leaderboard
-
-#### How LM-Evaluation-Harness Tasks Work
-
-Each task consists of:
-
-1. **Dataset**: JSON/JSONL files with input-output pairs
-2. **Metric**: Function to calculate scores (accuracy, F1, BLEU, etc.)
-3. **Task Definition**: YAML configuration defining the evaluation
-
-Example task structure:
-```
-my_task/
-├── my_task.yaml          # Task definition
-├── my_task.jsonl         # Dataset
-└── my_task_metric.py     # Custom metric (if needed)
-```
-
-#### LM-Evaluation-Harness task Definition Example
-
-```yaml
-# my_task.yaml
-task: my_task
-dataset_path: my_task
-test_split: test
-output_type: generate_until
-metric_list:
-  - metric: exact_match
-  - metric: f1_score
-generation_kwargs:
-  max_gen_tok: 100
-  temperature: 0.0
-```
+1. **Dataset loader**: Downloads/preprocesses data into JSONL
+2. **Task class**: Implements `load()`, `get_samples()`, `get_prompt()`, and metrics
+3. **Run wrapper**: Prefect task that wires the generic engine
 
 ### Other Evaluation Tools
 
