@@ -46,10 +46,6 @@ source .venv/bin/activate
 uv pip install -e .
 echo "✅ Root repository setup complete!"
 
-# Setup external modules
-setup_venv "external/lm-evaluation-harness" "uv pip install -e .[api]" "lm-evaluation-harness"
-setup_venv "external/portuguese-bench" "uv pip install -e \".[anthropic,openai,sentencepiece]\"" "portuguese-bench"
-
 # Download structured extraction dataset
 echo ""
 echo "📊 Setting up structured extraction dataset..."
@@ -69,6 +65,4 @@ echo ""
 echo "To activate the main environment:"
 echo "  source .venv/bin/activate"
 echo ""
-echo "To activate external environments:"
-echo "  source external/lm-evaluation-harness/.venv/bin/activate"
-echo "  source external/portuguese-bench/.venv/bin/activate"
+echo "No additional external environments are required."

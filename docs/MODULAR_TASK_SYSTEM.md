@@ -72,7 +72,7 @@ def run_your_new_task_evaluation(
     
     # Your task implementation here
     # This could involve:
-    # - Running lm-evaluation-harness
+    # - Running Benchy's BenchmarkRunner
     # - Custom evaluation logic
     # - Processing results
     
@@ -116,7 +116,7 @@ if "your_new_task" in tasks:
 
 ### 4. Update Results Gathering
 
-Update the `gather_results` function in `src/tasks/lm_harness.py` to include your new task results.
+No extra wiring is required beyond adding the task to the pipeline. The pipeline collects task results in `task_results` and returns them as part of the run output.
 
 ## Results Reporting for the Leaderboard
 
@@ -167,9 +167,9 @@ leaderboard:
 ### 4. Available Processors
 
 #### `standard_results_processor`
-- For tasks that follow the standard LM-Evaluation-Harness results format
+- For tasks that follow the standard Benchy results format
 - Automatically extracts scores from `results_*.json` files
-- Works with any task that has the standard structure
+- Works with any task that saves results via `save_results()`
 
 #### `portuguese_results_processor`
 - Specialized for Portuguese tasks

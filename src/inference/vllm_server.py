@@ -77,26 +77,6 @@ def kill_existing_vllm_processes(model_name: str, port: int = 8000) -> None:
         logger.info("No existing vLLM processes found")
 
 
-def kill_lm_eval_processes() -> None:
-    """Kill any running lm_eval processes owned by current user."""
-    current_user = os.getenv('USER', '')
-    killed_count = 0
-    
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username']):
-        try:
-            if (proc.info['username'] == current_user and proc.info['cmdline']):
-                cmdline = ' '.join(proc.info['cmdline'])
-                if 'lm_eval' in cmdline or 'lm-evaluation-harness' in cmdline:
-                    logger.info(f"Terminating lm_eval process (PID: {proc.info['pid']})")
-                    proc.terminate()
-                    killed_count += 1
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
-    
-    if killed_count > 0:
-        logger.info(f"Terminated {killed_count} lm_eval process(es)")
-
-
 @task(cache_policy=NO_CACHE)
 def start_vllm_server(
     model_name: str,

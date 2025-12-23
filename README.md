@@ -26,8 +26,6 @@ A modular benchmarking suite for evaluating Large Language Models (LLMs) on Span
 - Sufficient disk space for model downloads and outputs
 
 ### External Dependencies
-- **lm-evaluation-harness**: For Spanish task evaluations
-- **Portuguese benchmark suite**: For Portuguese task evaluations
 - **Prefect server**: Running in Docker container (recommended port 4200)
 
 ## 🛠️ Installation
@@ -45,19 +43,7 @@ A modular benchmarking suite for evaluating Large Language Models (LLMs) on Span
    bash setup.sh
 
    # ALTERNATIVE: Using uv
-   
-   # Main repo
    uv sync
-   
-   # SURUS LM harness 
-   cd external/lm-evaluation-harness
-   uv venv
-   uv pip install -e .[api]
-   
-   # Portuguese bench
-   cd external/portuguese-bench
-   uv venv
-   uv pip install -e ".[anthropic,openai,sentencepiece]"
    ```
 
 3. **Start Prefect server** (Docker recommended):
@@ -292,7 +278,7 @@ benchy/
 │   └── logging_utils.py   # Logging utilities
 ├── outputs/              # Evaluation results
 ├── logs/                # Log files
-├── external/            # External dependencies
+├── external/            # Legacy resources (optional)
 ├── eval.py             # Main entry point
 └── scripts/            # Utility scripts
 ```
@@ -304,11 +290,11 @@ benchy/
 1. Create task config in `configs/tasks/`:
 ```yaml
 # configs/tasks/my_task.yaml
-task_name: "my_custom_task"
-lm_eval_path: "/path/to/evaluation/suite"
+name: "my_custom_task"
+description: "Describe the new task"
 defaults:
-  batch_size: "4"
-  num_concurrent: 8
+  batch_size: 20
+  log_samples: false
 ```
 
 2. Add task to model config:
@@ -418,7 +404,6 @@ python eval.py --verbose --config configs/single_card/qwen34b.yaml --limit 5
 
 ## 🙏 Acknowledgments
 
-- [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) for evaluation framework
 - [vLLM](https://github.com/vllm-project/vllm) for efficient model serving
 - [Prefect](https://www.prefect.io/) for workflow orchestration
 - [Surus](https://surus.lat/) for starting this project

@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
-from .tasks.lm_harness import gather_results
 from .tasks.portuguese import run_portuguese
 from .tasks.spanish import run_spanish
 from .tasks.structured import run_structured_extraction
@@ -511,11 +510,11 @@ def benchmark_pipeline(
         task_results["image_extraction"] = image_extraction_results
             
     # Step 4: Gather results
-    gather_result = gather_results(
-        spanish_results=task_results.get("spanish", {}),
-        portuguese_results=task_results.get("portuguese", {}),
-        translation_results=task_results.get("translation", {})
-    )
+    gather_result = {
+        "spanish_results": task_results.get("spanish", {}),
+        "portuguese_results": task_results.get("portuguese", {}),
+        "translation_results": task_results.get("translation", {}),
+    }
     
     # Step 5: Stop vLLM server (cleanup) - only for vLLM
     if provider_type == 'vllm' and server_info:

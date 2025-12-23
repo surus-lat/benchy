@@ -1,6 +1,6 @@
 """Preprocessing utilities for Spanish tasks.
 
-These functions replicate the preprocessing from lm-evaluation-harness utils.py
+These functions replicate legacy preprocessing utilities used in prior evaluations
 but are self-contained in Benchy.
 """
 
@@ -25,7 +25,7 @@ def lowercase_first_letter(text: str) -> str:
 def general_detokenize(text: str) -> str:
     """Detokenize text by removing extra whitespace.
     
-    This is a simplified version of lm-evaluation-harness's general_detokenize.
+    This is a simplified version of the legacy general_detokenize utility.
     It normalizes whitespace in the text.
     
     Args:
@@ -121,7 +121,6 @@ def process_docs_copa_es(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc["choice1"] = lowercase_first_letter(doc.get("choice1", ""))
     doc["choice2"] = lowercase_first_letter(doc.get("choice2", ""))
     return doc
-
 
 
 
