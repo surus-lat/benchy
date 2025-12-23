@@ -266,7 +266,6 @@ benchy/
 ├── configs/                 # Configuration files
 │   ├── config.yaml         # Global settings
 │   ├── providers/          # vLLM provider configs
-│   ├── tasks/              # Task-specific configs
 │   ├── single_card/        # Pre-configured model configs (15+ models)
 │   └── templates/          # Example configs
 ├── src/                   # Source code
@@ -287,14 +286,16 @@ benchy/
 
 ### Adding New Tasks
 
-1. Create task config in `configs/tasks/`:
-```yaml
-# configs/tasks/my_task.yaml
-name: "my_custom_task"
-description: "Describe the new task"
-defaults:
-  batch_size: 20
-  log_samples: false
+1. Create task config in `src/tasks/my_task/task.json`:
+```json
+{
+  "name": "my_custom_task",
+  "description": "Describe the new task",
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false
+  }
+}
 ```
 
 2. Add task to model config:

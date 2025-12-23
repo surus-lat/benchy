@@ -6,37 +6,34 @@ The Benchy system has been designed to be modular and easily extensible for addi
 
 ### 1. Create Task Configuration
 
-Create a new task configuration file at `configs/tasks/your_new_task.yaml`:
+Create a new task configuration file at `src/tasks/your_new_task/task.json`:
 
-```yaml
-# configs/tasks/your_new_task.yaml
-name: "your_new_task"
-description: "Description of your new task"
-
-# Task-specific configuration
-task_config:
-  # Add your task-specific settings here
-  dataset: "your_dataset"
-  metrics: ["accuracy", "f1"]
-  
-# Output configuration
-output:
-  subdirectory: "your_new_task"  # Directory name for results
-  format: "json"  # Output format
-
-# Default evaluation settings
-defaults:
-  batch_size: 4
-  limit: null
-  log_samples: false
+```json
+{
+  "name": "your_new_task",
+  "description": "Description of your new task",
+  "task_configs": {
+    "default": {
+      "dataset": "your_dataset",
+      "metrics": ["accuracy", "f1"]
+    }
+  },
+  "output": {
+    "subdirectory": "your_new_task"
+  },
+  "defaults": {
+    "batch_size": 4,
+    "log_samples": false
+  }
+}
 ```
 
 ### 2. Create Task Implementation
 
-Create a new task function in `src/tasks/your_new_task.py`:
+Create a new task function in `src/tasks/your_new_task/run.py`:
 
 ```python
-# src/tasks/your_new_task.py
+# src/tasks/your_new_task/run.py
 from prefect import task
 from typing import Dict, Any
 import logging

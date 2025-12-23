@@ -50,49 +50,49 @@ The BenchmarkRunner bridges tasks and interfaces.
 
 ## Adding a New Task
 
-### 1. Create Task Config (`configs/tasks/my_task.yaml`)
+### 1. Create Task Config (`src/tasks/my_task/task.json`)
 
-```yaml
-name: "my_task"
-description: "Brief description of what this task evaluates"
-
-# Optional subtasks (for multi-dataset tasks)
-tasks:
-  - "subtask1"
-  - "subtask2"
-
-task_configs:
-  subtask1:
-    dataset_file: "subtask1_data.jsonl"
-    dataset_name: "org/dataset-name"  # HuggingFace dataset
-
-# Prompt templates
-prompts:
-  system: |
-    You are a helpful assistant for [task description].
-  user: |
-    Input:
-    {text}
-    
-    Please respond with [expected format].
-
-# Evaluation parameters (if required)
-defaults:
-  batch_size: 20
-  log_samples: false
-  temperature: 0.0
-  max_tokens: 2048
-  timeout: 120
-  max_retries: 3
-
-# Task-specific metrics config (optional)
-metrics:
-  my_metric:
-    threshold: 0.5
-
-output:
-  subdirectory: "my_task"
+```json
+{
+  "name": "my_task",
+  "description": "Brief description of what this task evaluates",
+  "tasks": [
+    "subtask1",
+    "subtask2"
+  ],
+  "task_configs": {
+    "subtask1": {
+      "dataset_file": "subtask1_data.jsonl",
+      "dataset_name": "org/dataset-name"
+    }
+  },
+  "prompts": {
+    "system": "You are a helpful assistant for [task description].",
+    "user": "Input:\n{text}\n\nPlease respond with [expected format]."
+  },
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 2048,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "metrics": {
+    "my_metric": {
+      "threshold": 0.5
+    }
+  },
+  "output": {
+    "subdirectory": "my_task"
+  },
+  "metrics_manifest": [
+    "my_metric"
+  ]
+}
 ```
+
+`metrics_manifest` lists the aggregate metric keys to surface in `run_summary.json`.
 
 ### 2. Create Task Class (`src/tasks/my_task/task.py`)
 
@@ -534,7 +534,7 @@ def get_error_metrics(self, error: str, error_type: Optional[str] = None):
 
 ## Quick Checklist
 
-- [ ] Create `configs/tasks/my_task.yaml`
+- [ ] Create `src/tasks/my_task/task.json`
 - [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
 - [ ] Implement `get_error_metrics()` for error handling
 - [ ] Set `answer_type` and `requires_logprobs` if applicable

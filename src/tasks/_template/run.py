@@ -46,7 +46,7 @@ def run_template_task(
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
         api_test_result: API test result (unused, kept for interface compatibility)
-        task_config: Task configuration from configs/tasks/
+        task_config: Task configuration from src/tasks/<task>/task.json
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused)
         provider_config: Provider configuration (for cloud providers)

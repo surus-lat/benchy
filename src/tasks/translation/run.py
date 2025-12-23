@@ -47,7 +47,7 @@ def run_translation(
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
         api_test_result: API test result (unused, for interface compatibility)
-        task_config: Task configuration from configs/tasks/translation.yaml
+        task_config: Task configuration from src/tasks/translation/task.json
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused for this task)
         provider_config: Provider configuration (for cloud providers)
@@ -588,4 +588,3 @@ def _save_aggregated_summary(
         f.write("=" * 60 + "\n")
     
     logger.info(f"Saved text summary to {text_file}")
-

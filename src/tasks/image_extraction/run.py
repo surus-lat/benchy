@@ -42,7 +42,7 @@ def run_image_extraction(
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
         api_test_result: API test result (unused, for interface compatibility)
-        task_config: Task configuration from configs/tasks/image_extraction.yaml
+        task_config: Task configuration from src/tasks/image_extraction/task.json
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused for this task)
         provider_config: Provider configuration (for cloud providers)
@@ -126,4 +126,3 @@ def run_image_extraction(
         "output_path": str(task_output_path),
         "metrics": results.get('aggregate_metrics', {}),
     }
-
