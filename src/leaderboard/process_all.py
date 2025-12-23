@@ -24,6 +24,7 @@ sys.path.insert(0, str(src_dir))
 from leaderboard.functions.parse_model_results import parse_model_results
 from leaderboard.functions.generate_leaderboard_table import generate_leaderboard_table
 from leaderboard.functions.copy_reference_files import copy_reference_files
+from leaderboard.functions.generate_reference_files import generate_reference_files
 
 def parse_args():
     """Parse command line arguments."""
@@ -166,15 +167,25 @@ def main():
         print("❌ Pipeline failed at Step 2")
         return False
     
-    # Step 3: Copy reference files to publish directory
+    # Step 3: Generate reference files from task configs
+    success = run_function(
+        generate_reference_files,
+        "Step 3: Generating reference files from task configs",
+        config["paths"]["reference_dir"]
+    )
+    if not success:
+        print("❌ Pipeline failed at Step 3")
+        return False
+
+    # Step 4: Copy reference files to publish directory
     success = run_function(
         copy_reference_files,
-        "Step 3: Copying reference files to publish directory",
+        "Step 4: Copying reference files to publish directory",
         config["paths"]["reference_dir"],
         publish_dir
     )
     if not success:
-        print("❌ Pipeline failed at Step 3")
+        print("❌ Pipeline failed at Step 4")
         return False
     
     # Pipeline completed successfully

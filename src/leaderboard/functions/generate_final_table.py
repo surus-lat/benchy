@@ -50,9 +50,12 @@ def create_model_row(model_name: str, model_data: Dict[str, Any]) -> Dict[str, A
             row[f"spanish_{task_name}"] = task_data.get("score")
         
         # Teleia subcategory
-        if "teleia" in task_scores:
-            row["teleia_score"] = task_scores["teleia"]["score"]
-            
+        teleia_score = task_scores.get("teleia")
+        if teleia_score is None:
+            teleia_score = span_data.get("category_scores", {}).get("teleia")
+        if teleia_score:
+            row["teleia_score"] = teleia_score.get("score")
+
             # Individual Teleia tasks
             teleia_tasks = ["teleia_cervantes_ave", "teleia_pce", "teleia_siele"]
             for task in teleia_tasks:
