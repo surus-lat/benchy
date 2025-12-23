@@ -6,37 +6,34 @@ The Benchy system has been designed to be modular and easily extensible for addi
 
 ### 1. Create Task Configuration
 
-Create a new task configuration file at `configs/tasks/your_new_task.yaml`:
+Create a new task configuration file at `src/tasks/your_new_task/task.json`:
 
-```yaml
-# configs/tasks/your_new_task.yaml
-name: "your_new_task"
-description: "Description of your new task"
-
-# Task-specific configuration
-task_config:
-  # Add your task-specific settings here
-  dataset: "your_dataset"
-  metrics: ["accuracy", "f1"]
-  
-# Output configuration
-output:
-  subdirectory: "your_new_task"  # Directory name for results
-  format: "json"  # Output format
-
-# Default evaluation settings
-defaults:
-  batch_size: 4
-  limit: null
-  log_samples: false
+```json
+{
+  "name": "your_new_task",
+  "description": "Description of your new task",
+  "task_configs": {
+    "default": {
+      "dataset": "your_dataset",
+      "metrics": ["accuracy", "f1"]
+    }
+  },
+  "output": {
+    "subdirectory": "your_new_task"
+  },
+  "defaults": {
+    "batch_size": 4,
+    "log_samples": false
+  }
+}
 ```
 
 ### 2. Create Task Implementation
 
-Create a new task function in `src/tasks/your_new_task.py`:
+Create a new task function in `src/tasks/your_new_task/run.py`:
 
 ```python
-# src/tasks/your_new_task.py
+# src/tasks/your_new_task/run.py
 from prefect import task
 from typing import Dict, Any
 import logging
@@ -72,7 +69,7 @@ def run_your_new_task_evaluation(
     
     # Your task implementation here
     # This could involve:
-    # - Running lm-evaluation-harness
+    # - Running Benchy's BenchmarkRunner
     # - Custom evaluation logic
     # - Processing results
     
@@ -96,7 +93,7 @@ from .tasks.your_new_task import run_your_new_task_evaluation
 if "your_new_task" in tasks:
     logger.info("Running your new task evaluation...")
     your_new_task_config = config_manager.get_task_config("your_new_task", task_defaults_overrides)
-    your_new_task_config['use_chat_completions'] = use_chat_completions
+    your_new_task_config['api_endpoint'] = api_endpoint
     your_new_task_config['generation_config'] = generation_config
     
     if log_setup:
@@ -116,7 +113,7 @@ if "your_new_task" in tasks:
 
 ### 4. Update Results Gathering
 
-Update the `gather_results` function in `src/tasks/lm_harness.py` to include your new task results.
+No extra wiring is required beyond adding the task to the pipeline. The pipeline collects task results in `task_results` and returns them as part of the run output.
 
 ## Results Reporting for the Leaderboard
 
@@ -167,9 +164,9 @@ leaderboard:
 ### 4. Available Processors
 
 #### `standard_results_processor`
-- For tasks that follow the standard LM-Evaluation-Harness results format
+- For tasks that follow the standard Benchy results format
 - Automatically extracts scores from `results_*.json` files
-- Works with any task that has the standard structure
+- Works with any task that saves results via `save_results()`
 
 #### `portuguese_results_processor`
 - Specialized for Portuguese tasks

@@ -1,0 +1,18 @@
+# Together AI API Provider Configuration
+# OpenAI-compatible API for accessing hosted models
+
+provider_type: together
+base_url: "https://api.together.xyz/v1"
+api_key_env: "TOGETHER_API_KEY"  # Environment variable to read API key from
+timeout: 120
+max_retries: 3
+
+# Rate limiting to avoid 429 errors
+# Together AI has rate limits, keep concurrent requests low
+max_concurrent: 3
+
+# Default generation parameters (can be overridden in model config)
+temperature: 0.0
+max_tokens: 4096
+
+

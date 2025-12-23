@@ -10,13 +10,13 @@ MODULAR STRUCTURE:
 - New tasks can be easily added by:
   1. Creating a process_<task>_results function
   2. Adding it to get_available_task_processors()
-  3. Creating a task config file in configs/tasks/
+  3. Creating a task config file in src/tasks/<task>/task.json
 """
 
 import os
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import yaml
 
 def load_config(config_path: str = None) -> Dict:
@@ -31,19 +31,24 @@ def load_config(config_path: str = None) -> Dict:
         return yaml.safe_load(f)
 
 def load_task_config(task_name: str) -> Dict:
-    """Load task-specific configuration from YAML file."""
-    # Try multiple possible paths for the config
-    possible_paths = [
-        Path(__file__).parent.parent.parent / "configs" / "tasks" / f"{task_name}.yaml",
-        Path("configs") / "tasks" / f"{task_name}.yaml",
-        Path("benchy") / "configs" / "tasks" / f"{task_name}.yaml",
-    ]
-    
-    for config_path in possible_paths:
-        if config_path.exists():
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-    
+    """Load task-specific configuration from src/tasks/<task>/task.json."""
+    project_root = Path(__file__).resolve().parents[3]
+    tasks_root = project_root / "src" / "tasks"
+
+    if not tasks_root.exists():
+        return {}
+
+    for config_path in tasks_root.rglob("task.json"):
+        if config_path.parent.name == "_template":
+            continue
+        try:
+            with open(config_path, "r") as f:
+                task_config = json.load(f)
+        except json.JSONDecodeError:
+            continue
+        if task_config.get("name") == task_name:
+            return task_config
+
     return {}
 
 def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
@@ -187,6 +192,141 @@ def extract_scores_from_results(results_data: Dict, task_name: str = None, norma
         "evaluation_time": "unknown"
     }
 
+
+def _load_latest_summary(task_dir: Path) -> Optional[Dict[str, Any]]:
+    """Load the most recent *_summary.json file from a task directory."""
+    summary_files = sorted(task_dir.glob("*_summary.json"))
+    if not summary_files:
+        return None
+    summary_file = summary_files[-1]
+    try:
+        with open(summary_file, "r") as f:
+            return json.load(f)
+    except Exception as exc:
+        print(f"    Warning: Failed to read summary {summary_file.name}: {exc}")
+        return None
+
+
+def _select_primary_metric(metrics: Dict[str, Any], preferred: Optional[str] = None) -> Tuple[Optional[str], Optional[float]]:
+    """Pick a primary metric from a metrics dictionary."""
+    if preferred and isinstance(metrics.get(preferred), (int, float)):
+        return preferred, float(metrics[preferred])
+
+    priority = [
+        "acc",
+        "exact_match",
+        "f1_macro",
+        "pearson",
+        "comet",
+        "chrf",
+        "bleu",
+        "overall_extraction_quality_score",
+        "extraction_quality_score",
+        "field_f1_partial",
+        "mse",
+    ]
+    for key in priority:
+        if isinstance(metrics.get(key), (int, float)):
+            return key, float(metrics[key])
+
+    return None, None
+
+
+def _weighted_average(task_scores: Dict[str, Dict[str, Any]], per_task_metrics: Dict[str, Dict[str, Any]]) -> Optional[float]:
+    """Compute a weighted average of task scores using valid_samples."""
+    weighted_sum = 0.0
+    total_weight = 0
+    for task_name, score_data in task_scores.items():
+        score = score_data.get("score")
+        if not isinstance(score, (int, float)):
+            continue
+        weight = per_task_metrics.get(task_name, {}).get("valid_samples")
+        if not isinstance(weight, (int, float)) or weight <= 0:
+            continue
+        weighted_sum += float(score) * float(weight)
+        total_weight += float(weight)
+    if total_weight == 0:
+        return None
+    return weighted_sum / total_weight
+
+
+def _scores_from_summary(
+    summary_data: Dict[str, Any],
+    category_key: Optional[str] = None,
+    primary_metric: Optional[str] = None,
+    subcategories: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Build score payload from summary JSON output."""
+    per_subtask_metrics = summary_data.get("per_subtask_metrics", {}) or {}
+    task_scores: Dict[str, Dict[str, Any]] = {}
+
+    for subtask_name, metrics in per_subtask_metrics.items():
+        metric_name, score = _select_primary_metric(metrics, primary_metric)
+        if score is None:
+            continue
+        task_scores[subtask_name] = {
+            "score": score,
+            "stderr": 0.0,
+            "metric": metric_name,
+            "alias": subtask_name,
+        }
+
+    category_scores: Dict[str, Dict[str, Any]] = {}
+    if category_key:
+        category_score = None
+        aggregated_metrics = summary_data.get("aggregated_metrics", {}) or {}
+        if primary_metric and isinstance(aggregated_metrics.get(primary_metric), (int, float)):
+            category_score = float(aggregated_metrics[primary_metric])
+        else:
+            category_score = _weighted_average(task_scores, per_subtask_metrics)
+
+        if category_score is not None:
+            category_scores[category_key] = {
+                "score": category_score,
+                "stderr": 0.0,
+                "metric": primary_metric or "auto",
+                "alias": category_key,
+            }
+
+    if subcategories:
+        for subcategory in subcategories:
+            sub_name = subcategory.get("name")
+            filter_prefix = subcategory.get("filter_prefix", f"{sub_name}_")
+            subtask_scores = {
+                name: data
+                for name, data in task_scores.items()
+                if name.startswith(filter_prefix)
+            }
+            if not subtask_scores:
+                continue
+            sub_score = _weighted_average(subtask_scores, per_subtask_metrics)
+            if sub_score is None:
+                continue
+            category_scores[sub_name] = {
+                "score": sub_score,
+                "stderr": 0.0,
+                "metric": primary_metric or "auto",
+                "alias": sub_name,
+            }
+
+    overall_score = None
+    if category_scores:
+        main_score = None
+        if category_key and category_key in category_scores:
+            main_score = category_scores[category_key]["score"]
+        else:
+            scores = [data["score"] for data in category_scores.values()]
+            main_score = sum(scores) / len(scores) if scores else None
+        overall_score = main_score
+
+    return {
+        "task_scores": task_scores,
+        "category_scores": category_scores,
+        "top_level_scores": category_scores,
+        "overall_score": overall_score,
+        "evaluation_time": summary_data.get("timestamp", "unknown"),
+    }
+
 def load_tasks_mapping() -> Dict[str, Any]:
     """Load the tasks mapping from tasks.json."""
     tasks_file = Path(__file__).parent.parent / "tasks.json"
@@ -208,6 +348,17 @@ def process_spanish_results(model_dir: Path, model_name: str) -> Optional[Dict[s
     if not spanish_dir.exists():
         print(f"    Warning: Spanish results directory not found: {spanish_dir}")
         return None
+
+    summary_data = _load_latest_summary(spanish_dir)
+    if summary_data:
+        spanish_scores = _scores_from_summary(
+            summary_data,
+            category_key="latam_es",
+            subcategories=[{"name": "teleia", "filter_prefix": "teleia_"}],
+        )
+        spanish_scores["model_name"] = model_name
+        print(f"    ✓ Spanish results processed from summary file")
+        return spanish_scores
     
     # Look for results_*.json files in Spanish directory (including nested subdirectories)
     results_files = list(spanish_dir.rglob("results_*.json"))
@@ -244,6 +395,16 @@ def process_portuguese_results(model_dir: Path, model_name: str) -> Optional[Dic
     if not portuguese_dir.exists():
         print(f"    Warning: Portuguese results directory not found: {portuguese_dir}")
         return None
+
+    summary_data = _load_latest_summary(portuguese_dir)
+    if summary_data:
+        portuguese_scores = _scores_from_summary(
+            summary_data,
+            category_key="latam_pr",
+        )
+        portuguese_scores["model_name"] = model_name
+        print(f"    ✓ Portuguese results processed from summary file")
+        return portuguese_scores
     
     # Look for results.json in Portuguese directory
     results_file = portuguese_dir / "results.json"
@@ -278,6 +439,17 @@ def process_translation_results(model_dir: Path, model_name: str, normalize_task
     if not task_dir.exists():
         print(f"    Warning: Translation results directory not found: {task_dir}")
         return None
+
+    summary_data = _load_latest_summary(task_dir)
+    if summary_data:
+        task_scores = _scores_from_summary(
+            summary_data,
+            category_key="translation",
+            primary_metric="comet",
+        )
+        task_scores["model_name"] = model_name
+        print(f"    ✓ Translation results processed from summary file")
+        return task_scores
     
     # Look for results_*.json files in translation directory (including nested subdirectories)
     results_files = list(task_dir.rglob("results_*.json"))
@@ -315,6 +487,19 @@ def standard_results_processor(model_dir: Path, model_name: str, task_config: Di
     if not task_dir.exists():
         print(f"    Warning: {task_name} results directory not found: {task_dir}")
         return None
+
+    summary_data = _load_latest_summary(task_dir)
+    if summary_data:
+        category_key = task_config.get("category_score_key")
+        subcategories = task_config.get("subcategories", [])
+        task_scores = _scores_from_summary(
+            summary_data,
+            category_key=category_key,
+            subcategories=subcategories,
+        )
+        task_scores["model_name"] = model_name
+        print(f"    ✓ {task_name} results processed from summary file")
+        return task_scores
     
     # Look for results_*.json files
     results_files = list(task_dir.rglob("results_*.json"))
@@ -352,6 +537,17 @@ def portuguese_results_processor(model_dir: Path, model_name: str, task_config: 
     if not task_dir.exists():
         print(f"    Warning: {task_name} results directory not found: {task_dir}")
         return None
+
+    summary_data = _load_latest_summary(task_dir)
+    if summary_data:
+        category_key = task_config.get("category_score_key")
+        task_scores = _scores_from_summary(
+            summary_data,
+            category_key=category_key,
+        )
+        task_scores["model_name"] = model_name
+        print(f"    ✓ {task_name} results processed from summary file")
+        return task_scores
     
     # Look for results.json (Portuguese uses different file pattern)
     results_file = task_dir / "results.json"
@@ -390,6 +586,18 @@ def translation_results_processor(model_dir: Path, model_name: str, task_config:
     if not task_dir.exists():
         print(f"    Warning: {task_name} results directory not found: {task_dir}")
         return None
+
+    summary_data = _load_latest_summary(task_dir)
+    if summary_data:
+        category_key = task_config.get("category_score_key")
+        task_scores = _scores_from_summary(
+            summary_data,
+            category_key=category_key,
+            primary_metric=primary_metric,
+        )
+        task_scores["model_name"] = model_name
+        print(f"    ✓ {task_name} results processed from summary file")
+        return task_scores
     
     # Look for results_*.json files
     results_files = list(task_dir.rglob("results_*.json"))
@@ -429,6 +637,100 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
     if not task_dir.exists():
         print(f"    Warning: {task_name} results directory not found: {task_dir}")
         return None
+
+    summary_data = _load_latest_summary(task_dir)
+    if summary_data:
+        aggregated_metrics = summary_data.get("aggregated_metrics", {}) or {}
+        per_subtask_metrics = summary_data.get("per_subtask_metrics", {}) or {}
+
+        eqs = aggregated_metrics.get("overall_extraction_quality_score")
+        if not isinstance(eqs, (int, float)):
+            eqs = aggregated_metrics.get("extraction_quality_score", 0.0)
+
+        composite_scores = []
+        weights = []
+        for subtask_name, metrics in per_subtask_metrics.items():
+            stats = metrics.get("composite_score_stats", {})
+            mean_score = stats.get("mean")
+            if isinstance(mean_score, (int, float)):
+                weight = metrics.get("valid_samples", 0)
+                if isinstance(weight, (int, float)) and weight > 0:
+                    composite_scores.append(float(mean_score) * float(weight))
+                    weights.append(float(weight))
+
+        composite_mean = sum(composite_scores) / sum(weights) if weights else 0.0
+        schema_validity = aggregated_metrics.get("schema_validity_rate", 0.0)
+        f1_partial = aggregated_metrics.get("field_f1_partial", 0.0)
+        hallucination_rate = aggregated_metrics.get("hallucination_rate", 0.0)
+
+        task_scores = {
+            "extraction_quality_score": {
+                "score": float(eqs) if isinstance(eqs, (int, float)) else 0.0,
+                "stderr": 0.0,
+                "metric": "eqs",
+                "alias": "extraction_quality_score",
+            },
+            "composite_score": {
+                "score": composite_mean,
+                "stderr": 0.0,
+                "metric": "composite_mean",
+                "alias": "composite_score",
+            },
+            "schema_validity": {
+                "score": schema_validity,
+                "stderr": 0.0,
+                "metric": "validity_rate",
+                "alias": "schema_validity",
+            },
+            "field_f1_partial": {
+                "score": f1_partial,
+                "stderr": 0.0,
+                "metric": "f1",
+                "alias": "field_f1_partial",
+            },
+            "hallucination_rate": {
+                "score": hallucination_rate,
+                "stderr": 0.0,
+                "metric": "hallucination_rate",
+                "alias": "hallucination_rate",
+            },
+        }
+
+        category_scores = {
+            "structured_extraction": {
+                "score": float(eqs) if isinstance(eqs, (int, float)) else 0.0,
+                "stderr": 0.0,
+                "metric": "eqs",
+                "alias": "structured_extraction",
+            }
+        }
+
+        report_files = list(task_dir.glob("*_summary.txt"))
+        if not report_files:
+            report_files = list(task_dir.rglob("*_report.txt"))
+        if report_files:
+            report_file = report_files[0]
+            config = load_config()
+            publish_dir = Path(config["paths"]["publish_dir"])
+            summaries_dir = publish_dir / "summaries"
+            summaries_dir.mkdir(parents=True, exist_ok=True)
+
+            safe_model_name = model_name.replace("/", "_").replace("\\", "_")
+            report_dest = summaries_dir / f"{safe_model_name}_structured_extraction_report.txt"
+            shutil.copy2(report_file, report_dest)
+            print(f"    ✓ Report copied to {report_dest.name}")
+
+        result = {
+            "model_name": model_name,
+            "task_scores": task_scores,
+            "category_scores": category_scores,
+            "top_level_scores": category_scores,
+            "overall_score": float(eqs) if isinstance(eqs, (int, float)) else 0.0,
+            "evaluation_time": summary_data.get("timestamp", "unknown"),
+        }
+
+        print(f"    ✓ {task_name} results processed from summary file")
+        return result
     
     # Look for metrics JSON files (structured extraction format)
     metrics_files = list(task_dir.glob("*_metrics.json"))
@@ -446,7 +748,9 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
         metrics = metrics_data.get("metrics", {})
         
         # Get EQS as main metric for leaderboard (better than composite score)
-        eqs = metrics.get("extraction_quality_score", 0.0)
+        # Use overall_extraction_quality_score if available (accounts for invalid responses)
+        # Fall back to extraction_quality_score for backward compatibility
+        eqs = metrics.get("overall_extraction_quality_score", metrics.get("extraction_quality_score", 0.0))
         
         # Get composite score stats for reference
         composite_stats = metrics.get("composite_score_stats", {})

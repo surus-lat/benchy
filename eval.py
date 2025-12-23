@@ -10,6 +10,9 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Set Prefect API URL BEFORE importing Prefect modules
 # This must be done before any Prefect imports
 if 'PREFECT_API_URL' not in os.environ:
@@ -36,13 +39,7 @@ def signal_handler(signum, frame):
     logger.info(f"Received signal {signum}. Cleaning up...")
     
     # Import here to avoid circular dependency
-    from src.inference.vllm_server import stop_vllm_server, kill_lm_eval_processes
-    
-    # Kill lm-harness processes first
-    try:
-        kill_lm_eval_processes()
-    except Exception as e:
-        logger.warning(f"Error killing lm_eval processes: {e}")
+    from src.inference.vllm_server import stop_vllm_server
     
     # Stop vLLM server
     if _active_server_info is not None:
@@ -250,10 +247,48 @@ def main():
     
     # Extract configuration values
     model_name = config['model']['name']
-    vllm_config = config['vllm']
+    provider_type = config.get('provider_type', 'vllm')
     
-    # Use GPU configuration from central config, with vLLM config override
-    cuda_devices = vllm_config.get('cuda_devices', gpu_manager.get_vllm_cuda_devices())
+    # Get provider-specific config based on type
+    if provider_type == 'vllm':
+        provider_config = config.get('vllm', {})
+        vllm_config = provider_config  # Backward compatibility
+        # Use GPU configuration from central config, with vLLM config override
+        cuda_devices = vllm_config.get('cuda_devices', gpu_manager.get_vllm_cuda_devices())
+    elif provider_type == 'openai':
+        provider_config = config.get('openai', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using OpenAI cloud provider for model: {model_name}")
+    elif provider_type == 'anthropic':
+        provider_config = config.get('anthropic', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using Anthropic cloud provider for model: {model_name}")
+    elif provider_type == 'surus':
+        provider_config = config.get('surus', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using SURUS AI provider for extraction tasks")
+    elif provider_type == 'surus_ocr':
+        provider_config = config.get('surus_ocr', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using SURUS AI OCR provider for image extraction tasks")
+    elif provider_type == 'surus_factura':
+        provider_config = config.get('surus_factura', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using SURUS AI Factura provider for image extraction tasks")
+    elif provider_type == 'together':
+        provider_config = config.get('together', {})
+        vllm_config = None
+        cuda_devices = None
+        logger.info(f"Using Together AI cloud provider for model: {model_name}")
+    else:
+        raise ValueError(f"Unknown provider type: {provider_type}")
+
+    api_endpoint = provider_config.get('api_endpoint', config.get('api_endpoint', "completions"))
     
     # Prepare task defaults overrides
     task_defaults_overrides = {}
@@ -278,6 +313,7 @@ def main():
         logger.info(f"Final task defaults overrides: {task_defaults_overrides}")
     
     logger.info(f"Model: {model_name}")
+    logger.info(f"Provider type: {provider_type}")
     tasks_to_run = config.get('tasks', ['spanish', 'portuguese'])
     
     # Expand task groups into individual tasks
@@ -286,7 +322,14 @@ def main():
     tasks_to_run = expanded_tasks
     
     logger.info(f"Tasks to run: {tasks_to_run}")
-    logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
+    if provider_type == 'vllm' and vllm_config:
+        logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
+    elif provider_type in ['openai', 'anthropic', 'together']:
+        logger.info(f"Cloud provider: {provider_type}")
+        logger.info(f"Base URL: {provider_config.get('base_url', 'N/A')}")
+    elif provider_type == 'surus':
+        logger.info(f"SURUS AI system")
+        logger.info(f"Endpoint: {provider_config.get('endpoint', 'N/A')}")
     logger.info(f"Output path: {run_paths['output_path']}")
     logger.info(f"Log path: {run_paths['log_path']}")
     
@@ -308,7 +351,11 @@ def main():
     try:
         logger.info(f"Running pipeline")
         if args.test:
-            # Run test pipeline (only start and test vLLM server)
+            # Run test pipeline (only for vLLM)
+            if provider_type != 'vllm':
+                logger.error(f"Test mode is only supported for vLLM provider, not {provider_type}")
+                return
+            
             logger.info("Running test pipeline (vLLM server test only)")
             result = test_vllm_server(
                 model_name=model_name,
@@ -334,33 +381,50 @@ def main():
             )
         else:
             # Run full benchmark pipeline
+            # Prepare vLLM-specific parameters (only used if provider_type == 'vllm')
+            vllm_params = {}
+            if provider_type == 'vllm' and vllm_config:
+                vllm_params = {
+                    'host': vllm_config.get('host', '0.0.0.0'),
+                    'port': vllm_config.get('port', 8000),
+                    'tensor_parallel_size': vllm_config.get('tensor_parallel_size', 1),
+                    'max_model_len': vllm_config.get('max_model_len', 8192),
+                    'gpu_memory_utilization': vllm_config.get('gpu_memory_utilization', 0.6),
+                    'enforce_eager': vllm_config.get('enforce_eager', True),
+                    'limit_mm_per_prompt': vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
+                    'hf_cache': vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
+                    'hf_token': vllm_config.get('hf_token', ""),
+                    'startup_timeout': vllm_config.get('startup_timeout', 900),
+                    'cuda_devices': cuda_devices,
+                    'kv_cache_memory': vllm_config.get('kv_cache_memory', None),
+                    'vllm_venv_path': vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
+                    'vllm_version': vllm_config.get('vllm_version', None),
+                    'multimodal': vllm_config.get('multimodal', True),
+                    'max_num_seqs': vllm_config.get('max_num_seqs', None),
+                    'max_num_batched_tokens': vllm_config.get('max_num_batched_tokens', None),
+                    'trust_remote_code': vllm_config.get('trust_remote_code', True),
+                    'tokenizer_mode': vllm_config.get('tokenizer_mode', None),
+                    'config_format': vllm_config.get('config_format', None),
+                    'load_format': vllm_config.get('load_format', None),
+                    'tool_call_parser': vllm_config.get('tool_call_parser', None),
+                    'enable_auto_tool_choice': vllm_config.get('enable_auto_tool_choice', False),
+                    'kv_cache_dtype': vllm_config.get('kv_cache_dtype', None),
+                    'kv_offloading_size': vllm_config.get('kv_offloading_size', None),
+                    'skip_mm_profiling': vllm_config.get('skip_mm_profiling', False)
+                }
+            
             result = benchmark_pipeline(
                 model_name=model_name,
                 tasks=tasks_to_run,  # Use expanded task list
                 output_path=run_paths['output_path'],  # Use run-specific output path
                 limit=args.limit,  # Use command line limit parameter
-                use_chat_completions=config.get('use_chat_completions', False),  # Default to False
+                api_endpoint=api_endpoint,
                 task_defaults_overrides=task_defaults_overrides or None,  # Pass task overrides
                 log_setup=log_setup,  # Pass log setup for task config logging
                 run_id=run_id,  # Pass generated run_id for organizing outputs
-                # vLLM server configuration
-                host=vllm_config.get('host', '0.0.0.0'),
-                port=vllm_config.get('port', 8000),
-                tensor_parallel_size=vllm_config.get('tensor_parallel_size', 1),
-                max_model_len=vllm_config.get('max_model_len', 8192),
-                gpu_memory_utilization=vllm_config.get('gpu_memory_utilization', 0.6),
-                enforce_eager=vllm_config.get('enforce_eager', True),
-                limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
-                hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
-                hf_token=vllm_config.get('hf_token', ""),
-                startup_timeout=vllm_config.get('startup_timeout', 900),
-                cuda_devices=cuda_devices,
-                kv_cache_memory=vllm_config.get('kv_cache_memory', None),
-                vllm_venv_path=vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
-                vllm_version=vllm_config.get('vllm_version', None),
-                multimodal=vllm_config.get('multimodal', True),
-                max_num_seqs=vllm_config.get('max_num_seqs', None),
-                max_num_batched_tokens=vllm_config.get('max_num_batched_tokens', None)
+                provider_type=provider_type,  # Pass provider type
+                provider_config=provider_config,  # Pass provider config (for cloud providers)
+                **vllm_params  # Unpack vLLM parameters (empty dict for cloud providers)
             )
         
         logger.info("Benchmark pipeline completed successfully!")

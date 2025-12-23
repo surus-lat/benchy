@@ -127,10 +127,10 @@ class BenchyLoggingSetup:
         logger.info(f"=== Task Configuration: {task_name} ===")
         
         # Basic task info
-        logger.info(f"Task name: {task_config.get('task_name', 'N/A')}")
+        logger.info(f"Task name: {task_config.get('name', task_config.get('task_name', 'N/A'))}")
         logger.info(f"Description: {task_config.get('description', 'N/A')}")
-        logger.info(f"LM Eval path: {task_config.get('lm_eval_path', 'N/A')}")
-        logger.info(f"Tokenizer backend: {task_config.get('tokenizer_backend', 'N/A')}")
+        if task_config.get("tokenizer_backend"):
+            logger.info(f"Tokenizer backend: {task_config.get('tokenizer_backend')}")
         
         # Task defaults
         defaults = task_config.get('defaults', {})

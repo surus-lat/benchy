@@ -1,15 +1,65 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-logs/
-# Virtual environments
-.venv
-output/
+# Environment variables
 .env
-#reference/
-outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Data
+*.jsonl
+*.json
+!configs/**/*.json
+!configs/**/*.yaml
+*.csv
+*.parquet
+
+# Model outputs
+results/
+outputs/
+checkpoints/
+.checkpoints/
+
+# Cache
+.cache/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db

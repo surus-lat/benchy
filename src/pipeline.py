@@ -4,8 +4,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
-from .tasks.lm_harness import run_spanish_evaluation, run_portuguese_evaluation, gather_results, run_translation_evaluation
-from .tasks.structured_extraction import run_structured_extraction
+from .tasks.portuguese import run_portuguese
+from .tasks.spanish import run_spanish
+from .tasks.structured import run_structured_extraction
+from .tasks.image_extraction import run_image_extraction
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
@@ -46,13 +48,82 @@ def load_config(config_path: str = None) -> dict:
 logger = logging.getLogger(__name__)
 
 
+SUMMARY_SKIP_KEYS = {
+    "total_samples",
+    "valid_samples",
+    "error_count",
+    "throughput",
+    "total_duration",
+    "samples_with_type_errors",
+    "numeric_fields_total",
+    "numeric_fields_correct",
+    "imperfect_sample_count",
+    "match_distribution_counts",
+    "subtasks",
+}
+
+
+def _summarize_task_metrics(
+    metrics: Dict[str, Any],
+    metrics_manifest: Optional[list] = None,
+) -> Dict[str, float]:
+    """Filter aggregate metrics to numeric values excluding counts/metadata."""
+    summarized: Dict[str, float] = {}
+    if metrics_manifest:
+        for key in metrics_manifest:
+            value = metrics.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                summarized[key] = float(value)
+        return summarized
+
+    for key, value in metrics.items():
+        if key in SUMMARY_SKIP_KEYS:
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            summarized[key] = float(value)
+    return summarized
+
+
+def _write_run_summary(
+    model_output_path: str,
+    model_name: str,
+    run_id: Optional[str],
+    tasks: list,
+    task_results: Dict[str, Any],
+    task_configs_by_name: Dict[str, Any],
+) -> None:
+    summary = {
+        "model": model_name,
+        "run_id": run_id,
+        "timestamp": datetime.now().isoformat(),
+        "tasks": {},
+    }
+
+    for task_name in tasks:
+        metrics = task_results.get(task_name, {}).get("metrics", {}) or {}
+        task_config = task_configs_by_name.get(task_name, {})
+        metrics_manifest = task_config.get("metrics_manifest") or None
+        summary["tasks"][task_name] = (
+            _summarize_task_metrics(metrics, metrics_manifest) if metrics else {}
+        )
+
+    summary_path = os.path.join(model_output_path, "run_summary.json")
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    logger.info(f"Wrote run summary to {summary_path}")
+
+
 def write_run_config(
     model_name: str,
     run_id: str,
     output_path: str,
     tasks: list,
     limit: Optional[int],
-    use_chat_completions: bool,
+    api_endpoint: str,
     task_defaults_overrides: Optional[Dict[str, Any]],
     vllm_config: Dict[str, Any],
     cuda_devices: Optional[str] = None
@@ -66,7 +137,7 @@ def write_run_config(
         output_path: Base output path
         tasks: List of tasks to run
         limit: Limit for examples per task
-        use_chat_completions: Whether to use chat completions API
+        api_endpoint: API endpoint mode ("completions" or "chat")
         task_defaults_overrides: Task configuration overrides
         vllm_config: vLLM server configuration
         cuda_devices: CUDA devices used
@@ -84,7 +155,7 @@ def write_run_config(
         },
         'model': {
             'name': model_name,
-            'use_chat_completions': use_chat_completions
+            'api_endpoint': api_endpoint
         },
         'tasks': tasks,
         'evaluation': {
@@ -136,11 +207,13 @@ def benchmark_pipeline(
     tasks: list,
     output_path: str,
     limit: Optional[int] = None,
-    use_chat_completions: bool = False,
+    api_endpoint: str = "completions",
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
     log_setup: Optional[Any] = None,
     run_id: Optional[str] = None,
-    # vLLM server configuration
+    provider_type: str = "vllm",
+    provider_config: Optional[Dict[str, Any]] = None,
+    # vLLM server configuration (only used if provider_type == 'vllm')
     host: str = "0.0.0.0",
     port: int = 8000,
     tensor_parallel_size: int = 1,
@@ -164,28 +237,30 @@ def benchmark_pipeline(
     config_format: Optional[str] = None,
     load_format: Optional[str] = None,
     tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = False,
+    kv_cache_dtype: Optional[str] = None,
+    kv_offloading_size: Optional[int] = None,
+    skip_mm_profiling: bool = False
 ) -> Dict[str, Any]:
     """
-    Complete vLLM-based benchmarking pipeline.
+    Complete benchmarking pipeline for vLLM and cloud providers.
     
     The pipeline:
-    1. Starts a vLLM server with the specified model
-    2. Tests the API server to ensure it's working
-    3. Runs specified evaluation tasks (spanish, portuguese, etc.)
-    4. Gathers results
-    5. Stops the vLLM server (guaranteed cleanup)
+    - For vLLM: Starts server, tests API, runs tasks, stops server
+    - For cloud providers (OpenAI/Anthropic): Directly runs tasks using API
     
     Args:
         model_name: The model to evaluate
         tasks: List of task names to run (e.g., ["spanish", "portuguese"])
         output_path: Base output path for results
         limit: Limit number of examples per task (useful for testing)
-        use_chat_completions: Whether to use chat completions API (/v1/chat/completions) or completions API (/v1/completions)
-        task_defaults_overrides: Optional dict to override task default parameters (e.g., log_samples, batch_size)
+        api_endpoint: API endpoint mode ("completions" or "chat")
+        task_defaults_overrides: Optional dict to override task default parameters
         log_setup: Logging setup object
-        run_id: Optional run ID for organizing outputs. If not provided, auto-generated.
-        # vLLM server configuration
+        run_id: Optional run ID for organizing outputs
+        provider_type: Provider type ('vllm', 'openai', or 'anthropic')
+        provider_config: Provider configuration (for cloud providers)
+        # vLLM server configuration (only used if provider_type == 'vllm')
         host: Host to bind vLLM server to
         port: Port for vLLM server
         tensor_parallel_size: Number of GPUs for tensor parallelism
@@ -199,7 +274,8 @@ def benchmark_pipeline(
         cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
         kv_cache_memory: KV cache memory allocation
     """
-    logger.info(f"Starting vLLM benchmark pipeline for model: {model_name}")
+    logger.info(f"Starting benchmark pipeline for model: {model_name}")
+    logger.info(f"Provider type: {provider_type}")
     logger.info(f"Tasks to run: {tasks}")
     logger.info(f"Using run_id: {run_id}")
     
@@ -248,12 +324,14 @@ def benchmark_pipeline(
     
     logger.info(f"Running {len(pending_tasks)} pending tasks: {pending_tasks}")
     
-    # Step 0: Fetch generation config from model repository
-    generation_config = fetch_generation_config(
-        model_name=model_name,
-        hf_cache=hf_cache,
-        hf_token=hf_token
-    )
+    # Step 0: Fetch generation config from model repository (only for vLLM)
+    generation_config = None
+    if provider_type == 'vllm':
+        generation_config = fetch_generation_config(
+            model_name=model_name,
+            hf_cache=hf_cache,
+            hf_token=hf_token
+        )
     
     # Write complete run configuration
     config_file_path = write_run_config(
@@ -262,7 +340,7 @@ def benchmark_pipeline(
         output_path=output_path,
         tasks=tasks,
         limit=limit,
-        use_chat_completions=use_chat_completions,
+        api_endpoint=api_endpoint,
         task_defaults_overrides=task_defaults_overrides,
         vllm_config={
             'host': host,
@@ -285,47 +363,57 @@ def benchmark_pipeline(
         cuda_devices=cuda_devices
     )
     
-    # Step 1: Start vLLM server
-    # Use GPU configuration from central config, with command line override
-    vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
-    logger.info(f"Starting vLLM server with CUDA devices: {vllm_cuda_devices}")
+    # Initialize server_info and api_test_result
+    server_info = None
+    api_test_result = {"status": "skipped"}
     
-    server_info = start_vllm_server(
-        model_name=model_name,
-        host=host,
-        port=port,
-        tensor_parallel_size=tensor_parallel_size,
-        max_model_len=max_model_len,
-        gpu_memory_utilization=gpu_memory_utilization,
-        enforce_eager=enforce_eager,
-        limit_mm_per_prompt=limit_mm_per_prompt,
-        hf_cache=hf_cache,
-        hf_token=hf_token,
-        vllm_venv_path=vllm_venv_path,
-        startup_timeout=startup_timeout,
-        cuda_devices=vllm_cuda_devices,
-        kv_cache_memory=kv_cache_memory,
-        vllm_version=vllm_version,
-        multimodal=multimodal,
-        max_num_seqs=max_num_seqs,
-        max_num_batched_tokens=max_num_batched_tokens,
-        trust_remote_code=trust_remote_code,
-        tokenizer_mode=tokenizer_mode,
-        config_format=config_format,
-        load_format=load_format,
-        tool_call_parser=tool_call_parser,
-        enable_auto_tool_choice=enable_auto_tool_choice
-    )
-    
-    # Store server info globally for signal handler
-    import eval
-    eval._active_server_info = server_info
+    # Step 1 & 2: Start and test server (only for vLLM)
+    if provider_type == 'vllm':
+        # Use GPU configuration from central config, with command line override
+        vllm_cuda_devices = cuda_devices if cuda_devices is not None else gpu_manager.get_vllm_cuda_devices()
+        logger.info(f"Starting vLLM server with CUDA devices: {vllm_cuda_devices}")
         
-    # Step 2: Test vLLM API
-    api_test_result = test_vllm_api(
-        server_info=server_info,
-        model_name=model_name
-    )
+        server_info = start_vllm_server(
+            model_name=model_name,
+            host=host,
+            port=port,
+            tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
+            gpu_memory_utilization=gpu_memory_utilization,
+            enforce_eager=enforce_eager,
+            limit_mm_per_prompt=limit_mm_per_prompt,
+            hf_cache=hf_cache,
+            hf_token=hf_token,
+            vllm_venv_path=vllm_venv_path,
+            startup_timeout=startup_timeout,
+            cuda_devices=vllm_cuda_devices,
+            kv_cache_memory=kv_cache_memory,
+            vllm_version=vllm_version,
+            multimodal=multimodal,
+            max_num_seqs=max_num_seqs,
+            max_num_batched_tokens=max_num_batched_tokens,
+            trust_remote_code=trust_remote_code,
+            tokenizer_mode=tokenizer_mode,
+            config_format=config_format,
+            load_format=load_format,
+            tool_call_parser=tool_call_parser,
+            enable_auto_tool_choice=enable_auto_tool_choice,
+            kv_cache_dtype=kv_cache_dtype,
+            kv_offloading_size=kv_offloading_size,
+            skip_mm_profiling=skip_mm_profiling
+        )
+        
+        # Store server info globally for signal handler
+        import eval
+        eval._active_server_info = server_info
+            
+        # Step 2: Test vLLM API
+        api_test_result = test_vllm_api(
+            server_info=server_info,
+            model_name=model_name
+        )
+    else:
+        logger.info(f"Using cloud provider {provider_type}, skipping vLLM server startup")
     
     # Create run-specific output directory structure: {output_path}/{run_id}/{model_name}
     model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
@@ -337,6 +425,7 @@ def benchmark_pipeline(
     
     # Step 3: Run evaluation tasks (only pending ones)
     task_results = {}
+    task_configs_by_name: Dict[str, Any] = {}
     
     # Load results from already completed tasks
     completed_tasks = [task for task, completed in completion_status.items() if completed]
@@ -354,37 +443,49 @@ def benchmark_pipeline(
     if "spanish" in pending_tasks:
         logger.info("Running Spanish language evaluation...")
         spanish_task_config = config_manager.get_task_config("spanish", task_defaults_overrides)
-        # Merge use_chat_completions from model config into task config
-        spanish_task_config['use_chat_completions'] = use_chat_completions
+        task_configs_by_name["spanish"] = spanish_task_config
+        # Merge api_endpoint from model config into task config
+        spanish_task_config['api_endpoint'] = api_endpoint
         # Add generation config
         spanish_task_config['generation_config'] = generation_config
         
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("spanish", spanish_task_config)
-        spanish_results = run_spanish_evaluation(
+        
+        # Get provider config
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'surus', 'together'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
+        spanish_results = run_spanish(
             model_name=model_name,
             output_path=model_output_path,
             server_info=server_info,
             api_test_result=api_test_result,
             task_config=spanish_task_config,
             limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices()
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
         )
         task_results["spanish"] = spanish_results
     
     if "portuguese" in pending_tasks:
         logger.info("Running Portuguese language evaluation...")
         portuguese_task_config = config_manager.get_task_config("portuguese", task_defaults_overrides)
-        # Merge use_chat_completions from model config into task config
-        portuguese_task_config['use_chat_completions'] = use_chat_completions
+        task_configs_by_name["portuguese"] = portuguese_task_config
+        # Merge api_endpoint from model config into task config
+        portuguese_task_config['api_endpoint'] = api_endpoint
         # Add generation config
         portuguese_task_config['generation_config'] = generation_config
         
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("portuguese", portuguese_task_config)
-        portuguese_results = run_portuguese_evaluation(
+        portuguese_results = run_portuguese(
             model_name=model_name,
             output_path=model_output_path,
             server_info=server_info,
@@ -396,34 +497,52 @@ def benchmark_pipeline(
         task_results["portuguese"] = portuguese_results
     
     if "translation" in pending_tasks:
-        logger.info("Running translation language evaluation...")
+        logger.info("Running translation evaluation...")
         translation_task_config = config_manager.get_task_config("translation", task_defaults_overrides)
-        # Merge use_chat_completions from model config into task config
-        translation_task_config['use_chat_completions'] = use_chat_completions
-        # Add generation config
-        translation_task_config['generation_config'] = generation_config
+        task_configs_by_name["translation"] = translation_task_config
         
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("translation", translation_task_config)
-        translation_results = run_translation_evaluation(
+        
+        # Add provider info to provider_config if using non-vLLM provider
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'together'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
+        from src.tasks.translation import run_translation
+        translation_results = run_translation(
             model_name=model_name,
             output_path=model_output_path,
             server_info=server_info,
             api_test_result=api_test_result,
             task_config=translation_task_config,
             limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices()
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
         )
         task_results["translation"] = translation_results
     
     if "structured_extraction" in pending_tasks:
         logger.info("Running structured data extraction evaluation...")
         structured_task_config = config_manager.get_task_config("structured_extraction", task_defaults_overrides)
+        task_configs_by_name["structured_extraction"] = structured_task_config
         
         # Log task configuration
         if log_setup:
             log_setup.log_task_config("structured_extraction", structured_task_config)
+        
+        # Add provider info to provider_config if using non-vLLM provider
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'surus', 'together'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
         structured_results = run_structured_extraction(
             model_name=model_name,
             output_path=model_output_path,
@@ -431,19 +550,57 @@ def benchmark_pipeline(
             api_test_result=api_test_result,
             task_config=structured_task_config,
             limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices()
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
         )
         task_results["structured_extraction"] = structured_results
+    
+    if "image_extraction" in pending_tasks:
+        logger.info("Running image extraction evaluation...")
+        image_extraction_config = config_manager.get_task_config("image_extraction", task_defaults_overrides)
+        task_configs_by_name["image_extraction"] = image_extraction_config
+        
+        # Log task configuration
+        if log_setup:
+            log_setup.log_task_config("image_extraction", image_extraction_config)
+        
+        # Add provider info to provider_config if using non-vLLM provider
+        cloud_provider_config = None
+        if provider_type in ['openai', 'anthropic', 'surus', 'surus_ocr', 'surus_factura', 'together'] and provider_config:
+            cloud_provider_config = {
+                **provider_config,
+                'provider_type': provider_type
+            }
+        
+        image_extraction_results = run_image_extraction(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=image_extraction_config,
+            limit=limit,
+            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+            provider_config=cloud_provider_config
+        )
+        task_results["image_extraction"] = image_extraction_results
             
     # Step 4: Gather results
-    gather_result = gather_results(
-        spanish_results=task_results.get("spanish", {}),
-        portuguese_results=task_results.get("portuguese", {}),
-        translation_results=task_results.get("translation", {})
-    )
+    gather_result = {
+        "spanish_results": task_results.get("spanish", {}),
+        "portuguese_results": task_results.get("portuguese", {}),
+        "translation_results": task_results.get("translation", {}),
+    }
     
-    # Step 5: Stop vLLM server (cleanup)
-    cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
+    # Step 5: Stop vLLM server (cleanup) - only for vLLM
+    if provider_type == 'vllm' and server_info:
+        cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
+        
+        # Clear global server info
+        import eval
+        eval._active_server_info = None
+    else:
+        # For cloud providers, just return the gather result
+        cleanup_result = gather_result
     
     # Log final completion summary
     newly_completed = [task for task in pending_tasks if task in task_results]
@@ -457,10 +614,15 @@ def benchmark_pipeline(
     logger.info(f"Newly completed: {len(newly_completed)}")
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
-    
-    # Clear global server info
-    import eval
-    eval._active_server_info = None
+
+    _write_run_summary(
+        model_output_path=model_output_path,
+        model_name=model_name,
+        run_id=run_id,
+        tasks=tasks,
+        task_results=task_results,
+        task_configs_by_name=task_configs_by_name,
+    )
     
     logger.info("Benchmark pipeline completed successfully")
     return cleanup_result
@@ -493,7 +655,10 @@ def test_vllm_server(
     config_format: Optional[str] = None,
     load_format: Optional[str] = None,
     tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False
+    enable_auto_tool_choice: bool = False,
+    kv_cache_dtype: Optional[str] = None,
+    kv_offloading_size: Optional[int] = None,
+    skip_mm_profiling: bool = False
 ) -> Dict[str, Any]:
     """
     Test vLLM server functionality without running full evaluation.
@@ -587,7 +752,10 @@ def test_vllm_server(
         config_format=config_format,
         load_format=load_format,
         tool_call_parser=tool_call_parser,
-        enable_auto_tool_choice=enable_auto_tool_choice
+        enable_auto_tool_choice=enable_auto_tool_choice,
+        kv_cache_dtype=kv_cache_dtype,
+        kv_offloading_size=kv_offloading_size,
+        skip_mm_profiling=skip_mm_profiling
     )
     
     # Store server info globally for signal handler

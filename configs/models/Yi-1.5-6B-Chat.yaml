@@ -7,4 +7,4 @@ vllm:
     max_model_len: 4096
 
 tasks:
-  - "latam_board"
+  - "structured_extraction"

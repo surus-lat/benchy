@@ -1,0 +1,14 @@
+# OpenAI Cloud API Provider Configuration
+api_key_env: OPENAI_API_KEY  # Environment variable containing API key
+base_url: https://api.openai.com/v1
+timeout: 120
+max_retries: 3
+temperature: 0.0
+
+# API endpoint selection
+# - "chat": Use chat completions API (default for OpenAI, supports conversation format)
+# - "completions": Use completions API (legacy, simpler prompt format)
+# - "auto": Try chat first, fallback to completions on error (useful for vLLM)
+api_endpoint: "chat"  # Options: "chat", "completions", "auto"
+
+

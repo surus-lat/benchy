@@ -1,0 +1,544 @@
+# Task Implementation Guide
+
+This guide shows how to implement new benchmark tasks using the modular engine.
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Pipeline                                   │
+│  - Manages provider (vLLM server, cloud APIs)                       │
+│  - Builds connection_info dict                                       │
+│  - Dispatches tasks                                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+┌─────────────────────────┐    ┌─────────────────────────┐
+│   Prefect Task Wrapper   │    │   Generic Engine         │
+│   (thin orchestration)   │───▶│   - BenchmarkRunner      │
+│   run_my_task()          │    │   - Checkpointing        │
+└─────────────────────────┘    │   - Batching             │
+                                └─────────────────────────┘
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    ▼                   ▼                   ▼
+         ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+         │   Task Class    │  │    Interface    │  │    Results      │
+         │   - load()      │  │   - prepare_    │  │   - metrics     │
+         │   - get_samples │  │     request()   │  │   - samples     │
+         │   - get_prompt  │  │   - generate_   │  │   - aggregates  │
+         │   - calculate_  │  │     batch()     │  │                 │
+         │     metrics     │  │                 │  │                 │
+         └─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+## Key Principle: Tasks are Interface-Agnostic
+
+Tasks define:
+- **Data**: How to load and iterate samples
+- **Prompts**: How to format inputs for LLMs
+- **Metrics**: How to evaluate predictions
+- **Answer type**: Whether outputs are freeform, structured, or multiple-choice
+
+Tasks do NOT know about:
+- Which provider is being used
+- How requests are formatted
+- Network communication details
+
+The BenchmarkRunner bridges tasks and interfaces.
+
+## Adding a New Task
+
+### 1. Create Task Config (`src/tasks/my_task/task.json`)
+
+```json
+{
+  "name": "my_task",
+  "description": "Brief description of what this task evaluates",
+  "tasks": [
+    "subtask1",
+    "subtask2"
+  ],
+  "task_configs": {
+    "subtask1": {
+      "dataset_file": "subtask1_data.jsonl",
+      "dataset_name": "org/dataset-name"
+    }
+  },
+  "prompts": {
+    "system": "You are a helpful assistant for [task description].",
+    "user": "Input:\n{text}\n\nPlease respond with [expected format]."
+  },
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 2048,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "metrics": {
+    "my_metric": {
+      "threshold": 0.5
+    }
+  },
+  "output": {
+    "subdirectory": "my_task"
+  },
+  "metrics_manifest": [
+    "my_metric"
+  ]
+}
+```
+
+`metrics_manifest` lists the aggregate metric keys to surface in `run_summary.json`.
+
+### 2. Create Task Class (`src/tasks/my_task/task.py`)
+
+```python
+"""My Task implementation."""
+
+import json
+import logging
+from pathlib import Path
+from typing import Dict, Iterator, Optional, Any, List
+
+logger = logging.getLogger(__name__)
+
+
+class MyTask:
+    """Task for my_task evaluation.
+    
+    Implements the BaseTask protocol.
+    """
+
+    def __init__(self, config: Dict):
+        """Initialize task with config."""
+        self.config = config
+        self.data_file = Path(config["dataset"]["data_file"])
+        self.dataset = None
+
+    def load(self) -> None:
+        """Load dataset from JSONL file."""
+        logger.info(f"Loading dataset from {self.data_file}")
+        
+        if not self.data_file.exists():
+            raise FileNotFoundError(f"Dataset not found: {self.data_file}")
+        
+        self.dataset = []
+        with open(self.data_file, "r") as f:
+            for line in f:
+                self.dataset.append(json.loads(line))
+        
+        logger.info(f"Loaded {len(self.dataset)} samples")
+
+    def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
+        """Iterate over samples.
+        
+Each sample should have at minimum:
+- id: Unique identifier
+- text: Input text
+- expected: Expected output for metrics
+        """
+        if self.dataset is None:
+            raise RuntimeError("Call load() first")
+        
+        data = self.dataset[:limit] if limit else self.dataset
+        for sample in data:
+            yield sample
+
+    def get_prompt(self, sample: Dict) -> tuple[str, str]:
+        """Build prompts for LLM interfaces.
+        
+        This is called by interfaces that need prompts.
+        HTTP interfaces may use sample["text"] directly instead.
+        
+        Returns:
+            (system_prompt, user_prompt)
+        """
+        system = self.config["prompts"]["system"]
+        user_template = self.config["prompts"]["user"]
+        
+        user = user_template.format(
+            text=sample["text"],
+            # Add other placeholders as needed
+        )
+        
+        return system, user
+
+    def get_task_name(self) -> str:
+        """Return task identifier."""
+        return "my_task"
+
+    def calculate_metrics(
+        self,
+        prediction: Any,
+        expected: Any,
+        sample: Dict,
+        error: Optional[str] = None,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Calculate metrics for one prediction.
+        
+        Args:
+            prediction: Model output (parsed)
+            expected: Expected output from sample
+            sample: Full sample dict for context
+            error: Error message if generation failed (optional)
+            error_type: Type of error ('connectivity_error' or 'invalid_response') (optional)
+            
+        Returns:
+            Dict of metric_name -> value. Must include 'valid' (bool).
+        """
+        # Handle errors - delegate to get_error_metrics for consistency
+        if error or prediction is None:
+            return self.get_error_metrics(
+                error=error or "No prediction",
+                error_type=error_type,
+            )
+        
+        # Example: simple exact match
+        exact_match = prediction == expected
+        
+        return {
+            "valid": True,
+            "exact_match": exact_match,
+            "score": 1.0 if exact_match else 0.0,
+        }
+    
+    def get_error_metrics(
+        self,
+        error: str,
+        error_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get error metrics structure for failed predictions.
+        
+        The engine calls this when calculate_metrics() raises an exception
+        or when handling connectivity errors. Override to provide task-specific
+        error metric structures.
+        
+        Args:
+            error: Error message
+            error_type: Type of error ('connectivity_error' or 'invalid_response')
+            
+        Returns:
+            Dict of error metrics matching your task's metric structure.
+            Must include 'valid': False.
+        """
+        return {
+            "valid": False,
+            "error": error,
+            "error_type": error_type,
+            "score": 0.0,
+            "exact_match": False,
+        }
+
+    def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
+        """Aggregate per-sample metrics into summary.
+        
+        Args:
+            all_metrics: List of per-sample metric dicts
+            
+        Returns:
+            Aggregated summary metrics
+        """
+        if not all_metrics:
+            return {"total_samples": 0, "score": 0.0}
+        
+        valid = [m for m in all_metrics if m.get("valid")]
+        
+        return {
+            "total_samples": len(all_metrics),
+            "valid_samples": len(valid),
+            "exact_match_rate": sum(m["exact_match"] for m in valid) / len(valid) if valid else 0,
+            "score": sum(m["score"] for m in valid) / len(valid) if valid else 0,
+        }
+
+    # Optional capability flags
+    @property
+    def is_multimodal(self) -> bool:
+        """Does this task use images/audio?"""
+        return False
+    
+    @property
+    def requires_schema(self) -> bool:
+        """Does this task use JSON schemas?"""
+        return False
+
+    @property
+    def answer_type(self) -> str:
+        """Expected answer type: 'freeform', 'structured', or 'multiple_choice'."""
+        return "freeform"
+
+    @property
+    def requires_logprobs(self) -> bool:
+        """Whether this task requires logprobs-based scoring."""
+        return False
+```
+
+### 3. Create Prefect Wrapper (`src/tasks/my_task.py`)
+
+```python
+"""My Task benchmark wrapper."""
+
+import asyncio
+import logging
+from typing import Dict, Any, Optional
+from pathlib import Path
+from prefect import task
+
+from ..engine import (
+    BenchmarkRunner,
+    save_results,
+    build_connection_info,
+    get_interface_for_provider,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@task
+def run_my_task(
+    model_name: str,
+    output_path: str,
+    server_info: Optional[Dict[str, Any]],
+    api_test_result: Dict[str, Any],
+    task_config: Dict[str, Any],
+    limit: Optional[int] = None,
+    cuda_devices: Optional[str] = None,
+    provider_config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Run my_task evaluation.
+    
+    This is a thin wrapper around the generic benchmark engine.
+    """
+    logger.info(f"Starting my_task for model: {model_name}")
+    
+    # Build connection info
+    provider_type = provider_config.get('provider_type', 'vllm') if provider_config else 'vllm'
+    connection_info = build_connection_info(
+        provider_type=provider_type,
+        provider_config=provider_config or {},
+        server_info=server_info,
+        model_config=task_config.get('defaults', {}),
+    )
+    
+    # Create output directory
+    output_dir = Path(output_path) / task_config.get('output', {}).get('subdirectory', 'my_task')
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create task instance
+    from .my_task.task import MyTask
+    task_instance = MyTask({
+        'dataset': {'data_file': str(Path(__file__).parent / 'my_task' / '.data' / 'data.jsonl')},
+        'prompts': task_config.get('prompts', {}),
+    })
+    
+    # Create interface
+    interface = get_interface_for_provider(
+        provider_type=provider_type,
+        connection_info=connection_info,
+        model_name=model_name,
+    )
+    
+    # Run benchmark
+    runner = BenchmarkRunner(task_instance, interface, {
+        "model_name": model_name,
+        "batch_size": task_config.get('defaults', {}).get('batch_size', 20),
+        "output_dir": str(output_dir),
+        "log_samples": task_config.get('defaults', {}).get('log_samples', False),
+    })
+    
+    results = asyncio.run(runner.run(limit=limit))
+    
+    # Save results (automatically marks task complete)
+    save_results(
+        results=results,
+        output_dir=output_dir,
+        model_name=model_name,
+        task_name=task_instance.get_task_name(),
+        log_samples=task_config.get('defaults', {}).get('log_samples', False),
+    )
+    
+    return {
+        "model_name": model_name,
+        "task": "my_task",
+        "output_path": str(output_dir),
+        "metrics": results.get('aggregate_metrics', {}),
+    }
+```
+
+### 4. Register Task in Pipeline (`src/pipeline.py`)
+
+Add to the task dispatch section:
+
+```python
+if "my_task" in pending_tasks:
+    logger.info("Running my_task evaluation...")
+    my_task_config = config_manager.get_task_config("my_task", task_defaults_overrides)
+    
+    if log_setup:
+        log_setup.log_task_config("my_task", my_task_config)
+    
+    cloud_provider_config = None
+    if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
+        cloud_provider_config = {**provider_config, 'provider_type': provider_type}
+    
+    my_task_results = run_my_task(
+        model_name=model_name,
+        output_path=model_output_path,
+        server_info=server_info,
+        api_test_result=api_test_result,
+        task_config=my_task_config,
+        limit=limit,
+        cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+        provider_config=cloud_provider_config
+    )
+    task_results["my_task"] = my_task_results
+```
+
+## Sample Data Format
+
+Samples should be stored in JSONL with at minimum:
+
+```json
+{"id": "sample_001", "text": "Input text here", "expected": "Expected output"}
+{"id": "sample_002", "text": "Another input", "expected": {"key": "structured output"}}
+```
+
+For structured extraction tasks, include schema:
+
+```json
+{"id": "001", "text": "...", "schema": {"type": "object", ...}, "expected": {...}}
+```
+
+For multiple-choice tasks, include choices and the expected index:
+
+```json
+{"id": "mcq_001", "text": "Question text", "choices": ["A", "B", "C"], "expected": 1}
+```
+
+## Dataset Preprocessing
+
+For HuggingFace datasets, create a download script:
+
+```python
+# src/tasks/my_task/download.py
+from datasets import load_dataset
+import json
+
+def download_and_preprocess(output_file, cache_dir="./cache"):
+    dataset = load_dataset("org/dataset-name", cache_dir=cache_dir)
+    
+    samples = []
+    for idx, item in enumerate(dataset["train"]):
+        samples.append({
+            "id": f"sample_{idx}",
+            "text": item["input"],
+            "expected": item["output"],
+        })
+    
+    with open(output_file, "w") as f:
+        for s in samples:
+            f.write(json.dumps(s) + "\n")
+```
+
+## Testing Your Task
+
+```bash
+# Test with few samples
+python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 5
+
+# Full run
+python eval.py --config configs/models/openai_gpt-4o-mini.yaml
+```
+
+## Example: Complete Reference
+
+See `src/tasks/structured/` for a complete implementation with:
+- Multiple subtasks (paraloq, chat_extract)
+- Custom metrics calculator
+- Dataset preprocessing
+- Checkpoint support
+- Multi-provider compatibility
+
+## Error Handling
+
+The engine handles errors from interfaces and passes them to tasks via `error` and `error_type` parameters:
+
+- **`error`**: Error message string (or None if successful)
+- **`error_type`**: Either `'connectivity_error'` (network/timeout issues) or `'invalid_response'` (API returned error)
+
+### Best Practices
+
+1. **In `calculate_metrics()`**: Check for errors first and delegate to `get_error_metrics()`:
+   ```python
+   if error or prediction is None:
+       return self.get_error_metrics(error=error or "No prediction", error_type=error_type)
+   ```
+
+2. **Implement `get_error_metrics()`**: Return error metrics matching your task's structure:
+   ```python
+   def get_error_metrics(self, error: str, error_type: Optional[str] = None) -> Dict[str, Any]:
+       return {
+           "valid": False,
+           "error": error,
+           "error_type": error_type,
+           # ... other task-specific error metrics with default values
+       }
+   ```
+
+3. **Keep it simple**: Tasks should just pass errors through. The engine handles:
+   - Catching exceptions from `calculate_metrics()`
+   - Calling `get_error_metrics()` for fallback
+   - Logging and reporting
+
+## Answer Types and Logprobs
+
+Tasks must declare what kind of answer they expect:
+
+- `freeform`: raw text output (default)
+- `structured`: JSON output with a schema
+- `multiple_choice`: select one of N choices
+
+For multiple-choice tasks:
+- Populate `sample["choices"]` and set `sample["expected"]` to the correct index.
+- Set `answer_type = "multiple_choice"`.
+- Set `requires_logprobs = True` to enable logprob scoring and compatibility checks.
+
+### Example: Using a Metrics Calculator
+
+If your task uses a metrics calculator (like structured extraction), simply pass errors through:
+
+```python
+def calculate_metrics(self, prediction, expected, sample, error=None, error_type=None):
+    return self.metrics_calculator.calculate_all(
+        prediction=prediction,
+        expected=expected,
+        schema=sample.get("schema", {}),
+        error=error,
+        error_type=error_type,
+    )
+
+def get_error_metrics(self, error: str, error_type: Optional[str] = None):
+    # Use calculator to get consistent error structure
+    return self.metrics_calculator.calculate_all(
+        prediction=None,
+        expected={},
+        schema={},
+        error=error,
+        error_type=error_type,
+    )
+```
+
+## Quick Checklist
+
+- [ ] Create `src/tasks/my_task/task.json`
+- [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
+- [ ] Implement `get_error_metrics()` for error handling
+- [ ] Set `answer_type` and `requires_logprobs` if applicable
+- [ ] Create thin Prefect wrapper using generic engine
+- [ ] Register in `src/pipeline.py`
+- [ ] Add dataset download script if using HuggingFace
+- [ ] Test with `--limit 5`
