@@ -74,6 +74,10 @@ python eval.py --config configs/tests/spanish-gptoss.yaml --limit 10
 python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 10
 ```
 
+If you want to run the same task list across multiple models, you can override tasks
+on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
+`docs/evaluating_models.md` for full examples and behavior.
+
 ## Configuration Overview
 
 ### Project Structure

@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 from dotenv import load_dotenv
+from typing import Optional
 
 # Load environment variables from .env file
 load_dotenv()
@@ -188,8 +189,57 @@ Examples:
         default=None,
         help='Run ID for organizing outputs (default: auto-generated timestamp)'
     )
+
+    parser.add_argument(
+        '--tasks',
+        type=str,
+        default=None,
+        help='Comma-separated list of tasks or task groups (overrides config tasks)'
+    )
+
+    parser.add_argument(
+        '--tasks-file',
+        type=str,
+        default=None,
+        help='Path to a task list file (one task per line, overrides config tasks)'
+    )
+
+    parser.add_argument(
+        '--task-group',
+        action='append',
+        default=None,
+        help='Task group name(s) from configs/config.yaml (can be repeated)'
+    )
     
     return parser.parse_args()
+
+
+def _parse_tasks_arg(value: Optional[str]) -> list:
+    if not value:
+        return []
+    return [entry.strip() for entry in value.split(",") if entry.strip()]
+
+
+def _load_tasks_file(path: str) -> list:
+    tasks = []
+    with open(path, "r") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            tasks.append(line)
+    return tasks
+
+
+def _dedupe_tasks(tasks: list) -> list:
+    seen = set()
+    ordered = []
+    for task_name in tasks:
+        if task_name in seen:
+            continue
+        seen.add(task_name)
+        ordered.append(task_name)
+    return ordered
 
 
 def main():
@@ -312,13 +362,46 @@ def main():
     
     logger.info(f"Model: {model_name}")
     logger.info(f"Provider type: {provider_type}")
-    tasks_to_run = config.get('tasks', ['spanish', 'portuguese'])
-    
+
+    config_tasks = config.get('tasks', ['spanish', 'portuguese'])
+    tasks_override = []
+    if args.tasks:
+        tasks_override.extend(_parse_tasks_arg(args.tasks))
+    if args.tasks_file:
+        tasks_override.extend(_load_tasks_file(args.tasks_file))
+    if args.task_group:
+        for group_entry in args.task_group:
+            tasks_override.extend(_parse_tasks_arg(group_entry))
+
+    tasks_override = _dedupe_tasks(tasks_override)
+
+    model_provider_types = {"vllm", "openai", "anthropic", "together"}
+    is_system_provider = provider_type not in model_provider_types
+
+    if tasks_override:
+        logger.info(f"Using task overrides from CLI: {tasks_override}")
+        if is_system_provider and config_tasks:
+            allowed = [task for task in tasks_override if task in config_tasks]
+            disallowed = [task for task in tasks_override if task not in config_tasks]
+            if disallowed:
+                logger.warning(
+                    f"Ignoring tasks not declared in system config: {disallowed}"
+                )
+            tasks_to_run = allowed
+        else:
+            tasks_to_run = tasks_override
+    else:
+        tasks_to_run = config_tasks
+
+    if not tasks_to_run:
+        logger.error("No tasks to run after applying task overrides.")
+        return
+
     # Expand task groups into individual tasks
     expanded_tasks = config_manager.expand_task_groups(tasks_to_run, central_config)
     logger.info(f"Task expansion: {tasks_to_run} -> {expanded_tasks}")
     tasks_to_run = expanded_tasks
-    
+
     logger.info(f"Tasks to run: {tasks_to_run}")
     if provider_type == 'vllm' and vllm_server_config:
         logger.info(f"vLLM server: {vllm_server_config.host}:{vllm_server_config.port}")
