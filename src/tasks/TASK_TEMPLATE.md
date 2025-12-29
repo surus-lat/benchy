@@ -38,6 +38,14 @@ This guide shows how to implement new benchmark tasks using the modular engine.
 └─────────────────────────┘
 ```
 
+## Mental Model (5 lines)
+
+1. Pipeline selects tasks and provider config.
+2. TaskGroupRunner builds `connection_info` and expands subtasks.
+3. BenchmarkRunner runs batches for each task+interface pair.
+4. Interfaces call `task.get_prompt()` or use raw sample fields.
+5. Metrics aggregate per subtask and write summaries.
+
 ## Key Principle: Tasks are Interface-Agnostic
 
 Tasks define:
@@ -136,6 +144,13 @@ Use `dataset.data_file` for local JSONL files, or `dataset_path` / `dataset_name
 for HuggingFace datasets. Only include the fields you need.
 
 `metrics_manifest` lists the aggregate metric keys to surface in `run_summary.json`.
+
+### Subtasks and Aggregation
+
+- The `tasks` list defines the subtask names.
+- Each `task_configs` key must match a subtask name.
+- Subtask names become output subdirectories and summary keys.
+- `aggregate_metrics()` receives the same subtask name list that ran.
 
 ### 2. Create Task Class (`src/tasks/my_task/task.py`)
 
@@ -380,6 +395,8 @@ Adjust `dataset_config` to match your task's config shape (for example,
 
 For grouped tasks, set `supports_subtasks=True` and implement `aggregate_metrics`,
 `write_summary`, or `run_subtask` in the `TaskGroupSpec`.
+Use `setup` / `teardown` in the spec to load shared resources once (metrics models,
+dataset caches) and reuse them across subtasks.
 
 ### 4. Register Task in Pipeline (`src/pipeline.py`)
 
@@ -454,6 +471,14 @@ python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 5
 python eval.py --config configs/models/openai_gpt-4o-mini.yaml
 ```
 
+## Minimal Starter Example (Single Task)
+
+1. Copy the template: `cp -r src/tasks/_template src/tasks/my_task`
+2. Update `src/tasks/my_task/task.json` with `dataset.data_file` and prompts.
+3. Update `src/tasks/my_task/task.py` constants and metrics.
+4. Update `src/tasks/my_task/run.py` `TaskGroupSpec` names.
+5. Register in `src/pipeline.py` `TASK_REGISTRY`.
+
 ## Example: Complete Reference
 
 See `src/tasks/structured/` for a complete implementation with:
@@ -507,6 +532,16 @@ For multiple-choice tasks:
 - Set `answer_type = "multiple_choice"`.
 - Set `requires_logprobs = True` to enable logprob scoring and compatibility checks.
 
+## Capability Flags and Interface Support
+
+Set capability flags on the task so the runner can select a compatible interface:
+
+- `is_multimodal`: task includes images/audio
+- `requires_schema`: task requires JSON schema support
+- `requires_logprobs`: task needs logprobs for scoring
+
+Check interface capabilities in `src/interfaces/README.md` before adding new flags.
+
 ### Example: Using a Metrics Calculator
 
 If your task uses a metrics calculator (like structured extraction), simply pass errors through:
@@ -534,11 +569,16 @@ def get_error_metrics(self, error: str, error_type: Optional[str] = None):
 
 ## Quick Checklist
 
+### Required
+
 - [ ] Create `src/tasks/my_task/task.json`
 - [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
 - [ ] Implement `get_error_metrics()` for error handling
-- [ ] Set `answer_type` and `requires_logprobs` if applicable
+- [ ] Set capability flags (`answer_type`, `requires_logprobs`, etc.) as needed
 - [ ] Create `TaskGroupSpec` and `run_task_group` wrapper in `src/tasks/my_task/run.py`
 - [ ] Register in `src/pipeline.py` `TASK_REGISTRY`
+
+### Optional
+
 - [ ] Add dataset download script if using HuggingFace
 - [ ] Test with `--limit 5`

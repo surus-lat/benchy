@@ -31,6 +31,7 @@ Then the `run_<task>()` wrapper simply calls `run_task_group(...)`.
    - Set `name`, `display_name`, `output_subdir`.
    - Provide `prepare_task` or `run_subtask`.
    - Attach `aggregate_metrics` and `write_summary`.
+   - Add `setup` / `teardown` if you need shared resources across subtasks.
 
 2. **Move task construction into `prepare_task()`**
    - Use `SubtaskContext` to access `task_config`, `prompts`, and `subtask_config`.
@@ -40,6 +41,7 @@ Then the `run_<task>()` wrapper simply calls `run_task_group(...)`.
 
 4. **Update the wrapper**
    - Replace the old orchestration with `return run_task_group(...)`.
+   - If you preload shared resources, wire them into `setup` and pass through `context.shared`.
 
 5. **Register the task**
    - Add the task to `src/pipeline.py` `TASK_REGISTRY`.

@@ -29,6 +29,21 @@ class TaskGroupSpec:
     write_summary: Optional[
         Callable[[Dict[str, Any], Dict[str, Dict[str, Any]], Path, str, List[str]], None]
     ] = None
+    setup: Optional[Callable[["TaskGroupContext"], Any]] = None
+    teardown: Optional[Callable[["TaskGroupContext", Any], None]] = None
+
+
+@dataclass
+class TaskGroupContext:
+    task_config: Dict[str, Any]
+    defaults: Dict[str, Any]
+    prompts: Dict[str, Any]
+    model_name: str
+    provider_type: str
+    connection_info: Dict[str, Any]
+    output_dir: Path
+    limit: Optional[int]
+    shared: Any
 
 
 @dataclass
@@ -44,6 +59,7 @@ class SubtaskContext:
     output_dir: Path
     subtask_output_dir: Path
     limit: Optional[int]
+    shared: Any = None
 
 
 def run_task_group(
@@ -81,12 +97,36 @@ def run_task_group(
     prompts = task_config.get("prompts", {})
     subtask_configs = task_config.get("task_configs", {})
 
+    shared_state: Any = {}
+    group_context = TaskGroupContext(
+        task_config=task_config,
+        defaults=defaults,
+        prompts=prompts,
+        model_name=model_name,
+        provider_type=provider_type,
+        connection_info=connection_info,
+        output_dir=task_output_path,
+        limit=limit,
+        shared=shared_state,
+    )
+
+    if spec.setup:
+        setup_result = spec.setup(group_context)
+        if setup_result is not None:
+            shared_state = setup_result
+            group_context.shared = shared_state
+        else:
+            shared_state = group_context.shared
+
     if spec.supports_subtasks:
         subtasks_to_run = task_config.get("tasks", None)
         if subtasks_to_run is None:
             subtasks_to_run = spec.default_subtasks or []
     else:
         subtasks_to_run = [spec.name]
+
+    if not subtasks_to_run:
+        logger.warning(f"No subtasks configured for {spec.name}; task will do nothing.")
 
     all_metrics: Dict[str, Dict[str, Any]] = {}
 
@@ -112,6 +152,7 @@ def run_task_group(
                 output_dir=task_output_path,
                 subtask_output_dir=subtask_output_dir,
                 limit=limit,
+                shared=shared_state,
             )
 
             if spec.run_subtask:
@@ -167,6 +208,12 @@ def run_task_group(
     except Exception as exc:
         logger.error(f"Error running {spec.name}: {type(exc).__name__}: {exc}")
         raise
+    finally:
+        if spec.teardown:
+            try:
+                spec.teardown(group_context, shared_state)
+            except Exception as exc:
+                logger.warning(f"Teardown failed for {spec.name}: {type(exc).__name__}: {exc}")
 
 
 def _run_default_subtask(spec: TaskGroupSpec, context: SubtaskContext) -> Dict[str, Any]:
