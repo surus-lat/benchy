@@ -6,6 +6,7 @@ Interfaces handle the specifics of communicating with different AI systems.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, Iterator, List, Optional, Protocol, Tuple, Any
 
 
@@ -17,7 +18,69 @@ class InterfaceCapabilities:
     supports_logprobs: bool = False
     supports_schema: bool = False
     supports_files: bool = False
+    supports_streaming: bool = False
     supports_batch: bool = True
+    request_modes: Optional[List[str]] = None
+
+
+class RequirementLevel(str, Enum):
+    """Supported requirement levels for task capabilities."""
+
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+    OPTIONAL = "optional"
+
+
+@dataclass(frozen=True)
+class TaskCapabilityRequirements:
+    """Capability requirements declared by a task."""
+
+    requires_multimodal: RequirementLevel = RequirementLevel.OPTIONAL
+    requires_schema: RequirementLevel = RequirementLevel.OPTIONAL
+    requires_files: RequirementLevel = RequirementLevel.OPTIONAL
+    requires_logprobs: RequirementLevel = RequirementLevel.OPTIONAL
+    requires_streaming: RequirementLevel = RequirementLevel.OPTIONAL
+
+
+@dataclass(frozen=True)
+class CompatibilityReport:
+    """Compatibility report for a task/interface pair."""
+
+    compatible: bool
+    errors: List[str]
+    warnings: List[str]
+    requirements: TaskCapabilityRequirements
+    capabilities: InterfaceCapabilities
+
+
+def parse_interface_capabilities(
+    data: Optional[Dict[str, Any]],
+    default: Optional[InterfaceCapabilities] = None,
+) -> InterfaceCapabilities:
+    """Parse capabilities from config with defaults."""
+    default_caps = default or InterfaceCapabilities()
+    payload = data or {}
+    return InterfaceCapabilities(
+        supports_multimodal=payload.get("supports_multimodal", default_caps.supports_multimodal),
+        supports_logprobs=payload.get("supports_logprobs", default_caps.supports_logprobs),
+        supports_schema=payload.get("supports_schema", default_caps.supports_schema),
+        supports_files=payload.get("supports_files", default_caps.supports_files),
+        supports_streaming=payload.get("supports_streaming", default_caps.supports_streaming),
+        supports_batch=payload.get("supports_batch", default_caps.supports_batch),
+        request_modes=payload.get("request_modes", default_caps.request_modes),
+    )
+
+
+def _parse_requirement_level(value: Optional[Any]) -> RequirementLevel:
+    if isinstance(value, RequirementLevel):
+        return value
+    if isinstance(value, str):
+        try:
+            return RequirementLevel(value.lower())
+        except ValueError:
+            return RequirementLevel.OPTIONAL
+    return RequirementLevel.OPTIONAL
+
 
 
 class BaseTask(Protocol):
@@ -145,7 +208,7 @@ class BaseTask(Protocol):
     
     # Optional capability flags - implement as properties
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Whether this task requires multimodal inputs (images, audio)."""
         return False
     
@@ -225,41 +288,78 @@ class BaseInterface(Protocol):
         return InterfaceCapabilities(
             supports_multimodal=self.supports_multimodal,
             supports_logprobs=self.supports_logprobs,
+            supports_schema=False,
+            supports_files=False,
+            supports_streaming=False,
+            supports_batch=True,
         )
+def get_task_requirements(task: BaseTask) -> TaskCapabilityRequirements:
+    """Resolve task capability requirements with config overrides."""
+    requirements = TaskCapabilityRequirements()
+    config = getattr(task, "config", {}) or {}
+    overrides = getattr(task, "capability_requirements", None)
+    if overrides is None:
+        overrides = config.get("capability_requirements", {})
 
-
-def check_compatibility(task: BaseTask, interface: BaseInterface) -> Tuple[bool, str]:
-    """Check if a task and interface are compatible.
-    
-    Args:
-        task: Task instance
-        interface: Interface instance
-        
-    Returns:
-        Tuple of (is_compatible, reason_if_not)
-    """
-    # For now, all combinations are compatible
-    # Add checks here as needed (e.g., multimodal task + text-only interface)
-    
-    capabilities = getattr(interface, "capabilities", None)
-    supports_multimodal = (
-        capabilities.supports_multimodal
-        if capabilities is not None
-        else getattr(interface, "supports_multimodal", False)
-    )
-    supports_logprobs = (
-        capabilities.supports_logprobs
-        if capabilities is not None
-        else getattr(interface, "supports_logprobs", False)
-    )
-    if hasattr(task, 'is_multimodal') and task.is_multimodal:
-        if not supports_multimodal:
-            return False, "Task requires multimodal support but interface doesn't provide it"
-
+    requires_multimodal = getattr(task, "requires_multimodal", False)
+    requires_schema = getattr(task, "requires_schema", False)
     answer_type = getattr(task, "answer_type", None)
     requires_logprobs = getattr(task, "requires_logprobs", answer_type == "multiple_choice")
-    if requires_logprobs:
-        if not supports_logprobs:
-            return False, "Task requires logprobs for multiple-choice scoring but interface doesn't support logprobs"
-    
-    return True, ""
+
+    requirements = TaskCapabilityRequirements(
+        requires_multimodal=RequirementLevel.REQUIRED if requires_multimodal else requirements.requires_multimodal,
+        requires_schema=RequirementLevel.REQUIRED if requires_schema else requirements.requires_schema,
+        requires_files=requirements.requires_files,
+        requires_logprobs=RequirementLevel.REQUIRED if requires_logprobs else requirements.requires_logprobs,
+        requires_streaming=requirements.requires_streaming,
+    )
+
+    if isinstance(overrides, dict):
+        requirements = TaskCapabilityRequirements(
+            requires_multimodal=_parse_requirement_level(
+                overrides.get("requires_multimodal", requirements.requires_multimodal)
+            ),
+            requires_schema=_parse_requirement_level(
+                overrides.get("requires_schema", requirements.requires_schema)
+            ),
+            requires_files=_parse_requirement_level(
+                overrides.get("requires_files", requirements.requires_files)
+            ),
+            requires_logprobs=_parse_requirement_level(
+                overrides.get("requires_logprobs", requirements.requires_logprobs)
+            ),
+            requires_streaming=_parse_requirement_level(
+                overrides.get("requires_streaming", requirements.requires_streaming)
+            ),
+        )
+
+    return requirements
+
+
+
+def check_compatibility(task: BaseTask, interface: BaseInterface) -> CompatibilityReport:
+    """Check if a task and interface are compatible."""
+    requirements = get_task_requirements(task)
+    capabilities = getattr(interface, "capabilities", InterfaceCapabilities())
+    errors: List[str] = []
+    warnings: List[str] = []
+
+    def evaluate(requirement: RequirementLevel, supported: bool, label: str) -> None:
+        if requirement == RequirementLevel.REQUIRED and not supported:
+            errors.append(f"Task requires {label} but interface doesn't support it")
+        elif requirement == RequirementLevel.PREFERRED and not supported:
+            warnings.append(f"Task prefers {label} but interface doesn't support it")
+
+    evaluate(requirements.requires_multimodal, capabilities.supports_multimodal, "multimodal inputs")
+    evaluate(requirements.requires_schema, capabilities.supports_schema, "schemas")
+    evaluate(requirements.requires_files, capabilities.supports_files, "file inputs")
+    evaluate(requirements.requires_logprobs, capabilities.supports_logprobs, "logprobs")
+    evaluate(requirements.requires_streaming, capabilities.supports_streaming, "streaming")
+
+    return CompatibilityReport(
+        compatible=not errors,
+        errors=errors,
+        warnings=warnings,
+        requirements=requirements,
+        capabilities=capabilities,
+    )

@@ -62,9 +62,11 @@ class BenchmarkRunner:
         self.log_samples = config.get("log_samples", False)
         
         # Check compatibility
-        is_compatible, reason = check_compatibility(task, interface)
-        if not is_compatible:
-            raise ValueError(f"Task and interface incompatible: {reason}")
+        report = check_compatibility(task, interface)
+        if not report.compatible:
+            raise ValueError(f"Task and interface incompatible: {', '.join(report.errors)}")
+        for warning in report.warnings:
+            logger.warning(warning)
     
     async def run(
         self,

@@ -58,6 +58,7 @@ def _prepare_image_extraction_task(context: SubtaskContext):
         "source_dir": context.task_config.get("source_dir", ""),
         "prompts": context.task_config.get("prompts", {}),
         "metrics": context.task_config.get("metrics", {}),
+        "capability_requirements": context.task_config.get("capability_requirements", {}),
     })
 
 

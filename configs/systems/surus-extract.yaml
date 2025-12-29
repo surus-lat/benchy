@@ -4,17 +4,27 @@
 system_name: "surus-extract"
 provider_type: "surus"
 
+
 # SURUS configuration
 surus:
   endpoint: "https://api.surus.dev/functions/v1/extract"
   api_key_env: "SURUS_API_KEY"
   timeout: 30
   max_retries: 3
+  capabilities:
+    supports_multimodal: false
+    supports_schema: true
+    supports_files: false
+    supports_logprobs: false
+    supports_streaming: false
+    request_modes: ["raw_payload"]
 
 # Model configuration (for tracking purposes)
 model:
   name: "surus-extract"  # System identifier, not the backend model
-
+  organization: surus-ai
+  url: https://surus.lat
+  
 # Tasks to run (only structured extraction compatible)
 tasks:
   - "structured_extraction"
@@ -30,10 +40,8 @@ structured_extraction:
     - "chat_extract"
   
   defaults:
-    batch_size: 10  # Conservative for external API
+    batch_size: 5 # Conservative for external API
     log_samples: true
     temperature: 0.0
-    max_tokens: 2048
     timeout: 30
     max_retries: 3
-

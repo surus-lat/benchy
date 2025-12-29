@@ -126,7 +126,7 @@ class PortugueseTaskBase:
         )
 
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         return False
 
     @property

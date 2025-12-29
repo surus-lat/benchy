@@ -55,6 +55,9 @@ http:
   api_key_env: "MY_API_KEY"
   timeout: 30
   max_retries: 3
+  capabilities:
+    supports_schema: true
+    supports_files: false
 
 # Model info (for tracking only, not controlling the system)
 model:
@@ -105,7 +108,7 @@ python eval.py --config configs/systems/surus-extract.yaml --limit 10
 2. **Set appropriate timeouts** based on endpoint speed
 3. **Configure retries** for reliability
 4. **Test with --limit** before full runs
-5. **Document system capabilities** in comments
+5. **Declare system capabilities** under the provider block
 6. **Track system identifiers** not backend models (we don't control those)
 
 ## Testing
@@ -138,4 +141,3 @@ To add a new provider type:
 4. Add provider handling in `eval.py`
 5. Create system config template
 6. Document in this README
-

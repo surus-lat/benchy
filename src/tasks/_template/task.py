@@ -263,7 +263,7 @@ class TemplateTask(BaseTask):
 
     # Capability flags - override as needed
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Whether this task requires images/audio."""
         return False
     

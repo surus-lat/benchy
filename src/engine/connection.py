@@ -5,11 +5,123 @@ various provider configurations. The connection_info is a standard
 format that interfaces use - they don't need to know about providers.
 """
 
+from dataclasses import asdict, replace
 from typing import Dict, Any, Optional
 import logging
 
+from .protocols import InterfaceCapabilities, parse_interface_capabilities
+
 logger = logging.getLogger(__name__)
 
+PROVIDER_CAPABILITY_DEFAULTS = {
+    "vllm": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=True,
+        supports_schema=True,
+        supports_files=False,
+        supports_streaming=False,
+        request_modes=["chat", "completions"],
+    ),
+    "openai": InterfaceCapabilities(
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["chat", "completions"],
+    ),
+    "anthropic": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=False,
+        supports_streaming=False,
+        request_modes=["chat"],
+    ),
+    "together": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=False,
+        supports_streaming=False,
+        request_modes=["chat", "completions"],
+    ),
+    "surus": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=False,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
+    "surus_ocr": InterfaceCapabilities(
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
+    "surus_factura": InterfaceCapabilities(
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
+    "http": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=False,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
+}
+
+_CAPABILITY_FIELDS = [
+    "supports_multimodal",
+    "supports_logprobs",
+    "supports_schema",
+    "supports_files",
+    "supports_streaming",
+    "supports_batch",
+]
+
+
+def _merge_capabilities(
+    provider_caps: InterfaceCapabilities,
+    model_caps: Optional[Dict[str, Any]],
+) -> InterfaceCapabilities:
+    """Combine provider (stack) and model capabilities.
+
+    Model capabilities can only restrict provider capabilities. They never
+    enable a feature that the provider does not support.
+    """
+    if not model_caps:
+        return provider_caps
+
+    effective = provider_caps
+    for field in _CAPABILITY_FIELDS:
+        if field in model_caps:
+            effective = replace(
+                effective,
+                **{field: getattr(provider_caps, field) and bool(model_caps[field])},
+            )
+
+    if "request_modes" in model_caps:
+        model_modes = model_caps.get("request_modes") or []
+        provider_modes = provider_caps.request_modes or []
+        if provider_modes:
+            effective = replace(
+                effective,
+                request_modes=[mode for mode in provider_modes if mode in model_modes],
+            )
+        else:
+            effective = replace(effective, request_modes=model_modes)
+
+    return effective
 
 def build_connection_info(
     provider_type: str,
@@ -58,7 +170,17 @@ def build_connection_info(
         "logprobs_top_k": provider_config.get("logprobs_top_k", model_config.get("logprobs_top_k")),
         "problematic_models": provider_config.get("problematic_models", model_config.get("problematic_models")),
     }
-    supports_logprobs = provider_config.get("supports_logprobs", model_config.get("supports_logprobs"))
+    base_capabilities = PROVIDER_CAPABILITY_DEFAULTS.get(provider_type, InterfaceCapabilities())
+    provider_capabilities = parse_interface_capabilities(
+        provider_config.get("capabilities"),
+        default=base_capabilities,
+    )
+    model_capabilities = provider_config.get("model_capabilities") or {}
+    legacy_overrides: Dict[str, Any] = {}
+    if "supports_logprobs" in provider_config:
+        legacy_overrides["supports_logprobs"] = provider_config.get("supports_logprobs")
+    if legacy_overrides:
+        provider_capabilities = parse_interface_capabilities(legacy_overrides, default=provider_capabilities)
     
     if provider_type == "vllm":
         # vLLM: Get URL from server_info
@@ -72,60 +194,45 @@ def build_connection_info(
         
         connection_info["api_key"] = "EMPTY"  # vLLM doesn't need real key
         connection_info["use_structured_outputs"] = True  # vLLM v0.12.0+ structured outputs
-        if supports_logprobs is None:
-            supports_logprobs = True
-        
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
         
     elif provider_type == "anthropic":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.anthropic.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "ANTHROPIC_API_KEY")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
     
     elif provider_type == "together":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.together.xyz/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "TOGETHER_API_KEY")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
         
     elif provider_type == "surus":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
         
     elif provider_type == "surus_ocr":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
         
     elif provider_type == "surus_factura":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
         
     else:
         # Generic HTTP provider
         connection_info["base_url"] = provider_config.get("base_url", provider_config.get("endpoint"))
         connection_info["api_key_env"] = provider_config.get("api_key_env")
         connection_info["use_structured_outputs"] = False
-        if supports_logprobs is None:
-            supports_logprobs = False
 
-    connection_info["supports_logprobs"] = supports_logprobs
+    capabilities = _merge_capabilities(provider_capabilities, model_capabilities)
+    connection_info["capabilities"] = asdict(capabilities)
+    connection_info["supports_logprobs"] = capabilities.supports_logprobs
     
     logger.debug(f"Built connection_info for {provider_type}: base_url={connection_info.get('base_url')}")
     return connection_info
@@ -155,6 +262,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 30),
                 "max_retries": connection_info.get("max_retries", 3),
+                "capabilities": connection_info.get("capabilities"),
             }
         }
         return SurusInterface(surus_config, model_name, "surus")
@@ -168,6 +276,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "capabilities": connection_info.get("capabilities"),
             }
         }
         return SurusOCRInterface(surus_ocr_config, model_name, "surus_ocr")
@@ -181,6 +290,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "capabilities": connection_info.get("capabilities"),
             }
         }
         return SurusFacturaInterface(surus_factura_config, model_name, "surus_factura")

@@ -127,6 +127,13 @@ Use `dataset` for single-task configs or `tasks` + `task_configs` for grouped ta
 
 Provider configs live in `configs/providers/` and define defaults for a serving stack (e.g., vLLM). Model configs can override specific fields without duplicating everything.
 
+### Capabilities
+
+Compatibility checks use capability flags defined under provider configs. You can override them per model
+via provider overrides, or by adding tags under `metadata` (e.g., `supports_multimodal`, `supports_logprobs`),
+which are mapped into `model_capabilities` automatically. Model capabilities can only restrict provider
+capabilities; they never enable features that the provider config does not support.
+
 ### Global Config
 
 `configs/config.yaml` centralizes paths, logging, and leaderboard scoring settings.

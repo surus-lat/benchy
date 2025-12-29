@@ -145,6 +145,10 @@ for HuggingFace datasets. Only include the fields you need.
 
 `metrics_manifest` lists the aggregate metric keys to surface in `run_summary.json`.
 
+Optional `capability_requirements` lets you mark requirements as:
+`required`, `preferred`, or `optional` (for requires_multimodal/requires_schema/
+requires_files/requires_logprobs/requires_streaming).
+
 ### Subtasks and Aggregation
 
 - The `tasks` list defines the subtask names.
@@ -315,7 +319,7 @@ Each sample should have at minimum:
 
     # Optional capability flags
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Does this task use images/audio?"""
         return False
     
@@ -536,7 +540,7 @@ For multiple-choice tasks:
 
 Set capability flags on the task so the runner can select a compatible interface:
 
-- `is_multimodal`: task includes images/audio
+- `requires_multimodal`: task includes images/audio
 - `requires_schema`: task requires JSON schema support
 - `requires_logprobs`: task needs logprobs for scoring
 

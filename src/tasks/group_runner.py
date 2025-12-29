@@ -78,9 +78,11 @@ class SubtaskContext:
 
 def ensure_task_interface_compatibility(task: BaseTask, interface: Any) -> None:
     """Raise if a task/interface pair is not compatible."""
-    compatible, reason = check_compatibility(task, interface)
-    if not compatible:
-        raise ValueError(f"Incompatible task/interface: {reason}")
+    report = check_compatibility(task, interface)
+    if not report.compatible:
+        raise ValueError(f"Incompatible task/interface: {', '.join(report.errors)}")
+    for warning in report.warnings:
+        logger.warning(warning)
 
 
 def run_task_group(
@@ -114,6 +116,7 @@ def run_task_group(
 
     logger.info(f"Provider: {provider_type}")
     logger.info(f"Base URL: {connection_info.get('base_url')}")
+    logger.info(f"Capabilities: {connection_info.get('capabilities')}")
 
     output_subdir = task_config.get("output", {}).get("subdirectory", spec.output_subdir or spec.name)
     task_output_path = Path(output_path) / output_subdir

@@ -10,4 +10,12 @@ api_version: "2023-06-01"  # Anthropic API version
 # API endpoint selection (Anthropic only supports messages/chat format)
 api_endpoint: "chat"  # Anthropic uses messages API (similar to chat completions)
 
+# Provider capability flags for compatibility checks
+capabilities:
+  supports_multimodal: false
+  supports_schema: true
+  supports_files: false
+  supports_logprobs: false
+  supports_streaming: false
+  request_modes: ["chat"]
 
