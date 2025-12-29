@@ -38,9 +38,9 @@ Useful flags:
 - `--run-id NAME` sets a custom run folder name.
 - `--log-samples` forces sample logging for all tasks.
 - `--test` is only supported for vLLM and starts the server without running tasks.
- - `--tasks a,b,c` overrides the task list from the config.
- - `--tasks-file path.txt` loads tasks from a file (one per line, comments allowed).
- - `--task-group name` injects task groups from `configs/config.yaml` (repeatable).
+- `--tasks a,b,c` overrides the task list from the config.
+- `--tasks-file path.txt` loads tasks from a file (one per line, comments allowed).
+- `--task-group name` injects task groups from `configs/config.yaml` (repeatable).
 
 ## Model Config Structure
 
