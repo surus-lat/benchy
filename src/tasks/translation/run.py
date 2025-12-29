@@ -5,9 +5,7 @@ It uses the generic benchmark engine to run evaluation.
 """
 
 import asyncio
-import json
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
 from prefect import task
@@ -19,6 +17,7 @@ from ...engine import (
     get_interface_for_provider,
     mark_task_complete,
 )
+from ..summary_reporter import write_group_summary
 
 logger = logging.getLogger(__name__)
 
@@ -541,50 +540,25 @@ def _save_aggregated_summary(
     subtasks: list,
 ):
     """Save aggregated results summary."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = model_name.replace("/", "_")
-    
-    # JSON summary
-    summary_file = output_dir / f"{safe_name}_{timestamp}_summary.json"
-    with open(summary_file, "w") as f:
-        json.dump({
-            "model": model_name,
-            "timestamp": timestamp,
-            "subtasks": subtasks,
-            "aggregated_metrics": aggregated_metrics,
-            "per_subtask_metrics": subtask_metrics,
-        }, f, indent=2)
-    
-    logger.info(f"Saved summary to {summary_file}")
-    
-    # Text summary
-    text_file = output_dir / f"{safe_name}_{timestamp}_summary.txt"
-    with open(text_file, "w") as f:
-        f.write("=" * 60 + "\n")
-        f.write("TRANSLATION BENCHMARK SUMMARY\n")
-        f.write("=" * 60 + "\n")
-        f.write(f"Model: {model_name}\n")
-        f.write(f"Timestamp: {timestamp}\n")
-        f.write(f"Subtasks: {', '.join(subtasks)}\n\n")
-        
-        f.write("AGGREGATED METRICS\n")
-        f.write("-" * 40 + "\n")
-        f.write(f"Total Samples: {aggregated_metrics.get('total_samples', 0)}\n")
-        f.write(f"Valid Samples: {aggregated_metrics.get('valid_samples', 0)}\n")
-        f.write(f"Error Rate: {aggregated_metrics.get('error_rate', 0):.2%}\n\n")
-        f.write(f"BLEU: {aggregated_metrics.get('bleu', 0):.4f}\n")
-        f.write(f"chrF: {aggregated_metrics.get('chrf', 0):.4f}\n")
-        f.write(f"COMET: {aggregated_metrics.get('comet', 0):.4f}\n\n")
-        
-        f.write("PER-SUBTASK BREAKDOWN\n")
-        f.write("-" * 40 + "\n")
-        for name, metrics in subtask_metrics.items():
-            f.write(f"\n{name.upper()}:\n")
-            f.write(f"  Samples: {metrics.get('total_samples', 0)}\n")
-            f.write(f"  BLEU: {metrics.get('bleu', 0):.4f}\n")
-            f.write(f"  chrF: {metrics.get('chrf', 0):.4f}\n")
-            f.write(f"  COMET: {metrics.get('comet', 0):.4f}\n")
-        f.write("=" * 60 + "\n")
-    
-    logger.info(f"Saved text summary to {text_file}")
+    write_group_summary(
+        output_dir=output_dir,
+        model_name=model_name,
+        subtasks=subtasks,
+        aggregated_metrics=aggregated_metrics,
+        subtask_metrics=subtask_metrics,
+        title="TRANSLATION BENCHMARK SUMMARY",
+        aggregated_fields=[
+            ("total_samples", "Total Samples", "d"),
+            ("valid_samples", "Valid Samples", "d"),
+            ("error_rate", "Error Rate", ".2%"),
+            ("bleu", "BLEU", ".4f"),
+            ("chrf", "chrF", ".4f"),
+            ("comet", "COMET", ".4f"),
+        ],
+        per_subtask_fields=[
+            ("total_samples", "Samples", "d"),
+            ("bleu", "BLEU", ".4f"),
+            ("chrf", "chrF", ".4f"),
+            ("comet", "COMET", ".4f"),
+        ],
+    )

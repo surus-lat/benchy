@@ -4,15 +4,10 @@ Generate leaderboard table in the format expected by the frontend.
 """
 
 import json
-import yaml
 from pathlib import Path
 from typing import Dict, List, Any
 import pandas as pd
-
-def load_config(config_path: str = "config.yaml") -> Dict:
-    """Load configuration from YAML file."""
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from config_loader import load_config
 
 def load_all_summaries(summaries_dir: Path) -> List[Dict]:
     """Load all model summaries."""
@@ -67,7 +62,6 @@ def process_task_scores(row: Dict, task_name: str, task_data: Dict, task_config:
 def create_leaderboard_table(summaries: List[Dict], config: Dict = None) -> List[Dict]:
     """Generate the leaderboard table in the expected format using modular task system."""
     if config is None:
-        from .parse_model_results import load_config
         config = load_config()
     
     leaderboard_config = config.get("leaderboard", {})
@@ -126,7 +120,6 @@ def generate_leaderboard_table(publish_dir: str) -> bool:
     print(f"Found {len(summaries)} model summaries")
     
     # Load configuration
-    from .parse_model_results import load_config
     config = load_config()
     
     # Generate leaderboard table
@@ -151,7 +144,6 @@ def generate_leaderboard_table(publish_dir: str) -> bool:
 
 def main():
     """Main function for standalone execution."""
-    import yaml
     config = load_config()
     publish_dir = config["paths"]["publish_dir"]
     return generate_leaderboard_table(publish_dir)
