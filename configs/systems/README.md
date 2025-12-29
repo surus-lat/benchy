@@ -24,8 +24,8 @@ configs/
 
 ### Model Configs (`configs/models/`)
 - **Purpose**: Evaluate general-purpose language models
-- **Examples**: GPT-4, Claude, Llama, Gemma
-- **Provider types**: `vllm`, `openai`, `anthropic`
+- **Examples**: OpenAI, Anthropic, Llama, Gemma
+- **Provider types**: `vllm`, `openai`, `anthropic`, `together`
 - **Characteristics**:
   - Support multiple tasks
   - Use standardized prompts
@@ -35,7 +35,7 @@ configs/
 ### System Configs (`configs/systems/`)
 - **Purpose**: Evaluate task-specialized AI systems
 - **Examples**: SURUS /extract, custom extraction APIs
-- **Provider types**: `surus`, `http`, custom
+- **Provider types**: `surus`, `surus_ocr`, `surus_factura`, `http`
 - **Characteristics**:
   - Optimized for specific tasks
   - Custom API formats
@@ -137,7 +137,7 @@ To add a new provider type:
 
 1. Create interface in `src/interfaces/`
 2. Implement `prepare_request()` and `generate_batch()`
-3. Add to factory function in `benchmark_runner.py`
-4. Add provider handling in `eval.py`
-5. Create system config template
+3. Register it in `src/engine/connection.py` via `get_interface_for_provider`
+4. Add provider handling in `eval.py` and `src/config_manager.py` if models should use it
+5. Create or update a system config template
 6. Document in this README
