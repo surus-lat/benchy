@@ -12,7 +12,7 @@ tasks:
 - structured_extraction
 metadata:
   max_context_length: 128000
-  is_multimodal: true
+  supports_multimodal: true
   model_type: qwen2_vl
   provider: together
   description: "Qwen2.5-VL-72B-Instruct via Together AI - Multimodal vision-language model"

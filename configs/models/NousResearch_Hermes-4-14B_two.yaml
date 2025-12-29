@@ -14,7 +14,7 @@ tasks:
 - structured_extraction
 metadata:
   max_context_length: 40960
-  is_multimodal: false
+  supports_multimodal: false
   model_type: qwen3
   detected_from_config: true
   generated_at: '2025-10-16T04:40:41.222589'

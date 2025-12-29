@@ -14,7 +14,7 @@ tasks:
 - latam_board
 metadata:
   max_context_length: 131072
-  is_multimodal: false
+  supports_multimodal: false
   model_type: granite
   detected_from_config: true
   generated_at: '2025-10-15T16:55:01.224105'

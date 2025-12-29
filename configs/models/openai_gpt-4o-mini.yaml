@@ -11,7 +11,7 @@ tasks:
 - image_extraction
 metadata:
   max_context_length: 128000
-  is_multimodal: true
+  supports_multimodal: true
   model_type: gpt4o_mini
   provider: openai
   description: "GPT-4o Mini - Fast and cheap GPT-4 class model"

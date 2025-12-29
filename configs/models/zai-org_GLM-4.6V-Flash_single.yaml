@@ -21,7 +21,7 @@ tasks:
 - image_extraction
 metadata:
   max_context_length: 12000
-  is_multimodal: true
+  supports_multimodal: true
   model_type: glm46v
   detected_from_config: true
   generated_at: '2025-01-27T00:00:00.000000'

@@ -19,7 +19,7 @@ tasks:
 - latam_board
 metadata:
   max_context_length: 8192
-  is_multimodal: false
+  supports_multimodal: false
   model_type: mistral
   detected_from_config: true
   generated_at: '2025-10-16T06:53:09.378932'
