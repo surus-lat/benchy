@@ -5,14 +5,16 @@ Interfaces handle communication with AI systems during evaluation. They are prov
 ## Architecture
 
 ```
-Pipeline (resolves provider) → connection_info → Interface → AI System
-                                    ↓
-                              BenchmarkRunner
-                                    ↓
-                                  Task
+Pipeline → TaskGroupRunner → connection_info → Interface → AI System
+                ↓
+         BenchmarkRunner
+                ↓
+              Task
 ```
 
-Key principle: **Interfaces adapt task data to their API format**.
+Key principle: **Interfaces adapt task data to their API format**. TaskGroupRunner
+builds `connection_info` and selects an interface; BenchmarkRunner passes each
+sample and the task instance into `interface.prepare_request(...)`.
 - LLM interfaces call `task.get_prompt()` to build chat messages
 - HTTP interfaces use raw `sample["text"]` directly
 - Tasks don't know which interface is being used
@@ -77,6 +79,9 @@ results = await interface.generate_batch(requests)
 ```
 
 ## Integration with Benchmark Engine
+
+TaskGroupRunner uses the engine helpers below. Use them directly only if you are
+building a custom runner.
 
 The recommended way to get an interface is via the engine:
 

@@ -7,8 +7,8 @@ To create a new task:
    - Set TASK_NAME to your task identifier
    - Override preprocess_sample() to transform HF samples to eval format
    - Override calculate_metrics() for task-specific scoring
-3. Edit run.py: rename run_template_task to run_my_task
-4. Add task to pipeline.py dispatch
+3. Edit run.py: rename run_template_task to run_my_task and update TaskGroupSpec
+4. Register the task in src/pipeline.py TASK_REGISTRY
 """
 
 import json

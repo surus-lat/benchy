@@ -4,19 +4,12 @@ This is the main entry point for the structured extraction task.
 It uses the generic benchmark engine to run evaluation.
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 from prefect import task
 
-from ...engine import (
-    BenchmarkRunner,
-    save_results,
-    build_connection_info,
-    get_interface_for_provider,
-    mark_task_complete,
-)
+from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from ..summary_reporter import write_group_summary
 from .tasks import ParaloqTask, ChatExtractTask
 from .utils.dataset_download import (
@@ -59,116 +52,15 @@ def run_structured_extraction(
     Returns:
         Dictionary with execution results and metrics
     """
-    logger.info(f"Starting structured extraction evaluation for model: {model_name}")
-    
-    # Determine provider type
-    provider_type = "vllm"
-    if provider_config:
-        provider_type = provider_config.get('provider_type', 'vllm')
-    
-    # Build connection info from provider config
-    connection_info = build_connection_info(
-        provider_type=provider_type,
-        provider_config=provider_config or {},
+    return run_task_group(
+        spec=STRUCTURED_SPEC,
+        model_name=model_name,
+        output_path=output_path,
         server_info=server_info,
-        model_config=task_config.get('defaults', {}),
+        task_config=task_config,
+        limit=limit,
+        provider_config=provider_config,
     )
-    
-    logger.info(f"Provider: {provider_type}")
-    logger.info(f"Base URL: {connection_info.get('base_url')}")
-    
-    # Create output directory
-    output_subdir = task_config.get('output', {}).get('subdirectory', 'structured_extraction')
-    task_output_path = Path(output_path) / output_subdir
-    task_output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Get list of subtasks to run
-    subtasks_to_run = task_config.get('tasks', ['paraloq'])
-    subtask_configs = task_config.get('task_configs', {})
-    defaults = task_config.get('defaults', {})
-    
-    # Store results for each subtask
-    all_results = {}
-    all_metrics = {}
-    
-    try:
-        for subtask_name in subtasks_to_run:
-            logger.info(f"Running subtask: {subtask_name}")
-            
-            # Create task instance
-            task_instance = _create_task_instance(
-                subtask_name=subtask_name,
-                subtask_config=subtask_configs.get(subtask_name, {}),
-                task_config=task_config,
-            )
-            
-            # Create interface
-            interface = get_interface_for_provider(
-                provider_type=provider_type,
-                connection_info=connection_info,
-                model_name=model_name,
-            )
-            
-            # Create runner config
-            runner_config = {
-                "model_name": model_name,
-                "batch_size": defaults.get('batch_size', 20),
-                "output_dir": str(task_output_path / subtask_name),
-                "log_samples": defaults.get('log_samples', False),
-            }
-            
-            # Run benchmark using generic engine
-            runner = BenchmarkRunner(task_instance, interface, runner_config)
-            subtask_results = asyncio.run(runner.run(limit=limit, no_resume=False))
-            
-            # Save results (don't mark subtask complete - parent handles that)
-            save_results(
-                results=subtask_results,
-                output_dir=task_output_path / subtask_name,
-                model_name=model_name,
-                task_name=subtask_name,
-                log_samples=defaults.get('log_samples', False),
-                mark_complete=False,  # Parent task handles completion
-            )
-            
-            all_results[subtask_name] = subtask_results
-            all_metrics[subtask_name] = subtask_results.get('aggregate_metrics', {})
-            
-            logger.info(f"Subtask {subtask_name} completed")
-        
-        # Aggregate metrics across all subtasks
-        aggregated = _aggregate_subtask_metrics(all_metrics, subtasks_to_run)
-        
-        # Save aggregated summary
-        _save_aggregated_summary(
-            aggregated_metrics=aggregated,
-            subtask_metrics=all_metrics,
-            output_dir=task_output_path,
-            model_name=model_name,
-            subtasks=subtasks_to_run,
-        )
-        
-        # Mark parent task complete (subtasks marked by save_results)
-        mark_task_complete(task_output_path)
-        
-        logger.info("Structured extraction evaluation completed successfully")
-        
-        return {
-            "model_name": model_name,
-            "task": "structured_extraction",
-            "output_path": str(task_output_path),
-            "metrics": aggregated,
-            "subtask_metrics": all_metrics,
-        }
-        
-    except ConnectionError as e:
-        # Clean error for connection failures (no traceback needed)
-        logger.error(f"Connection failed: {e}")
-        logger.error(f"Check that the endpoint is accessible and responding")
-        raise
-    except Exception as e:
-        logger.error(f"Error running structured extraction: {type(e).__name__}: {e}")
-        raise
 
 
 def _create_task_instance(
@@ -224,6 +116,14 @@ def _create_task_instance(
         
     else:
         raise ValueError(f"Unknown subtask: {subtask_name}")
+
+
+def _prepare_structured_task(context: SubtaskContext):
+    return _create_task_instance(
+        subtask_name=context.subtask_name,
+        subtask_config=context.subtask_config,
+        task_config=context.task_config,
+    )
 
 
 def _aggregate_subtask_metrics(subtask_metrics: Dict[str, Dict], subtask_names: list) -> Dict:
@@ -334,3 +234,14 @@ def _save_aggregated_summary(
             metrics.get("extraction_quality_score", 0.0),
             metrics.get("field_f1_partial", 0.0),
         )
+
+
+STRUCTURED_SPEC = TaskGroupSpec(
+    name="structured_extraction",
+    display_name="Structured extraction",
+    output_subdir="structured_extraction",
+    default_subtasks=["paraloq"],
+    prepare_task=_prepare_structured_task,
+    aggregate_metrics=_aggregate_subtask_metrics,
+    write_summary=_save_aggregated_summary,
+)
