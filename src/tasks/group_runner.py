@@ -9,14 +9,23 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..engine import BenchmarkRunner, build_connection_info, get_interface_for_provider, mark_task_complete, save_results
-from ..engine.protocols import BaseTask
+from ..engine.protocols import BaseTask, check_compatibility
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class TaskGroupSpec:
-    """Specification for a grouped task runner."""
+    """Configuration for running a task group.
+
+    Use this in each task's run wrapper to declare how subtasks are built and
+    how results are aggregated. Provide either:
+    - prepare_task (default runner), or
+    - run_subtask (custom runner).
+
+    Optional setup/teardown hooks let you load shared resources once and reuse
+    them across subtasks via TaskGroupContext.shared.
+    """
 
     name: str
     display_name: str
@@ -35,6 +44,10 @@ class TaskGroupSpec:
 
 @dataclass
 class TaskGroupContext:
+    """Shared context for a task group run.
+
+    This is passed to setup/teardown hooks to preload shared resources.
+    """
     task_config: Dict[str, Any]
     defaults: Dict[str, Any]
     prompts: Dict[str, Any]
@@ -48,6 +61,7 @@ class TaskGroupContext:
 
 @dataclass
 class SubtaskContext:
+    """Context for a single subtask execution."""
     subtask_name: str
     subtask_config: Dict[str, Any]
     task_config: Dict[str, Any]
@@ -62,6 +76,13 @@ class SubtaskContext:
     shared: Any = None
 
 
+def ensure_task_interface_compatibility(task: BaseTask, interface: Any) -> None:
+    """Raise if a task/interface pair is not compatible."""
+    compatible, reason = check_compatibility(task, interface)
+    if not compatible:
+        raise ValueError(f"Incompatible task/interface: {reason}")
+
+
 def run_task_group(
     *,
     spec: TaskGroupSpec,
@@ -72,7 +93,12 @@ def run_task_group(
     limit: Optional[int] = None,
     provider_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Run a grouped task using a shared execution flow."""
+    """Run a task group using a shared execution flow.
+
+    Returns a consistent shape for all tasks:
+    - metrics: aggregated task metrics
+    - subtask_metrics: per-subtask aggregate metrics
+    """
     logger.info(f"Starting {spec.display_name} evaluation for model: {model_name}")
 
     provider_type = "vllm"
@@ -97,6 +123,18 @@ def run_task_group(
     prompts = task_config.get("prompts", {})
     subtask_configs = task_config.get("task_configs", {})
 
+    if spec.supports_subtasks:
+        subtasks_to_run = task_config.get("tasks", None)
+        if subtasks_to_run is None:
+            subtasks_to_run = spec.default_subtasks or []
+    else:
+        subtasks_to_run = [spec.name]
+
+    if not subtasks_to_run:
+        raise ValueError(
+            f"No subtasks configured for {spec.name}. Set tasks in the task config or default_subtasks in the spec."
+        )
+
     shared_state: Any = {}
     group_context = TaskGroupContext(
         task_config=task_config,
@@ -118,19 +156,10 @@ def run_task_group(
         else:
             shared_state = group_context.shared
 
-    if spec.supports_subtasks:
-        subtasks_to_run = task_config.get("tasks", None)
-        if subtasks_to_run is None:
-            subtasks_to_run = spec.default_subtasks or []
-    else:
-        subtasks_to_run = [spec.name]
-
-    if not subtasks_to_run:
-        logger.warning(f"No subtasks configured for {spec.name}; task will do nothing.")
-
     all_metrics: Dict[str, Dict[str, Any]] = {}
 
-    try:
+    async def _run_default_subtasks() -> None:
+        """Run default subtask flow with a single event loop."""
         for subtask_name in subtasks_to_run:
             if spec.supports_subtasks:
                 logger.info(f"Running subtask: {subtask_name}")
@@ -155,51 +184,75 @@ def run_task_group(
                 shared=shared_state,
             )
 
-            if spec.run_subtask:
-                subtask_results = spec.run_subtask(context)
-            else:
-                if spec.prepare_task is None:
-                    raise ValueError(f"No task factory provided for {spec.name}")
-                subtask_results = _run_default_subtask(spec, context)
+            subtask_results = await _run_default_subtask_async(spec, context)
 
             if subtask_results:
                 all_metrics[subtask_name] = subtask_results.get("aggregate_metrics", {})
 
             logger.info(f"Subtask {subtask_name} completed")
 
-        if spec.supports_subtasks:
-            aggregated = {}
-            if spec.aggregate_metrics:
-                aggregated = spec.aggregate_metrics(all_metrics, subtasks_to_run)
+    try:
+        if spec.run_subtask:
+            for subtask_name in subtasks_to_run:
+                if spec.supports_subtasks:
+                    logger.info(f"Running subtask: {subtask_name}")
+                    subtask_config = subtask_configs.get(subtask_name, {})
+                    subtask_output_dir = task_output_path / subtask_name
+                else:
+                    subtask_config = task_config
+                    subtask_output_dir = task_output_path
 
-            if spec.write_summary:
-                spec.write_summary(
-                    aggregated,
-                    all_metrics,
-                    task_output_path,
-                    model_name,
-                    subtasks_to_run,
+                context = SubtaskContext(
+                    subtask_name=subtask_name,
+                    subtask_config=subtask_config,
+                    task_config=task_config,
+                    defaults=defaults,
+                    prompts=prompts,
+                    model_name=model_name,
+                    provider_type=provider_type,
+                    connection_info=connection_info,
+                    output_dir=task_output_path,
+                    subtask_output_dir=subtask_output_dir,
+                    limit=limit,
+                    shared=shared_state,
                 )
 
-            mark_task_complete(task_output_path)
+                subtask_results = spec.run_subtask(context)
 
-            logger.info(f"{spec.display_name} evaluation completed successfully")
+                if subtask_results:
+                    all_metrics[subtask_name] = subtask_results.get("aggregate_metrics", {})
 
-            return {
-                "model_name": model_name,
-                "task": spec.name,
-                "output_path": str(task_output_path),
-                "metrics": aggregated,
-                "subtask_metrics": all_metrics,
-            }
+                logger.info(f"Subtask {subtask_name} completed")
+        else:
+            if spec.prepare_task is None:
+                raise ValueError(f"No task factory provided for {spec.name}")
+            asyncio.run(_run_default_subtasks())
 
-        metrics = all_metrics.get(spec.name, {})
+        aggregated: Dict[str, Any] = {}
+        if spec.aggregate_metrics:
+            aggregated = spec.aggregate_metrics(all_metrics, subtasks_to_run)
+        elif len(subtasks_to_run) == 1:
+            aggregated = all_metrics.get(subtasks_to_run[0], {})
+
+        if spec.write_summary:
+            spec.write_summary(
+                aggregated,
+                all_metrics,
+                task_output_path,
+                model_name,
+                subtasks_to_run,
+            )
+
+        mark_task_complete(task_output_path)
+
         logger.info(f"{spec.display_name} evaluation completed successfully")
+
         return {
             "model_name": model_name,
             "task": spec.name,
             "output_path": str(task_output_path),
-            "metrics": metrics,
+            "metrics": aggregated,
+            "subtask_metrics": all_metrics,
         }
 
     except ConnectionError as exc:
@@ -216,7 +269,8 @@ def run_task_group(
                 logger.warning(f"Teardown failed for {spec.name}: {type(exc).__name__}: {exc}")
 
 
-def _run_default_subtask(spec: TaskGroupSpec, context: SubtaskContext) -> Dict[str, Any]:
+async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContext) -> Dict[str, Any]:
+    """Run one subtask using the default BenchmarkRunner flow."""
     task_instance = spec.prepare_task(context)
     if task_instance is None:
         return {}
@@ -226,6 +280,7 @@ def _run_default_subtask(spec: TaskGroupSpec, context: SubtaskContext) -> Dict[s
         connection_info=context.connection_info,
         model_name=context.model_name,
     )
+    ensure_task_interface_compatibility(task_instance, interface)
 
     runner_config = {
         "model_name": context.model_name,
@@ -235,7 +290,7 @@ def _run_default_subtask(spec: TaskGroupSpec, context: SubtaskContext) -> Dict[s
     }
 
     runner = BenchmarkRunner(task_instance, interface, runner_config)
-    results = asyncio.run(runner.run(limit=context.limit, no_resume=False))
+    results = await runner.run(limit=context.limit, no_resume=False)
 
     save_results(
         results=results,
@@ -243,7 +298,7 @@ def _run_default_subtask(spec: TaskGroupSpec, context: SubtaskContext) -> Dict[s
         model_name=context.model_name,
         task_name=task_instance.get_task_name(),
         log_samples=context.defaults.get("log_samples", False),
-        mark_complete=not spec.supports_subtasks,
+        mark_complete=False,
     )
 
     return results
