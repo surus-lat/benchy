@@ -23,7 +23,6 @@ def create_model_row(model_name: str, model_data: Dict[str, Any]) -> Dict[str, A
         "model_name": model_name,
         "publisher": model_data.get("publisher", "unknown"),
         "full_model_name": model_data.get("full_model_name", model_name),
-        "overall_latam_score": model_data.get("overall_latam_score"),
     }
     
     # Extract category scores
@@ -84,9 +83,7 @@ def generate_final_table(summaries_data: Dict[str, Any]) -> pd.DataFrame:
     # Create DataFrame
     df = pd.DataFrame(rows)
     
-    # Sort by overall LATAM score (descending)
-    if "overall_latam_score" in df.columns:
-        df = df.sort_values("overall_latam_score", ascending=False, na_position='last')
+    # No sorting by overall score - just keep original order
     
     # Round numeric columns to 4 decimal places
     numeric_columns = df.select_dtypes(include=['float64']).columns
@@ -104,7 +101,6 @@ def create_detailed_breakdown(summaries_data: Dict[str, Any]) -> Dict[str, Any]:
             "model_name": model_name,
             "publisher": model_data.get("publisher", "unknown"),
             "full_model_name": model_data.get("full_model_name", model_name),
-            "overall_latam_score": model_data.get("overall_latam_score"),
             "categories": {}
         }
         
@@ -193,8 +189,7 @@ def main():
         "total_models": int(len(final_table)),
         "columns": list(final_table.columns),
         "numeric_columns": list(final_table.select_dtypes(include=['float64']).columns),
-        "models_with_overall_score": int(final_table["overall_latam_score"].notna().sum()) if "overall_latam_score" in final_table.columns else 0,
-        "top_5_models": final_table.head(5)[["model_name", "overall_latam_score"]].to_dict("records") if "overall_latam_score" in final_table.columns else []
+        "models_count": len(final_table)
     }
     
     stats_file = publish_dir / "summary_statistics.json"
@@ -206,13 +201,7 @@ def main():
     print(f"\n📊 Final Table Preview:")
     print(f"   Models: {len(final_table)}")
     print(f"   Columns: {len(final_table.columns)}")
-    print(f"\n   Top 5 models by overall LATAM score:")
-    if "overall_latam_score" in final_table.columns:
-        top_5 = final_table.head(5)[["model_name", "overall_latam_score"]]
-        for _, row in top_5.iterrows():
-            score = row["overall_latam_score"]
-            score_str = f"{score:.4f}" if pd.notna(score) else "N/A"
-            print(f"     {row['model_name']}: {score_str}")
+    # No overall score display
     
     print(f"\n✓ Final table generation completed!")
     print(f"  Publish directory: {publish_dir}")
