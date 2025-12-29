@@ -13,10 +13,9 @@ from prefect import task
 from ...engine import (
     BenchmarkRunner,
     save_results,
-    build_connection_info,
     get_interface_for_provider,
-    mark_task_complete,
 )
+from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from ..summary_reporter import write_group_summary
 
 logger = logging.getLogger(__name__)
@@ -54,94 +53,15 @@ def run_translation(
     Returns:
         Dictionary with execution results and metrics
     """
-    logger.info(f"Starting translation evaluation for model: {model_name}")
-    
-    # Determine provider type
-    provider_type = "vllm"
-    if provider_config:
-        provider_type = provider_config.get('provider_type', 'vllm')
-    
-    # Build connection info from provider config
-    connection_info = build_connection_info(
-        provider_type=provider_type,
-        provider_config=provider_config or {},
+    return run_task_group(
+        spec=TRANSLATION_SPEC,
+        model_name=model_name,
+        output_path=output_path,
         server_info=server_info,
-        model_config=task_config.get('defaults', {}),
+        task_config=task_config,
+        limit=limit,
+        provider_config=provider_config,
     )
-    
-    logger.info(f"Provider: {provider_type}")
-    logger.info(f"Base URL: {connection_info.get('base_url')}")
-    
-    # Create output directory
-    output_subdir = task_config.get('output', {}).get('subdirectory', 'translation')
-    task_output_path = Path(output_path) / output_subdir
-    task_output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Get list of subtasks to run
-    subtasks_to_run = task_config.get('tasks', ['opus'])
-    subtask_configs = task_config.get('task_configs', {})
-    defaults = task_config.get('defaults', {})
-    prompts = task_config.get('prompts', {})
-    
-    # Store results for each subtask
-    all_results = {}
-    all_metrics = {}
-    
-    try:
-        for subtask_name in subtasks_to_run:
-            logger.info(f"Running subtask: {subtask_name}")
-            
-            # Create task instances for this subtask
-            subtask_results = _run_subtask(
-                subtask_name=subtask_name,
-                subtask_config=subtask_configs.get(subtask_name, {}),
-                task_config=task_config,
-                model_name=model_name,
-                connection_info=connection_info,
-                provider_type=provider_type,
-                task_output_path=task_output_path,
-                limit=limit,
-                defaults=defaults,
-                prompts=prompts,
-            )
-            
-            all_results[subtask_name] = subtask_results
-            all_metrics[subtask_name] = subtask_results.get('aggregate_metrics', {})
-            
-            logger.info(f"Subtask {subtask_name} completed")
-        
-        # Aggregate metrics across all subtasks
-        aggregated = _aggregate_subtask_metrics(all_metrics, subtasks_to_run)
-        
-        # Save aggregated summary
-        _save_aggregated_summary(
-            aggregated_metrics=aggregated,
-            subtask_metrics=all_metrics,
-            output_dir=task_output_path,
-            model_name=model_name,
-            subtasks=subtasks_to_run,
-        )
-        
-        # Mark parent task complete
-        mark_task_complete(task_output_path)
-        
-        logger.info("Translation evaluation completed successfully")
-        
-        return {
-            "model_name": model_name,
-            "task": "translation",
-            "output_path": str(task_output_path),
-            "metrics": aggregated,
-            "subtask_metrics": all_metrics,
-        }
-        
-    except ConnectionError as e:
-        logger.error(f"Connection failed: {e}")
-        logger.error(f"Check that the endpoint is accessible and responding")
-        raise
-    except Exception as e:
-        logger.error(f"Error running translation: {type(e).__name__}: {e}")
-        raise
 
 
 def _run_subtask(
@@ -197,6 +117,21 @@ def _run_subtask(
         )
     else:
         raise ValueError(f"Unknown subtask: {subtask_name}")
+
+
+def _run_translation_subtask(context: SubtaskContext) -> Dict[str, Any]:
+    return _run_subtask(
+        subtask_name=context.subtask_name,
+        subtask_config=context.subtask_config,
+        task_config=context.task_config,
+        model_name=context.model_name,
+        connection_info=context.connection_info,
+        provider_type=context.provider_type,
+        task_output_path=context.output_dir,
+        limit=context.limit,
+        defaults=context.defaults,
+        prompts=context.prompts,
+    )
 
 
 def _run_opus_subtask(
@@ -562,3 +497,14 @@ def _save_aggregated_summary(
             ("comet", "COMET", ".4f"),
         ],
     )
+
+
+TRANSLATION_SPEC = TaskGroupSpec(
+    name="translation",
+    display_name="Translation",
+    output_subdir="translation",
+    default_subtasks=["opus"],
+    run_subtask=_run_translation_subtask,
+    aggregate_metrics=_aggregate_subtask_metrics,
+    write_summary=_save_aggregated_summary,
+)

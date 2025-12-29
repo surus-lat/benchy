@@ -17,11 +17,18 @@ Benchy is a modular benchmarking suite for evaluating AI systems on Spanish and 
 
 ## How Benchy Works
 
-- **Tasks** define data loading, prompt formatting, and metric aggregation.
+- **Tasks** define data loading, prompt formatting, metrics, and capability flags.
 - **Interfaces** handle request/response translation for providers (vLLM, cloud APIs, etc.).
-- **Engine** pairs any task with any interface, managing batching, retries, and aggregation.
+- **TaskGroupRunner** prepares subtasks, builds connection info, and invokes the engine.
+- **BenchmarkRunner** pairs tasks with interfaces, managing batching, retries, and aggregation.
 
 This design lets you add a new task without reworking inference, and add a new provider without changing evaluation logic.
+
+### Task and Interface Interaction
+
+Tasks are interface-agnostic: they expose `get_prompt()` and metric methods. Interfaces call
+`task.get_prompt()` (LLM-style APIs) or read raw sample fields (HTTP-style APIs). The runner
+connects them by building `connection_info` and selecting the right interface.
 
 ## Quickstart
 
@@ -114,6 +121,7 @@ benchy/
 ### Task Configs
 
 Task configs live beside their implementation in `src/tasks/<task>/task.json`. These define datasets, prompts, and metric metadata for the task or its subtasks.
+Use `dataset` for single-task configs or `tasks` + `task_configs` for grouped tasks.
 
 ### Provider Configs
 
@@ -144,7 +152,9 @@ This generates:
 1. Copy the template: `cp -r src/tasks/_template src/tasks/my_task`
 2. Update `src/tasks/my_task/task.json` with datasets, prompts, and metrics.
 3. Implement task logic in `src/tasks/my_task/`.
-4. Add the task name to your model config under `tasks`.
+4. Update `src/tasks/my_task/run.py` with a `TaskGroupSpec` and `run_task_group` call.
+5. Register the task in `src/pipeline.py` `TASK_REGISTRY`.
+6. Add the task name to your model config under `tasks`.
 
 ### Contributing a Provider
 
@@ -164,4 +174,3 @@ This generates:
 - [Prefect](https://www.prefect.io/) for workflow orchestration
 - [Surus](https://surus.lat/) for starting this project
 - LATAM community for benchmark development
-

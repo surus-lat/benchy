@@ -4,19 +4,11 @@ This is the main entry point for the Spanish task.
 It uses the generic benchmark engine to run evaluation.
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
-from pathlib import Path
 from prefect import task
 
-from ...engine import (
-    BenchmarkRunner,
-    save_results,
-    build_connection_info,
-    get_interface_for_provider,
-    mark_task_complete,
-)
+from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from ..summary_reporter import write_group_summary
 
 logger = logging.getLogger(__name__)
@@ -76,124 +68,27 @@ def run_spanish(
     Returns:
         Dictionary with execution results and metrics
     """
-    logger.info(f"Starting Spanish evaluation for model: {model_name}")
-    
-    # Determine provider type
-    provider_type = "vllm"
-    if provider_config:
-        provider_type = provider_config.get('provider_type', 'vllm')
-    
-    # Build connection info from provider config
-    connection_info = build_connection_info(
-        provider_type=provider_type,
-        provider_config=provider_config or {},
+    return run_task_group(
+        spec=SPANISH_SPEC,
+        model_name=model_name,
+        output_path=output_path,
         server_info=server_info,
-        model_config=task_config.get('defaults', {}),
+        task_config=task_config,
+        limit=limit,
+        provider_config=provider_config,
     )
-    
-    logger.info(f"Provider: {provider_type}")
-    logger.info(f"Base URL: {connection_info.get('base_url')}")
-    
-    # Create output directory
-    output_subdir = task_config.get('output', {}).get('subdirectory', 'spanish')
-    task_output_path = Path(output_path) / output_subdir
-    task_output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Get list of subtasks to run
-    subtasks_to_run = task_config.get('tasks', [])
-    subtask_configs = task_config.get('task_configs', {})
-    defaults = task_config.get('defaults', {})
-    prompts = task_config.get('prompts', {})
-    
-    # Store results for each subtask
-    all_results = {}
-    all_metrics = {}
-    
-    try:
-        for subtask_name in subtasks_to_run:
-            logger.info(f"Running subtask: {subtask_name}")
-            
-            # Get task class
-            if subtask_name not in TASK_CLASSES:
-                logger.warning(f"Unknown subtask: {subtask_name}, skipping")
-                continue
-            
-            task_class = TASK_CLASSES[subtask_name]
-            
-            # Create task instance
-            subtask_config = subtask_configs.get(subtask_name, {})
-            task_instance = task_class({
-                'dataset': subtask_config,
-                'prompts': prompts,
-                **subtask_config,
-            })
-            
-            # Create interface
-            interface = get_interface_for_provider(
-                provider_type=provider_type,
-                connection_info=connection_info,
-                model_name=model_name,
-            )
-            
-            # Create runner config
-            runner_config = {
-                "model_name": model_name,
-                "batch_size": defaults.get('batch_size', 20),
-                "output_dir": str(task_output_path / subtask_name),
-                "log_samples": defaults.get('log_samples', False),
-            }
-            
-            # Run benchmark
-            runner = BenchmarkRunner(task_instance, interface, runner_config)
-            subtask_results = asyncio.run(runner.run(limit=limit, no_resume=False))
-            
-            # Save results
-            save_results(
-                results=subtask_results,
-                output_dir=task_output_path / subtask_name,
-                model_name=model_name,
-                task_name=task_instance.get_task_name(),
-                log_samples=defaults.get('log_samples', False),
-                mark_complete=False,
-            )
-            
-            all_results[subtask_name] = subtask_results
-            all_metrics[subtask_name] = subtask_results.get('aggregate_metrics', {})
-            
-            logger.info(f"Subtask {subtask_name} completed")
-        
-        # Aggregate metrics across all subtasks (weighted by size)
-        aggregated = _aggregate_subtask_metrics(all_metrics, subtasks_to_run)
-        
-        # Save aggregated summary
-        _save_aggregated_summary(
-            aggregated_metrics=aggregated,
-            subtask_metrics=all_metrics,
-            output_dir=task_output_path,
-            model_name=model_name,
-            subtasks=subtasks_to_run,
-        )
-        
-        # Mark parent task complete
-        mark_task_complete(task_output_path)
-        
-        logger.info("Spanish evaluation completed successfully")
-        
-        return {
-            "model_name": model_name,
-            "task": "spanish",
-            "output_path": str(task_output_path),
-            "metrics": aggregated,
-            "subtask_metrics": all_metrics,
-        }
-        
-    except ConnectionError as e:
-        logger.error(f"Connection failed: {e}")
-        logger.error(f"Check that the endpoint is accessible and responding")
-        raise
-    except Exception as e:
-        logger.error(f"Error running Spanish evaluation: {type(e).__name__}: {e}")
-        raise
+
+
+def _prepare_spanish_task(context: SubtaskContext):
+    task_class = TASK_CLASSES.get(context.subtask_name)
+    if task_class is None:
+        logger.warning(f"Unknown subtask: {context.subtask_name}, skipping")
+        return None
+    return task_class({
+        "dataset": context.subtask_config,
+        "prompts": context.prompts,
+        **context.subtask_config,
+    })
 
 
 def _aggregate_subtask_metrics(subtask_metrics: Dict[str, Dict], subtask_names: list) -> Dict:
@@ -248,14 +143,13 @@ def _aggregate_subtask_metrics(subtask_metrics: Dict[str, Dict], subtask_names: 
     return aggregated
 
 
-def _save_aggregated_summary(
+def _write_summary(
     aggregated_metrics: Dict,
     subtask_metrics: Dict[str, Dict],
-    output_dir: Path,
+    output_dir,
     model_name: str,
     subtasks: list,
 ):
-    """Save aggregated results summary."""
     write_group_summary(
         output_dir=output_dir,
         model_name=model_name,
@@ -276,3 +170,13 @@ def _save_aggregated_summary(
             ("exact_match", "Exact Match", ".4f"),
         ],
     )
+
+
+SPANISH_SPEC = TaskGroupSpec(
+    name="spanish",
+    display_name="Spanish",
+    output_subdir="spanish",
+    prepare_task=_prepare_spanish_task,
+    aggregate_metrics=_aggregate_subtask_metrics,
+    write_summary=_write_summary,
+)
