@@ -1,32 +1,31 @@
+# Template: vLLM model config (multi GPU)
+# Copy to configs/models/<your_model>.yaml and edit.
+
 model:
-  name: "openai/gpt-oss-20b"
+  name: "org/model-name"
+
 vllm:
   provider_config: vllm_two_cards
   overrides:
-    kv_cache_memory: 0
-    gpu_memory_utilization: 0.95
-    #vllm_version: "0.8.0"
-    #transformers_version: "4.51.3"
-    #multimodal: false
     port: 20502
-    # New parameters for better model compatibility
+    gpu_memory_utilization: 0.95
+    tensor_parallel_size: 2
+    max_model_len: 8192
     trust_remote_code: true
-    # Mistral-specific parameters (auto-detected for Mistral models)
-    # tokenizer_mode: "mistral"
-    # config_format: "mistral"
-    # load_format: "mistral"
-    # tool_call_parser: "mistral"
-    # enable_auto_tool_choice: true
+    # vllm_version: "0.10.2"
 
-# Override task defaults across all tasks (optional)
+# Defaults applied to all tasks
+# (task.json defaults can override these)
 task_defaults:
-  log_samples: true          # Override log_samples for all tasks
-  # batch_size: "8"           # You can override any task default
-  # num_concurrent: 8         # Example: increase concurrency
-  # cache_requests: false     # Example: disable request caching
-  cuda_devices: "1"
+  log_samples: true
+  batch_size: 20
+  cuda_devices: "0"
 
+# Tasks or task groups
+# See configs/config.yaml task_groups for shortcuts like "latam_board"
 tasks:
   - "latam_board"
 
-# Remember to use --limit 10 to test your model!
+metadata:
+  supports_multimodal: false
+  supports_logprobs: true
