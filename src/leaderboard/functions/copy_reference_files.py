@@ -6,7 +6,7 @@ Copy reference files to the publish directory.
 import shutil
 from pathlib import Path
 
-from config_loader import load_config
+from src.config_loader import load_config
 
 def copy_reference_files(reference_dir: str, publish_dir: str) -> bool:
     """Copy reference files to the publish directory."""

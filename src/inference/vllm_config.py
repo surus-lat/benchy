@@ -2,8 +2,32 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Optional
+import os
+
+
+def _default_hf_cache() -> str:
+    return (
+        os.getenv("HF_HOME")
+        or os.getenv("HF_CACHE")
+        or os.getenv("HF_HUB_CACHE")
+        or os.path.expanduser("~/.cache/huggingface")
+    )
+
+
+def _default_vllm_venv_path() -> str:
+    override = os.getenv("VLLM_VENV")
+    if override:
+        return override
+
+    current = Path(__file__).resolve()
+    for parent in [current] + list(current.parents):
+        if (parent / "pyproject.toml").exists():
+            return str(parent / ".venv")
+
+    return str(Path.cwd() / ".venv")
 
 
 @dataclass
@@ -17,12 +41,12 @@ class VLLMServerConfig:
     gpu_memory_utilization: float = 0.6
     enforce_eager: bool = True
     limit_mm_per_prompt: str = '{"images": 0, "audios": 0}'
-    hf_cache: str = "/home/mauro/.cache/huggingface"
+    hf_cache: str = field(default_factory=_default_hf_cache)
     hf_token: str = ""
     startup_timeout: int = 900
     cuda_devices: Optional[str] = None
     kv_cache_memory: Optional[int] = None
-    vllm_venv_path: str = "/home/mauro/dev/benchy/.venv"
+    vllm_venv_path: str = field(default_factory=_default_vllm_venv_path)
     vllm_version: Optional[str] = None
     multimodal: bool = True
     max_num_seqs: Optional[int] = None
