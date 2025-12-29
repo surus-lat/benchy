@@ -5,9 +5,7 @@ It uses the generic benchmark engine to run evaluation.
 """
 
 import asyncio
-import json
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
 from prefect import task
@@ -15,10 +13,17 @@ from prefect import task
 from ...engine import (
     BenchmarkRunner,
     save_results,
-    build_connection_info,
     get_interface_for_provider,
-    mark_task_complete,
 )
+from ..group_runner import (
+    TaskGroupSpec,
+    SubtaskContext,
+    TaskGroupContext,
+    ensure_task_interface_compatibility,
+    run_task_group,
+)
+from ..summary_reporter import write_group_summary
+from .metrics import load_comet_model
 
 logger = logging.getLogger(__name__)
 
@@ -55,94 +60,22 @@ def run_translation(
     Returns:
         Dictionary with execution results and metrics
     """
-    logger.info(f"Starting translation evaluation for model: {model_name}")
-    
-    # Determine provider type
-    provider_type = "vllm"
-    if provider_config:
-        provider_type = provider_config.get('provider_type', 'vllm')
-    
-    # Build connection info from provider config
-    connection_info = build_connection_info(
-        provider_type=provider_type,
-        provider_config=provider_config or {},
+    return run_task_group(
+        spec=TRANSLATION_SPEC,
+        model_name=model_name,
+        output_path=output_path,
         server_info=server_info,
-        model_config=task_config.get('defaults', {}),
+        task_config=task_config,
+        limit=limit,
+        provider_config=provider_config,
     )
-    
-    logger.info(f"Provider: {provider_type}")
-    logger.info(f"Base URL: {connection_info.get('base_url')}")
-    
-    # Create output directory
-    output_subdir = task_config.get('output', {}).get('subdirectory', 'translation')
-    task_output_path = Path(output_path) / output_subdir
-    task_output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Get list of subtasks to run
-    subtasks_to_run = task_config.get('tasks', ['opus'])
-    subtask_configs = task_config.get('task_configs', {})
-    defaults = task_config.get('defaults', {})
-    prompts = task_config.get('prompts', {})
-    
-    # Store results for each subtask
-    all_results = {}
-    all_metrics = {}
-    
-    try:
-        for subtask_name in subtasks_to_run:
-            logger.info(f"Running subtask: {subtask_name}")
-            
-            # Create task instances for this subtask
-            subtask_results = _run_subtask(
-                subtask_name=subtask_name,
-                subtask_config=subtask_configs.get(subtask_name, {}),
-                task_config=task_config,
-                model_name=model_name,
-                connection_info=connection_info,
-                provider_type=provider_type,
-                task_output_path=task_output_path,
-                limit=limit,
-                defaults=defaults,
-                prompts=prompts,
-            )
-            
-            all_results[subtask_name] = subtask_results
-            all_metrics[subtask_name] = subtask_results.get('aggregate_metrics', {})
-            
-            logger.info(f"Subtask {subtask_name} completed")
-        
-        # Aggregate metrics across all subtasks
-        aggregated = _aggregate_subtask_metrics(all_metrics, subtasks_to_run)
-        
-        # Save aggregated summary
-        _save_aggregated_summary(
-            aggregated_metrics=aggregated,
-            subtask_metrics=all_metrics,
-            output_dir=task_output_path,
-            model_name=model_name,
-            subtasks=subtasks_to_run,
-        )
-        
-        # Mark parent task complete
-        mark_task_complete(task_output_path)
-        
-        logger.info("Translation evaluation completed successfully")
-        
-        return {
-            "model_name": model_name,
-            "task": "translation",
-            "output_path": str(task_output_path),
-            "metrics": aggregated,
-            "subtask_metrics": all_metrics,
-        }
-        
-    except ConnectionError as e:
-        logger.error(f"Connection failed: {e}")
-        logger.error(f"Check that the endpoint is accessible and responding")
-        raise
-    except Exception as e:
-        logger.error(f"Error running translation: {type(e).__name__}: {e}")
-        raise
+
+
+def _setup_translation(context: TaskGroupContext) -> Dict[str, Any]:
+    comet_model = load_comet_model()
+    if comet_model is None:
+        return {}
+    return {"comet_model": comet_model}
 
 
 def _run_subtask(
@@ -156,6 +89,7 @@ def _run_subtask(
     limit: Optional[int],
     defaults: Dict,
     prompts: Dict,
+    shared: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run a single subtask (opus or flores).
     
@@ -174,6 +108,11 @@ def _run_subtask(
     Returns:
         Results dictionary
     """
+    shared = shared or {}
+    comet_model = shared.get("comet_model")
+
+    capability_requirements = task_config.get("capability_requirements", {})
+
     if subtask_name == "opus":
         return _run_opus_subtask(
             subtask_config=subtask_config,
@@ -184,6 +123,8 @@ def _run_subtask(
             limit=limit,
             defaults=defaults,
             prompts=prompts,
+            comet_model=comet_model,
+            capability_requirements=capability_requirements,
         )
     elif subtask_name == "flores":
         return _run_flores_subtask(
@@ -195,9 +136,27 @@ def _run_subtask(
             limit=limit,
             defaults=defaults,
             prompts=prompts,
+            comet_model=comet_model,
+            capability_requirements=capability_requirements,
         )
     else:
         raise ValueError(f"Unknown subtask: {subtask_name}")
+
+
+def _run_translation_subtask(context: SubtaskContext) -> Dict[str, Any]:
+    return _run_subtask(
+        subtask_name=context.subtask_name,
+        subtask_config=context.subtask_config,
+        task_config=context.task_config,
+        model_name=context.model_name,
+        connection_info=context.connection_info,
+        provider_type=context.provider_type,
+        task_output_path=context.output_dir,
+        limit=context.limit,
+        defaults=context.defaults,
+        prompts=context.prompts,
+        shared=context.shared,
+    )
 
 
 def _run_opus_subtask(
@@ -209,6 +168,8 @@ def _run_opus_subtask(
     limit: Optional[int],
     defaults: Dict,
     prompts: Dict,
+    comet_model: Optional[Any] = None,
+    capability_requirements: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run OPUS subtask for all language pairs."""
     from .datasets.opus.task import OpusTask
@@ -250,6 +211,8 @@ def _run_opus_subtask(
             'dataset': {'data_file': str(pair_file)},
             'prompts': prompts,
             'language_pair': pair,
+            'comet_model': comet_model,
+            'capability_requirements': capability_requirements or {},
         })
         
         # Create interface
@@ -258,6 +221,25 @@ def _run_opus_subtask(
             connection_info=connection_info,
             model_name=model_name,
         )
+        report = ensure_task_interface_compatibility(task_instance, interface)
+        if not report.compatible:
+            reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
+            logger.warning(f"Skipping OPUS subtask due to incompatibility: {reason}")
+            return {
+                "subtask": "opus",
+                "language_pairs": language_pairs,
+                "per_pair_results": {},
+                "aggregate_metrics": {
+                    "total_samples": 0,
+                    "valid_samples": 0,
+                    "bleu": 0.0,
+                    "chrf": 0.0,
+                    "comet": 0.0,
+                    "error_rate": 0.0,
+                },
+                "skipped": True,
+                "skip_reason": reason,
+            }
         
         # Create runner config
         runner_config = {
@@ -304,6 +286,8 @@ def _run_flores_subtask(
     limit: Optional[int],
     defaults: Dict,
     prompts: Dict,
+    comet_model: Optional[Any] = None,
+    capability_requirements: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run FLORES subtask for all language pairs."""
     from .datasets.flores.task import FloresTask
@@ -363,7 +347,7 @@ def _run_flores_subtask(
                             "error_rate": 0.0,
                         },
                         "skipped": True,
-                        "reason": "Download completed but no language pairs available",
+                        "skip_reason": "Download completed but no language pairs available",
                     }
             except Exception as e:
                 logger.error(f"Error downloading FLORES dataset: {e}")
@@ -382,7 +366,7 @@ def _run_flores_subtask(
                         "error_rate": 0.0,
                     },
                     "skipped": True,
-                    "reason": f"Download failed: {e}",
+                    "skip_reason": f"Download failed: {e}",
                 }
     
     # Download/preprocess missing pairs if needed
@@ -421,6 +405,8 @@ def _run_flores_subtask(
             'prompts': prompts,
             'language_pair': pair,
             'split': split,
+            'comet_model': comet_model,
+            'capability_requirements': capability_requirements or {},
         })
         
         # Create interface
@@ -429,6 +415,26 @@ def _run_flores_subtask(
             connection_info=connection_info,
             model_name=model_name,
         )
+        report = ensure_task_interface_compatibility(task_instance, interface)
+        if not report.compatible:
+            reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
+            logger.warning(f"Skipping FLORES subtask due to incompatibility: {reason}")
+            return {
+                "subtask": "flores",
+                "language_pairs": language_pairs,
+                "split": split,
+                "per_pair_results": {},
+                "aggregate_metrics": {
+                    "total_samples": 0,
+                    "valid_samples": 0,
+                    "bleu": 0.0,
+                    "chrf": 0.0,
+                    "comet": 0.0,
+                    "error_rate": 0.0,
+                },
+                "skipped": True,
+                "skip_reason": reason,
+            }
         
         # Create runner config
         runner_config = {
@@ -541,50 +547,37 @@ def _save_aggregated_summary(
     subtasks: list,
 ):
     """Save aggregated results summary."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = model_name.replace("/", "_")
-    
-    # JSON summary
-    summary_file = output_dir / f"{safe_name}_{timestamp}_summary.json"
-    with open(summary_file, "w") as f:
-        json.dump({
-            "model": model_name,
-            "timestamp": timestamp,
-            "subtasks": subtasks,
-            "aggregated_metrics": aggregated_metrics,
-            "per_subtask_metrics": subtask_metrics,
-        }, f, indent=2)
-    
-    logger.info(f"Saved summary to {summary_file}")
-    
-    # Text summary
-    text_file = output_dir / f"{safe_name}_{timestamp}_summary.txt"
-    with open(text_file, "w") as f:
-        f.write("=" * 60 + "\n")
-        f.write("TRANSLATION BENCHMARK SUMMARY\n")
-        f.write("=" * 60 + "\n")
-        f.write(f"Model: {model_name}\n")
-        f.write(f"Timestamp: {timestamp}\n")
-        f.write(f"Subtasks: {', '.join(subtasks)}\n\n")
-        
-        f.write("AGGREGATED METRICS\n")
-        f.write("-" * 40 + "\n")
-        f.write(f"Total Samples: {aggregated_metrics.get('total_samples', 0)}\n")
-        f.write(f"Valid Samples: {aggregated_metrics.get('valid_samples', 0)}\n")
-        f.write(f"Error Rate: {aggregated_metrics.get('error_rate', 0):.2%}\n\n")
-        f.write(f"BLEU: {aggregated_metrics.get('bleu', 0):.4f}\n")
-        f.write(f"chrF: {aggregated_metrics.get('chrf', 0):.4f}\n")
-        f.write(f"COMET: {aggregated_metrics.get('comet', 0):.4f}\n\n")
-        
-        f.write("PER-SUBTASK BREAKDOWN\n")
-        f.write("-" * 40 + "\n")
-        for name, metrics in subtask_metrics.items():
-            f.write(f"\n{name.upper()}:\n")
-            f.write(f"  Samples: {metrics.get('total_samples', 0)}\n")
-            f.write(f"  BLEU: {metrics.get('bleu', 0):.4f}\n")
-            f.write(f"  chrF: {metrics.get('chrf', 0):.4f}\n")
-            f.write(f"  COMET: {metrics.get('comet', 0):.4f}\n")
-        f.write("=" * 60 + "\n")
-    
-    logger.info(f"Saved text summary to {text_file}")
+    write_group_summary(
+        output_dir=output_dir,
+        model_name=model_name,
+        subtasks=subtasks,
+        aggregated_metrics=aggregated_metrics,
+        subtask_metrics=subtask_metrics,
+        title="TRANSLATION BENCHMARK SUMMARY",
+        aggregated_fields=[
+            ("total_samples", "Total Samples", "d"),
+            ("valid_samples", "Valid Samples", "d"),
+            ("error_rate", "Error Rate", ".2%"),
+            ("bleu", "BLEU", ".4f"),
+            ("chrf", "chrF", ".4f"),
+            ("comet", "COMET", ".4f"),
+        ],
+        per_subtask_fields=[
+            ("total_samples", "Samples", "d"),
+            ("bleu", "BLEU", ".4f"),
+            ("chrf", "chrF", ".4f"),
+            ("comet", "COMET", ".4f"),
+        ],
+    )
+
+
+TRANSLATION_SPEC = TaskGroupSpec(
+    name="translation",
+    display_name="Translation",
+    output_subdir="translation",
+    default_subtasks=["opus"],
+    run_subtask=_run_translation_subtask,
+    aggregate_metrics=_aggregate_subtask_metrics,
+    write_summary=_save_aggregated_summary,
+    setup=_setup_translation,
+)

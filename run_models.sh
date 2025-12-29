@@ -13,6 +13,9 @@
 QUIET_MODE="false"
 CUSTOM_RUN_ID=""
 SUBFOLDER=""
+TASKS_OVERRIDE=""
+TASKS_FILE=""
+TASK_GROUPS=()
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -21,7 +24,7 @@ while [[ $# -gt 0 ]]; do
             echo "🚀 Run Models Script"
             echo "==================="
             echo ""
-            echo "Usage: ./run_models.sh [--quiet] [--run-id ID] [--subfolder FOLDER] [config_list.txt] [config_name.yaml]"
+            echo "Usage: ./run_models.sh [--quiet] [--run-id ID] [--subfolder FOLDER] [--tasks TASKS] [--tasks-file FILE] [--task-group GROUP] [config_list.txt] [config_name.yaml]"
             echo ""
             echo "This script runs evaluation on multiple model configurations by:"
             echo "  • Finding all .yaml files in configs/models/ (default)"
@@ -33,10 +36,43 @@ while [[ $# -gt 0 ]]; do
             echo "  config_list.txt      Text file containing list of config files (one per line)"
             echo "  config_name.yaml     Run only this specific config file (optional)"
             echo ""
+            echo "Config List File Format:"
+            echo "  The config_list.txt file should contain one config file per line."
+            echo "  You can use either relative or absolute paths:"
+            echo ""
+            echo "  Relative paths (recommended):"
+            echo "    together_model-A.yaml"
+            echo "    together_model-B.yaml"
+            echo "    # Comments start with #"
+            echo "    # Empty lines are ignored"
+            echo ""
+            echo "  Absolute paths (also supported):"
+            echo "    /path/to/configs/models/model-A.yaml"
+            echo "    /path/to/configs/models/model-B.yaml"
+            echo ""
+            echo "  When using relative paths, they are resolved relative to:"
+            echo "    • configs/models/ (default)"
+            echo "    • configs/models/SUBFOLDER/ (if --subfolder is specified)"
+            echo ""
+            echo "  Tips for generating config list files:"
+            echo "    # List all YAML files in a directory:"
+            echo "    ls configs/models/*.yaml | xargs -n1 basename > my_list.txt"
+            echo ""
+            echo "    # List specific models (using grep):"
+            echo "    ls configs/models/*.yaml | xargs -n1 basename | grep 'together_' > my_list.txt"
+            echo ""
+            echo "    # List models from a subfolder:"
+            echo "    ls configs/models/pending/*.yaml | xargs -n1 basename > pending_list.txt"
+            echo ""
+            echo "    # Manual editing - just add one filename per line"
+            echo ""
             echo "Options:"
             echo "  --quiet             Suppress detailed pipeline output (recommended for long runs)"
             echo "  --run-id ID         Use custom run ID for organizing outputs (default: auto-generated)"
             echo "  --subfolder FOLDER  Run models from a specific subfolder (e.g., pending, completed)"
+            echo "  --tasks TASKS       Comma-separated task list (overrides config tasks)"
+            echo "  --tasks-file FILE   Task list file (one task per line, overrides config tasks)"
+            echo "  --task-group GROUP  Task group name from configs/config.yaml (can repeat)"
             echo ""
             echo "Features:"
             echo "  • Automatic discovery of all model configs"
@@ -75,8 +111,17 @@ while [[ $# -gt 0 ]]; do
             echo "  # Run specific model"
             echo "  ./run_models.sh my-model.yaml"
             echo ""
-            echo "  # Run models from list file"
+            echo "  # Run models from list file (relative paths)"
             echo "  ./run_models.sh my_model_list.txt"
+            echo ""
+            echo "  # Run models from list file with absolute paths"
+            echo "  ./run_models.sh /path/to/my_model_list.txt"
+            echo ""
+            echo "  # Run all models with a shared task list"
+            echo "  ./run_models.sh --tasks spanish,portuguese,translation"
+            echo ""
+            echo "  # Run all models with a task list file"
+            echo "  ./run_models.sh --tasks-file configs/tests/task_list.txt"
             echo ""
             echo "  # Run with nohup for long sessions"
             echo "  nohup ./run_models.sh --quiet > run_results.log 2>&1 &"
@@ -93,6 +138,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --subfolder)
             SUBFOLDER="$2"
+            shift 2
+            ;;
+        --tasks)
+            TASKS_OVERRIDE="$2"
+            shift 2
+            ;;
+        --tasks-file)
+            TASKS_FILE="$2"
+            shift 2
+            ;;
+        --task-group)
+            TASK_GROUPS+=("$2")
             shift 2
             ;;
         *)
@@ -128,6 +185,20 @@ if [[ "$QUIET_MODE" == "true" ]]; then
     echo ""
 fi
 
+if [[ -n "$TASKS_OVERRIDE" || -n "$TASKS_FILE" || ${#TASK_GROUPS[@]} -gt 0 ]]; then
+    echo "🧭 Task overrides enabled for this batch:"
+    if [[ -n "$TASKS_OVERRIDE" ]]; then
+        echo "   --tasks $TASKS_OVERRIDE"
+    fi
+    if [[ -n "$TASKS_FILE" ]]; then
+        echo "   --tasks-file $TASKS_FILE"
+    fi
+    for group in "${TASK_GROUPS[@]}"; do
+        echo "   --task-group $group"
+    done
+    echo ""
+fi
+
 # Activate benchy virtual environment
 if [[ -f ".venv/bin/activate" ]]; then
     source .venv/bin/activate
@@ -154,7 +225,16 @@ if [[ -n "$1" ]]; then
     if [[ -f "$1" && "$1" == *.txt ]]; then
         echo "📋 Loading config list from: $1"
         # Read config files from the text file
-        mapfile -t configs < <(grep -v '^#' "$1" | grep -v '^$' | sed "s|^|$config_dir/|")
+        # Handle both absolute paths and relative paths (prepend config_dir only if relative)
+        mapfile -t configs < <(grep -v '^#' "$1" | grep -v '^$' | while IFS= read -r line; do
+            if [[ "$line" == /* ]]; then
+                # Absolute path - use as-is
+                echo "$line"
+            else
+                # Relative path - prepend config_dir
+                echo "$config_dir/$line"
+            fi
+        done)
         echo "Found ${#configs[@]} configs in list file"
     else
         # Single config file specified
@@ -210,6 +290,20 @@ for config in "${configs[@]}"; do
 done
 echo ""
  
+# Build eval args for task overrides
+eval_args=()
+if [[ -n "$TASKS_OVERRIDE" ]]; then
+    eval_args+=(--tasks "$TASKS_OVERRIDE")
+fi
+if [[ -n "$TASKS_FILE" ]]; then
+    eval_args+=(--tasks-file "$TASKS_FILE")
+fi
+if [[ ${#TASK_GROUPS[@]} -gt 0 ]]; then
+    for group in "${TASK_GROUPS[@]}"; do
+        eval_args+=(--task-group "$group")
+    done
+fi
+
 # Run each model
 for i in "${!configs[@]}"; do
     config="${configs[$i]}"
@@ -239,11 +333,11 @@ for i in "${!configs[@]}"; do
     # Run the evaluation with appropriate output handling
     if [[ "$QUIET_MODE" == "true" ]]; then
         # Quiet mode: suppress detailed output
-        python eval.py -c "$config" --run-id "$RUN_ID" > /dev/null 2>&1
+        python eval.py -c "$config" --run-id "$RUN_ID" "${eval_args[@]}" > /dev/null 2>&1
         eval_result=$?
     else
         # Normal mode: show full output
-        python eval.py -c "$config" --run-id "$RUN_ID"
+        python eval.py -c "$config" --run-id "$RUN_ID" "${eval_args[@]}"
         eval_result=$?
     fi
     

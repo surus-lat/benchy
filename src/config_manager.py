@@ -113,7 +113,45 @@ class ConfigManager:
             # Mark as vLLM provider
             model_config['provider_type'] = 'vllm'
         
+        self._apply_metadata_capabilities(model_config)
+
         return model_config
+
+    def _apply_metadata_capabilities(self, model_config: Dict[str, Any]) -> None:
+        """Apply metadata capability tags into provider config."""
+        metadata = model_config.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            return
+
+        provider_type = model_config.get("provider_type")
+        if not provider_type:
+            return
+
+        provider_section = model_config.get(provider_type)
+        if not isinstance(provider_section, dict):
+            return
+
+        model_capabilities = dict(provider_section.get("model_capabilities") or {})
+
+        mapping = {
+            "supports_multimodal": "supports_multimodal",
+            "supports_schema": "supports_schema",
+            "supports_files": "supports_files",
+            "supports_logprobs": "supports_logprobs",
+            "supports_streaming": "supports_streaming",
+        }
+        if "is_multimodal" in metadata:
+            logger.warning("metadata.is_multimodal is deprecated; use metadata.supports_multimodal")
+            model_capabilities["supports_multimodal"] = metadata["is_multimodal"]
+        for meta_key, cap_key in mapping.items():
+            if meta_key in metadata:
+                model_capabilities[cap_key] = metadata[meta_key]
+
+        if "request_modes" in metadata:
+            model_capabilities["request_modes"] = metadata["request_modes"]
+
+        if model_capabilities:
+            provider_section["model_capabilities"] = model_capabilities
     
     def _merge_cloud_provider_config(self, model_config: Dict[str, Any], provider: str):
         """

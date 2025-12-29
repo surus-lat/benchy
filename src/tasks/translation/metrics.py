@@ -45,6 +45,14 @@ def _get_comet_model():
     return _COMET_MODEL
 
 
+def load_comet_model():
+    """Load the global COMET model once and return it."""
+    if not COMET_AVAILABLE:
+        logger.warning("unbabel-comet not available. COMET metric will be skipped.")
+        return None
+    return _get_comet_model()
+
+
 class TranslationMetricsCalculator:
     """Calculator for translation metrics: BLEU, chrF, and COMET."""
     
@@ -55,7 +63,7 @@ class TranslationMetricsCalculator:
             config: Configuration dictionary (may contain metric settings)
         """
         self.config = config
-        self._comet_model = None  # Lazy-loaded COMET model
+        self._comet_model = config.get("comet_model")  # Optional preloaded model
         self._comet_pending = []  # Accumulate samples for batch COMET calculation
         
         if not SACREBLEU_AVAILABLE:
@@ -66,12 +74,7 @@ class TranslationMetricsCalculator:
     def _get_comet_model_instance(self):
         """Get COMET model instance (lazy-loaded, cached)."""
         if self._comet_model is None and COMET_AVAILABLE:
-            from comet import download_model, load_from_checkpoint
-            logger.info("Loading COMET model (this happens once)...")
-            model_name = "Unbabel/wmt22-comet-da"
-            model_path = download_model(model_name)
-            self._comet_model = load_from_checkpoint(model_path)
-            logger.info("COMET model loaded successfully")
+            self._comet_model = load_comet_model()
         return self._comet_model
     
     def calculate(
@@ -268,4 +271,3 @@ class TranslationMetricsCalculator:
         }
         
         return aggregated
-

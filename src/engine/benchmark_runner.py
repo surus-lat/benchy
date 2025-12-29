@@ -62,9 +62,11 @@ class BenchmarkRunner:
         self.log_samples = config.get("log_samples", False)
         
         # Check compatibility
-        is_compatible, reason = check_compatibility(task, interface)
-        if not is_compatible:
-            raise ValueError(f"Task and interface incompatible: {reason}")
+        report = check_compatibility(task, interface)
+        if not report.compatible:
+            raise ValueError(f"Task and interface incompatible: {', '.join(report.errors)}")
+        for warning in report.warnings:
+            logger.warning(warning)
     
     async def run(
         self,
@@ -86,59 +88,83 @@ class BenchmarkRunner:
         logger.info(f"Starting benchmark: {self.task.get_task_name()}")
         logger.info(f"Model: {self.model_name}")
         
-        # Test connection
-        if not await self.interface.test_connection(max_retries=3, timeout=30):
-            raise ConnectionError("Cannot establish connection to AI system")
-        
-        # Load dataset
-        self.task.load()
-        all_samples = list(self.task.get_samples(limit=limit))
-        
-        if not all_samples:
-            logger.warning("No samples to process")
-            return {"per_sample_metrics": [], "aggregate_metrics": {}, "samples": []}
-        
-        # Handle checkpointing
-        task_name = self.task.get_task_name()
-        checkpoint_path = get_checkpoint_path(str(self.output_dir), self.model_name, task_name)
-        
-        config_for_hash = {
-            "model": self.model_name,
-            "task": task_name,
-            "batch_size": self.batch_size,
-        }
-        config_hash = get_config_hash(config_for_hash)
-        
-        completed_ids = set()
-        if not no_resume:
-            completed_ids = load_checkpoint(checkpoint_path, config_hash)
-        
-        # Filter out completed samples
-        samples = [s for s in all_samples if s["id"] not in completed_ids]
-        
-        if not samples:
-            logger.info("All samples already completed!")
-            return {"per_sample_metrics": [], "aggregate_metrics": {}, "samples": []}
-        
-        logger.info(f"Processing {len(samples)} samples in batches of {self.batch_size}")
-        if completed_ids:
-            logger.info(f"Resuming from checkpoint: {len(completed_ids)} already done")
-        
-        # Run evaluation
-        results = await self._evaluate_samples(
-            samples=samples,
-            checkpoint_path=checkpoint_path,
-            config_hash=config_hash,
-            no_resume=no_resume,
-            completed_ids=list(completed_ids),
-        )
-        
-        # Cleanup checkpoint on successful completion
-        if not no_resume and checkpoint_path.exists():
-            checkpoint_path.unlink()
-            logger.info("Benchmark completed - checkpoint removed")
-        
-        return results
+        try:
+            # Test connection
+            if not await self.interface.test_connection(max_retries=3, timeout=30):
+                raise ConnectionError("Cannot establish connection to AI system")
+            
+            # Load dataset
+            self.task.load()
+            all_samples = list(self.task.get_samples(limit=limit))
+            
+            if not all_samples:
+                logger.warning("No samples to process")
+                return {"per_sample_metrics": [], "aggregate_metrics": {}, "samples": []}
+            
+            # Handle checkpointing
+            task_name = self.task.get_task_name()
+            checkpoint_path = get_checkpoint_path(str(self.output_dir), self.model_name, task_name)
+            
+            config_for_hash = {
+                "model": self.model_name,
+                "task": task_name,
+                "batch_size": self.batch_size,
+            }
+            config_hash = get_config_hash(config_for_hash)
+            
+            completed_ids = set()
+            metrics_by_id = {}
+            if not no_resume:
+                completed_ids, metrics_by_id = load_checkpoint(checkpoint_path, config_hash)
+            
+            # Filter out completed samples
+            samples = [s for s in all_samples if s["id"] not in completed_ids]
+            
+            if not samples:
+                logger.info("All samples already completed!")
+                if metrics_by_id:
+                    prior_metrics = list(metrics_by_id.values())
+                    aggregate = self.task.aggregate_metrics(prior_metrics)
+                    aggregate["total_samples"] = len(prior_metrics)
+                    aggregate["total_duration"] = 0.0
+                    aggregate["throughput"] = 0.0
+                    self._log_summary(aggregate)
+                    return {
+                        "per_sample_metrics": prior_metrics,
+                        "aggregate_metrics": aggregate,
+                        "samples": [],
+                    }
+                return {"per_sample_metrics": [], "aggregate_metrics": {}, "samples": []}
+            
+            logger.info(f"Processing {len(samples)} samples in batches of {self.batch_size}")
+            if completed_ids:
+                logger.info(f"Resuming from checkpoint: {len(completed_ids)} already done")
+            
+            # Run evaluation
+            results = await self._evaluate_samples(
+                samples=samples,
+                checkpoint_path=checkpoint_path,
+                config_hash=config_hash,
+                no_resume=no_resume,
+                completed_ids=list(completed_ids),
+                metrics_by_id=metrics_by_id,
+            )
+            
+            # Cleanup checkpoint on successful completion
+            if not no_resume and checkpoint_path.exists():
+                checkpoint_path.unlink()
+                logger.info("Benchmark completed - checkpoint removed")
+            
+            return results
+        finally:
+            close_fn = getattr(self.interface, "close", None)
+            if close_fn:
+                try:
+                    result = close_fn()
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception as exc:
+                    logger.debug(f"Failed to close interface: {exc}")
     
     async def _evaluate_samples(
         self,
@@ -147,11 +173,12 @@ class BenchmarkRunner:
         config_hash: str,
         no_resume: bool,
         completed_ids: List[str],
+        metrics_by_id: Dict[str, Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Evaluate samples in batches."""
         results = {
             "samples": [],
-            "per_sample_metrics": [],
+            "per_sample_metrics": list(metrics_by_id.values()),
         }
         start_time = time.time()
         
@@ -205,6 +232,7 @@ class BenchmarkRunner:
                     metrics = self.task.get_error_metrics(error_msg, error_type)
                 
                 results["per_sample_metrics"].append(metrics)
+                metrics_by_id[sample["id"]] = metrics
                 
                 # Log sample details if requested
                 if self.log_samples:
@@ -226,14 +254,22 @@ class BenchmarkRunner:
             
             # Periodic checkpoint
             if not no_resume and len(completed_ids) > 0 and len(completed_ids) % 50 == 0:
-                save_checkpoint(checkpoint_path, completed_ids, config_hash)
+                save_checkpoint(
+                    checkpoint_path,
+                    completed_ids,
+                    config_hash,
+                    metrics_by_id=metrics_by_id,
+                )
         
         # Aggregate metrics
         logger.info("Calculating aggregate metrics...")
         aggregate = self.task.aggregate_metrics(results["per_sample_metrics"])
-        aggregate["total_samples"] = len(samples)
+        total_samples = len(results["per_sample_metrics"])
+        aggregate["total_samples"] = total_samples
         aggregate["total_duration"] = time.time() - start_time
-        aggregate["throughput"] = len(samples) / aggregate["total_duration"]
+        run_samples = len(samples)
+        aggregate["throughput"] = run_samples / aggregate["total_duration"] if aggregate["total_duration"] > 0 else 0
+        aggregate["run_samples"] = run_samples
         results["aggregate_metrics"] = aggregate
         
         self._log_summary(aggregate)
@@ -412,4 +448,3 @@ def mark_task_complete(output_dir: Path) -> None:
     done_file = output_dir / ".done"
     done_file.touch()
     logger.info(f"Task marked complete: {done_file}")
-

@@ -7,10 +7,11 @@ together:
 task_defaults:
   log_samples: true
 tasks:
+- structured_extraction
 - image_extraction
 metadata:
   max_context_length: 128000
-  is_multimodal: true
+  supports_multimodal: true
   model_type: apriel
   provider: together
   description: "Apriel-1.6-15b-Thinker via Together AI - Multimodal vision-language model"

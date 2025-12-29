@@ -1,0 +1,40 @@
+# Template: AI system config (custom HTTP endpoint)
+# Save as configs/systems/<system>.yaml and run with --config.
+
+system_name: "my-system"
+provider_type: "http"
+
+http:
+  endpoint: "https://api.example.com/v1/endpoint"
+  api_key_env: "MY_API_KEY"
+  timeout: 30
+  max_retries: 3
+  capabilities:
+    supports_multimodal: false
+    supports_schema: true
+    supports_files: false
+    supports_logprobs: false
+    supports_streaming: false
+    request_modes: ["raw_payload"]
+
+# Model tracking info (optional)
+model:
+  name: "my-system"
+  organization: "my-org"
+  url: "https://example.com"
+
+# Tasks or task groups to run
+# (Use tasks your system can handle)
+tasks:
+  - "structured_extraction"
+
+task_defaults:
+  log_samples: true
+
+structured_extraction:
+  tasks:
+    - "paraloq"
+  defaults:
+    batch_size: 5
+    timeout: 30
+    max_retries: 3

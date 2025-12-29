@@ -11,18 +11,11 @@ The task class (TemplateTask) handles:
 This file just wires everything together.
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
-from pathlib import Path
 from prefect import task
 
-from ...engine import (
-    BenchmarkRunner,
-    save_results,
-    build_connection_info,
-    get_interface_for_provider,
-)
+from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from .task import TemplateTask
 
 logger = logging.getLogger(__name__)
@@ -54,65 +47,29 @@ def run_template_task(
     Returns:
         Dictionary with execution results and metrics
     """
-    logger.info(f"Starting template task for model: {model_name}")
-    
-    # Build connection info from provider config
-    provider_type = provider_config.get('provider_type', 'vllm') if provider_config else 'vllm'
-    
-    connection_info = build_connection_info(
-        provider_type=provider_type,
-        provider_config=provider_config or {},
+    return run_task_group(
+        spec=TEMPLATE_SPEC,
+        model_name=model_name,
+        output_path=output_path,
         server_info=server_info,
-        model_config=task_config.get('defaults', {}),
+        task_config=task_config,
+        limit=limit,
+        provider_config=provider_config,
     )
-    
-    # Create output directory
-    output_subdir = task_config.get('output', {}).get('subdirectory', 'template_task')
-    task_output_path = Path(output_path) / output_subdir
-    task_output_path.mkdir(parents=True, exist_ok=True)
-    
-    # Get config defaults
-    defaults = task_config.get('defaults', {})
-    
-    # Create task instance
-    # Task handles auto-download if data file doesn't exist
-    task_instance = TemplateTask({
-        'prompts': task_config.get('prompts', {}),
+
+
+def _prepare_template_task(context: SubtaskContext):
+    return TemplateTask({
+        "dataset": context.task_config.get("dataset", {}),
+        "prompts": context.task_config.get("prompts", {}),
+        "capability_requirements": context.task_config.get("capability_requirements", {}),
     })
-    
-    # Create interface
-    interface = get_interface_for_provider(
-        provider_type=provider_type,
-        connection_info=connection_info,
-        model_name=model_name,
-    )
-    
-    # Create runner config
-    runner_config = {
-        "model_name": model_name,
-        "batch_size": defaults.get('batch_size', 20),
-        "output_dir": str(task_output_path),
-        "log_samples": defaults.get('log_samples', False),
-    }
-    
-    # Run benchmark
-    runner = BenchmarkRunner(task_instance, interface, runner_config)
-    results = asyncio.run(runner.run(limit=limit, no_resume=False))
-    
-    # Save results (automatically marks task complete)
-    save_results(
-        results=results,
-        output_dir=task_output_path,
-        model_name=model_name,
-        task_name=task_instance.get_task_name(),
-        log_samples=defaults.get('log_samples', False),
-    )
-    
-    logger.info("Template task completed successfully")
-    
-    return {
-        "model_name": model_name,
-        "task": task_instance.get_task_name(),
-        "output_path": str(task_output_path),
-        "metrics": results.get('aggregate_metrics', {}),
-    }
+
+
+TEMPLATE_SPEC = TaskGroupSpec(
+    name="template_task",
+    display_name="Template task",
+    output_subdir="template_task",
+    supports_subtasks=False,
+    prepare_task=_prepare_template_task,
+)

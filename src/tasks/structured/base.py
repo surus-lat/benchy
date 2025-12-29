@@ -107,7 +107,7 @@ class StructuredExtractionTaskBase:
         return self.metrics_calculator.aggregate_metrics(all_metrics)
     
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Structured extraction tasks are text-only."""
         return False
     

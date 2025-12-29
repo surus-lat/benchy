@@ -15,7 +15,7 @@ tasks:
 - latam_board
 metadata:
   max_context_length: 4096
-  is_multimodal: false
+  supports_multimodal: false
   model_type: llama
   detected_from_config: true
   generated_at: '2025-10-16T07:41:41.630252'

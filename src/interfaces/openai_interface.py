@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 
 from openai import AsyncOpenAI
 
-from ..engine.protocols import InterfaceCapabilities
+from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
 from ..engine.retry import (
     RetryDecision,
     classify_http_exception,
@@ -38,7 +38,23 @@ class OpenAIInterface:
         self.api_endpoint = connection_info.get("api_endpoint") or "auto"
 
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
-        self._supports_logprobs = connection_info.get("supports_logprobs", False)
+        base_capabilities = InterfaceCapabilities(
+            supports_multimodal=True,
+            supports_logprobs=False,
+            supports_schema=True,
+            supports_files=True,
+            supports_batch=True,
+        )
+        self._capabilities = parse_interface_capabilities(
+            connection_info.get("capabilities"),
+            default=base_capabilities,
+        )
+        if "supports_logprobs" in connection_info:
+            self._capabilities = parse_interface_capabilities(
+                {"supports_logprobs": connection_info.get("supports_logprobs")},
+                default=self._capabilities,
+            )
+        self._supports_logprobs = self._capabilities.supports_logprobs
         self.logprobs_top_k = connection_info.get("logprobs_top_k") or 20
 
         problematic_models = connection_info.get("problematic_models") or [
@@ -90,6 +106,7 @@ class OpenAIInterface:
         answer_type = getattr(task, "answer_type", None)
         use_logprobs = answer_type == "multiple_choice"
         requires_logprobs = getattr(task, "requires_logprobs", use_logprobs)
+        # Capability: only enable logprobs if the task requires it.
         use_logprobs = use_logprobs and requires_logprobs
 
         if use_logprobs and hasattr(task, "get_prompt_for_logprobs"):
@@ -100,16 +117,21 @@ class OpenAIInterface:
         if use_logprobs and not sample.get("choices"):
             raise ValueError("Multiple-choice sample missing choices for logprobs scoring")
 
+        # Capability: drop schema payloads if the provider doesn't support them.
+        schema = sample.get("schema") if self._capabilities.supports_schema else None
         request = {
             "system_prompt": system_prompt,
             "user_prompt": user_prompt,
-            "schema": sample.get("schema"),
+            "schema": schema,
             "sample_id": sample["id"],
             "use_logprobs": use_logprobs,
             "choices": sample.get("choices") if use_logprobs else None,
         }
 
+        # Capability: fail fast if multimodal inputs aren't supported.
         if "image_path" in sample:
+            if not self._capabilities.supports_multimodal:
+                raise ValueError("Interface does not support multimodal inputs")
             request["image_path"] = sample["image_path"]
 
         return request
@@ -295,6 +317,7 @@ class OpenAIInterface:
         """Generate prediction using log probabilities for multiple choice."""
         result = {"output": None, "raw": None, "error": None, "error_type": None}
 
+        # Capability: enforce logprobs support before issuing the request.
         if not self.supports_logprobs:
             result["error"] = "Logprobs not supported by interface"
             result["error_type"] = "invalid_response"
@@ -392,6 +415,24 @@ class OpenAIInterface:
                         mapping[token] = float(logprob)
             return mapping
         return {}
+
+    async def close(self) -> None:
+        """Close any underlying async clients."""
+        await self._close_client(self.client, "openai")
+        await self._close_client(self.anthropic_client, "anthropic")
+
+    async def _close_client(self, client: Any, label: str) -> None:
+        if client is None:
+            return
+        close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
+        if close_fn is None:
+            return
+        try:
+            result = close_fn()
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as exc:
+            logger.debug(f"Failed to close {label} client: {exc}")
 
     async def _generate_single_anthropic(
         self,
@@ -552,7 +593,7 @@ class OpenAIInterface:
 
     @property
     def supports_multimodal(self) -> bool:
-        return True
+        return self._capabilities.supports_multimodal
 
     @property
     def supports_logprobs(self) -> bool:
@@ -560,10 +601,4 @@ class OpenAIInterface:
 
     @property
     def capabilities(self) -> InterfaceCapabilities:
-        return InterfaceCapabilities(
-            supports_multimodal=self.supports_multimodal,
-            supports_logprobs=self.supports_logprobs,
-            supports_schema=True,
-            supports_files=True,
-            supports_batch=True,
-        )
+        return self._capabilities

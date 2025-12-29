@@ -1,32 +1,35 @@
+# Template: cloud model config (OpenAI-compatible)
+# Copy to configs/models/<your_model>.yaml and edit.
+
 model:
-  name: "HuggingFaceH4/zephyr-7b-beta"
-vllm:
-  provider_config: vllm_single_card
+  name: "gpt-4o-mini"
+
+openai:
+  provider_config: openai
   overrides:
-    kv_cache_memory: 0
-    gpu_memory_utilization: 0.95
-    #vllm_version: "0.8.0"
-    #transformers_version: "4.51.3"
-    #multimodal: false
-    port: 20502
-    # New parameters for better model compatibility
-    trust_remote_code: true
-    # Mistral-specific parameters (auto-detected for Mistral models)
-    # tokenizer_mode: "mistral"
-    # config_format: "mistral"
-    # load_format: "mistral"
-    # tool_call_parser: "mistral"
-    # enable_auto_tool_choice: true
+    # Model-specific defaults
+    temperature: 0.0
+    max_tokens: 2048
+    # max_tokens_param_name: "max_completion_tokens"
+    # max_concurrent: 2
 
-# Override task defaults across all tasks (optional)
+# Defaults applied to all tasks
+# (task.json defaults can override these)
 task_defaults:
-  log_samples: true          # Override log_samples for all tasks
-  # batch_size: "8"           # You can override any task default
-  # num_concurrent: 8         # Example: increase concurrency
-  # cache_requests: false     # Example: disable request caching
-  cuda_devices: "2"
+  log_samples: true
+  batch_size: 10
 
+# Tasks or task groups
+# See configs/config.yaml task_groups for shortcuts like "latam_board"
 tasks:
-  - "latam_board"
+  - "structured_extraction"
 
-# Remember to use --limit 10 to test your model!
+# To use Anthropic or Together, swap the provider block above:
+# anthropic:
+#   provider_config: anthropic
+# together:
+#   provider_config: together
+
+metadata:
+  supports_multimodal: true
+  supports_logprobs: true
