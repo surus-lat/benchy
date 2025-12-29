@@ -15,7 +15,13 @@ from ...engine import (
     save_results,
     get_interface_for_provider,
 )
-from ..group_runner import TaskGroupSpec, SubtaskContext, TaskGroupContext, run_task_group
+from ..group_runner import (
+    TaskGroupSpec,
+    SubtaskContext,
+    TaskGroupContext,
+    ensure_task_interface_compatibility,
+    run_task_group,
+)
 from ..summary_reporter import write_group_summary
 from .metrics import load_comet_model
 
@@ -209,6 +215,7 @@ def _run_opus_subtask(
             connection_info=connection_info,
             model_name=model_name,
         )
+        ensure_task_interface_compatibility(task_instance, interface)
         
         # Create runner config
         runner_config = {
@@ -382,6 +389,7 @@ def _run_flores_subtask(
             connection_info=connection_info,
             model_name=model_name,
         )
+        ensure_task_interface_compatibility(task_instance, interface)
         
         # Create runner config
         runner_config = {
