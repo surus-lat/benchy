@@ -15,8 +15,9 @@ from ...engine import (
     save_results,
     get_interface_for_provider,
 )
-from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
+from ..group_runner import TaskGroupSpec, SubtaskContext, TaskGroupContext, run_task_group
 from ..summary_reporter import write_group_summary
+from .metrics import load_comet_model
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,13 @@ def run_translation(
     )
 
 
+def _setup_translation(context: TaskGroupContext) -> Dict[str, Any]:
+    comet_model = load_comet_model()
+    if comet_model is None:
+        return {}
+    return {"comet_model": comet_model}
+
+
 def _run_subtask(
     subtask_name: str,
     subtask_config: Dict,
@@ -75,6 +83,7 @@ def _run_subtask(
     limit: Optional[int],
     defaults: Dict,
     prompts: Dict,
+    shared: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run a single subtask (opus or flores).
     
@@ -93,6 +102,9 @@ def _run_subtask(
     Returns:
         Results dictionary
     """
+    shared = shared or {}
+    comet_model = shared.get("comet_model")
+
     if subtask_name == "opus":
         return _run_opus_subtask(
             subtask_config=subtask_config,
@@ -103,6 +115,7 @@ def _run_subtask(
             limit=limit,
             defaults=defaults,
             prompts=prompts,
+            comet_model=comet_model,
         )
     elif subtask_name == "flores":
         return _run_flores_subtask(
@@ -114,6 +127,7 @@ def _run_subtask(
             limit=limit,
             defaults=defaults,
             prompts=prompts,
+            comet_model=comet_model,
         )
     else:
         raise ValueError(f"Unknown subtask: {subtask_name}")
@@ -131,6 +145,7 @@ def _run_translation_subtask(context: SubtaskContext) -> Dict[str, Any]:
         limit=context.limit,
         defaults=context.defaults,
         prompts=context.prompts,
+        shared=context.shared,
     )
 
 
@@ -143,6 +158,7 @@ def _run_opus_subtask(
     limit: Optional[int],
     defaults: Dict,
     prompts: Dict,
+    comet_model: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Run OPUS subtask for all language pairs."""
     from .datasets.opus.task import OpusTask
@@ -184,6 +200,7 @@ def _run_opus_subtask(
             'dataset': {'data_file': str(pair_file)},
             'prompts': prompts,
             'language_pair': pair,
+            'comet_model': comet_model,
         })
         
         # Create interface
@@ -238,6 +255,7 @@ def _run_flores_subtask(
     limit: Optional[int],
     defaults: Dict,
     prompts: Dict,
+    comet_model: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Run FLORES subtask for all language pairs."""
     from .datasets.flores.task import FloresTask
@@ -355,6 +373,7 @@ def _run_flores_subtask(
             'prompts': prompts,
             'language_pair': pair,
             'split': split,
+            'comet_model': comet_model,
         })
         
         # Create interface
@@ -507,4 +526,5 @@ TRANSLATION_SPEC = TaskGroupSpec(
     run_subtask=_run_translation_subtask,
     aggregate_metrics=_aggregate_subtask_metrics,
     write_summary=_save_aggregated_summary,
+    setup=_setup_translation,
 )
