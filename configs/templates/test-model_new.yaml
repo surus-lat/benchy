@@ -32,4 +32,4 @@ tasks:
 
 metadata:
   supports_multimodal: true
-  supports_logprobs: false
+  supports_logprobs: true
