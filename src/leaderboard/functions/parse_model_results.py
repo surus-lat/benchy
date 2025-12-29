@@ -18,17 +18,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 import yaml
-
-def load_config(config_path: str = None) -> Dict:
-    """Load configuration from YAML file."""
-    if config_path is None:
-        # Find config.yaml relative to the project root
-        current_dir = Path(__file__).parent
-        project_root = current_dir.parent.parent.parent  # Go up from src/leaderboard/functions to benchy root
-        config_path = project_root / "configs" / "config.yaml"
-    
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from config_loader import load_config
 
 def load_task_config(task_name: str) -> Dict:
     """Load task-specific configuration from src/tasks/<task>/task.json."""

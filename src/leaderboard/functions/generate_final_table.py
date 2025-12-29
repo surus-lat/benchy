@@ -4,17 +4,11 @@ Script to generate the final consolidated table from all model summaries.
 This creates a table suitable for display on a website.
 """
 
-import os
 import json
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-import yaml
-
-def load_config(config_path: str = "config.yaml") -> Dict:
-    """Load configuration from YAML file."""
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from typing import Dict, List, Any
+from config_loader import load_config
 
 def create_model_row(model_name: str, model_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a single row for the model in the final table."""

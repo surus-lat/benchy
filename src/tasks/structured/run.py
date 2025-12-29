@@ -5,9 +5,7 @@ It uses the generic benchmark engine to run evaluation.
 """
 
 import asyncio
-import json
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
 from prefect import task
@@ -19,6 +17,7 @@ from ...engine import (
     get_interface_for_provider,
     mark_task_complete,
 )
+from ..summary_reporter import write_group_summary
 from .tasks import ParaloqTask, ChatExtractTask
 from .utils.dataset_download import (
     download_and_preprocess_dataset,
@@ -273,57 +272,37 @@ def _save_aggregated_summary(
     subtasks: list,
 ):
     """Save aggregated results summary."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = model_name.replace("/", "_")
-    
-    # JSON summary
-    summary_file = output_dir / f"{safe_name}_{timestamp}_summary.json"
-    with open(summary_file, "w") as f:
-        json.dump({
-            "model": model_name,
-            "timestamp": timestamp,
-            "subtasks": subtasks,
-            "aggregated_metrics": aggregated_metrics,
-            "per_subtask_metrics": subtask_metrics,
-        }, f, indent=2)
-    
-    logger.info(f"Saved summary to {summary_file}")
-    
-    # Text summary
-    text_file = output_dir / f"{safe_name}_{timestamp}_summary.txt"
-    with open(text_file, "w") as f:
-        f.write("=" * 60 + "\n")
-        f.write("STRUCTURED EXTRACTION BENCHMARK SUMMARY\n")
-        f.write("=" * 60 + "\n")
-        f.write(f"Model: {model_name}\n")
-        f.write(f"Timestamp: {timestamp}\n")
-        f.write(f"Subtasks: {', '.join(subtasks)}\n\n")
-        
-        f.write("AGGREGATED METRICS\n")
-        f.write("-" * 40 + "\n")
-        f.write(f"Total Samples: {aggregated_metrics.get('total_samples', 0)}\n")
-        f.write(f"Valid Samples: {aggregated_metrics.get('valid_samples', 0)}\n")
-        f.write(f"Error Rate: {aggregated_metrics.get('error_rate', 0):.2%}\n\n")
-        eqs = aggregated_metrics.get('extraction_quality_score', 0)
-        overall_eqs = aggregated_metrics.get('overall_extraction_quality_score', eqs)
-        f.write(f"EQS: {eqs:.3f}\n")
-        f.write(f"Overall EQS: {overall_eqs:.3f} (accounts for invalid responses)\n")
-        f.write(f"F1 (Partial): {aggregated_metrics.get('field_f1_partial', 0):.3f}\n")
-        f.write(f"Schema Validity: {aggregated_metrics.get('schema_validity_rate', 0):.2%}\n")
-        f.write(f"Exact Match: {aggregated_metrics.get('exact_match_rate', 0):.2%}\n")
-        f.write(f"Hallucination Rate: {aggregated_metrics.get('hallucination_rate', 0):.2%}\n\n")
-        
-        f.write("PER-SUBTASK BREAKDOWN\n")
-        f.write("-" * 40 + "\n")
-        for name, metrics in subtask_metrics.items():
-            f.write(f"\n{name.upper()}:\n")
-            f.write(f"  Samples: {metrics.get('total_samples', 0)}\n")
-            f.write(f"  EQS: {metrics.get('extraction_quality_score', 0):.3f}\n")
-            f.write(f"  F1: {metrics.get('field_f1_partial', 0):.3f}\n")
-        f.write("=" * 60 + "\n")
-    
-    logger.info(f"Saved text summary to {text_file}")
+    summary_metrics = dict(aggregated_metrics)
+    if "overall_extraction_quality_score" not in summary_metrics:
+        summary_metrics["overall_extraction_quality_score"] = summary_metrics.get(
+            "extraction_quality_score",
+            0,
+        )
+
+    write_group_summary(
+        output_dir=output_dir,
+        model_name=model_name,
+        subtasks=subtasks,
+        aggregated_metrics=summary_metrics,
+        subtask_metrics=subtask_metrics,
+        title="STRUCTURED EXTRACTION BENCHMARK SUMMARY",
+        aggregated_fields=[
+            ("total_samples", "Total Samples", "d"),
+            ("valid_samples", "Valid Samples", "d"),
+            ("error_rate", "Error Rate", ".2%"),
+            ("extraction_quality_score", "EQS", ".3f"),
+            ("overall_extraction_quality_score", "Overall EQS (accounts for invalid responses)", ".3f"),
+            ("field_f1_partial", "F1 (Partial)", ".3f"),
+            ("schema_validity_rate", "Schema Validity", ".2%"),
+            ("exact_match_rate", "Exact Match", ".2%"),
+            ("hallucination_rate", "Hallucination Rate", ".2%"),
+        ],
+        per_subtask_fields=[
+            ("total_samples", "Samples", "d"),
+            ("extraction_quality_score", "EQS", ".3f"),
+            ("field_f1_partial", "F1", ".3f"),
+        ],
+    )
     
     # Log a concise, auditable view of the aggregated metrics in the main run log
     logger.info("Structured extraction - aggregated metrics across subtasks:")

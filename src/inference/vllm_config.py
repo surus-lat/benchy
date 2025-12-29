@@ -1,0 +1,55 @@
+"""vLLM server configuration utilities."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, Optional
+
+
+@dataclass
+class VLLMServerConfig:
+    """Configuration for starting a vLLM server."""
+
+    host: str = "0.0.0.0"
+    port: int = 8000
+    tensor_parallel_size: int = 1
+    max_model_len: int = 8192
+    gpu_memory_utilization: float = 0.6
+    enforce_eager: bool = True
+    limit_mm_per_prompt: str = '{"images": 0, "audios": 0}'
+    hf_cache: str = "/home/mauro/.cache/huggingface"
+    hf_token: str = ""
+    startup_timeout: int = 900
+    cuda_devices: Optional[str] = None
+    kv_cache_memory: Optional[int] = None
+    vllm_venv_path: str = "/home/mauro/dev/benchy/.venv"
+    vllm_version: Optional[str] = None
+    multimodal: bool = True
+    max_num_seqs: Optional[int] = None
+    max_num_batched_tokens: Optional[int] = None
+    trust_remote_code: bool = True
+    tokenizer_mode: Optional[str] = None
+    config_format: Optional[str] = None
+    load_format: Optional[str] = None
+    tool_call_parser: Optional[str] = None
+    enable_auto_tool_choice: bool = False
+    kv_cache_dtype: Optional[str] = None
+    kv_offloading_size: Optional[int] = None
+    skip_mm_profiling: bool = False
+
+    @classmethod
+    def from_config(
+        cls,
+        config: Optional[Dict[str, Any]],
+        *,
+        cuda_devices: Optional[str] = None,
+    ) -> "VLLMServerConfig":
+        values = dict(config or {})
+        if cuda_devices is not None:
+            values["cuda_devices"] = cuda_devices
+        allowed = {field for field in cls.__dataclass_fields__}
+        filtered = {key: value for key, value in values.items() if key in allowed}
+        return cls(**filtered)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)

@@ -5,15 +5,9 @@ This uploads the publish directory contents to the configured dataset.
 """
 
 import os
-import json
 from pathlib import Path
 from typing import Dict
-import yaml
-
-def load_config(config_path: str = "config.yaml") -> Dict:
-    """Load configuration from YAML file."""
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from config_loader import load_config
 
 def upload_to_huggingface(publish_dir: Path, dataset_name: str) -> bool:
     """Upload files to Hugging Face dataset."""

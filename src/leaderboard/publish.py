@@ -4,25 +4,13 @@ Upload the contents of the publish directory to Hugging Face dataset.
 """
 
 import os
-import yaml
 import argparse
 from pathlib import Path
-from huggingface_hub import HfApi, create_repo
 from dotenv import load_dotenv
 
 # Import the function module
 from .functions.upload_to_hf import upload_to_hf
-
-def load_config(config_path: str = None) -> dict:
-    """Load configuration from YAML file."""
-    if config_path is None:
-        # Find config.yaml relative to the project root
-        current_dir = Path(__file__).parent
-        project_root = current_dir.parent.parent  # Go up from src/leaderboard to benchy root
-        config_path = project_root / "configs" / "config.yaml"
-    
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from src.config_loader import load_config
 
 def parse_args():
     """Parse command line arguments."""

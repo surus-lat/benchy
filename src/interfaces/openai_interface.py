@@ -393,6 +393,24 @@ class OpenAIInterface:
             return mapping
         return {}
 
+    async def close(self) -> None:
+        """Close any underlying async clients."""
+        await self._close_client(self.client, "openai")
+        await self._close_client(self.anthropic_client, "anthropic")
+
+    async def _close_client(self, client: Any, label: str) -> None:
+        if client is None:
+            return
+        close_fn = getattr(client, "aclose", None) or getattr(client, "close", None)
+        if close_fn is None:
+            return
+        try:
+            result = close_fn()
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as exc:
+            logger.debug(f"Failed to close {label} client: {exc}")
+
     async def _generate_single_anthropic(
         self,
         system_prompt: str,

@@ -4,13 +4,9 @@ Copy reference files to the publish directory.
 """
 
 import shutil
-import yaml
 from pathlib import Path
 
-def load_config(config_path: str = "config.yaml") -> dict:
-    """Load configuration from YAML file."""
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from config_loader import load_config
 
 def copy_reference_files(reference_dir: str, publish_dir: str) -> bool:
     """Copy reference files to the publish directory."""
@@ -48,7 +44,6 @@ def copy_reference_files(reference_dir: str, publish_dir: str) -> bool:
 
 def main():
     """Main function for standalone execution."""
-    import yaml
     config = load_config()
     reference_dir = config["paths"]["reference_dir"]
     publish_dir = config["paths"]["publish_dir"]
