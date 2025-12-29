@@ -14,7 +14,7 @@ tasks:
 - translation
 metadata:
   max_context_length: 131072
-  is_multimodal: false
+  supports_multimodal: false
   model_type: gpt_oss
   detected_from_config: true
   generated_at: '2025-10-15T16:02:09.673154'
