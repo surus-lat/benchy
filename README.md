@@ -6,7 +6,7 @@
 </p>
 
 Benchy is a benchmarking suite for evaluating AI systems (models, hosted endpoints, or task-specific
-pipelines) on LATAM-focused tasks. It powers the LATAM Leaderboard at https://latamboard.ai/, so if
+pipelines) on LATAM-focused tasks. It powers the [LATAM Leaderboard](https://latamboard.ai/), so if
 you are here to browse results, the leaderboard site is the best starting point. If you are using
 Benchy to run evaluations (not contributing code), start with `docs/evaluating_models.md` for the
 step-by-step usage guide.
