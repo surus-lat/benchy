@@ -221,7 +221,25 @@ def _run_opus_subtask(
             connection_info=connection_info,
             model_name=model_name,
         )
-        ensure_task_interface_compatibility(task_instance, interface)
+        report = ensure_task_interface_compatibility(task_instance, interface)
+        if not report.compatible:
+            reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
+            logger.warning(f"Skipping OPUS subtask due to incompatibility: {reason}")
+            return {
+                "subtask": "opus",
+                "language_pairs": language_pairs,
+                "per_pair_results": {},
+                "aggregate_metrics": {
+                    "total_samples": 0,
+                    "valid_samples": 0,
+                    "bleu": 0.0,
+                    "chrf": 0.0,
+                    "comet": 0.0,
+                    "error_rate": 0.0,
+                },
+                "skipped": True,
+                "skip_reason": reason,
+            }
         
         # Create runner config
         runner_config = {
@@ -329,7 +347,7 @@ def _run_flores_subtask(
                             "error_rate": 0.0,
                         },
                         "skipped": True,
-                        "reason": "Download completed but no language pairs available",
+                        "skip_reason": "Download completed but no language pairs available",
                     }
             except Exception as e:
                 logger.error(f"Error downloading FLORES dataset: {e}")
@@ -348,7 +366,7 @@ def _run_flores_subtask(
                         "error_rate": 0.0,
                     },
                     "skipped": True,
-                    "reason": f"Download failed: {e}",
+                    "skip_reason": f"Download failed: {e}",
                 }
     
     # Download/preprocess missing pairs if needed
@@ -397,7 +415,26 @@ def _run_flores_subtask(
             connection_info=connection_info,
             model_name=model_name,
         )
-        ensure_task_interface_compatibility(task_instance, interface)
+        report = ensure_task_interface_compatibility(task_instance, interface)
+        if not report.compatible:
+            reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
+            logger.warning(f"Skipping FLORES subtask due to incompatibility: {reason}")
+            return {
+                "subtask": "flores",
+                "language_pairs": language_pairs,
+                "split": split,
+                "per_pair_results": {},
+                "aggregate_metrics": {
+                    "total_samples": 0,
+                    "valid_samples": 0,
+                    "bleu": 0.0,
+                    "chrf": 0.0,
+                    "comet": 0.0,
+                    "error_rate": 0.0,
+                },
+                "skipped": True,
+                "skip_reason": reason,
+            }
         
         # Create runner config
         runner_config = {

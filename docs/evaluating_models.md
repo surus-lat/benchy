@@ -38,6 +38,9 @@ Useful flags:
 - `--run-id NAME` sets a custom run folder name.
 - `--log-samples` forces sample logging for all tasks.
 - `--test` is only supported for vLLM and starts the server without running tasks.
+ - `--tasks a,b,c` overrides the task list from the config.
+ - `--tasks-file path.txt` loads tasks from a file (one per line, comments allowed).
+ - `--task-group name` injects task groups from `configs/config.yaml` (repeatable).
 
 ## Model Config Structure
 
@@ -73,6 +76,10 @@ tasks:
 You can also add `task_defaults` and `metadata.supports_*` tags in the model config.
 Task defaults apply to every task, and metadata tags restrict capabilities so Benchy
 won't attempt unsupported features for that model.
+
+If you override tasks with CLI flags, those overrides replace the config task list for
+model providers. For system providers (custom endpoints), overrides are intersected with
+the tasks declared in the system config so you cannot run unsupported tasks by accident.
 
 ## System Config Structure
 

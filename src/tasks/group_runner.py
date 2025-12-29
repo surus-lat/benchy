@@ -76,13 +76,12 @@ class SubtaskContext:
     shared: Any = None
 
 
-def ensure_task_interface_compatibility(task: BaseTask, interface: Any) -> None:
-    """Raise if a task/interface pair is not compatible."""
+def ensure_task_interface_compatibility(task: BaseTask, interface: Any):
+    """Return a compatibility report for a task/interface pair."""
     report = check_compatibility(task, interface)
-    if not report.compatible:
-        raise ValueError(f"Incompatible task/interface: {', '.join(report.errors)}")
     for warning in report.warnings:
         logger.warning(warning)
+    return report
 
 
 def run_task_group(
@@ -160,6 +159,7 @@ def run_task_group(
             shared_state = group_context.shared
 
     all_metrics: Dict[str, Dict[str, Any]] = {}
+    skipped_subtasks: List[Dict[str, str]] = []
 
     async def _run_default_subtasks() -> None:
         """Run default subtask flow with a single event loop."""
@@ -190,6 +190,13 @@ def run_task_group(
             subtask_results = await _run_default_subtask_async(spec, context)
 
             if subtask_results:
+                if subtask_results.get("skipped"):
+                    skipped_subtasks.append(
+                        {
+                            "subtask": subtask_name,
+                            "reason": subtask_results.get("skip_reason", "incompatible"),
+                        }
+                    )
                 all_metrics[subtask_name] = subtask_results.get("aggregate_metrics", {})
 
             logger.info(f"Subtask {subtask_name} completed")
@@ -223,6 +230,13 @@ def run_task_group(
                 subtask_results = spec.run_subtask(context)
 
                 if subtask_results:
+                    if subtask_results.get("skipped"):
+                        skipped_subtasks.append(
+                            {
+                                "subtask": subtask_name,
+                                "reason": subtask_results.get("skip_reason", "incompatible"),
+                            }
+                        )
                     all_metrics[subtask_name] = subtask_results.get("aggregate_metrics", {})
 
                 logger.info(f"Subtask {subtask_name} completed")
@@ -256,6 +270,7 @@ def run_task_group(
             "output_path": str(task_output_path),
             "metrics": aggregated,
             "subtask_metrics": all_metrics,
+            "skipped_subtasks": skipped_subtasks,
         }
 
     except ConnectionError as exc:
@@ -283,7 +298,19 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
         connection_info=context.connection_info,
         model_name=context.model_name,
     )
-    ensure_task_interface_compatibility(task_instance, interface)
+    report = ensure_task_interface_compatibility(task_instance, interface)
+    if not report.compatible:
+        reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
+        logger.warning(
+            f"Skipping {task_instance.get_task_name()} due to incompatibility: {reason}"
+        )
+        return {
+            "skipped": True,
+            "skip_reason": reason,
+            "aggregate_metrics": {},
+            "per_sample_metrics": [],
+            "samples": [],
+        }
 
     runner_config = {
         "model_name": context.model_name,
