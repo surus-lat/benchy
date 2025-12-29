@@ -79,16 +79,22 @@ def create_leaderboard_table(summaries: List[Dict], config: Dict = None) -> List
         model_name = model_data["model_name"]
         publisher = model_data.get("publisher", "unknown")
         full_model_name = model_data.get("full_model_name", model_name)
+        organization = model_data.get("organization")
+        url = model_data.get("url")
         categories = model_data.get("categories", {})
-        overall_latam_score = model_data.get("overall_latam_score")
         
         # Initialize the row with basic info
         row = {
             "model_name": model_name,
             "publisher": publisher,
-            "full_model_name": full_model_name,
-            "overall_latam_score": round(overall_latam_score, 4) if overall_latam_score is not None else None
+            "full_model_name": full_model_name
         }
+        
+        # Add organization and url if available
+        if organization:
+            row["organization"] = organization
+        if url:
+            row["url"] = url
         
         # Process each task using modular system
         for task_name, task_config in task_definitions.items():
