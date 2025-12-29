@@ -246,7 +246,10 @@ def main():
     log_setup.log_config()
     
     # Extract configuration values
-    model_name = config['model']['name']
+    model_config = config.get('model', {})
+    model_name = model_config['name']
+    organization = model_config.get('organization')
+    url = model_config.get('url')
     provider_type = config.get('provider_type', 'vllm')
     
     # Get provider-specific config based on type
@@ -424,6 +427,8 @@ def main():
                 run_id=run_id,  # Pass generated run_id for organizing outputs
                 provider_type=provider_type,  # Pass provider type
                 provider_config=provider_config,  # Pass provider config (for cloud providers)
+                organization=organization,  # Pass organization if present in config
+                url=url,  # Pass url if present in config
                 **vllm_params  # Unpack vLLM parameters (empty dict for cloud providers)
             )
         
