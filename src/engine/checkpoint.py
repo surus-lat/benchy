@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Set, List
+from typing import Dict, Any, Set, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,8 @@ def get_config_hash(config_dict: Dict[str, Any]) -> str:
 def save_checkpoint(
     path: Path,
     completed_ids: List[str],
-    config_hash: str
+    config_hash: str,
+    metrics_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> None:
     """Save checkpoint to disk.
     
@@ -58,11 +59,16 @@ def save_checkpoint(
         "timestamp": datetime.now().isoformat(),
         "count": len(completed_ids),
     }
+    if metrics_by_id is not None:
+        checkpoint_data["metrics_by_id"] = metrics_by_id
     with open(path, "w") as f:
         json.dump(checkpoint_data, f, indent=2)
 
 
-def load_checkpoint(path: Path, expected_config_hash: str) -> Set[str]:
+def load_checkpoint(
+    path: Path,
+    expected_config_hash: str,
+) -> Tuple[Set[str], Dict[str, Dict[str, Any]]]:
     """Load and validate checkpoint from disk.
     
     Args:
@@ -73,16 +79,16 @@ def load_checkpoint(path: Path, expected_config_hash: str) -> Set[str]:
         Set of completed sample IDs, or empty set if invalid/missing
     """
     if not path.exists():
-        return set()
+        return set(), {}
     
     with open(path) as f:
         checkpoint = json.load(f)
     
     if checkpoint.get("config_hash") != expected_config_hash:
         logger.warning("Checkpoint found but config changed - ignoring")
-        return set()
+        return set(), {}
     
     completed_ids = set(checkpoint.get("completed_sample_ids", []))
+    metrics_by_id = checkpoint.get("metrics_by_id", {}) or {}
     logger.info(f"Loaded checkpoint: {len(completed_ids)} samples completed")
-    return completed_ids
-
+    return completed_ids, metrics_by_id

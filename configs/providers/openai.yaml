@@ -18,3 +18,11 @@ temperature: 1.0
 # Can be overridden in model config overrides
 max_tokens_param_name: "max_tokens"  # Options: "max_tokens" or "max_completion_tokens"
 
+# Provider capability flags for compatibility checks
+capabilities:
+  supports_multimodal: true
+  supports_schema: true
+  supports_files: true
+  supports_logprobs: false
+  supports_streaming: false
+  request_modes: ["chat", "completions"]

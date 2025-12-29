@@ -9,11 +9,9 @@ Usage:
 Where run_id is the specific run directory under outputs/benchmark_outputs/
 """
 
-import subprocess
 import sys
 import argparse
 from pathlib import Path
-import yaml
 import argparse
 
 # Add the src directory to the path for imports
@@ -25,6 +23,7 @@ from leaderboard.functions.parse_model_results import parse_model_results
 from leaderboard.functions.generate_leaderboard_table import generate_leaderboard_table
 from leaderboard.functions.copy_reference_files import copy_reference_files
 from leaderboard.functions.generate_reference_files import generate_reference_files
+from config_loader import load_config
 
 def parse_args():
     """Parse command line arguments."""
@@ -60,17 +59,6 @@ Examples:
     )
     
     return parser.parse_args()
-
-def load_config(config_path: str = None) -> dict:
-    """Load configuration from YAML file."""
-    if config_path is None:
-        # Find config.yaml relative to the project root
-        current_dir = Path(__file__).parent
-        project_root = current_dir.parent.parent  # Go up from src/leaderboard to benchy root
-        config_path = project_root / "configs" / "config.yaml"
-    
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
 
 def run_function(function, description: str, *args) -> bool:
     """Run a function and return success status."""

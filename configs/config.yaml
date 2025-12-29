@@ -120,6 +120,13 @@ leaderboard:
       metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
       primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
     
+    image_extraction:
+      processor: "structured_extraction_results_processor"
+      category_score_key: "image_extraction"
+      output_prefix: "image_extraction"
+      metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
+      primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
+    
     # Example of how to add a new task:
     # new_task:
     #   processor: "standard_results_processor"  # or "translation_results_processor"

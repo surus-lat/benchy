@@ -18,17 +18,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 import yaml
-
-def load_config(config_path: str = None) -> Dict:
-    """Load configuration from YAML file."""
-    if config_path is None:
-        # Find config.yaml relative to the project root
-        current_dir = Path(__file__).parent
-        project_root = current_dir.parent.parent.parent  # Go up from src/leaderboard/functions to benchy root
-        config_path = project_root / "configs" / "config.yaml"
-    
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+from config_loader import load_config
 
 def load_task_config(task_name: str) -> Dict:
     """Load task-specific configuration from src/tasks/<task>/task.json."""
@@ -52,7 +42,16 @@ def load_task_config(task_name: str) -> Dict:
     return {}
 
 def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
-    """Extract model information from run_config.yaml file."""
+    """Extract model information from run_config.yaml file.
+    
+    Supports the following fields in run_config.yaml:
+    - model.name: Model name (required)
+    - model.organization: Organization/publisher name (optional, overrides publisher extraction)
+    - model.url: URL to model/organization (optional)
+    
+    If organization is not specified, publisher is extracted from model.name
+    by splitting on "/" (e.g., "surus-ai/surus-extract" -> publisher: "surus-ai").
+    """
     config_file = model_dir / "run_config.yaml"
     
     if not config_file.exists():
@@ -60,18 +59,36 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
         return {
             "model_name": model_dir.name,
             "publisher": "unknown",
-            "full_model_name": model_dir.name
+            "full_model_name": model_dir.name,
+            "organization": None,
+            "url": None
         }
     
     try:
         with open(config_file, 'r') as f:
             config_data = yaml.safe_load(f)
         
-        # Extract model name from config
-        full_model_name = config_data.get("model", {}).get("name", model_dir.name)
+        model_config = config_data.get("model", {})
         
-        # Extract publisher and model name from full model name
-        if "/" in full_model_name:
+        # Extract model name from config
+        full_model_name = model_config.get("name", model_dir.name)
+        
+        # Extract organization if explicitly provided
+        organization = model_config.get("organization")
+        
+        # Extract URL if provided
+        url = model_config.get("url")
+        
+        # Extract publisher and model name
+        # Priority: 1) organization field, 2) split from model name, 3) unknown
+        if organization:
+            publisher = organization
+            # If organization is set, model_name is just the name part
+            if "/" in full_model_name:
+                model_name = full_model_name.split("/")[1]
+            else:
+                model_name = full_model_name
+        elif "/" in full_model_name:
             publisher = full_model_name.split("/")[0]
             model_name = full_model_name.split("/")[1]
         else:
@@ -81,7 +98,9 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
         return {
             "model_name": model_name,
             "publisher": publisher,
-            "full_model_name": full_model_name
+            "full_model_name": full_model_name,
+            "organization": organization,
+            "url": url
         }
         
     except Exception as e:
@@ -89,7 +108,9 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
         return {
             "model_name": model_dir.name,
             "publisher": "unknown",
-            "full_model_name": model_dir.name
+            "full_model_name": model_dir.name,
+            "organization": None,
+            "url": None
         }
 
 def extract_metric_from_task_data(task_data: Dict, task_name: str = None, normalize_tasks: list = None) -> tuple[Optional[str], Optional[float], Optional[float]]:
@@ -813,12 +834,14 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
         }
         
         # Build category scores (use EQS as main category score)
+        # Use category_score_key from task config, fallback to task_name
+        category_key = task_config.get("category_score_key", task_name)
         category_scores = {
-            "structured_extraction": {
+            category_key: {
                 "score": eqs,
                 "stderr": 0.0,  # EQS doesn't have stderr in current format
                 "metric": "eqs",
-                "alias": "structured_extraction"
+                "alias": category_key
             }
         }
         
@@ -876,8 +899,14 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
         config_model_name = model_info["model_name"]
         publisher = model_info["publisher"]
         full_model_name = model_info["full_model_name"]
+        organization = model_info.get("organization")
+        url = model_info.get("url")
         
         print(f"    Model info from config: {config_model_name} (publisher: {publisher})")
+        if organization:
+            print(f"      Organization: {organization}")
+        if url:
+            print(f"      URL: {url}")
         
         # Get leaderboard configuration
         leaderboard_config = config.get("leaderboard", {})
@@ -932,26 +961,19 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
                         "alias": "translation"
                     }
 
-        # Calculate overall LATAM score from main category scores
-        overall_scores = []
-        for category_data in all_scores.values():
-            if category_data and category_data.get("category_scores"):
-                for cat_name, cat_data in category_data["category_scores"].items():
-                    if cat_name in main_categories:
-                        overall_scores.append(cat_data["score"])
-        
-        overall_latam_score = sum(overall_scores) / len(overall_scores) if overall_scores else None
-        if overall_scores:
-            print(f"    ✓ Overall LATAM score: {overall_latam_score:.4f} (from {len(overall_scores)} categories: {main_categories})")
-        
         # Combine all scores
         combined_scores = {
             "model_name": config_model_name,
             "publisher": publisher,
             "full_model_name": full_model_name,
-            "categories": all_scores,
-            "overall_latam_score": overall_latam_score
+            "categories": all_scores
         }
+        
+        # Add organization and url if available
+        if organization:
+            combined_scores["organization"] = organization
+        if url:
+            combined_scores["url"] = url
         
         return combined_scores
         

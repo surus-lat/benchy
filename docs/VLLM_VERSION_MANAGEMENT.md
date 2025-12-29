@@ -14,7 +14,7 @@ The system supports:
 ## How It Works
 
 ### Default Behavior (Recommended)
-- **No `vllm_version` specified**: Uses the latest vLLM version from the main project environment (`/home/mauro/dev/benchy/.venv`)
+- **No `vllm_version` specified**: Uses the latest vLLM version from the main project environment (`.venv` in the repo root)
 - **`vllm_version` specified**: Automatically creates and uses a version-specific virtual environment
 
 ### Configuration Flow
@@ -69,7 +69,7 @@ tasks:
 
 ```bash
 # The system automatically creates the vLLM 0.8.0 environment if needed
-python eval.py --config configs/single_card/Hunyuan-MT-7B.yaml --test
+python eval.py --config configs/models/Hunyuan-MT-7B.yaml --test
 ```
 
 ## Virtual Environment Structure
@@ -81,7 +81,7 @@ benchy/
 │   ├── vllm_0_8_0/         # vLLM 0.8.0 environment (created when needed)
 │   └── vllm_0_10_2/        # vLLM 0.10.2 environment (created when needed)
 └── configs/
-    └── single_card/
+    └── models/
         └── Hunyuan-MT-7B.yaml
 ```
 
@@ -159,7 +159,7 @@ To use this configuration:
 
 ```bash
 # The system automatically creates the vLLM 0.8.0 environment if needed
-python eval.py --config configs/single_card/Hunyuan-MT-7B.yaml --test
+python eval.py --config configs/models/Hunyuan-MT-7B.yaml --test
 ```
 
 ## Benefits

@@ -7,8 +7,8 @@ To create a new task:
    - Set TASK_NAME to your task identifier
    - Override preprocess_sample() to transform HF samples to eval format
    - Override calculate_metrics() for task-specific scoring
-3. Edit run.py: rename run_template_task to run_my_task
-4. Add task to pipeline.py dispatch
+3. Edit run.py: rename run_template_task to run_my_task and update TaskGroupSpec
+4. Register the task in src/pipeline.py TASK_REGISTRY
 """
 
 import json
@@ -27,8 +27,9 @@ DATA_DIR = Path(__file__).parent / ".data"
 
 class TemplateTask(BaseTask):
     """Template task - copy and customize for your task.
-    
-    Inherits from BaseTask protocol for IDE autocompletion and type checking.
+
+    Override preprocess_sample(), get_prompt(), calculate_metrics(), and
+    aggregate_metrics() for task-specific behavior.
     """
     
     # === CONFIGURE THESE ===
@@ -38,17 +39,8 @@ class TemplateTask(BaseTask):
     DATA_FILE: str = "data.jsonl"  # Processed data filename
 
     def __init__(self, config: Dict):
-        """Initialize the task.
-        
-        Args:
-            config: Configuration dictionary with:
-                - dataset.data_file: (optional) Override data file path
-                - prompts.system: System prompt template
-                - prompts.user: User prompt template (with {placeholders})
-        """
+        """Initialize the task with dataset and prompt config."""
         self.config = config
-        
-        # Use config path if provided, otherwise use default
         data_file = config.get("dataset", {}).get("data_file")
         if data_file:
             self.data_file = Path(data_file)
@@ -59,13 +51,11 @@ class TemplateTask(BaseTask):
 
     def load(self) -> None:
         """Load dataset, auto-downloading from HuggingFace if needed."""
-        # Auto-download if data file doesn't exist
         if not self.data_file.exists():
             logger.info(f"Data file not found: {self.data_file}")
             logger.info(f"Downloading from HuggingFace: {self.DATASET_NAME}")
             self._download_and_preprocess()
-        
-        # Load from JSONL
+
         logger.info(f"Loading dataset from {self.data_file}")
         self.dataset = []
         with open(self.data_file, "r", encoding="utf-8") as f:
@@ -76,15 +66,13 @@ class TemplateTask(BaseTask):
         logger.info(f"Loaded {len(self.dataset)} samples")
 
     def _download_and_preprocess(self) -> None:
-        """Download from HuggingFace and preprocess samples."""
-        # Download raw dataset
+        """Download from HuggingFace and preprocess samples into JSONL."""
         raw_samples = download_huggingface_dataset(
             dataset_name=self.DATASET_NAME,
             split=self.DATASET_SPLIT,
             cache_dir=str(DATA_DIR / "cache"),
         )
-        
-        # Preprocess each sample
+
         processed = []
         skipped = 0
         
@@ -99,16 +87,15 @@ class TemplateTask(BaseTask):
                 skipped += 1
         
         logger.info(f"Processed {len(processed)} samples, skipped {skipped}")
-        
-        # Save to JSONL
+
         self.data_file.parent.mkdir(parents=True, exist_ok=True)
         save_to_jsonl(processed, self.data_file)
 
     def preprocess_sample(self, raw_sample: Dict, idx: int) -> Optional[Dict]:
         """Transform a HuggingFace sample to eval format.
         
-        Override this method to customize how raw HF samples are converted
-        to the evaluation format. Return None to skip a sample.
+        Override this method to map the dataset fields to the expected
+        evaluation format. Return None to skip a sample.
         
         Args:
             raw_sample: Raw sample dictionary from HuggingFace dataset
@@ -122,8 +109,6 @@ class TemplateTask(BaseTask):
             
             Return None to skip this sample.
         """
-        # Default: simple pass-through with common field names
-        # Override this for your specific dataset format
         return {
             "id": f"sample_{idx}",
             "text": raw_sample.get("text", raw_sample.get("input", "")),
@@ -158,7 +143,6 @@ class TemplateTask(BaseTask):
     def get_prompt(self, sample: Dict) -> Tuple[str, str]:
         """Build prompts for a sample.
         
-        Used by LLM interfaces to construct chat messages.
         Override this for custom prompt formatting.
         
         Args:
@@ -176,10 +160,8 @@ class TemplateTask(BaseTask):
             "{text}"
         )
 
-        # Format user prompt with sample data
         user_prompt = user_template.format(
             text=sample.get("text", ""),
-            # Add more placeholders as needed in your override
         )
 
         return system_prompt, user_prompt
@@ -198,7 +180,8 @@ class TemplateTask(BaseTask):
     ) -> Dict[str, Any]:
         """Calculate metrics for a single prediction.
         
-        Override this for task-specific metrics.
+        Override this for task-specific metrics. Must include a boolean
+        `valid` field to indicate if the prediction is usable.
         
         Args:
             prediction: Model output (parsed if applicable)
@@ -211,15 +194,12 @@ class TemplateTask(BaseTask):
             Dictionary of metric names to values.
             Must include 'valid' (bool) to indicate if prediction was usable.
         """
-        # Handle errors - pass through to get_error_metrics for consistency
         if error or prediction is None:
             return self.get_error_metrics(
                 error=error or "No prediction",
                 error_type=error_type,
             )
         
-        # Default: simple exact match
-        # Override for more sophisticated metrics
         exact_match = prediction == expected
         
         return {
@@ -235,8 +215,8 @@ class TemplateTask(BaseTask):
     ) -> Dict[str, Any]:
         """Get error metrics structure for failed predictions.
         
-        Override this to provide task-specific error metric structures.
-        The engine calls this when calculate_metrics() raises an exception.
+        Override this to match your task's metric shape. The engine calls
+        this when calculate_metrics() raises an exception.
         
         Args:
             error: Error message
@@ -283,7 +263,7 @@ class TemplateTask(BaseTask):
 
     # Capability flags - override as needed
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Whether this task requires images/audio."""
         return False
     

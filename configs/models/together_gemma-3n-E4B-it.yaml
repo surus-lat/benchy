@@ -8,9 +8,10 @@ task_defaults:
   log_samples: true
 tasks:
 - image_extraction
+- structured_extraction
 metadata:
   max_context_length: 128000
-  is_multimodal: true
+  supports_multimodal: true
   model_type: gemma3
   provider: together
   description: "gemma-3n-E4B-it via Together AI - Multimodal vision-language model"

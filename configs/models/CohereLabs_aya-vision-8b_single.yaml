@@ -15,7 +15,7 @@ tasks:
 - latam_board
 metadata:
   max_context_length: 8192
-  is_multimodal: true
+  supports_multimodal: true
   model_type: aya_vision
   detected_from_config: true
   generated_at: '2025-10-16T09:12:43.353674'

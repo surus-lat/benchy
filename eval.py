@@ -3,12 +3,8 @@
 import os
 import sys
 import argparse
-import yaml
-import subprocess
-import time
-import requests
-from datetime import datetime
 from dotenv import load_dotenv
+from typing import Optional
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,21 +14,57 @@ load_dotenv()
 if 'PREFECT_API_URL' not in os.environ:
     os.environ['PREFECT_API_URL'] = 'http://localhost:4200/api'
 
-from src.pipeline import benchmark_pipeline, test_vllm_server
-from prefect import serve
-from src.logging_utils import setup_file_logging
-from src.config_manager import ConfigManager
-from src.gpu_config import load_gpu_config
-from src.run_id_manager import generate_run_id, get_run_paths, setup_run_directories, get_prefect_flow_name
 import logging
 import signal
-import sys
+
+from prefect import serve
+
+from src.config_loader import load_config
+from src.config_manager import ConfigManager
+from src.gpu_config import load_gpu_config
+from src.logging_utils import setup_file_logging
+from src.pipeline import benchmark_pipeline, test_vllm_server
+from src.run_id_manager import (
+    generate_run_id,
+    get_prefect_flow_name,
+    get_run_paths,
+    setup_run_directories,
+)
+from src.inference.vllm_config import VLLMServerConfig
 
 
 logger = logging.getLogger(__name__)
 
 # Global state for signal handling
 _active_server_info = None
+
+PROVIDER_SPECS = {
+    "vllm": {"config_key": "vllm"},
+    "openai": {
+        "config_key": "openai",
+        "log": "Using OpenAI cloud provider for model: {model_name}",
+    },
+    "anthropic": {
+        "config_key": "anthropic",
+        "log": "Using Anthropic cloud provider for model: {model_name}",
+    },
+    "surus": {
+        "config_key": "surus",
+        "log": "Using SURUS AI provider for extraction tasks",
+    },
+    "surus_ocr": {
+        "config_key": "surus_ocr",
+        "log": "Using SURUS AI OCR provider for image extraction tasks",
+    },
+    "surus_factura": {
+        "config_key": "surus_factura",
+        "log": "Using SURUS AI Factura provider for image extraction tasks",
+    },
+    "together": {
+        "config_key": "together",
+        "log": "Using Together AI cloud provider for model: {model_name}",
+    },
+}
 
 def signal_handler(signum, frame):
     """Handle termination signals by cleaning up processes."""
@@ -52,31 +84,32 @@ def signal_handler(signum, frame):
     logger.info("Cleanup complete. Exiting.")
     sys.exit(130)  # Standard exit code for SIGINT
 
-def load_config(config_path: str = None) -> dict:
-    """Load configuration from YAML file."""
-    # Priority order: 1) Explicit path, 2) Environment variable, 3) Default
-    if config_path is None:
-        config_path = os.environ.get('BENCHY_CONFIG', 'config.yaml')
-    
-    # Check if file exists
-    if not os.path.exists(config_path):
-        available_configs = []
-        if os.path.exists('configs'):
-            available_configs = [f"configs/{f}" for f in os.listdir('configs') if f.endswith('.yaml')]
-        
-        error_msg = f"Configuration file '{config_path}' not found."
-        if available_configs:
-            error_msg += f"\n\nAvailable configurations:\n" + "\n".join(f"  - {cfg}" for cfg in available_configs[:5])
-            if len(available_configs) > 5:
-                error_msg += f"\n  ... and {len(available_configs) - 5} more in configs/"
-        error_msg += f"\n\nTry: python main.py --config <path-to-config.yaml>"
-        
-        raise FileNotFoundError(error_msg)
-    
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
 
+def resolve_provider_config(
+    config: dict,
+    provider_type: str,
+    model_name: str,
+    gpu_manager,
+):
+    """Resolve provider config and vLLM server config for a provider type."""
+    provider_spec = PROVIDER_SPECS.get(provider_type)
+    if not provider_spec:
+        raise ValueError(f"Unknown provider type: {provider_type}")
 
+    provider_config = config.get(provider_spec["config_key"], {})
+    log_message = provider_spec.get("log")
+    if log_message:
+        logger.info(log_message.format(model_name=model_name))
+
+    vllm_server_config = None
+    if provider_type == "vllm":
+        cuda_devices = provider_config.get("cuda_devices", gpu_manager.get_vllm_cuda_devices())
+        vllm_server_config = VLLMServerConfig.from_config(
+            provider_config,
+            cuda_devices=cuda_devices,
+        )
+
+    return provider_config, vllm_server_config
 
 
 def parse_args():
@@ -156,8 +189,57 @@ Examples:
         default=None,
         help='Run ID for organizing outputs (default: auto-generated timestamp)'
     )
+
+    parser.add_argument(
+        '--tasks',
+        type=str,
+        default=None,
+        help='Comma-separated list of tasks or task groups (overrides config tasks)'
+    )
+
+    parser.add_argument(
+        '--tasks-file',
+        type=str,
+        default=None,
+        help='Path to a task list file (one task per line, overrides config tasks)'
+    )
+
+    parser.add_argument(
+        '--task-group',
+        action='append',
+        default=None,
+        help='Task group name(s) from configs/config.yaml (can be repeated)'
+    )
     
     return parser.parse_args()
+
+
+def _parse_tasks_arg(value: Optional[str]) -> list:
+    if not value:
+        return []
+    return [entry.strip() for entry in value.split(",") if entry.strip()]
+
+
+def _load_tasks_file(path: str) -> list:
+    tasks = []
+    with open(path, "r") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            tasks.append(line)
+    return tasks
+
+
+def _dedupe_tasks(tasks: list) -> list:
+    seen = set()
+    ordered = []
+    for task_name in tasks:
+        if task_name in seen:
+            continue
+        seen.add(task_name)
+        ordered.append(task_name)
+    return ordered
 
 
 def main():
@@ -180,11 +262,6 @@ def main():
         logger.info(f"Command line arguments: {args}")
         logger.info(f"Python path: {sys.executable}")
         logger.info(f"Working directory: {os.getcwd()}")
-    
-    # Load environment variables
-    if os.path.exists('.env'):
-        load_dotenv('.env')
-        logger.info("Loaded environment variables from .env")
     
     # Override Prefect API URL if specified via command line
     if args.prefect_url:
@@ -246,47 +323,18 @@ def main():
     log_setup.log_config()
     
     # Extract configuration values
-    model_name = config['model']['name']
+    model_config = config.get('model', {})
+    model_name = model_config['name']
+    organization = model_config.get('organization')
+    url = model_config.get('url')
     provider_type = config.get('provider_type', 'vllm')
     
-    # Get provider-specific config based on type
-    if provider_type == 'vllm':
-        provider_config = config.get('vllm', {})
-        vllm_config = provider_config  # Backward compatibility
-        # Use GPU configuration from central config, with vLLM config override
-        cuda_devices = vllm_config.get('cuda_devices', gpu_manager.get_vllm_cuda_devices())
-    elif provider_type == 'openai':
-        provider_config = config.get('openai', {})
-        vllm_config = None
-        cuda_devices = None
-        logger.info(f"Using OpenAI cloud provider for model: {model_name}")
-    elif provider_type == 'anthropic':
-        provider_config = config.get('anthropic', {})
-        vllm_config = None
-        cuda_devices = None
-        logger.info(f"Using Anthropic cloud provider for model: {model_name}")
-    elif provider_type == 'surus':
-        provider_config = config.get('surus', {})
-        vllm_config = None
-        cuda_devices = None
-        logger.info(f"Using SURUS AI provider for extraction tasks")
-    elif provider_type == 'surus_ocr':
-        provider_config = config.get('surus_ocr', {})
-        vllm_config = None
-        cuda_devices = None
-        logger.info(f"Using SURUS AI OCR provider for image extraction tasks")
-    elif provider_type == 'surus_factura':
-        provider_config = config.get('surus_factura', {})
-        vllm_config = None
-        cuda_devices = None
-        logger.info(f"Using SURUS AI Factura provider for image extraction tasks")
-    elif provider_type == 'together':
-        provider_config = config.get('together', {})
-        vllm_config = None
-        cuda_devices = None
-        logger.info(f"Using Together AI cloud provider for model: {model_name}")
-    else:
-        raise ValueError(f"Unknown provider type: {provider_type}")
+    provider_config, vllm_server_config = resolve_provider_config(
+        config=config,
+        provider_type=provider_type,
+        model_name=model_name,
+        gpu_manager=gpu_manager,
+    )
 
     api_endpoint = provider_config.get('api_endpoint', config.get('api_endpoint', "completions"))
     
@@ -314,16 +362,49 @@ def main():
     
     logger.info(f"Model: {model_name}")
     logger.info(f"Provider type: {provider_type}")
-    tasks_to_run = config.get('tasks', ['spanish', 'portuguese'])
-    
+
+    config_tasks = config.get('tasks', ['spanish', 'portuguese'])
+    tasks_override = []
+    if args.tasks:
+        tasks_override.extend(_parse_tasks_arg(args.tasks))
+    if args.tasks_file:
+        tasks_override.extend(_load_tasks_file(args.tasks_file))
+    if args.task_group:
+        for group_entry in args.task_group:
+            tasks_override.extend(_parse_tasks_arg(group_entry))
+
+    tasks_override = _dedupe_tasks(tasks_override)
+
+    model_provider_types = {"vllm", "openai", "anthropic", "together"}
+    is_system_provider = provider_type not in model_provider_types
+
+    if tasks_override:
+        logger.info(f"Using task overrides from CLI: {tasks_override}")
+        if is_system_provider and config_tasks:
+            allowed = [task for task in tasks_override if task in config_tasks]
+            disallowed = [task for task in tasks_override if task not in config_tasks]
+            if disallowed:
+                logger.warning(
+                    f"Ignoring tasks not declared in system config: {disallowed}"
+                )
+            tasks_to_run = allowed
+        else:
+            tasks_to_run = tasks_override
+    else:
+        tasks_to_run = config_tasks
+
+    if not tasks_to_run:
+        logger.error("No tasks to run after applying task overrides.")
+        return
+
     # Expand task groups into individual tasks
     expanded_tasks = config_manager.expand_task_groups(tasks_to_run, central_config)
     logger.info(f"Task expansion: {tasks_to_run} -> {expanded_tasks}")
     tasks_to_run = expanded_tasks
-    
+
     logger.info(f"Tasks to run: {tasks_to_run}")
-    if provider_type == 'vllm' and vllm_config:
-        logger.info(f"vLLM server: {vllm_config['host']}:{vllm_config['port']}")
+    if provider_type == 'vllm' and vllm_server_config:
+        logger.info(f"vLLM server: {vllm_server_config.host}:{vllm_server_config.port}")
     elif provider_type in ['openai', 'anthropic', 'together']:
         logger.info(f"Cloud provider: {provider_type}")
         logger.info(f"Base URL: {provider_config.get('base_url', 'N/A')}")
@@ -357,62 +438,15 @@ def main():
                 return
             
             logger.info("Running test pipeline (vLLM server test only)")
+            if vllm_server_config is None:
+                vllm_server_config = VLLMServerConfig()
             result = test_vllm_server(
                 model_name=model_name,
                 run_id=run_id,
-                # vLLM server configuration
-                host=vllm_config.get('host', '0.0.0.0'),
-                port=vllm_config.get('port', 8000),
-                tensor_parallel_size=vllm_config.get('tensor_parallel_size', 1),
-                max_model_len=vllm_config.get('max_model_len', 8192),
-                gpu_memory_utilization=vllm_config.get('gpu_memory_utilization', 0.6),
-                enforce_eager=vllm_config.get('enforce_eager', True),
-                limit_mm_per_prompt=vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
-                hf_cache=vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
-                hf_token=vllm_config.get('hf_token', ""),
-                startup_timeout=vllm_config.get('startup_timeout', 900),
-                cuda_devices=cuda_devices,
-                kv_cache_memory=vllm_config.get('kv_cache_memory', None),
-                vllm_venv_path=vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
-                vllm_version=vllm_config.get('vllm_version', None),
-                multimodal=vllm_config.get('multimodal', True),
-                max_num_seqs=vllm_config.get('max_num_seqs', None),
-                max_num_batched_tokens=vllm_config.get('max_num_batched_tokens', None)
+                vllm_config=vllm_server_config,
             )
         else:
             # Run full benchmark pipeline
-            # Prepare vLLM-specific parameters (only used if provider_type == 'vllm')
-            vllm_params = {}
-            if provider_type == 'vllm' and vllm_config:
-                vllm_params = {
-                    'host': vllm_config.get('host', '0.0.0.0'),
-                    'port': vllm_config.get('port', 8000),
-                    'tensor_parallel_size': vllm_config.get('tensor_parallel_size', 1),
-                    'max_model_len': vllm_config.get('max_model_len', 8192),
-                    'gpu_memory_utilization': vllm_config.get('gpu_memory_utilization', 0.6),
-                    'enforce_eager': vllm_config.get('enforce_eager', True),
-                    'limit_mm_per_prompt': vllm_config.get('limit_mm_per_prompt', '{"images": 0, "audios": 0}'),
-                    'hf_cache': vllm_config.get('hf_cache', '/home/mauro/.cache/huggingface'),
-                    'hf_token': vllm_config.get('hf_token', ""),
-                    'startup_timeout': vllm_config.get('startup_timeout', 900),
-                    'cuda_devices': cuda_devices,
-                    'kv_cache_memory': vllm_config.get('kv_cache_memory', None),
-                    'vllm_venv_path': vllm_config.get('vllm_venv_path', '/home/mauro/dev/benchy/.venv'),
-                    'vllm_version': vllm_config.get('vllm_version', None),
-                    'multimodal': vllm_config.get('multimodal', True),
-                    'max_num_seqs': vllm_config.get('max_num_seqs', None),
-                    'max_num_batched_tokens': vllm_config.get('max_num_batched_tokens', None),
-                    'trust_remote_code': vllm_config.get('trust_remote_code', True),
-                    'tokenizer_mode': vllm_config.get('tokenizer_mode', None),
-                    'config_format': vllm_config.get('config_format', None),
-                    'load_format': vllm_config.get('load_format', None),
-                    'tool_call_parser': vllm_config.get('tool_call_parser', None),
-                    'enable_auto_tool_choice': vllm_config.get('enable_auto_tool_choice', False),
-                    'kv_cache_dtype': vllm_config.get('kv_cache_dtype', None),
-                    'kv_offloading_size': vllm_config.get('kv_offloading_size', None),
-                    'skip_mm_profiling': vllm_config.get('skip_mm_profiling', False)
-                }
-            
             result = benchmark_pipeline(
                 model_name=model_name,
                 tasks=tasks_to_run,  # Use expanded task list
@@ -424,7 +458,9 @@ def main():
                 run_id=run_id,  # Pass generated run_id for organizing outputs
                 provider_type=provider_type,  # Pass provider type
                 provider_config=provider_config,  # Pass provider config (for cloud providers)
-                **vllm_params  # Unpack vLLM parameters (empty dict for cloud providers)
+                organization=organization,  # Pass organization if present in config
+                url=url,  # Pass url if present in config
+                vllm_config=vllm_server_config,  # vLLM server config (ignored for cloud providers)
             )
         
         logger.info("Benchmark pipeline completed successfully!")

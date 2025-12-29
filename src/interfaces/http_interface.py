@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 
 import httpx
 
-from ..engine.protocols import InterfaceCapabilities
+from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
 from ..engine.retry import RetryableError, classify_http_exception, run_with_retries
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,10 @@ class HTTPInterface:
         self.config = config.get(provider_type, {})
         self.model_name = model_name
         self.provider_type = provider_type
+        self.capabilities = parse_interface_capabilities(
+            self.config.get("capabilities"),
+            default=self.capabilities,
+        )
         
         # HTTP configuration
         self.endpoint = self.config["endpoint"]

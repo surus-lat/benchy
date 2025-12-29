@@ -15,7 +15,7 @@ tasks:
 - latam_board
 metadata:
   max_context_length: 131072
-  is_multimodal: true
+  supports_multimodal: true
   model_type: phi4mm
   detected_from_config: true
   generated_at: '2025-10-15T17:57:25.918692'

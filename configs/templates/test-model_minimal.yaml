@@ -1,33 +1,43 @@
+# Template: vLLM model config (single GPU)
+# Copy to configs/models/<your_model>.yaml and edit.
+
 model:
-  name: "openai/gpt-oss-20b" # Updated by user
+  name: "org/model-name"
+
 vllm:
-  provider_config: vllm_two_cards
+  # Base provider config file in configs/providers/
+  provider_config: vllm_single_card
   overrides:
-    kv_cache_memory: 0
-    gpu_memory_utilization: 0.8  # Conservative memory usage
-    max_num_seqs: 64              # Reduced sequence count
-    #vllm_version: "0.8.0"
-    #transformers_version: "4.51.3"
-    #multimodal: false
+    # Common vLLM overrides
     port: 20502
-    # New parameters for better model compatibility
+    gpu_memory_utilization: 0.90
+    max_model_len: 8192
     trust_remote_code: true
-    # Mistral-specific parameters (auto-detected for Mistral models)
-    # tokenizer_mode: "mistral"
-    # config_format: "mistral"
-    # load_format: "mistral"
-    # tool_call_parser: "mistral"
-    # enable_auto_tool_choice: true
+    # vllm_version: "0.10.2"         # Optional, uses default .venv if omitted
+    # transformers_version: "4.51.3" # Optional
 
-# Override task defaults across all tasks (optional)
+    # Optionally override provider capabilities for this stack
+    # capabilities:
+    #   supports_multimodal: false
+    #   supports_logprobs: true
+
+# Optional defaults applied to all tasks
+# (can be overridden by task-specific defaults in task.json)
 task_defaults:
-  log_samples: true          # Override log_samples for all tasks
-  # batch_size: "8"           # You can override any task default
-  # num_concurrent: 8         # Example: increase concurrency
-  # cache_requests: false     # Example: disable request caching
-  cuda_devices: "1"
+  log_samples: true
+  batch_size: 20
+  cuda_devices: "0"
 
+# Tasks or task groups (see configs/config.yaml task_groups)
 tasks:
   - "latam_board"
+  # - "spanish"
+  # - "portuguese"
 
-# Remember to use --limit 10 to test your model!
+# Optional metadata tags used to restrict capabilities for this model
+metadata:
+  supports_multimodal: false
+  supports_logprobs: true
+  # supports_schema: true
+  # supports_files: false
+  # supports_streaming: false

@@ -9,29 +9,42 @@ This guide shows how to implement new benchmark tasks using the modular engine.
 │                           Pipeline                                   │
 │  - Manages provider (vLLM server, cloud APIs)                       │
 │  - Builds connection_info dict                                       │
-│  - Dispatches tasks                                                  │
+│  - Dispatches tasks via TASK_REGISTRY                                │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
-                    ┌───────────┴───────────┐
-                    ▼                       ▼
+                                ▼
+┌─────────────────────────┐
+│   TaskGroupRunner        │
+│   - Reads TaskGroupSpec  │
+│   - Builds interface     │
+│   - Runs subtasks        │
+└─────────────────────────┘
+                │
+                ▼
 ┌─────────────────────────┐    ┌─────────────────────────┐
-│   Prefect Task Wrapper   │    │   Generic Engine         │
-│   (thin orchestration)   │───▶│   - BenchmarkRunner      │
-│   run_my_task()          │    │   - Checkpointing        │
-└─────────────────────────┘    │   - Batching             │
-                                └─────────────────────────┘
-                                        │
-                    ┌───────────────────┼───────────────────┐
-                    ▼                   ▼                   ▼
-         ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-         │   Task Class    │  │    Interface    │  │    Results      │
-         │   - load()      │  │   - prepare_    │  │   - metrics     │
-         │   - get_samples │  │     request()   │  │   - samples     │
-         │   - get_prompt  │  │   - generate_   │  │   - aggregates  │
-         │   - calculate_  │  │     batch()     │  │                 │
-         │     metrics     │  │                 │  │                 │
-         └─────────────────┘  └─────────────────┘  └─────────────────┘
+│   Generic Engine         │    │   Interface             │
+│   - BenchmarkRunner      │───▶│   - prepare_request()   │
+│   - Checkpointing        │    │   - generate_batch()    │
+│   - Batching             │    │                         │
+└─────────────────────────┘    └─────────────────────────┘
+                │
+                ▼
+┌─────────────────────────┐
+│   Task Class             │
+│   - load()               │
+│   - get_samples()        │
+│   - get_prompt()         │
+│   - calculate_metrics()  │
+└─────────────────────────┘
 ```
+
+## Mental Model (5 lines)
+
+1. Pipeline selects tasks and provider config.
+2. TaskGroupRunner builds `connection_info` and expands subtasks.
+3. BenchmarkRunner runs batches for each task+interface pair.
+4. Interfaces call `task.get_prompt()` or use raw sample fields.
+5. Metrics aggregate per subtask and write summaries.
 
 ## Key Principle: Tasks are Interface-Agnostic
 
@@ -46,25 +59,20 @@ Tasks do NOT know about:
 - How requests are formatted
 - Network communication details
 
-The BenchmarkRunner bridges tasks and interfaces.
+TaskGroupRunner calls BenchmarkRunner to bridge tasks and interfaces.
 
 ## Adding a New Task
 
 ### 1. Create Task Config (`src/tasks/my_task/task.json`)
 
+Single-task config (no subtasks):
+
 ```json
 {
   "name": "my_task",
   "description": "Brief description of what this task evaluates",
-  "tasks": [
-    "subtask1",
-    "subtask2"
-  ],
-  "task_configs": {
-    "subtask1": {
-      "dataset_file": "subtask1_data.jsonl",
-      "dataset_name": "org/dataset-name"
-    }
+  "dataset": {
+    "data_file": "data.jsonl"
   },
   "prompts": {
     "system": "You are a helpful assistant for [task description].",
@@ -92,7 +100,61 @@ The BenchmarkRunner bridges tasks and interfaces.
 }
 ```
 
+Grouped task config (with subtasks):
+
+```json
+{
+  "name": "my_task",
+  "description": "Brief description of what this task evaluates",
+  "tasks": [
+    "subtask1",
+    "subtask2"
+  ],
+  "task_configs": {
+    "subtask1": {
+      "dataset": {
+        "data_file": "subtask1_data.jsonl"
+      },
+      "dataset_path": "org/dataset-name",
+      "split": "test"
+    }
+  },
+  "prompts": {
+    "system": "You are a helpful assistant for [task description].",
+    "user": "Input:\n{text}\n\nPlease respond with [expected format]."
+  },
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 2048,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "output": {
+    "subdirectory": "my_task"
+  },
+  "metrics_manifest": [
+    "my_metric"
+  ]
+}
+```
+
+Use `dataset.data_file` for local JSONL files, or `dataset_path` / `dataset_name`
+for HuggingFace datasets. Only include the fields you need.
+
 `metrics_manifest` lists the aggregate metric keys to surface in `run_summary.json`.
+
+Optional `capability_requirements` lets you mark requirements as:
+`required`, `preferred`, or `optional` (for requires_multimodal/requires_schema/
+requires_files/requires_logprobs/requires_streaming).
+
+### Subtasks and Aggregation
+
+- The `tasks` list defines the subtask names.
+- Each `task_configs` key must match a subtask name.
+- Subtask names become output subdirectories and summary keys.
+- `aggregate_metrics()` receives the same subtask name list that ran.
 
 ### 2. Create Task Class (`src/tasks/my_task/task.py`)
 
@@ -257,7 +319,7 @@ Each sample should have at minimum:
 
     # Optional capability flags
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Does this task use images/audio?"""
         return False
     
@@ -277,25 +339,36 @@ Each sample should have at minimum:
         return False
 ```
 
-### 3. Create Prefect Wrapper (`src/tasks/my_task.py`)
+### 3. Create Task Runner (`src/tasks/my_task/run.py`)
 
 ```python
-"""My Task benchmark wrapper."""
+"""My Task Prefect runner."""
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
-from pathlib import Path
 from prefect import task
 
-from ..engine import (
-    BenchmarkRunner,
-    save_results,
-    build_connection_info,
-    get_interface_for_provider,
-)
+from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
+from .task import MyTask
 
 logger = logging.getLogger(__name__)
+
+
+def _prepare_my_task(context: SubtaskContext) -> MyTask:
+    dataset_config = context.subtask_config.get("dataset") or context.task_config.get("dataset", {})
+    return MyTask({
+        "dataset": dataset_config,
+        "prompts": context.prompts,
+    })
+
+
+MY_TASK_SPEC = TaskGroupSpec(
+    name="my_task",
+    display_name="My Task",
+    output_subdir="my_task",
+    supports_subtasks=False,
+    prepare_task=_prepare_my_task,
+)
 
 
 @task
@@ -307,95 +380,43 @@ def run_my_task(
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
     cuda_devices: Optional[str] = None,
-    provider_config: Optional[Dict[str, Any]] = None
+    provider_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Run my_task evaluation.
-    
-    This is a thin wrapper around the generic benchmark engine.
-    """
-    logger.info(f"Starting my_task for model: {model_name}")
-    
-    # Build connection info
-    provider_type = provider_config.get('provider_type', 'vllm') if provider_config else 'vllm'
-    connection_info = build_connection_info(
-        provider_type=provider_type,
-        provider_config=provider_config or {},
+    """Run my_task evaluation."""
+    return run_task_group(
+        spec=MY_TASK_SPEC,
+        model_name=model_name,
+        output_path=output_path,
         server_info=server_info,
-        model_config=task_config.get('defaults', {}),
+        task_config=task_config,
+        limit=limit,
+        provider_config=provider_config,
     )
-    
-    # Create output directory
-    output_dir = Path(output_path) / task_config.get('output', {}).get('subdirectory', 'my_task')
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create task instance
-    from .my_task.task import MyTask
-    task_instance = MyTask({
-        'dataset': {'data_file': str(Path(__file__).parent / 'my_task' / '.data' / 'data.jsonl')},
-        'prompts': task_config.get('prompts', {}),
-    })
-    
-    # Create interface
-    interface = get_interface_for_provider(
-        provider_type=provider_type,
-        connection_info=connection_info,
-        model_name=model_name,
-    )
-    
-    # Run benchmark
-    runner = BenchmarkRunner(task_instance, interface, {
-        "model_name": model_name,
-        "batch_size": task_config.get('defaults', {}).get('batch_size', 20),
-        "output_dir": str(output_dir),
-        "log_samples": task_config.get('defaults', {}).get('log_samples', False),
-    })
-    
-    results = asyncio.run(runner.run(limit=limit))
-    
-    # Save results (automatically marks task complete)
-    save_results(
-        results=results,
-        output_dir=output_dir,
-        model_name=model_name,
-        task_name=task_instance.get_task_name(),
-        log_samples=task_config.get('defaults', {}).get('log_samples', False),
-    )
-    
-    return {
-        "model_name": model_name,
-        "task": "my_task",
-        "output_path": str(output_dir),
-        "metrics": results.get('aggregate_metrics', {}),
-    }
 ```
+
+Adjust `dataset_config` to match your task's config shape (for example,
+`dataset_path` / `dataset_name` instead of `dataset.data_file`).
+
+For grouped tasks, set `supports_subtasks=True` and implement `aggregate_metrics`,
+`write_summary`, or `run_subtask` in the `TaskGroupSpec`.
+Use `setup` / `teardown` in the spec to load shared resources once (metrics models,
+dataset caches) and reuse them across subtasks.
 
 ### 4. Register Task in Pipeline (`src/pipeline.py`)
 
-Add to the task dispatch section:
+Add an entry to `TASK_REGISTRY`:
 
 ```python
-if "my_task" in pending_tasks:
-    logger.info("Running my_task evaluation...")
-    my_task_config = config_manager.get_task_config("my_task", task_defaults_overrides)
-    
-    if log_setup:
-        log_setup.log_task_config("my_task", my_task_config)
-    
-    cloud_provider_config = None
-    if provider_type in ['openai', 'anthropic', 'surus'] and provider_config:
-        cloud_provider_config = {**provider_config, 'provider_type': provider_type}
-    
-    my_task_results = run_my_task(
-        model_name=model_name,
-        output_path=model_output_path,
-        server_info=server_info,
-        api_test_result=api_test_result,
-        task_config=my_task_config,
-        limit=limit,
-        cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
-        provider_config=cloud_provider_config
-    )
-    task_results["my_task"] = my_task_results
+TASK_REGISTRY = {
+    "my_task": {
+        "run": run_my_task,
+        "config_name": "my_task",
+        "display_name": "My task",
+        "set_api_endpoint": True,
+        "set_generation_config": True,
+        "provider_types": ["openai", "anthropic", "surus", "together"],
+    },
+}
 ```
 
 ## Sample Data Format
@@ -454,6 +475,14 @@ python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 5
 python eval.py --config configs/models/openai_gpt-4o-mini.yaml
 ```
 
+## Minimal Starter Example (Single Task)
+
+1. Copy the template: `cp -r src/tasks/_template src/tasks/my_task`
+2. Update `src/tasks/my_task/task.json` with `dataset.data_file` and prompts.
+3. Update `src/tasks/my_task/task.py` constants and metrics.
+4. Update `src/tasks/my_task/run.py` `TaskGroupSpec` names.
+5. Register in `src/pipeline.py` `TASK_REGISTRY`.
+
 ## Example: Complete Reference
 
 See `src/tasks/structured/` for a complete implementation with:
@@ -507,6 +536,16 @@ For multiple-choice tasks:
 - Set `answer_type = "multiple_choice"`.
 - Set `requires_logprobs = True` to enable logprob scoring and compatibility checks.
 
+## Capability Flags and Interface Support
+
+Set capability flags on the task so the runner can select a compatible interface:
+
+- `requires_multimodal`: task includes images/audio
+- `requires_schema`: task requires JSON schema support
+- `requires_logprobs`: task needs logprobs for scoring
+
+Check interface capabilities in `src/interfaces/README.md` before adding new flags.
+
 ### Example: Using a Metrics Calculator
 
 If your task uses a metrics calculator (like structured extraction), simply pass errors through:
@@ -534,11 +573,16 @@ def get_error_metrics(self, error: str, error_type: Optional[str] = None):
 
 ## Quick Checklist
 
+### Required
+
 - [ ] Create `src/tasks/my_task/task.json`
 - [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
 - [ ] Implement `get_error_metrics()` for error handling
-- [ ] Set `answer_type` and `requires_logprobs` if applicable
-- [ ] Create thin Prefect wrapper using generic engine
-- [ ] Register in `src/pipeline.py`
+- [ ] Set capability flags (`answer_type`, `requires_logprobs`, etc.) as needed
+- [ ] Create `TaskGroupSpec` and `run_task_group` wrapper in `src/tasks/my_task/run.py`
+- [ ] Register in `src/pipeline.py` `TASK_REGISTRY`
+
+### Optional
+
 - [ ] Add dataset download script if using HuggingFace
 - [ ] Test with `--limit 5`

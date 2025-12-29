@@ -5,123 +5,112 @@
     <img src="./docs/benchy_2.png" alt="readme_image" style="width:220px;height:220px;" />
 </p>
 
-Benchy is a modular benchmarking suite for evaluating AI systems on Spanish and Portuguese tasks for the [LATAM Leaderboard](https://latamboard.ai/). It separates evaluation logic from inference providers so you can evolve tasks and serving stacks independently.
+Benchy is a benchmarking suite for evaluating AI systems (models, hosted endpoints, or task-specific
+pipelines) on LATAM-focused tasks. It powers the [LATAM Leaderboard](https://latamboard.ai/), so if
+you are here to browse results, the leaderboard site is the best starting point. If you are using
+Benchy to run evaluations (not contributing code), start with `docs/evaluating_models.md` for the
+step-by-step usage guide.
 
 ## What Benchy Offers
 
-- **AI Systems Ready**: Run the same tasks across local servers or cloud providers.
-- **Task/Interface Decoupling**: Tasks handle data and metrics; interfaces handle provider IO; the engine orchestrates.
-- **Local or Cloud**: Starts vLLM automatically for local testing and supports cloud providers via API configs.
-- **Reproducible Runs**: Organized outputs per run ID with aggregated summaries.
-- **Contributor-Friendly**: Add tasks or providers without touching the other side.
+- **AI systems first**: Evaluate general models and task-optimized endpoints with the same task suite.
+- **Task/interface decoupling**: Tasks define data and metrics; interfaces handle provider IO.
+- **Local or cloud**: Start vLLM automatically for local runs or use cloud providers via configs.
+- **Reproducible outputs**: Organized run folders with task summaries and metadata.
+- **Contributor-friendly**: Add tasks or providers without rewriting the rest of the system.
 
 ## How Benchy Works
 
-- **Tasks** define data loading, prompt formatting, and metric aggregation.
-- **Interfaces** handle request/response translation for providers (vLLM, cloud APIs, etc.).
-- **Engine** pairs any task with any interface, managing batching, retries, and aggregation.
+- **Tasks** define data loading, prompt formatting, metrics, and capability requirements.
+- **Interfaces** translate task samples into provider-specific requests.
+- **TaskGroupRunner** builds connection info, instantiates tasks, and dispatches to the engine.
+- **BenchmarkRunner** batches requests, retries failures, and aggregates metrics.
 
-This design lets you add a new task without reworking inference, and add a new provider without changing evaluation logic.
+This design lets you add a new task without reworking inference, and add a new provider without
+changing evaluation logic. The architecture doc below goes deeper into how the engine, tasks, and
+interfaces fit together if you want a more detailed mental model.
 
-## Quickstart
+## Quickstart (Developers)
 
 ### Prerequisites
 
 - Python 3.12+
-- CUDA-compatible GPU(s) for local vLLM
-- Docker for Prefect server (recommended)
+- CUDA-compatible GPU(s) for local vLLM (not required for cloud providers)
+- Docker (optional, for Prefect UI)
 
-### Installation
+### Install
 
 ```bash
-git clone <repository-url>
-cd benchy
-git submodule update --init --recursive
-
-# Recommended setup
-bash setup.sh
-
-# Alternative (uv)
+# Recommended with uv
 uv sync
+
+# Or with venv + pip
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-### Start Prefect Server
+Optional setup helper (prefetches structured extraction data):
 
 ```bash
-sudo docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0
+bash setup.sh
+```
+
+If you use cloud providers, copy `env.example` to `.env` and fill in API keys.
+
+### Prefect UI (Optional)
+
+```bash
+docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0
 ```
 
 ### Run a First Benchmark
 
 ```bash
-python eval.py --config configs/single_card/qwen34b.yaml --limit 10
+# Local vLLM example (limited samples)
+python eval.py --config configs/tests/spanish-gptoss.yaml --limit 10
+
+# Cloud example
+python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 10
 ```
 
-## Usage
+If you want to run the same task list across multiple models, you can override tasks
+on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
+`docs/evaluating_models.md` for full examples and behavior.
 
-### Minimal Model Config (vLLM)
-
-```yaml
-model:
-  name: "Qwen/Qwen3-4B-Instruct-2507"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides:
-    max_model_len: 2000
-
-tasks:
-  - "spanish"
-  - "portuguese"
-```
-
-### Common Commands
-
-```bash
-# Full evaluation
-python eval.py --config configs/single_card/qwen34b.yaml
-
-# Limited samples
-python eval.py --config configs/single_card/qwen34b.yaml --limit 10
-
-# Test vLLM server only
-python eval.py --config configs/single_card/qwen34b.yaml --test
-
-# Custom run ID
-python eval.py --config configs/single_card/qwen34b.yaml --run-id my_experiment_001
-```
-
-## Configuration (More Technical)
+## Configuration Overview
 
 ### Project Structure
 
 ```
 benchy/
-├── configs/                 # Global + provider + model configs
-│   ├── config.yaml          # Global settings
-│   ├── providers/           # Provider configs (vLLM, cloud APIs)
-│   ├── single_card/         # Pre-configured model configs
-│   └── templates/           # Model config templates
+├── configs/
+│   ├── config.yaml          # Global settings and task groups
+│   ├── models/              # Model configs (vLLM or cloud)
+│   ├── systems/             # Task-optimized system configs
+│   ├── providers/           # Provider defaults (vLLM, OpenAI, etc.)
+│   ├── templates/           # Fully documented config templates
+│   └── tests/               # Small configs for smoke tests
 ├── src/
 │   ├── pipeline.py          # Main Prefect pipeline
 │   ├── interfaces/          # Provider interfaces
-│   ├── tasks/               # Task code + task.json configs
+│   ├── tasks/               # Task implementations + task.json configs
 │   └── leaderboard/         # Results processing
-├── outputs/                 # Benchmark outputs
 └── eval.py                  # CLI entry point
 ```
 
-### Task Configs
+### Model and System Configs
 
-Task configs live beside their implementation in `src/tasks/<task>/task.json`. These define datasets, prompts, and metric metadata for the task or its subtasks.
+- **Models** live in `configs/models/` and include a provider block (`vllm`, `openai`, `anthropic`, `together`).
+- **Systems** live in `configs/systems/` and include `provider_type` plus a provider section (for custom APIs).
+- **Task groups** (like `latam_board`) are defined in `configs/config.yaml` and can be used inside `tasks`.
 
-### Provider Configs
+### Capabilities and Compatibility
 
-Provider configs live in `configs/providers/` and define defaults for a serving stack (e.g., vLLM). Model configs can override specific fields without duplicating everything.
-
-### Global Config
-
-`configs/config.yaml` centralizes paths, logging, and leaderboard scoring settings.
+Provider configs declare capabilities (multimodal, logprobs, schema, files, etc.).
+Model configs can add `metadata.supports_*` tags, which are mapped to `model_capabilities` and
+can only *restrict* provider capabilities. Tasks declare required capabilities in their task config.
+If a required capability is missing, the task is skipped with a clear log message.
 
 ## Results and Publishing
 
@@ -131,32 +120,20 @@ After runs finish, process results for the leaderboard:
 python ./src/leaderboard/process_all.py
 ```
 
-This generates:
+This generates per-model summaries and leaderboard tables under `outputs/publish/`.
 
-- `leaderboard_table.json` and `leaderboard_table.csv`
-- Per-model summaries in `publish/summaries/`
-- `tasks_list.json` and `tasks_groups.json` derived from task configs
+## Documentation
+
+- `docs/evaluating_models.md`
+- `docs/contribute_tasks.md`
+- `docs/contributing_providers.md`
+- `docs/architecture.md`
+- `src/tasks/TASK_TEMPLATE.md` (deep task implementation details)
+- `docs/GENERATION_CONFIG.md` and `docs/VLLM_VERSION_MANAGEMENT.md`
 
 ## Contributing
 
-### Contributing a Task
-
-1. Copy the template: `cp -r src/tasks/_template src/tasks/my_task`
-2. Update `src/tasks/my_task/task.json` with datasets, prompts, and metrics.
-3. Implement task logic in `src/tasks/my_task/`.
-4. Add the task name to your model config under `tasks`.
-
-### Contributing a Provider
-
-1. Add a provider config in `configs/providers/`.
-2. Implement an interface in `src/interfaces/` to format requests/responses.
-3. Wire it into the pipeline via `build_connection_info` and `get_interface_for_provider`.
-
-### Contributing to the Project
-
-1. Open an issue to discuss changes.
-2. Create a feature branch.
-3. Submit a PR with a concise description and any tests you ran.
+See `CONTRIBUTING.md` for workflow details and the docs above for task/provider guides.
 
 ## Acknowledgments
 
@@ -164,4 +141,3 @@ This generates:
 - [Prefect](https://www.prefect.io/) for workflow orchestration
 - [Surus](https://surus.lat/) for starting this project
 - LATAM community for benchmark development
-

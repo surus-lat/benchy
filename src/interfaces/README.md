@@ -5,14 +5,16 @@ Interfaces handle communication with AI systems during evaluation. They are prov
 ## Architecture
 
 ```
-Pipeline (resolves provider) → connection_info → Interface → AI System
-                                    ↓
-                              BenchmarkRunner
-                                    ↓
-                                  Task
+Pipeline → TaskGroupRunner → connection_info → Interface → AI System
+                ↓
+         BenchmarkRunner
+                ↓
+              Task
 ```
 
-Key principle: **Interfaces adapt task data to their API format**.
+Key principle: **Interfaces adapt task data to their API format**. TaskGroupRunner
+builds `connection_info` and selects an interface; BenchmarkRunner passes each
+sample and the task instance into `interface.prepare_request(...)`.
 - LLM interfaces call `task.get_prompt()` to build chat messages
 - HTTP interfaces use raw `sample["text"]` directly
 - Tasks don't know which interface is being used
@@ -77,6 +79,9 @@ results = await interface.generate_batch(requests)
 ```
 
 ## Integration with Benchmark Engine
+
+TaskGroupRunner uses the engine helpers below. Use them directly only if you are
+building a custom runner.
 
 The recommended way to get an interface is via the engine:
 
@@ -180,6 +185,11 @@ All interfaces must return results in this format:
 
 ## Capability Matrix
 
+Capabilities are configured per provider in config files and passed via
+`connection_info["capabilities"]`. Model configs can add `model_capabilities`
+to restrict features (e.g., disable multimodal on a non-vision model).
+The matrix below reflects typical defaults.
+
 | Interface | Multimodal | Logprobs | Schema | Files |
 | --- | --- | --- | --- | --- |
 | OpenAIInterface | yes | config | yes | yes |
@@ -210,6 +220,17 @@ Interfaces receive a standardized `connection_info` dict:
     "temperature": 0.0,
     "max_tokens": 2048,
     "use_structured_outputs": False,  # vLLM-specific (v0.12.0+)
+    "capabilities": {
+        "supports_multimodal": false,
+        "supports_schema": true,
+        "supports_files": false,
+        "supports_logprobs": true,
+        "supports_streaming": false,
+        "request_modes": ["chat", "completions"],
+    },
+    "model_capabilities": {
+        "supports_multimodal": false,
+    },
 }
 ```
 

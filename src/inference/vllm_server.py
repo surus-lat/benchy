@@ -9,7 +9,9 @@ import psutil
 from typing import Dict, Any, Optional
 from prefect import task
 from prefect.cache_policies import NO_CACHE
+
 from .venv_manager import VLLMVenvManager
+from .vllm_config import VLLMServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -80,71 +82,48 @@ def kill_existing_vllm_processes(model_name: str, port: int = 8000) -> None:
 @task(cache_policy=NO_CACHE)
 def start_vllm_server(
     model_name: str,
-    host: str = "0.0.0.0",
-    port: int = 8000,
-    tensor_parallel_size: int = 1,
-    max_model_len: int = 8192,
-    gpu_memory_utilization: float = 0.6,
-    enforce_eager: bool = True,
-    limit_mm_per_prompt: str = '{"images": 0, "audios": 0}',
-    hf_cache: str = "/home/mauro/.cache/huggingface",
-    hf_token: str = "",
-    vllm_venv_path: str = "/home/mauro/dev/benchy/.venv",
-    startup_timeout: int = 900,
-    cuda_devices: Optional[str] = None,
-    kv_cache_memory: Optional[int] = None,
-    vllm_version: Optional[str] = None,
-    multimodal: bool = True,
-    max_num_seqs: Optional[int] = None,
-    max_num_batched_tokens: Optional[int] = None,
-    # New parameters for better model compatibility
-    trust_remote_code: bool = True,
-    tokenizer_mode: Optional[str] = None,
-    config_format: Optional[str] = None,
-    load_format: Optional[str] = None,
-    tool_call_parser: Optional[str] = None,
-    enable_auto_tool_choice: bool = False,
-    kv_cache_dtype: Optional[str] = None,
-    kv_offloading_size: Optional[int] = None,
-    skip_mm_profiling: bool = False
+    vllm_config: Optional[VLLMServerConfig] = None,
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
     
     Args:
         model_name: The model to serve
-        host: Host to bind to
-        port: Port to use
-        tensor_parallel_size: Number of GPUs for tensor parallelism (-tp)
-        max_model_len: Maximum model length
-        gpu_memory_utilization: GPU memory utilization
-        enforce_eager: Whether to enforce eager execution
-        limit_mm_per_prompt: Multimodal limits as JSON string
-        hf_cache: Hugging Face cache directory
-        hf_token: Hugging Face token
-        vllm_venv_path: Path to vLLM virtual environment (fallback if version management fails)
-        startup_timeout: Timeout in seconds for server startup (default: 900s = 15min)
-        cuda_devices: CUDA devices to use (e.g., "3" or "2,3")
-        kv_cache_memory: KV cache memory allocation
-        vllm_version: vLLM version to use (default: "0.8.0")
-        multimodal: Whether the model supports multimodal features (default: True)
-        max_num_seqs: Maximum number of concurrent sequences
-        max_num_batched_tokens: Maximum number of tokens to batch
-        trust_remote_code: Whether to trust remote code (default: True)
-        tokenizer_mode: Tokenizer mode (e.g., "mistral")
-        config_format: Config format (e.g., "mistral")
-        load_format: Load format (e.g., "mistral")
-        tool_call_parser: Tool call parser (e.g., "mistral")
-        enable_auto_tool_choice: Enable auto tool choice (default: False)
-        kv_cache_dtype: KV cache data type (e.g., "fp8")
-        kv_offloading_size: KV cache offloading size in GB
-        skip_mm_profiling: Skip multimodal profiling (default: False)
+        vllm_config: vLLM server configuration
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
     """
     logger.info(f"Starting vLLM server for model: {model_name}")
-    
+    vllm_config = vllm_config or VLLMServerConfig()
+
+    host = vllm_config.host
+    port = vllm_config.port
+    tensor_parallel_size = vllm_config.tensor_parallel_size
+    max_model_len = vllm_config.max_model_len
+    gpu_memory_utilization = vllm_config.gpu_memory_utilization
+    enforce_eager = vllm_config.enforce_eager
+    limit_mm_per_prompt = vllm_config.limit_mm_per_prompt
+    hf_cache = vllm_config.hf_cache
+    hf_token = vllm_config.hf_token
+    vllm_venv_path = vllm_config.vllm_venv_path
+    startup_timeout = vllm_config.startup_timeout
+    cuda_devices = vllm_config.cuda_devices
+    kv_cache_memory = vllm_config.kv_cache_memory
+    vllm_version = vllm_config.vllm_version
+    multimodal = vllm_config.multimodal
+    max_num_seqs = vllm_config.max_num_seqs
+    max_num_batched_tokens = vllm_config.max_num_batched_tokens
+    trust_remote_code = vllm_config.trust_remote_code
+    tokenizer_mode = vllm_config.tokenizer_mode
+    config_format = vllm_config.config_format
+    load_format = vllm_config.load_format
+    tool_call_parser = vllm_config.tool_call_parser
+    enable_auto_tool_choice = vllm_config.enable_auto_tool_choice
+    kv_cache_dtype = vllm_config.kv_cache_dtype
+    kv_offloading_size = vllm_config.kv_offloading_size
+    skip_mm_profiling = vllm_config.skip_mm_profiling
+
     # Handle vLLM version - use main project environment if None
     if vllm_version is None:
         logger.info("No vLLM version specified, using main project environment")
