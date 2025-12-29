@@ -129,9 +129,6 @@ def run_spanish(
                 **subtask_config,
             })
             
-            # Load data
-            task_instance.load()
-            
             # Create interface
             interface = get_interface_for_provider(
                 provider_type=provider_type,
