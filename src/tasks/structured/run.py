@@ -87,6 +87,7 @@ def _create_task_instance(
             'dataset': {'data_file': str(dataset_file)},
             'prompts': task_config.get('prompts', {}),
             'metrics': task_config.get('metrics', {}),
+            'capability_requirements': task_config.get('capability_requirements', {}),
         })
         
     elif subtask_name == 'chat_extract':
@@ -112,6 +113,7 @@ def _create_task_instance(
             },
             'prompts': task_config.get('prompts', {}),
             'metrics': task_config.get('metrics', {}),
+            'capability_requirements': task_config.get('capability_requirements', {}),
         })
         
     else:

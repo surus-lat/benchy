@@ -111,6 +111,8 @@ def _run_subtask(
     shared = shared or {}
     comet_model = shared.get("comet_model")
 
+    capability_requirements = task_config.get("capability_requirements", {})
+
     if subtask_name == "opus":
         return _run_opus_subtask(
             subtask_config=subtask_config,
@@ -122,6 +124,7 @@ def _run_subtask(
             defaults=defaults,
             prompts=prompts,
             comet_model=comet_model,
+            capability_requirements=capability_requirements,
         )
     elif subtask_name == "flores":
         return _run_flores_subtask(
@@ -134,6 +137,7 @@ def _run_subtask(
             defaults=defaults,
             prompts=prompts,
             comet_model=comet_model,
+            capability_requirements=capability_requirements,
         )
     else:
         raise ValueError(f"Unknown subtask: {subtask_name}")
@@ -165,6 +169,7 @@ def _run_opus_subtask(
     defaults: Dict,
     prompts: Dict,
     comet_model: Optional[Any] = None,
+    capability_requirements: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run OPUS subtask for all language pairs."""
     from .datasets.opus.task import OpusTask
@@ -207,6 +212,7 @@ def _run_opus_subtask(
             'prompts': prompts,
             'language_pair': pair,
             'comet_model': comet_model,
+            'capability_requirements': capability_requirements or {},
         })
         
         # Create interface
@@ -263,6 +269,7 @@ def _run_flores_subtask(
     defaults: Dict,
     prompts: Dict,
     comet_model: Optional[Any] = None,
+    capability_requirements: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run FLORES subtask for all language pairs."""
     from .datasets.flores.task import FloresTask
@@ -381,6 +388,7 @@ def _run_flores_subtask(
             'language_pair': pair,
             'split': split,
             'comet_model': comet_model,
+            'capability_requirements': capability_requirements or {},
         })
         
         # Create interface

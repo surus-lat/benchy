@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Dict, List, Any
 
-from ..engine.protocols import BaseInterface, InterfaceCapabilities
+from ..engine.protocols import BaseInterface, InterfaceCapabilities, parse_interface_capabilities
 from ..engine.retry import classify_http_exception, run_with_retries
 
 logger = logging.getLogger(__name__)
@@ -36,12 +36,15 @@ class TemplateInterface(BaseInterface):
                 - timeout: Request timeout
                 - max_retries: Retry attempts
                 - Other API-specific settings
+                - capabilities: Optional capability overrides
             model_name: Name of model/system being evaluated
         """
         self.model_name = model_name
         self.base_url = connection_info["base_url"]
         self.timeout = connection_info.get("timeout", 120)
         self.max_retries = connection_info.get("max_retries", 3)
+        # Capability flags can be declared in provider config and passed in connection_info.
+        self._capabilities = parse_interface_capabilities(connection_info.get("capabilities"))
         
         # Get API key
         api_key = connection_info.get("api_key")
@@ -195,9 +198,4 @@ class TemplateInterface(BaseInterface):
     @property
     def capabilities(self) -> InterfaceCapabilities:
         """Structured capability flags for compatibility checks."""
-        return InterfaceCapabilities(
-            supports_multimodal=self.supports_multimodal,
-            supports_logprobs=False,
-            supports_schema=False,
-            supports_files=False,
-        )
+        return self._capabilities

@@ -156,7 +156,7 @@ class SpanishTaskBase:
         return self.metrics_calculator.aggregate(all_metrics, weight_by_size=True)
     
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Spanish tasks are text-only."""
         return False
     

@@ -58,6 +58,7 @@ def _prepare_portuguese_task(context: SubtaskContext):
     return task_class({
         "dataset": context.subtask_config,
         "prompts": context.prompts,
+        "capability_requirements": context.task_config.get("capability_requirements", {}),
         **context.subtask_config,
     })
 

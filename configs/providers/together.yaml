@@ -15,4 +15,12 @@ max_concurrent: 3
 temperature: 0.0
 max_tokens: 4096
 
+# Provider capability flags for compatibility checks
+capabilities:
+  supports_multimodal: false
+  supports_schema: true
+  supports_files: false
+  supports_logprobs: false
+  supports_streaming: false
+  request_modes: ["chat", "completions"]
 

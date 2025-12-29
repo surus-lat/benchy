@@ -11,10 +11,19 @@ surus_factura:
   api_key_env: "SURUS_API_KEY"
   timeout: 60  # Longer timeout for image processing
   max_retries: 3
+  capabilities:
+    supports_multimodal: true
+    supports_schema: false
+    supports_files: true
+    supports_logprobs: false
+    supports_streaming: false
+    request_modes: ["raw_payload"]
 
 # Model configuration (for tracking purposes)
 model:
   name: "surus-factura"  # System identifier, not the backend model
+  organization: surus-ai
+  url: https://surus.lat
 
 # Tasks to run (only image extraction compatible)
 tasks:
@@ -31,4 +40,3 @@ image_extraction:
     log_samples: true
     timeout: 60
     max_retries: 3
-

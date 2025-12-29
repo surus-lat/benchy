@@ -109,7 +109,7 @@ class TranslationTaskBase:
         return self.metrics_calculator.aggregate(all_metrics)
     
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Translation tasks are text-only."""
         return False
     
@@ -127,7 +127,6 @@ class TranslationTaskBase:
     def requires_logprobs(self) -> bool:
         """Translation tasks do not require logprobs."""
         return False
-
 
 
 

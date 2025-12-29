@@ -301,7 +301,7 @@ class ImageExtractionTask:
         return self.metrics_calculator.aggregate_metrics(all_metrics)
 
     @property
-    def is_multimodal(self) -> bool:
+    def requires_multimodal(self) -> bool:
         """Image extraction requires multimodal (vision) support."""
         return True
     
@@ -309,4 +309,3 @@ class ImageExtractionTask:
     def requires_schema(self) -> bool:
         """Image extraction uses JSON schemas."""
         return True
-

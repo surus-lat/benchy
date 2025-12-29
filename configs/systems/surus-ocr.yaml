@@ -11,11 +11,19 @@ surus_ocr:
   api_key_env: "SURUS_API_KEY"
   timeout: 60  # Longer timeout for image processing
   max_retries: 3
+  capabilities:
+    supports_multimodal: true
+    supports_schema: true
+    supports_files: true
+    supports_logprobs: false
+    supports_streaming: false
+    request_modes: ["raw_payload"]
 
 # Model configuration (for tracking purposes)
 model:
   name: "surus-ocr"  # System identifier, not the backend model
-
+  organization: surus-ai
+  url: https://surus.lat
 # Tasks to run (only image extraction compatible)
 tasks:
   - "image_extraction"
@@ -31,4 +39,3 @@ image_extraction:
     log_samples: true
     timeout: 60
     max_retries: 3
-

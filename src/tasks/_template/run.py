@@ -62,6 +62,7 @@ def _prepare_template_task(context: SubtaskContext):
     return TemplateTask({
         "dataset": context.task_config.get("dataset", {}),
         "prompts": context.task_config.get("prompts", {}),
+        "capability_requirements": context.task_config.get("capability_requirements", {}),
     })
 
 
