@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -121,6 +123,13 @@ def run_task_group(
     task_output_path = Path(output_path) / output_subdir
     task_output_path.mkdir(parents=True, exist_ok=True)
 
+    probe_report = _probe_and_configure_openai_interface(
+        connection_info=connection_info,
+        model_name=model_name,
+        provider_type=provider_type,
+        output_dir=task_output_path,
+    )
+
     defaults = task_config.get("defaults", {})
     prompts = task_config.get("prompts", {})
     subtask_configs = task_config.get("task_configs", {})
@@ -149,6 +158,9 @@ def run_task_group(
         limit=limit,
         shared=shared_state,
     )
+    if probe_report:
+        group_context.shared = {"compatibility_report": probe_report, **(shared_state or {})}
+        shared_state = group_context.shared
 
     if spec.setup:
         setup_result = spec.setup(group_context)
@@ -332,3 +344,181 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
     )
 
     return results
+
+
+def _probe_and_configure_openai_interface(
+    *,
+    connection_info: Dict[str, Any],
+    model_name: str,
+    provider_type: str,
+    output_dir: Path,
+) -> Optional[Dict[str, Any]]:
+    """Probe OpenAI-style interfaces for supported request modes once per task group."""
+    if provider_type not in {"vllm", "openai", "anthropic", "together"}:
+        return None
+
+    request_modes = (connection_info.get("capabilities") or {}).get("request_modes") or []
+    if not request_modes or "raw_payload" in request_modes:
+        return None
+
+    report = asyncio.run(_probe_openai_interface(connection_info, model_name, request_modes))
+    _apply_probe_results(connection_info, report)
+    _write_probe_report(output_dir, report)
+    _log_probe_report(report)
+    return report
+
+
+async def _probe_openai_interface(
+    connection_info: Dict[str, Any],
+    model_name: str,
+    request_modes: List[str],
+) -> Dict[str, Any]:
+    report: Dict[str, Any] = {
+        "model_name": model_name,
+        "provider_type": connection_info.get("provider_type"),
+        "base_url": connection_info.get("base_url"),
+        "api_endpoint_requested": connection_info.get("api_endpoint") or "auto",
+        "modes": {},
+        "selected_api_endpoint": None,
+    }
+
+    if "chat" in request_modes:
+        report["modes"]["chat"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="chat",
+            use_logprobs=False,
+        )
+
+    if "completions" in request_modes:
+        report["modes"]["completions"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="completions",
+            use_logprobs=False,
+        )
+
+    supports_logprobs = bool((connection_info.get("capabilities") or {}).get("supports_logprobs"))
+    if supports_logprobs:
+        report["modes"]["logprobs"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="completions",
+            use_logprobs=True,
+        )
+
+    report["selected_api_endpoint"] = _select_api_endpoint(
+        report["api_endpoint_requested"],
+        report["modes"],
+    )
+    return report
+
+
+async def _probe_openai_mode(
+    connection_info: Dict[str, Any],
+    model_name: str,
+    *,
+    api_endpoint: str,
+    use_logprobs: bool,
+) -> Dict[str, Any]:
+    from ..interfaces.openai_interface import OpenAIInterface
+
+    probe_info = deepcopy(connection_info)
+    probe_info["api_endpoint"] = api_endpoint
+    probe_info["max_tokens"] = min(int(probe_info.get("max_tokens", 16)), 16)
+
+    interface = OpenAIInterface(probe_info, model_name)
+    request = _build_probe_request(use_logprobs=use_logprobs)
+    try:
+        results = await interface.generate_batch([request])
+    finally:
+        close_fn = getattr(interface, "close", None)
+        if close_fn:
+            await close_fn()
+
+    result = results[0] if results else {}
+    ok = _probe_success(result)
+    return {
+        "ok": ok,
+        "error": result.get("error"),
+        "error_type": result.get("error_type"),
+    }
+
+
+def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
+    if use_logprobs:
+        return {
+            "system_prompt": "",
+            "user_prompt": "Choose A or B. Answer with a single letter.",
+            "schema": None,
+            "sample_id": "probe_logprobs",
+            "use_logprobs": True,
+            "choices": ["A", "B"],
+        }
+    return {
+        "system_prompt": "",
+        "user_prompt": "Reply with OK.",
+        "schema": None,
+        "sample_id": "probe_chat",
+        "use_logprobs": False,
+        "choices": None,
+    }
+
+
+def _probe_success(result: Dict[str, Any]) -> bool:
+    if result.get("error"):
+        return False
+    output = result.get("output")
+    if output is None:
+        return False
+    if isinstance(output, str) and not output.strip():
+        return False
+    return True
+
+
+def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    preferred = requested or "auto"
+    if preferred in ("chat", "completions"):
+        if modes.get(preferred, {}).get("ok"):
+            return preferred
+        fallback = "completions" if preferred == "chat" else "chat"
+        if modes.get(fallback, {}).get("ok"):
+            return fallback
+        return preferred
+
+    if modes.get("chat", {}).get("ok"):
+        return "chat"
+    if modes.get("completions", {}).get("ok"):
+        return "completions"
+    return None
+
+
+def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]) -> None:
+    selected = report.get("selected_api_endpoint")
+    if selected:
+        connection_info["api_endpoint"] = selected
+
+    logprobs = report.get("modes", {}).get("logprobs")
+    if logprobs is not None:
+        supports_logprobs = bool(logprobs.get("ok"))
+        connection_info["supports_logprobs"] = supports_logprobs
+        capabilities = connection_info.get("capabilities") or {}
+        capabilities["supports_logprobs"] = supports_logprobs
+        connection_info["capabilities"] = capabilities
+
+
+def _write_probe_report(output_dir: Path, report: Dict[str, Any]) -> None:
+    report_path = output_dir / "compatibility_report.json"
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
+
+def _log_probe_report(report: Dict[str, Any]) -> None:
+    requested = report.get("api_endpoint_requested")
+    selected = report.get("selected_api_endpoint")
+    logger.info(f"Request mode probe selected api_endpoint={selected} (requested={requested})")
+    for mode, result in (report.get("modes") or {}).items():
+        status = "ok" if result.get("ok") else "failed"
+        error = result.get("error")
+        suffix = f" ({error})" if error else ""
+        logger.info(f"Probe {mode}: {status}{suffix}")

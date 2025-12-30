@@ -233,6 +233,10 @@ class OpenAIInterface:
                 )
                 raw_output = response.choices[0].text
                 result["raw"] = raw_output
+                if raw_output is None:
+                    result["error"] = "Empty response content"
+                    result["error_type"] = "invalid_response"
+                    return result
                 if schema:
                     cleaned = self._extract_json(raw_output)
                     try:
@@ -281,6 +285,10 @@ class OpenAIInterface:
             response = await self.client.chat.completions.create(**params)
             raw_output = response.choices[0].message.content
             result["raw"] = raw_output
+            if raw_output is None:
+                result["error"] = "Empty response content"
+                result["error_type"] = "invalid_response"
+                return result
 
             if schema:
                 cleaned = self._extract_json(raw_output)
@@ -462,6 +470,10 @@ class OpenAIInterface:
 
             raw_output = response.content[0].text
             result["raw"] = raw_output
+            if raw_output is None:
+                result["error"] = "Empty response content"
+                result["error_type"] = "invalid_response"
+                return result
 
             if schema:
                 cleaned = self._extract_json(raw_output)
