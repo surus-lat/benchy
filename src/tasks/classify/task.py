@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / ".data"
 LABEL_PATTERN = re.compile(r"-?\d+")
+ANSWER_MARKERS = ("answer", "respuesta", "label", "etiqueta", "salida", "output")
 
 
 class ClassifyTask(BaseTask):
@@ -27,13 +29,15 @@ class ClassifyTask(BaseTask):
         self.text_field = dataset_config.get("text_field", "text")
         self.label_field = dataset_config.get("label_field", "label")
 
+        self.label_value_type = "numeric"
+        self.label_values: Optional[List[Any]] = None
+        self.label_values_set: Optional[set] = None
+        self.label_text_to_value: Dict[str, Any] = {}
+        self.label_texts: Dict[Any, str] = {}
+
         label_values = dataset_config.get("label_values")
-        if isinstance(label_values, list):
-            self.label_values = [int(value) for value in label_values]
-            self.label_values_set = set(self.label_values)
-        else:
-            self.label_values = None
-            self.label_values_set = None
+        self._configure_label_values(label_values)
+        self._load_label_texts(dataset_config.get("label_texts") or dataset_config.get("label_map"))
 
         data_file = dataset_config.get("data_file")
         if data_file:
@@ -91,9 +95,8 @@ class ClassifyTask(BaseTask):
         if text is None or label_raw is None:
             return None
 
-        try:
-            label = int(label_raw)
-        except (TypeError, ValueError):
+        label = self._coerce_label_value(label_raw)
+        if label is None:
             return None
 
         if self.label_values_set and label not in self.label_values_set:
@@ -155,10 +158,12 @@ class ClassifyTask(BaseTask):
                 error_type="invalid_response",
             )
 
-        try:
-            expected_value = int(expected)
-        except (TypeError, ValueError):
-            expected_value = expected
+        expected_value = self._coerce_label_value(expected)
+        if expected_value is None:
+            return self.get_error_metrics(
+                error="Invalid expected label",
+                error_type="invalid_response",
+            )
 
         is_correct = parsed == expected_value
         return {
@@ -204,7 +209,151 @@ class ClassifyTask(BaseTask):
             "error_rate": error_count / len(all_metrics) if all_metrics else 0.0,
         }
 
-    def _parse_prediction(self, prediction: Any) -> Optional[int]:
+    def _configure_label_values(self, label_values: Any) -> None:
+        if not isinstance(label_values, list):
+            return
+
+        numeric_values = []
+        all_numeric = True
+        for value in label_values:
+            try:
+                numeric_values.append(int(value))
+            except (TypeError, ValueError):
+                all_numeric = False
+                break
+
+        if all_numeric:
+            self.label_value_type = "numeric"
+            self.label_values = numeric_values
+            self.label_values_set = set(numeric_values)
+            return
+
+        text_values = [str(value) for value in label_values]
+        self.label_value_type = "text"
+        self.label_values = text_values
+        self.label_values_set = set(text_values)
+        for text in text_values:
+            self._register_label_text(text, text)
+
+    def _load_label_texts(self, label_texts: Any) -> None:
+        if not label_texts:
+            return
+
+        if isinstance(label_texts, list):
+            for idx, text in enumerate(label_texts):
+                if text is None:
+                    continue
+                if self.label_values and idx < len(self.label_values):
+                    label_value = self.label_values[idx]
+                else:
+                    label_value = idx
+                self._register_label_text(label_value, text)
+            return
+
+        if isinstance(label_texts, dict):
+            for key, value in label_texts.items():
+                if isinstance(key, (int, float)) or (isinstance(key, str) and key.strip().lstrip("-").isdigit()):
+                    try:
+                        label_value = int(key)
+                    except (TypeError, ValueError):
+                        label_value = key
+                    text = value
+                else:
+                    text = key
+                    label_value = self._coerce_label_value(value)
+                self._register_label_text(label_value, text)
+
+    def _register_label_text(self, label_value: Any, text: Any) -> None:
+        if label_value is None or text is None:
+            return
+        normalized = self._normalize_label_text(str(text))
+        if not normalized:
+            return
+        self.label_text_to_value[normalized] = label_value
+        self.label_texts[label_value] = str(text)
+
+    def _normalize_label_text(self, text: str) -> str:
+        normalized = unicodedata.normalize("NFKD", text)
+        stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+        lowered = stripped.lower()
+        return re.sub(r"[^a-z0-9]+", " ", lowered).strip()
+
+    def _coerce_label_value(self, value: Any) -> Optional[Any]:
+        if value is None:
+            return None
+        if self.label_value_type == "numeric":
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                if isinstance(value, str):
+                    normalized = self._normalize_label_text(value)
+                    return self.label_text_to_value.get(normalized)
+                return None
+
+        text = str(value)
+        normalized = self._normalize_label_text(text)
+        if normalized in self.label_text_to_value:
+            return self.label_text_to_value[normalized]
+        return text
+
+    def _extract_prediction_value(self, payload: Dict[str, Any]) -> Optional[Any]:
+        for key in ("label", "answer", "prediction", "category", "class"):
+            if key in payload:
+                return payload[key]
+        if len(payload) == 1:
+            return next(iter(payload.values()))
+        return None
+
+    def _match_label_text(self, text: str) -> Optional[Any]:
+        if not self.label_text_to_value:
+            return None
+        normalized = self._normalize_label_text(text)
+        if not normalized:
+            return None
+        if normalized in self.label_text_to_value:
+            return self.label_text_to_value[normalized]
+        best_value = None
+        best_len = 0
+        response_words = normalized.split()
+        for label_text, value in self.label_text_to_value.items():
+            if not label_text or label_text not in normalized:
+                continue
+            label_words = label_text.split()
+            if response_words and len(response_words) > len(label_words) + 3:
+                continue
+            if len(label_text) > best_len:
+                best_value = value
+                best_len = len(label_text)
+        return best_value
+
+    def _extract_answer_segment(self, text: str) -> str:
+        lowered = text.lower()
+        last_pos = -1
+        for marker in ANSWER_MARKERS:
+            idx = lowered.rfind(marker)
+            if idx > last_pos:
+                last_pos = idx
+        if last_pos == -1:
+            return text
+        segment = text[last_pos:]
+        split_idx = segment.find(":")
+        if split_idx != -1:
+            segment = segment[split_idx + 1 :]
+        return segment.strip()
+
+    def _parse_prediction(self, prediction: Any) -> Optional[Any]:
+        if prediction is None:
+            return None
+
+        if isinstance(prediction, dict):
+            extracted = self._extract_prediction_value(prediction)
+            return self._parse_prediction(extracted) if extracted is not None else None
+
+        if isinstance(prediction, list):
+            if len(prediction) == 1:
+                return self._parse_prediction(prediction[0])
+            return None
+
         if isinstance(prediction, bool):
             candidate = int(prediction)
         elif isinstance(prediction, int):
@@ -213,7 +362,23 @@ class ClassifyTask(BaseTask):
             candidate = int(prediction)
         else:
             text = str(prediction).strip()
-            lowered = text.lower()
+            if not text:
+                return None
+
+            if text.startswith("{") and text.endswith("}"):
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    parsed = None
+                if parsed is not None:
+                    return self._parse_prediction(parsed)
+
+            answer_text = self._extract_answer_segment(text)
+            matched = self._match_label_text(answer_text)
+            if matched is not None:
+                return matched
+
+            lowered = answer_text.lower()
             if self.label_values_set == {0, 1}:
                 if lowered in ("yes", "true"):
                     candidate = 1
@@ -224,11 +389,13 @@ class ClassifyTask(BaseTask):
             else:
                 candidate = None
 
-            if candidate is None:
-                match = LABEL_PATTERN.search(text)
+            if candidate is None and self.label_value_type == "numeric":
+                match = LABEL_PATTERN.search(answer_text)
                 if not match:
                     return None
                 candidate = int(match.group(0))
+            elif candidate is None and self.label_value_type == "text":
+                return None
 
         if self.label_values_set and candidate not in self.label_values_set:
             return None
