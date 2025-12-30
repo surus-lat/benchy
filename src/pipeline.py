@@ -10,6 +10,7 @@ from .tasks.spanish import run_spanish
 from .tasks.structured import run_structured_extraction
 from .tasks.image_extraction import run_image_extraction
 from .tasks.translation import run_translation
+from .tasks.classify import run_classify
 from .config_loader import load_config
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
@@ -78,6 +79,14 @@ TASK_REGISTRY = {
         "set_api_endpoint": False,
         "set_generation_config": False,
         "provider_types": ["openai", "anthropic", "surus", "surus_ocr", "surus_factura", "together"],
+    },
+    "classify": {
+        "run": run_classify,
+        "config_name": "classify",
+        "display_name": "classification",
+        "set_api_endpoint": True,
+        "set_generation_config": True,
+        "provider_types": ["openai", "anthropic", "surus", "together"],
     },
 }
 
