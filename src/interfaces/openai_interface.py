@@ -111,6 +111,7 @@ class OpenAIInterface:
         if use_logprobs:
             use_logprobs = requires_logprobs or (prefers_logprobs and self.supports_logprobs)
 
+        # Task can override prompt formatting for logprobs-based scoring.
         if use_logprobs and hasattr(task, "get_prompt_for_logprobs"):
             system_prompt, user_prompt = task.get_prompt_for_logprobs(sample)
         else:
@@ -221,6 +222,7 @@ class OpenAIInterface:
                 choice_labels=choice_labels,
                 sample_id=sample_id,
             )
+            # If logprobs fail (e.g., no candidate tokens), fall back to completions.
             if allow_logprobs_fallback and logprobs_result.get("error"):
                 return await self._generate_single(
                     system_prompt=system_prompt,
@@ -422,6 +424,7 @@ class OpenAIInterface:
         choices: List[str],
         choice_labels: Optional[List[str]],
     ) -> List[str]:
+        # Allow numeric labels (0/1/2...) or custom labels for logprobs scoring.
         if choice_labels and len(choice_labels) == len(choices):
             return list(choice_labels)
         return self._choice_labels(len(choices))

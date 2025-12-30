@@ -444,6 +444,7 @@ class ClassifyTask(BaseTask):
             for key in sorted(self.label_texts.keys(), key=str):
                 self.choice_texts.append(str(self.label_texts[key]))
 
+        # Logprobs scoring can use numeric label strings (0,1,2,...) instead of A/B.
         if self.label_values:
             self.choice_labels = [str(value) for value in self.label_values]
         else:

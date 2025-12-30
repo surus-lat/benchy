@@ -50,8 +50,8 @@ def parse_choice_index(
 ) -> Optional[int]:
     """Parse a choice index from a model prediction.
 
-    Supports numeric indices, numeric label values, labeled letters (A/B),
-    or matching against choice text.
+    Supports numeric indices, numeric label values (via label_to_index),
+    labeled letters (A/B), or matching against choice text.
     """
     if prediction is None:
         return None
