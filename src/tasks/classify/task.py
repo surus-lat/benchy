@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from ...engine.protocols import BaseTask
-from ...common import download_huggingface_dataset, save_to_jsonl
+from ...common import CHOICE_LABELS, download_huggingface_dataset, format_choices, parse_choice_index, save_to_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +34,14 @@ class ClassifyTask(BaseTask):
         self.label_values_set: Optional[set] = None
         self.label_text_to_value: Dict[str, Any] = {}
         self.label_texts: Dict[Any, str] = {}
+        self.label_to_index: Dict[Any, int] = {}
+        self.choice_texts: List[str] = []
+        self.choice_labels: List[str] = []
 
         label_values = dataset_config.get("label_values")
         self._configure_label_values(label_values)
         self._load_label_texts(dataset_config.get("label_texts") or dataset_config.get("label_map"))
+        self._configure_choices()
 
         data_file = dataset_config.get("data_file")
         if data_file:
@@ -56,14 +60,22 @@ class ClassifyTask(BaseTask):
             logger.info(f"Downloading from HuggingFace: {self.dataset_path}")
             self._download_and_preprocess()
 
+        self._load_from_file()
+        if self._needs_rebuild(self.dataset):
+            logger.info(f"Cached dataset is missing required fields: {self.data_file}")
+            logger.info(f"Rebuilding dataset from HuggingFace: {self.dataset_path}")
+            self._download_and_preprocess()
+            self._load_from_file()
+
+        logger.info(f"Loaded {len(self.dataset)} samples")
+
+    def _load_from_file(self) -> None:
         logger.info(f"Loading dataset from {self.data_file}")
         self.dataset = []
         with open(self.data_file, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     self.dataset.append(json.loads(line))
-
-        logger.info(f"Loaded {len(self.dataset)} samples")
 
     def _download_and_preprocess(self) -> None:
         """Download from HuggingFace and preprocess samples into JSONL."""
@@ -102,11 +114,39 @@ class ClassifyTask(BaseTask):
         if self.label_values_set and label not in self.label_values_set:
             return None
 
+        expected_idx = self.label_to_index.get(label)
+        if expected_idx is None:
+            return None
+
         return {
             "id": f"{self.subtask_name}_{idx}",
             "text": str(text),
-            "expected": label,
+            "expected": expected_idx,
+            "choices": list(self.choice_texts),
+            "choice_labels": list(self.choice_labels),
+            "label_value": label,
         }
+
+    def _needs_rebuild(self, dataset: Optional[List[Dict[str, Any]]]) -> bool:
+        if not dataset:
+            return True
+        expected_labels = None
+        if self.label_values:
+            expected_labels = [str(value) for value in self.label_values]
+        for sample in dataset:
+            choices = sample.get("choices")
+            expected = sample.get("expected")
+            choice_labels = sample.get("choice_labels")
+            if not isinstance(choices, list) or not choices:
+                return True
+            if not isinstance(expected, int):
+                return True
+            if expected < 0 or expected >= len(choices):
+                return True
+            if expected_labels:
+                if not isinstance(choice_labels, list) or choice_labels != expected_labels:
+                    return True
+        return False
 
     def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
         """Iterate over dataset samples."""
@@ -132,6 +172,18 @@ class ClassifyTask(BaseTask):
         user_prompt = user_template.format(text=sample.get("text", ""))
         return system_prompt, user_prompt
 
+    def get_prompt_for_logprobs(self, sample: Dict[str, Any]) -> Tuple[str, str]:
+        """Build prompt optimized for logprobs scoring."""
+        system_prompt = self.config.get("prompts", {}).get(
+            "system",
+            "You are a helpful assistant.",
+        )
+        user_template = self.config.get("prompts", {}).get("user", "{text}")
+        base_prompt = user_template.format(text=sample.get("text", ""))
+        choices_text = format_choices(sample.get("choices", []), sample.get("choice_labels"))
+        user_prompt = f"{base_prompt}\n\nOptions:\n{choices_text}\n\nAnswer (label only):"
+        return system_prompt, user_prompt
+
     def get_task_name(self) -> str:
         """Return task identifier for logging and checkpointing."""
         return f"classify_{self.subtask_name}"
@@ -151,21 +203,14 @@ class ClassifyTask(BaseTask):
                 error_type=error_type,
             )
 
-        parsed = self._parse_prediction(prediction)
+        parsed = self._parse_prediction(prediction, sample)
         if parsed is None:
             return self.get_error_metrics(
                 error="Could not parse label from response",
                 error_type="invalid_response",
             )
 
-        expected_value = self._coerce_label_value(expected)
-        if expected_value is None:
-            return self.get_error_metrics(
-                error="Invalid expected label",
-                error_type="invalid_response",
-            )
-
-        is_correct = parsed == expected_value
+        is_correct = parsed == expected
         return {
             "valid": True,
             "accuracy": 1.0 if is_correct else 0.0,
@@ -304,28 +349,6 @@ class ClassifyTask(BaseTask):
             return next(iter(payload.values()))
         return None
 
-    def _match_label_text(self, text: str) -> Optional[Any]:
-        if not self.label_text_to_value:
-            return None
-        normalized = self._normalize_label_text(text)
-        if not normalized:
-            return None
-        if normalized in self.label_text_to_value:
-            return self.label_text_to_value[normalized]
-        best_value = None
-        best_len = 0
-        response_words = normalized.split()
-        for label_text, value in self.label_text_to_value.items():
-            if not label_text or label_text not in normalized:
-                continue
-            label_words = label_text.split()
-            if response_words and len(response_words) > len(label_words) + 3:
-                continue
-            if len(label_text) > best_len:
-                best_value = value
-                best_len = len(label_text)
-        return best_value
-
     def _extract_answer_segment(self, text: str) -> str:
         lowered = text.lower()
         last_pos = -1
@@ -341,25 +364,29 @@ class ClassifyTask(BaseTask):
             segment = segment[split_idx + 1 :]
         return segment.strip()
 
-    def _parse_prediction(self, prediction: Any) -> Optional[Any]:
+    def _parse_prediction(self, prediction: Any, sample: Dict[str, Any]) -> Optional[int]:
         if prediction is None:
             return None
 
         if isinstance(prediction, dict):
             extracted = self._extract_prediction_value(prediction)
-            return self._parse_prediction(extracted) if extracted is not None else None
+            return self._parse_prediction(extracted, sample) if extracted is not None else None
 
         if isinstance(prediction, list):
             if len(prediction) == 1:
-                return self._parse_prediction(prediction[0])
+                return self._parse_prediction(prediction[0], sample)
             return None
 
-        if isinstance(prediction, bool):
-            candidate = int(prediction)
-        elif isinstance(prediction, int):
-            candidate = prediction
-        elif isinstance(prediction, float) and prediction.is_integer():
-            candidate = int(prediction)
+        if isinstance(prediction, (bool, int, float)):
+            choices = sample.get("choices", [])
+            labels = sample.get("choice_labels")
+            return parse_choice_index(
+                prediction,
+                choices,
+                labels=labels,
+                label_to_index=self.label_to_index,
+            )
+
         else:
             text = str(prediction).strip()
             if not text:
@@ -371,36 +398,19 @@ class ClassifyTask(BaseTask):
                 except json.JSONDecodeError:
                     parsed = None
                 if parsed is not None:
-                    return self._parse_prediction(parsed)
+                    return self._parse_prediction(parsed, sample)
 
             answer_text = self._extract_answer_segment(text)
-            matched = self._match_label_text(answer_text)
-            if matched is not None:
-                return matched
+            prediction = answer_text
 
-            lowered = answer_text.lower()
-            if self.label_values_set == {0, 1}:
-                if lowered in ("yes", "true"):
-                    candidate = 1
-                elif lowered in ("no", "false"):
-                    candidate = 0
-                else:
-                    candidate = None
-            else:
-                candidate = None
-
-            if candidate is None and self.label_value_type == "numeric":
-                match = LABEL_PATTERN.search(answer_text)
-                if not match:
-                    return None
-                candidate = int(match.group(0))
-            elif candidate is None and self.label_value_type == "text":
-                return None
-
-        if self.label_values_set and candidate not in self.label_values_set:
-            return None
-
-        return candidate
+        choices = sample.get("choices", [])
+        labels = sample.get("choice_labels")
+        return parse_choice_index(
+            prediction,
+            choices,
+            labels=labels,
+            label_to_index=self.label_to_index,
+        )
 
     @property
     def requires_multimodal(self) -> bool:
@@ -412,8 +422,29 @@ class ClassifyTask(BaseTask):
 
     @property
     def answer_type(self) -> str:
-        return "freeform"
+        return "multiple_choice"
 
     @property
     def requires_logprobs(self) -> bool:
         return False
+
+    @property
+    def prefers_logprobs(self) -> bool:
+        return bool(self.choice_texts)
+
+    def _configure_choices(self) -> None:
+        if self.label_values:
+            self.label_to_index = {value: idx for idx, value in enumerate(self.label_values)}
+            for value in self.label_values:
+                text = self.label_texts.get(value)
+                if text is None:
+                    text = str(value)
+                self.choice_texts.append(str(text))
+        elif self.label_texts:
+            for key in sorted(self.label_texts.keys(), key=str):
+                self.choice_texts.append(str(self.label_texts[key]))
+
+        if self.label_values:
+            self.choice_labels = [str(value) for value in self.label_values]
+        else:
+            self.choice_labels = CHOICE_LABELS[: len(self.choice_texts)]
