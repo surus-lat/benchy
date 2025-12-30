@@ -61,6 +61,11 @@ Tasks do NOT know about:
 
 TaskGroupRunner calls BenchmarkRunner to bridge tasks and interfaces.
 
+For OpenAI-style interfaces (vLLM/OpenAI/Anthropic/Together), the group runner
+performs a request-mode probe once per task group and writes a
+`compatibility_report.json` in the task output directory. This selects the best
+available endpoint before evaluation starts.
+
 ## Adding a New Task
 
 ### 1. Create Task Config (`src/tasks/my_task/task.json`)
@@ -148,6 +153,65 @@ for HuggingFace datasets. Only include the fields you need.
 Optional `capability_requirements` lets you mark requirements as:
 `required`, `preferred`, or `optional` (for requires_multimodal/requires_schema/
 requires_files/requires_logprobs/requires_streaming).
+
+Copy/paste starter (grouped task with multiple-choice, structured, and freeform subtasks):
+
+```json
+{
+  "name": "my_task",
+  "description": "Example grouped task with three subtask types",
+  "tasks": [
+    "mcq_example",
+    "structured_example",
+    "freeform_example"
+  ],
+  "task_configs": {
+    "mcq_example": {
+      "dataset_path": "org/mcq-dataset",
+      "split": "test",
+      "prompts": {
+        "system": "You are a careful multiple-choice solver.",
+        "user": "Question:\n{text}\n\nOptions:\n{choices}\n\nAnswer (label only):"
+      }
+    },
+    "structured_example": {
+      "dataset_path": "org/structured-dataset",
+      "split": "validation",
+      "prompts": {
+        "system": "You are a structured data extraction assistant.",
+        "user": "Extract the fields from the text:\n{text}"
+      }
+    },
+    "freeform_example": {
+      "dataset_path": "org/freeform-dataset",
+      "split": "train",
+      "prompts": {
+        "system": "You are a helpful assistant.",
+        "user": "Input:\n{text}\n\nPlease respond with a short answer."
+      }
+    }
+  },
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 512,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "output": {
+    "subdirectory": "my_task"
+  },
+  "metrics_manifest": [
+    "accuracy",
+    "exact_match",
+    "score"
+  ]
+}
+```
+
+If you use per-subtask prompts like the example above, make sure your `prepare_task`
+logic reads `context.subtask_config.get("prompts", context.prompts)`.
 
 ### Subtasks and Aggregation
 
@@ -428,16 +492,28 @@ Samples should be stored in JSONL with at minimum:
 {"id": "sample_002", "text": "Another input", "expected": {"key": "structured output"}}
 ```
 
-For structured extraction tasks, include schema:
+Structured-output example (schema + expected object):
 
 ```json
 {"id": "001", "text": "...", "schema": {"type": "object", ...}, "expected": {...}}
 ```
 
-For multiple-choice tasks, include choices and the expected index:
+Multiple-choice example (choices + expected index):
 
 ```json
 {"id": "mcq_001", "text": "Question text", "choices": ["A", "B", "C"], "expected": 1}
+```
+
+If you want numeric labels (0/1/2/...) for logprobs scoring, add `choice_labels`:
+
+```json
+{"id": "mcq_002", "text": "Question text", "choices": ["No", "Yes"], "choice_labels": ["0", "1"], "expected": 1}
+```
+
+Freeform example (plain text response):
+
+```json
+{"id": "freeform_001", "text": "Explain why the sky is blue.", "expected": "Short explanation"}
 ```
 
 ## Dataset Preprocessing
@@ -531,10 +607,35 @@ Tasks must declare what kind of answer they expect:
 - `structured`: JSON output with a schema
 - `multiple_choice`: select one of N choices
 
+For structured-output tasks:
+- Populate `sample["schema"]` with a JSON schema and `sample["expected"]` with the target object.
+- Set `answer_type = "structured"` and `requires_schema = True`.
+
 For multiple-choice tasks:
 - Populate `sample["choices"]` and set `sample["expected"]` to the correct index.
 - Set `answer_type = "multiple_choice"`.
-- Set `requires_logprobs = True` to enable logprob scoring and compatibility checks.
+- Use `requires_logprobs = True` if logprobs are mandatory (incompatible providers will be skipped).
+- Use `prefers_logprobs = True` if logprobs are optional (fallback to completion parsing when unavailable).
+- If you want numeric labels with logprobs, add `sample["choice_labels"]` (for example `["0", "1", "2"]`).
+
+Multiple-choice helper snippet:
+
+```python
+from src.common import format_choices, parse_choice_index
+
+def get_prompt_for_logprobs(self, sample):
+    base = self.config["prompts"]["user"].format(text=sample["text"])
+    choices_text = format_choices(sample["choices"], sample.get("choice_labels"))
+    return self.config["prompts"]["system"], f"{base}\n\nOptions:\n{choices_text}\n\nAnswer (label only):"
+
+def calculate_metrics(self, prediction, expected, sample, error=None, error_type=None):
+    if error or prediction is None:
+        return self.get_error_metrics(error or "No prediction", error_type)
+    selected = parse_choice_index(prediction, sample["choices"], labels=sample.get("choice_labels"))
+    if selected is None:
+        return self.get_error_metrics("Could not parse choice", "invalid_response")
+    return {"valid": True, "accuracy": 1.0 if selected == expected else 0.0}
+```
 
 ## Capability Flags and Interface Support
 
