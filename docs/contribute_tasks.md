@@ -17,6 +17,11 @@ That protocol defines `load()`, `get_samples()`, `get_prompt()`, `calculate_metr
 `aggregate_metrics()`, and capability properties like `requires_logprobs` and
 `requires_multimodal`.
 
+For OpenAI-style interfaces (vLLM/OpenAI/Anthropic/Together), the group runner
+performs a request-mode probe once per task group and writes a
+`compatibility_report.json` in the task output directory. This selects the best
+available endpoint before evaluation starts.
+
 ## Step-by-Step
 
 ### 1. Copy the Template
@@ -40,6 +45,8 @@ Key fields to review:
 - `tasks` and `task_configs` if you have subtasks (grouped tasks).
 - `defaults` for batch size, retries, timeouts, and logging.
 - `capability_requirements` to declare which features are required.
+- For multiple-choice tasks, include `choices` in your sample data and optionally
+  `choice_labels` if you want numeric labels (0/1/2...) for logprobs scoring.
 
 Example capability requirements:
 
@@ -57,7 +64,7 @@ compatibility checks that block incompatible providers before a run starts.
 
 In `src/tasks/my_task/task.py`, implement the `BaseTask` methods. The key requirement
 is that `get_samples()` yields dictionaries with an `id` and any fields your task uses
-(e.g., `text`, `expected`, `schema`). `get_prompt()` should return a system/user pair
+(e.g., `text`, `expected`, `choices`, `schema`). `get_prompt()` should return a system/user pair
 for LLM-style interfaces, but HTTP-style interfaces may ignore it and use raw sample
 fields instead.
 
@@ -114,3 +121,5 @@ python eval.py --config configs/tests/spanish-gptoss.yaml --limit 2
 - Forgetting to register the task in `TASK_REGISTRY` prevents it from running.
 - Task outputs should follow the standard format expected by `save_results()` so
   leaderboard tooling can parse metrics consistently.
+- Multiple-choice tasks must provide `choices` for logprobs scoring; without them,
+  the interface falls back to completion parsing.

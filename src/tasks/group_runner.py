@@ -361,6 +361,7 @@ def _probe_and_configure_openai_interface(
     if not request_modes or "raw_payload" in request_modes:
         return None
 
+    # Probe chat/completions/logprobs once and update connection_info for the run.
     report = asyncio.run(_probe_openai_interface(connection_info, model_name, request_modes))
     _apply_probe_results(connection_info, report)
     _write_probe_report(output_dir, report)
@@ -373,6 +374,7 @@ async def _probe_openai_interface(
     model_name: str,
     request_modes: List[str],
 ) -> Dict[str, Any]:
+    """Probe OpenAI-style endpoints (chat/completions/logprobs)."""
     report: Dict[str, Any] = {
         "model_name": model_name,
         "provider_type": connection_info.get("provider_type"),
@@ -421,6 +423,7 @@ async def _probe_openai_mode(
     api_endpoint: str,
     use_logprobs: bool,
 ) -> Dict[str, Any]:
+    """Run a single probe call for a request mode."""
     from ..interfaces.openai_interface import OpenAIInterface
 
     probe_info = deepcopy(connection_info)
@@ -446,6 +449,7 @@ async def _probe_openai_mode(
 
 
 def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
+    """Build a minimal probe request for mode detection."""
     if use_logprobs:
         return {
             "system_prompt": "",
@@ -466,6 +470,7 @@ def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
 
 
 def _probe_success(result: Dict[str, Any]) -> bool:
+    """Return True if the probe produced a usable output."""
     if result.get("error"):
         return False
     output = result.get("output")
@@ -477,6 +482,7 @@ def _probe_success(result: Dict[str, Any]) -> bool:
 
 
 def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """Select the best available endpoint based on probe results."""
     preferred = requested or "auto"
     if preferred in ("chat", "completions"):
         if modes.get(preferred, {}).get("ok"):
@@ -494,6 +500,7 @@ def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Op
 
 
 def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]) -> None:
+    """Apply probe-derived endpoint/logprobs support to connection_info."""
     selected = report.get("selected_api_endpoint")
     if selected:
         connection_info["api_endpoint"] = selected
@@ -508,12 +515,14 @@ def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]
 
 
 def _write_probe_report(output_dir: Path, report: Dict[str, Any]) -> None:
+    """Persist probe report to the task output directory."""
     report_path = output_dir / "compatibility_report.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
 
 def _log_probe_report(report: Dict[str, Any]) -> None:
+    """Log probe summary for visibility in run logs."""
     requested = report.get("api_endpoint_requested")
     selected = report.get("selected_api_endpoint")
     logger.info(f"Request mode probe selected api_endpoint={selected} (requested={requested})")
