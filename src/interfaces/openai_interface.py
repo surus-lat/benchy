@@ -106,16 +106,23 @@ class OpenAIInterface:
         answer_type = getattr(task, "answer_type", None)
         use_logprobs = answer_type == "multiple_choice"
         requires_logprobs = getattr(task, "requires_logprobs", use_logprobs)
-        # Capability: only enable logprobs if the task requires it.
-        use_logprobs = use_logprobs and requires_logprobs
+        prefers_logprobs = getattr(task, "prefers_logprobs", False)
+        # Capability: only enable logprobs if required or preferred and supported.
+        if use_logprobs:
+            use_logprobs = requires_logprobs or (prefers_logprobs and self.supports_logprobs)
 
+        # Task can override prompt formatting for logprobs-based scoring.
         if use_logprobs and hasattr(task, "get_prompt_for_logprobs"):
             system_prompt, user_prompt = task.get_prompt_for_logprobs(sample)
         else:
             system_prompt, user_prompt = task.get_prompt(sample)
 
+        allow_logprobs_fallback = use_logprobs and not requires_logprobs
         if use_logprobs and not sample.get("choices"):
-            raise ValueError("Multiple-choice sample missing choices for logprobs scoring")
+            if requires_logprobs:
+                raise ValueError("Multiple-choice sample missing choices for logprobs scoring")
+            use_logprobs = False
+            allow_logprobs_fallback = False
 
         # Capability: drop schema payloads if the provider doesn't support them.
         schema = sample.get("schema") if self._capabilities.supports_schema else None
@@ -126,6 +133,8 @@ class OpenAIInterface:
             "sample_id": sample["id"],
             "use_logprobs": use_logprobs,
             "choices": sample.get("choices") if use_logprobs else None,
+            "choice_labels": sample.get("choice_labels") if use_logprobs else None,
+            "allow_logprobs_fallback": allow_logprobs_fallback,
         }
 
         # Capability: fail fast if multimodal inputs aren't supported.
@@ -199,17 +208,34 @@ class OpenAIInterface:
         image_path: Optional[str] = None,
         use_logprobs: bool = False,
         choices: Optional[List[str]] = None,
+        choice_labels: Optional[List[str]] = None,
+        allow_logprobs_fallback: bool = False,
     ) -> Dict:
         """Generate output for a single request."""
         result = {"output": None, "raw": None, "error": None, "error_type": None}
 
         if use_logprobs:
-            return await self._generate_with_logprobs(
+            logprobs_result = await self._generate_with_logprobs(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 choices=choices or [],
+                choice_labels=choice_labels,
                 sample_id=sample_id,
             )
+            # If logprobs fail (e.g., no candidate tokens), fall back to completions.
+            if allow_logprobs_fallback and logprobs_result.get("error"):
+                return await self._generate_single(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    schema=schema,
+                    sample_id=sample_id,
+                    image_path=image_path,
+                    use_logprobs=False,
+                    choices=None,
+                    choice_labels=None,
+                    allow_logprobs_fallback=False,
+                )
+            return logprobs_result
 
         if self.provider_type == "anthropic":
             return await self._generate_single_anthropic(system_prompt, user_prompt, schema, sample_id)
@@ -233,6 +259,10 @@ class OpenAIInterface:
                 )
                 raw_output = response.choices[0].text
                 result["raw"] = raw_output
+                if raw_output is None:
+                    result["error"] = "Empty response content"
+                    result["error_type"] = "invalid_response"
+                    return result
                 if schema:
                     cleaned = self._extract_json(raw_output)
                     try:
@@ -281,6 +311,10 @@ class OpenAIInterface:
             response = await self.client.chat.completions.create(**params)
             raw_output = response.choices[0].message.content
             result["raw"] = raw_output
+            if raw_output is None:
+                result["error"] = "Empty response content"
+                result["error_type"] = "invalid_response"
+                return result
 
             if schema:
                 cleaned = self._extract_json(raw_output)
@@ -312,6 +346,7 @@ class OpenAIInterface:
         system_prompt: str,
         user_prompt: str,
         choices: List[str],
+        choice_labels: Optional[List[str]],
         sample_id: str,
     ) -> Dict:
         """Generate prediction using log probabilities for multiple choice."""
@@ -349,21 +384,21 @@ class OpenAIInterface:
             first_token = top_logprobs[0] if isinstance(top_logprobs, list) and top_logprobs else top_logprobs
             token_logprobs = self._coerce_top_logprobs(first_token)
 
-            labels = self._choice_labels(len(choices))
-            letter_scores = {}
-            for letter in labels:
-                variants = self._letter_variants(letter)
+            labels = self._resolve_choice_labels(choices, choice_labels)
+            label_scores = {}
+            for label in labels:
+                variants = self._letter_variants(label)
                 best = max((token_logprobs.get(v, float("-inf")) for v in variants), default=float("-inf"))
-                letter_scores[letter] = best
+                label_scores[label] = best
 
-            best_letter = max(letter_scores.items(), key=lambda item: item[1])
-            if best_letter[1] == float("-inf"):
-                raise ValueError("No candidate letters found in logprobs")
+            best_label = max(label_scores.items(), key=lambda item: item[1])
+            if best_label[1] == float("-inf"):
+                raise ValueError("No candidate labels found in logprobs")
 
-            selected_idx = labels.index(best_letter[0])
+            selected_idx = labels.index(best_label[0])
             return {
                 "output": selected_idx,
-                "raw": f"logprobs={letter_scores} selected={best_letter[0]}",
+                "raw": f"logprobs={label_scores} selected={best_label[0]}",
                 "error": None,
                 "error_type": None,
             }
@@ -384,15 +419,28 @@ class OpenAIInterface:
     def _choice_labels(self, count: int) -> List[str]:
         return [chr(ord("A") + i) for i in range(count)]
 
+    def _resolve_choice_labels(
+        self,
+        choices: List[str],
+        choice_labels: Optional[List[str]],
+    ) -> List[str]:
+        # Allow numeric labels (0/1/2...) or custom labels for logprobs scoring.
+        if choice_labels and len(choice_labels) == len(choices):
+            return list(choice_labels)
+        return self._choice_labels(len(choices))
+
     def _letter_variants(self, letter: str) -> List[str]:
-        variants = {letter, f" {letter}", letter.lower(), f" {letter.lower()}"}
+        base = {letter, letter.lower()}
+        variants = set(base)
+        prefixes = [" ", "\n", "\n\n"]
+        for prefix in prefixes:
+            for token in base:
+                variants.add(f"{prefix}{token}")
         for suffix in [")", ".", ":"]:
-            variants.update({
-                f"{letter}{suffix}",
-                f" {letter}{suffix}",
-                f"{letter.lower()}{suffix}",
-                f" {letter.lower()}{suffix}",
-            })
+            for token in base:
+                variants.add(f"{token}{suffix}")
+                for prefix in prefixes:
+                    variants.add(f"{prefix}{token}{suffix}")
         return list(variants)
 
     def _coerce_top_logprobs(self, top_logprobs: Any) -> Dict[str, float]:
@@ -462,6 +510,10 @@ class OpenAIInterface:
 
             raw_output = response.content[0].text
             result["raw"] = raw_output
+            if raw_output is None:
+                result["error"] = "Empty response content"
+                result["error_type"] = "invalid_response"
+                return result
 
             if schema:
                 cleaned = self._extract_json(raw_output)
@@ -498,6 +550,8 @@ class OpenAIInterface:
                 image_path=req.get("image_path"),
                 use_logprobs=req.get("use_logprobs", False),
                 choices=req.get("choices"),
+                choice_labels=req.get("choice_labels"),
+                allow_logprobs_fallback=req.get("allow_logprobs_fallback", False),
             )
 
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
