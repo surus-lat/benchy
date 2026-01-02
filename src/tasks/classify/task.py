@@ -62,6 +62,10 @@ class ClassifyTask(BaseTask):
 
         self._load_from_file()
         if self._needs_rebuild(self.dataset):
+            if not self.dataset_path:
+                raise ValueError(
+                    f"Cached dataset {self.data_file} is invalid but dataset_path is not configured for re-download"
+                )
             logger.info(f"Cached dataset is missing required fields: {self.data_file}")
             logger.info(f"Rebuilding dataset from HuggingFace: {self.dataset_path}")
             self._download_and_preprocess()
