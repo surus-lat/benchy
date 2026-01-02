@@ -19,6 +19,11 @@ from .dataset_utils import (
     save_to_jsonl,
     iterate_samples,
 )
+from .choice_utils import (
+    CHOICE_LABELS,
+    format_choices,
+    parse_choice_index,
+)
 
 __all__ = [
     # Checkpoint (from engine)
@@ -31,5 +36,8 @@ __all__ = [
     "download_huggingface_dataset",
     "save_to_jsonl",
     "iterate_samples",
+    # Choice helpers
+    "CHOICE_LABELS",
+    "format_choices",
+    "parse_choice_index",
 ]
-

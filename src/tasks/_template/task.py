@@ -281,3 +281,8 @@ class TemplateTask(BaseTask):
     def requires_logprobs(self) -> bool:
         """Whether this task requires logprobs-based scoring."""
         return False
+
+    @property
+    def prefers_logprobs(self) -> bool:
+        """Whether this task prefers logprobs scoring when available."""
+        return False
