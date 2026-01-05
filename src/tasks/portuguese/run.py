@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from prefect import task
+from ...prefect_compat import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from ..summary_reporter import write_group_summary

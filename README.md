@@ -37,26 +37,65 @@ interfaces fit together if you want a more detailed mental model.
 - Python 3.12+
 - CUDA-compatible GPU(s) for local vLLM (not required for cloud providers)
 - Docker (optional, for Prefect UI)
+- [uv](https://github.com/astral-sh/uv) (recommended, but optional - traditional venv + pip also works)
 
 ### Install
 
-```bash
-# Recommended with uv
-uv sync
-
-# Or with venv + pip
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-Optional setup helper (prefetches structured extraction data):
+**Option 1: Using the setup script (recommended)**
 
 ```bash
 bash setup.sh
 ```
 
-If you use cloud providers, copy `env.example` to `.env` and fill in API keys.
+This will:
+- Create a virtual environment (`.venv`)
+- Install all dependencies
+- Optionally download structured extraction dataset
+
+**Option 2: Manual setup with uv (recommended for developers)**
+
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create venv and install dependencies
+uv venv
+source .venv/bin/activate
+uv sync
+```
+
+**Option 3: Manual setup with traditional venv + pip**
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
+
+# Install dependencies
+pip install -e .
+```
+
+**Optional: Install translation metrics dependencies**
+
+If you plan to run translation tasks, install additional metrics packages:
+
+```bash
+pip install '.[translation]'
+# or with uv:
+uv sync --extra translation
+```
+
+**Environment setup**
+
+If you use cloud providers, copy `env.example` to `.env` and fill in API keys:
+
+```bash
+cp env.example .env
+# Edit .env with your API keys
+```
 
 ### Prefect UI (Optional)
 
