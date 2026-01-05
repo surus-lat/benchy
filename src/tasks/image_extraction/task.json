@@ -1,0 +1,101 @@
+{
+  "name": "image_extraction",
+  "display_name": "Image extraction",
+  "description": "Extract structured data from images following a JSON schema",
+  "task_format": "structured",
+  "runner_entrypoint": "src.tasks.image_extraction.run:run_image_extraction",
+  "provider_types": [
+    "openai",
+    "anthropic",
+    "surus",
+    "surus_ocr",
+    "surus_factura",
+    "together"
+  ],
+  "source_dir": "/home/mauro/dev/benchy/test_image_request",
+  "prompts": {
+    "system": "You are an expert in extracting information from files. Extract all the required fields following the required schema.",
+    "user": "Extract the data from this image following the provided schema.\nReturn valid JSON matching the schema exactly."
+  },
+  "defaults": {
+    "batch_size": 5,
+    "log_samples": true,
+    "temperature": 0.0,
+    "max_tokens": 2048,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "capability_requirements": {
+    "requires_multimodal": "required",
+    "requires_files": "required",
+    "requires_schema": "preferred"
+  },
+  "metrics": {
+    "partial_matching": {
+      "string": {
+        "token_overlap_weight": 0.5,
+        "levenshtein_weight": 0.3,
+        "containment_weight": 0.2,
+        "exact_threshold": 0.85,
+        "partial_threshold": 0.4
+      },
+      "number": {
+        "relative_tolerance": 0.001,
+        "absolute_tolerance": 1e-6
+      }
+    },
+    "document_extraction_score": {
+      "weights": {
+        "numeric_precision": 0.5,
+        "field_f1_partial": 0.35,
+        "schema_validity": 0.15
+      }
+    },
+    "extraction_quality_score": {
+      "enabled": true,
+      "weights": {
+        "schema_validity": 0.2,
+        "field_f1_partial": 0.6,
+        "inverted_hallucination": 0.2
+      }
+    }
+  },
+  "output": {
+    "subdirectory": "image_extraction"
+  },
+  "metrics_manifest": [
+    "document_extraction_score",
+    "extraction_quality_score",
+    "schema_validity_rate",
+    "field_f1_partial",
+    "field_f1_strict",
+    "exact_match_rate",
+    "hallucination_rate",
+    "strict_type_compliance_rate",
+    "error_rate"
+  ],
+  "group": "image_extraction",
+  "group_metadata": {
+    "name": "Image Extraction",
+    "description": "Structured data extraction from document images",
+    "description_en": "Structured data extraction from document images",
+    "description_es": "Extracción de datos estructurados de imágenes de documentos",
+    "description_pt": "Extração de dados estruturados de imagens de documentos",
+    "long_description": "Evaluates vision-language models on structured data extraction from document images such as invoices, forms, receipts, and other business documents. Given an image and a JSON schema, the model must extract structured data that conforms to the schema. This task measures how accurately models can read and interpret visual documents, with particular emphasis on numeric accuracy for financial and business documents. The evaluation uses comprehensive metrics including document extraction score, field-level F1 scores, schema validity, and hallucination detection. The task supports dataset-specific configuration for normalization rules, field matching thresholds, and metric weights, allowing adaptation to different document types and extraction requirements.",
+    "long_description_en": "Evaluates vision-language models on structured data extraction from document images such as invoices, forms, receipts, and other business documents. Given an image and a JSON schema, the model must extract structured data that conforms to the schema. This task measures how accurately models can read and interpret visual documents, with particular emphasis on numeric accuracy for financial and business documents. The evaluation uses comprehensive metrics including document extraction score, field-level F1 scores, schema validity, and hallucination detection. The task supports dataset-specific configuration for normalization rules, field matching thresholds, and metric weights, allowing adaptation to different document types and extraction requirements.",
+    "long_description_es": "Evalúa modelos de visión-lenguaje en la extracción de datos estructurados de imágenes de documentos como facturas, formularios, recibos y otros documentos comerciales. Dada una imagen y un esquema JSON, el modelo debe extraer datos estructurados que se ajusten al esquema. Esta tarea mide qué tan precisamente los modelos pueden leer e interpretar documentos visuales, con énfasis particular en la precisión numérica para documentos financieros y comerciales. La evaluación utiliza métricas integrales que incluyen puntuación de extracción de documentos, puntuaciones F1 a nivel de campo, validez de esquema y detección de alucinaciones. La tarea admite configuración específica del conjunto de datos para reglas de normalización, umbrales de coincidencia de campos y pesos de métricas, permitiendo la adaptación a diferentes tipos de documentos y requisitos de extracción.",
+    "long_description_pt": "Avalia modelos de visão-linguagem na extração de dados estruturados de imagens de documentos como faturas, formulários, recibos e outros documentos comerciais. Dada uma imagem e um esquema JSON, o modelo deve extrair dados estruturados que se ajustem ao esquema. Esta tarefa mede quão precisamente os modelos podem ler e interpretar documentos visuais, com ênfase particular na precisão numérica para documentos financeiros e comerciais. A avaliação utiliza métricas abrangentes incluindo pontuação de extração de documentos, pontuações F1 em nível de campo, validade de esquema e detecção de alucinações. A tarefa suporta configuração específica do conjunto de dados para regras de normalização, limites de correspondência de campos e pesos de métricas, permitindo adaptação a diferentes tipos de documentos e requisitos de extração.",
+    "repository": "https://github.com/surus-lat/benchy"
+  },
+  "task_metadata": {
+    "description": "Extract structured data from images following a JSON schema",
+    "description_en": "Extract structured data from images following a JSON schema",
+    "description_es": "Extraer datos estructurados de imágenes siguiendo un esquema JSON",
+    "description_pt": "Extrair dados estruturados de imagens seguindo um esquema JSON",
+    "long_description": "This task evaluates vision-language models on their ability to extract structured information from document images. The model receives an image (typically a scanned document like an invoice, form, or receipt) along with a JSON schema defining the expected output structure. The model must analyze the image, identify relevant information, and return a JSON object that matches the schema exactly. The evaluation emphasizes accuracy in numeric fields (critical for financial documents), proper handling of date formats, and correct extraction of string fields with tolerance for minor variations. The task supports partial matching for close-but-not-exact values and includes comprehensive metrics for schema compliance, field-level accuracy, and hallucination detection.",
+    "long_description_en": "This task evaluates vision-language models on their ability to extract structured information from document images. The model receives an image (typically a scanned document like an invoice, form, or receipt) along with a JSON schema defining the expected output structure. The model must analyze the image, identify relevant information, and return a JSON object that matches the schema exactly. The evaluation emphasizes accuracy in numeric fields (critical for financial documents), proper handling of date formats, and correct extraction of string fields with tolerance for minor variations. The task supports partial matching for close-but-not-exact values and includes comprehensive metrics for schema compliance, field-level accuracy, and hallucination detection.",
+    "long_description_es": "Esta tarea evalúa modelos de visión-lenguaje en su capacidad para extraer información estructurada de imágenes de documentos. El modelo recibe una imagen (típicamente un documento escaneado como una factura, formulario o recibo) junto con un esquema JSON que define la estructura de salida esperada. El modelo debe analizar la imagen, identificar información relevante y devolver un objeto JSON que coincida exactamente con el esquema. La evaluación enfatiza la precisión en campos numéricos (crítico para documentos financieros), el manejo adecuado de formatos de fecha y la extracción correcta de campos de cadena con tolerancia para variaciones menores. La tarea admite coincidencias parciales para valores cercanos pero no exactos e incluye métricas integrales para cumplimiento de esquema, precisión a nivel de campo y detección de alucinaciones.",
+    "long_description_pt": "Esta tarefa avalia modelos de visão-linguagem em sua capacidade de extrair informações estruturadas de imagens de documentos. O modelo recebe uma imagem (tipicamente um documento digitalizado como uma fatura, formulário ou recibo) junto com um esquema JSON que define a estrutura de saída esperada. O modelo deve analisar a imagem, identificar informações relevantes e retornar um objeto JSON que corresponda exatamente ao esquema. A avaliação enfatiza a precisão em campos numéricos (crítico para documentos financeiros), o tratamento adequado de formatos de data e a extração correta de campos de string com tolerância para variações menores. A tarefa suporta correspondências parciais para valores próximos mas não exatos e inclui métricas abrangentes para conformidade de esquema, precisão em nível de campo e detecção de alucinações.",
+    "URL": "https://github.com/surus-lat/benchy"
+  }
+}
