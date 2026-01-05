@@ -315,7 +315,6 @@ def download_and_preprocess_chat_extraction(
         raise RuntimeError(f"Failed to download schema: {schema_download_result.get('error')}")
     
     # Load the schema
-    schema_file = '/home/mauro/dev/benchy/src/tasks/structured/.data/schema_expected_lead_data_modified.json'
     with open(schema_file, "r", encoding="utf-8") as f:
         schema = json.load(f)
     
@@ -397,4 +396,3 @@ def download_and_preprocess_chat_extraction(
         "skipped": skipped_count,
         "reasons": skipped_reasons,
     }
-
