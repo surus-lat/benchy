@@ -1,0 +1,90 @@
+{
+  "name": "translation",
+  "display_name": "Translation",
+  "description": "Translation evaluation using OPUS and FLORES datasets",
+  "task_format": "freeform",
+  "runner_entrypoint": "src.tasks.translation.run:run_translation",
+  "provider_types": [
+    "openai",
+    "anthropic",
+    "together"
+  ],
+  "tasks": [
+    "opus",
+    "flores"
+  ],
+  "task_configs": {
+    "opus": {
+      "language_pairs": [
+        "en-es",
+        "en-pt"
+      ],
+      "dataset_name": "Helsinki-NLP/opus-100"
+    },
+    "flores": {
+      "language_pairs": [],
+      "dataset_name": "openlanguagedata/flores_plus",
+      "split": "devtest"
+    }
+  },
+  "prompts": {
+    "system": "You are a professional translator. Translate the given text accurately and naturally.",
+    "user": "Translate this sentence from {source_language} to {target_language}: {source_text}. Translation:"
+  },
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 250,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "output": {
+    "subdirectory": "translation"
+  },
+  "metrics_manifest": [
+    "bleu",
+    "chrf",
+    "comet",
+    "error_rate"
+  ],
+  "group": "translation",
+  "group_metadata": {
+    "name": "Translation",
+    "description": "Machine translation evaluation tasks",
+    "description_en": "Machine translation evaluation tasks",
+    "description_es": "Tareas de evaluaci\u00f3n de traducci\u00f3n autom\u00e1tica",
+    "description_pt": "Tarefas de avalia\u00e7\u00e3o de tradu\u00e7\u00e3o autom\u00e1tica",
+    "long_description": "Comprehensive machine translation evaluation suite combining FLORES+ and OPUS-100 datasets to assess multilingual translation capabilities. FLORES+ provides high-quality translations across Spanish, Portuguese, English, French, Italian, German, Hindi, Arabic and Chinese, covering 30 language pairs focused on Latin American and Iberian languages. OPUS-100 contributes English-Spanish and English-Portuguese translation pairs from a large-scale multilingual corpus. Both datasets evaluate translation quality using COMET, BLEU and chrF metrics, with COMET as the primary reported metric. This evaluation suite measures models' ability to accurately translate between languages while maintaining semantic meaning and linguistic fluency across diverse text domains.",
+    "long_description_en": "Comprehensive machine translation evaluation suite combining FLORES+ and OPUS-100 datasets to assess multilingual translation capabilities. FLORES+ provides high-quality translations across Spanish, Portuguese, English, French, Italian, German, hindi, arabic and chinese, covering 30 language pairs focused on Latin American and Iberian languages. OPUS-100 contributes English-Spanish and English-Portuguese translation pairs from a large-scale multilingual corpus. Both datasets evaluate translation quality using COMET, BLEU and chrF metrics, with COMET as the primary reported metric. This evaluation suite measures models' ability to accurately translate between languages while maintaining semantic meaning and linguistic fluency across diverse text domains.",
+    "long_description_es": "Suite integral de evaluaci\u00f3n de traducci\u00f3n autom\u00e1tica que combina los conjuntos de datos FLORES+ y OPUS-100 para evaluar capacidades de traducci\u00f3n multiling\u00fce. FLORES+ proporciona traducciones de alta calidad entre espa\u00f1ol, portugu\u00e9s, ingl\u00e9s, franc\u00e9s, italiano, alem\u00e1n, indio, arabe y chino, cubriendo 30 pares de idiomas enfocados en lenguas latinoamericanas e ib\u00e9ricas. OPUS-100 aporta pares de traducci\u00f3n ingl\u00e9s-espa\u00f1ol e ingl\u00e9s-portugu\u00e9s de un corpus multiling\u00fce a gran escala. Ambos conjuntos eval\u00faan la calidad de traducci\u00f3n usando m\u00e9tricas COMET, BLEU y chrF, con COMET como m\u00e9trica principal reportada. Esta suite mide la capacidad de los modelos para traducir con precisi\u00f3n entre idiomas manteniendo el significado sem\u00e1ntico y la fluidez ling\u00fc\u00edstica en diversos dominios textuales.",
+    "long_description_pt": "Su\u00edte abrangente de avalia\u00e7\u00e3o de tradu\u00e7\u00e3o autom\u00e1tica combinando os conjuntos FLORES+ e OPUS-100 para avaliar capacidades de tradu\u00e7\u00e3o multil\u00edngue. FLORES+ fornece tradu\u00e7\u00f5es de alta qualidade entre espanhol, portugu\u00eas, ingl\u00eas, franc\u00eas, italiano, alem\u00e3o, indiano, \u00e1rabe e chin\u00eas, cobrindo 30 pares de idiomas focados em l\u00ednguas latino-americanas e ib\u00e9ricas. OPUS-100 contribui com pares de tradu\u00e7\u00e3o ingl\u00eas-espanhol e ingl\u00eas-portugu\u00eas de um corpus multil\u00edngue em larga escala. Ambos os conjuntos avaliam a qualidade da tradu\u00e7\u00e3o usando m\u00e9tricas COMET, BLEU e chrF, com COMET como m\u00e9trica principal reportada. Esta su\u00edte mede a capacidade dos modelos de traduzir com precis\u00e3o entre idiomas mantendo o significado sem\u00e2ntico e a flu\u00eancia lingu\u00edstica em diversos dom\u00ednios textuais.",
+    "repository": "https://github.com/surus-lat/lm-evaluation-harness-surus"
+  },
+  "task_metadata": {
+    "opus": {
+      "description": "OPUS-100 English-centric translation evaluation",
+      "description_en": "OPUS-100 English-centric translation evaluation",
+      "description_es": "Evaluaci\u00f3n de traducci\u00f3n OPUS-100 centrada en ingl\u00e9s",
+      "description_pt": "Avalia\u00e7\u00e3o de tradu\u00e7\u00e3o OPUS-100 centrada em ingl\u00eas",
+      "long_description": "OPUS-100 is an English-centric multilingual translation corpus covering 100 languages with approximately 55M sentence pairs. For this evaluation, we focus on English-Spanish and English-Portuguese translation pairs from this large-scale dataset. The corpus was built from the OPUS collection of parallel texts and provides substantial training data with up to 1M sentence pairs per language pair. Translation quality is measured using COMET, BLEU, TER (Translation Error Rate), and chrF metrics, with COMET as the primary reported metric. This benchmark evaluates models' ability to translate between English and major Latin American languages using real-world parallel text data from diverse sources including legal documents, literature, and web content.",
+      "long_description_en": "OPUS-100 is an English-centric multilingual translation corpus covering 100 languages with approximately 55M sentence pairs. For this evaluation, we focus on English-Spanish and English-Portuguese translation pairs from this large-scale dataset. The corpus was built from the OPUS collection of parallel texts and provides substantial training data with up to 1M sentence pairs per language pair. Translation quality is measured using COMET, BLEU, TER (Translation Error Rate), and chrF metrics, with COMET as the primary reported metric. This benchmark evaluates models' ability to translate between English and major Latin American languages using real-world parallel text data from diverse sources including legal documents, literature, and web content.",
+      "long_description_es": "OPUS-100 es un corpus de traducci\u00f3n multiling\u00fce centrado en ingl\u00e9s que cubre 100 idiomas con aproximadamente 55M pares de oraciones. Para esta evaluaci\u00f3n, nos enfocamos en pares de traducci\u00f3n ingl\u00e9s-espa\u00f1ol e ingl\u00e9s-portugu\u00e9s de este conjunto a gran escala. El corpus se construy\u00f3 a partir de la colecci\u00f3n OPUS de textos paralelos y proporciona datos de entrenamiento sustanciales con hasta 1M de pares de oraciones por par de idiomas. La calidad de traducci\u00f3n se mide usando m\u00e9tricas COMET, BLEU, TER (Tasa de Error de Traducci\u00f3n) y chrF, con COMET como m\u00e9trica principal reportada. Este benchmark eval\u00faa la capacidad de los modelos para traducir entre ingl\u00e9s y principales idiomas latinoamericanos usando datos de texto paralelo del mundo real de fuentes diversas incluyendo documentos legales, literatura y contenido web.",
+      "long_description_pt": "OPUS-100 \u00e9 um corpus de tradu\u00e7\u00e3o multil\u00edngue centrado em ingl\u00eas cobrindo 100 idiomas com aproximadamente 55M pares de senten\u00e7as. Para esta avalia\u00e7\u00e3o, focamos em pares de tradu\u00e7\u00e3o ingl\u00eas-espanhol e ingl\u00eas-portugu\u00eas deste conjunto em larga escala. O corpus foi constru\u00eddo a partir da cole\u00e7\u00e3o OPUS de textos paralelos e fornece dados de treinamento substanciais com at\u00e9 1M de pares de senten\u00e7as por par de idiomas. A qualidade da tradu\u00e7\u00e3o \u00e9 medida usando m\u00e9tricas COMET, BLEU, TER (Taxa de Erro de Tradu\u00e7\u00e3o) e chrF, com COMET como m\u00e9trica principal reportada. Este benchmark avalia a capacidade dos modelos de traduzir entre ingl\u00eas e principais idiomas latino-americanos usando dados de texto paralelo do mundo real de fontes diversas incluindo documentos legais, literatura e conte\u00fado web.",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/Helsinki-NLP/opus-100"
+    },
+    "flores": {
+      "description": "FLORES+ multilingual translation evaluation",
+      "description_en": "FLORES+ multilingual translation evaluation",
+      "description_es": "Evaluaci\u00f3n de traducci\u00f3n multiling\u00fce FLORES+",
+      "description_pt": "Avalia\u00e7\u00e3o de tradu\u00e7\u00e3o multil\u00edngue FLORES+",
+      "long_description": "FLORES+ is a high-quality multilingual translation benchmark covering 30 language pairs focused on Latin American and Iberian languages. The evaluation includes bidirectional translation between Spanish, Portuguese, English, French, Italian, German, Hindi, Chinese and Arabic. Based on the FLORES-200 dataset but with enhanced quality for Latin American language variants, it measures translation accuracy using COMET, BLEU and chrF metrics, with COMET as the primary reported metric. The dataset provides professionally curated parallel sentences across diverse domains to evaluate semantic preservation and linguistic fluency in machine translation systems.",
+      "long_description_en": "FLORES+ is a high-quality multilingual translation benchmark covering 30 language pairs focused on Latin American and Iberian languages. The evaluation includes bidirectional translation between Spanish, Portuguese, English, French, Italian, German, Hindi, Chinese and Arabic. Based on the FLORES-200 dataset but with enhanced quality for Latin American language variants, it measures translation accuracy using COMET, BLEU and chrF metrics, with COMET as the primary reported metric. The dataset provides professionally curated parallel sentences across diverse domains to evaluate semantic preservation and linguistic fluency in machine translation systems.",
+      "long_description_es": "FLORES+ es un benchmark multiling\u00fce de traducci\u00f3n de alta calidad que cubre 30 pares de idiomas enfocados en lenguas latinoamericanas e ib\u00e9ricas. La evaluaci\u00f3n incluye traducci\u00f3n bidireccional entre espa\u00f1ol, portugu\u00e9s, ingl\u00e9s, franc\u00e9s, italiano, alem\u00e1n, indio, chino y arabe. Basado en el conjunto FLORES-200 pero con calidad mejorada para variantes ling\u00fc\u00edsticas latinoamericanas, mide la precisi\u00f3n de traducci\u00f3n usando m\u00e9tricas COMET, BLEU y chrF, con COMET como m\u00e9trica principal reportada. El conjunto proporciona oraciones paralelas curadas profesionalmente en diversos dominios para evaluar la preservaci\u00f3n sem\u00e1ntica y fluidez ling\u00fc\u00edstica en sistemas de traducci\u00f3n autom\u00e1tica.",
+      "long_description_pt": "FLORES+ \u00e9 um benchmark multil\u00edngue de tradu\u00e7\u00e3o de alta qualidade cobrindo 30 pares de idiomas focados em l\u00ednguas latino-americanas e ib\u00e9ricas. A avalia\u00e7\u00e3o inclui tradu\u00e7\u00e3o bidirecional entre espanhol, portugu\u00eas, ingl\u00eas, franc\u00eas, italiano, alem\u00e3o, indiano, chin\u00eas e \u00e1rabe. Baseado no conjunto FLORES-200 mas com qualidade aprimorada para variantes lingu\u00edsticas latino-americanas, mede a precis\u00e3o da tradu\u00e7\u00e3o usando m\u00e9tricas COMET, BLEU e chrF, com COMET como m\u00e9trica principal reportada. O conjunto fornece senten\u00e7as paralelas curadas profissionalmente em diversos dom\u00ednios para avaliar a preserva\u00e7\u00e3o sem\u00e2ntica e flu\u00eancia lingu\u00edstica em sistemas de tradu\u00e7\u00e3o autom\u00e1tica.",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/openlanguagedata/flores_plus"
+    }
+  }
+}
