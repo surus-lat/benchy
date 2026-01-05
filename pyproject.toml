@@ -12,7 +12,6 @@ description = "LATAMBoard benchmarking suite"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "prefect>=3.4.19",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
     "typing-extensions>=4.0.0",
@@ -35,6 +34,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+prefect = [
+    "prefect>=3.4.19",
+]
 translation = [
     "sacrebleu>=2.3.0",
     "unbabel-comet>=2.0.0"
