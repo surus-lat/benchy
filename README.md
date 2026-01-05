@@ -52,6 +52,12 @@ This will:
 - Install all dependencies
 - Optionally download structured extraction dataset
 
+Optional extras (comma-separated) and dataset skip:
+
+```bash
+BENCHY_EXTRAS=translation,prefect BENCHY_SKIP_DATASET=1 bash setup.sh
+```
+
 **Option 2: Manual setup with uv (recommended for developers)**
 
 ```bash
@@ -59,7 +65,7 @@ This will:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Create venv and install dependencies
-uv venv
+uv venv --python 3.12
 source .venv/bin/activate
 uv sync
 ```
@@ -67,8 +73,8 @@ uv sync
 **Option 3: Manual setup with traditional venv + pip**
 
 ```bash
-# Create virtual environment
-python3 -m venv .venv
+# Create virtual environment (use Python 3.12)
+python3.12 -m venv .venv
 source .venv/bin/activate
 
 # Upgrade pip
@@ -78,9 +84,17 @@ pip install --upgrade pip setuptools wheel
 pip install -e .
 ```
 
-**Optional: Install translation metrics dependencies**
+**Optional extras**
 
-If you plan to run translation tasks, install additional metrics packages:
+Prefect orchestration (optional):
+
+```bash
+pip install -e '.[prefect]'
+# or with uv:
+uv sync --extra prefect
+```
+
+Translation metrics (only for translation tasks):
 
 ```bash
 pip install '.[translation]'
@@ -98,6 +112,9 @@ cp env.example .env
 ```
 
 ### Prefect UI (Optional)
+
+Prefect is disabled by default; enable it with `BENCHY_ENABLE_PREFECT=1` (or `--register`)
+and install the extra dependency.
 
 ```bash
 docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0

@@ -18,11 +18,12 @@ new tasks, provider integrations, and documentation improvements.
 ## Development Setup
 
 ```bash
+uv venv --python 3.12
 uv sync
 source .venv/bin/activate
 ```
 
-Optional: `bash setup.sh` to prefetch structured extraction data.
+Optional: `bash setup.sh` to prefetch structured extraction data (or `BENCHY_SKIP_DATASET=1 bash setup.sh` to skip).
 
 ## Contribution Workflow
 
