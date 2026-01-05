@@ -13,7 +13,7 @@ This file just wires everything together.
 
 import logging
 from typing import Dict, Any, Optional
-from prefect import task
+from ...prefect_compat import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from .task import TemplateTask

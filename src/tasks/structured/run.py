@@ -7,7 +7,7 @@ It uses the generic benchmark engine to run evaluation.
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
-from prefect import task
+from ...prefect_compat import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from ..summary_reporter import write_group_summary
