@@ -29,6 +29,25 @@ def _resolve_config_path(config_path: Union[str, Path]) -> Path:
     return candidate
 
 
+def _resolve_paths_section(config: Dict[str, Any], project_root: Path) -> None:
+    paths = config.get("paths")
+    if not isinstance(paths, dict):
+        return
+
+    resolved: Dict[str, Any] = {}
+    for key, value in paths.items():
+        if isinstance(value, str):
+            expanded = os.path.expanduser(os.path.expandvars(value))
+            path_value = Path(expanded)
+            if not path_value.is_absolute():
+                path_value = project_root / path_value
+            resolved[key] = str(path_value)
+        else:
+            resolved[key] = value
+
+    config["paths"] = resolved
+
+
 def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
     """Load configuration from YAML file."""
     if config_path is None:
@@ -56,4 +75,8 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any
         raise FileNotFoundError(error_msg)
 
     with config_path.open("r") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
+
+    project_root = _find_project_root(config_path.resolve().parent)
+    _resolve_paths_section(config, project_root)
+    return config
