@@ -5,17 +5,12 @@ from typing import Optional, Dict, Any
 from prefect import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .inference.vllm_config import VLLMServerConfig
-from .tasks.portuguese import run_portuguese
-from .tasks.spanish import run_spanish
-from .tasks.structured import run_structured_extraction
-from .tasks.image_extraction import run_image_extraction
-from .tasks.translation import run_translation
-from .tasks.classify import run_classify
 from .config_loader import load_config
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
 from .task_completion_checker import TaskCompletionChecker
+from .tasks.registry import is_simple_task_config, run_simple_task, resolve_entrypoint
 import os
 import sys
 import logging
@@ -39,56 +34,6 @@ SUMMARY_SKIP_KEYS = {
     "subtasks",
 }
 
-TASK_REGISTRY = {
-    "spanish": {
-        "run": run_spanish,
-        "config_name": "spanish",
-        "display_name": "Spanish language",
-        "set_api_endpoint": True,
-        "set_generation_config": True,
-        "provider_types": ["openai", "anthropic", "surus", "together"],
-    },
-    "portuguese": {
-        "run": run_portuguese,
-        "config_name": "portuguese",
-        "display_name": "Portuguese language",
-        "set_api_endpoint": True,
-        "set_generation_config": True,
-        "provider_types": ["openai", "anthropic", "surus", "together"],
-    },
-    "translation": {
-        "run": run_translation,
-        "config_name": "translation",
-        "display_name": "translation",
-        "set_api_endpoint": False,
-        "set_generation_config": False,
-        "provider_types": ["openai", "anthropic", "together"],
-    },
-    "structured_extraction": {
-        "run": run_structured_extraction,
-        "config_name": "structured_extraction",
-        "display_name": "structured data extraction",
-        "set_api_endpoint": False,
-        "set_generation_config": False,
-        "provider_types": ["openai", "anthropic", "surus", "together"],
-    },
-    "image_extraction": {
-        "run": run_image_extraction,
-        "config_name": "image_extraction",
-        "display_name": "image extraction",
-        "set_api_endpoint": False,
-        "set_generation_config": False,
-        "provider_types": ["openai", "anthropic", "surus", "surus_ocr", "surus_factura", "together"],
-    },
-    "classify": {
-        "run": run_classify,
-        "config_name": "classify",
-        "display_name": "classification",
-        "set_api_endpoint": True,
-        "set_generation_config": True,
-        "provider_types": ["openai", "anthropic", "surus", "together"],
-    },
-}
 
 
 def _summarize_task_metrics(
@@ -385,45 +330,68 @@ def benchmark_pipeline(
         }
     
     for task_name in pending_tasks:
-        task_spec = TASK_REGISTRY.get(task_name)
-        if not task_spec:
-            logger.warning(f"Unknown task '{task_name}', skipping")
+        # Load the task config for each requested task name.
+        try:
+            task_config = config_manager.get_task_config(task_name, task_defaults_overrides)
+        except FileNotFoundError:
+            logger.warning(f"No task config found for '{task_name}', skipping")
             continue
 
-        display_name = task_spec.get("display_name", task_name)
-        logger.info(f"Running {display_name} evaluation...")
-
-        config_name = task_spec.get("config_name", task_name)
-        task_config = config_manager.get_task_config(config_name, task_defaults_overrides)
         task_configs_by_name[task_name] = task_config
 
-        if task_spec.get("set_api_endpoint"):
+        # Prefer display_name from task.json for logging.
+        display_name = task_config.get("display_name", task_name)
+        logger.info(f"Running {display_name} evaluation...")
+
+        pipeline_overrides = task_config.get("pipeline_overrides", {})
+        # Optional pipeline-level overrides for request mode and generation config.
+        if pipeline_overrides.get("set_api_endpoint"):
             task_config["api_endpoint"] = api_endpoint
-        if task_spec.get("set_generation_config"):
+        if pipeline_overrides.get("set_generation_config"):
             task_config["generation_config"] = generation_config
 
         if log_setup:
             log_setup.log_task_config(task_name, task_config)
 
         cloud_provider_config = None
-        provider_types = task_spec.get("provider_types", [])
+        # If provider_types is not set, default to the current provider.
+        provider_types = task_config.get("provider_types")
+        if not provider_types:
+            provider_types = [provider_type]
         if provider_type in provider_types and provider_config:
             cloud_provider_config = {
                 **provider_config,
                 "provider_type": provider_type,
             }
 
-        run_fn = task_spec["run"]
-        task_results[task_name] = run_fn(
-            model_name=model_name,
-            output_path=model_output_path,
-            server_info=server_info,
-            api_test_result=api_test_result,
-            task_config=task_config,
-            limit=limit,
-            cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
-            provider_config=cloud_provider_config,
-        )
+        # Prefer explicit runner entrypoints; otherwise fall back to SimpleTask entrypoints.
+        runner_entrypoint = task_config.get("runner_entrypoint")
+        if runner_entrypoint:
+            run_fn = resolve_entrypoint(runner_entrypoint)
+            task_results[task_name] = run_fn(
+                model_name=model_name,
+                output_path=model_output_path,
+                server_info=server_info,
+                api_test_result=api_test_result,
+                task_config=task_config,
+                limit=limit,
+                cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+                provider_config=cloud_provider_config,
+            )
+        else:
+            if not is_simple_task_config(task_config):
+                logger.warning(f"Unknown task '{task_name}' without entrypoint, skipping")
+                continue
+            task_results[task_name] = run_simple_task(
+                model_name=model_name,
+                output_path=model_output_path,
+                server_info=server_info,
+                api_test_result=api_test_result,
+                task_config=task_config,
+                limit=limit,
+                cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+                provider_config=cloud_provider_config,
+            )
             
     # Step 4: Gather results
     gather_result = {

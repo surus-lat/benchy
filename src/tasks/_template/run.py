@@ -1,24 +1,15 @@
-"""Template task - Prefect entry point.
+"""Template task - grouped entry point for multiple formats."""
 
-This is the main entry point called by the pipeline.
-It creates the task instance, interface, and runs the benchmark.
+from typing import Any, Dict, Optional
 
-The task class (TemplateTask) handles:
-- Auto-downloading data from HuggingFace if needed
-- Preprocessing samples to eval format
-- Metrics calculation
-
-This file just wires everything together.
-"""
-
-import logging
-from typing import Dict, Any, Optional
 from prefect import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
-from .task import TemplateTask
-
-logger = logging.getLogger(__name__)
+from .task import (
+    TemplateFreeformTask,
+    TemplateMultipleChoiceTask,
+    TemplateStructuredTask,
+)
 
 
 @task
@@ -32,7 +23,7 @@ def run_template_task(
     cuda_devices: Optional[str] = None,
     provider_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Run template task evaluation.
+    """Run grouped template task evaluation.
     
     Args:
         model_name: The model to evaluate
@@ -52,24 +43,37 @@ def run_template_task(
         model_name=model_name,
         output_path=output_path,
         server_info=server_info,
+        api_test_result=api_test_result,
         task_config=task_config,
         limit=limit,
+        cuda_devices=cuda_devices,
         provider_config=provider_config,
     )
 
 
 def _prepare_template_task(context: SubtaskContext):
-    return TemplateTask({
-        "dataset": context.task_config.get("dataset", {}),
-        "prompts": context.task_config.get("prompts", {}),
-        "capability_requirements": context.task_config.get("capability_requirements", {}),
-    })
+    """Instantiate the correct task class based on subtask name."""
+    task_map = {
+        "multiple_choice_example": TemplateMultipleChoiceTask,
+        "structured_example": TemplateStructuredTask,
+        "freeform_example": TemplateFreeformTask,
+    }
+    task_cls = task_map.get(context.subtask_name)
+    if task_cls is None:
+        return None
+
+    # Merge prompts/dataset config so each subtask can override as needed.
+    return task_cls(
+        {
+            "dataset": context.subtask_config.get("dataset", {}),
+            "prompts": context.subtask_config.get("prompts", context.prompts),
+        }
+    )
 
 
 TEMPLATE_SPEC = TaskGroupSpec(
     name="template_task",
     display_name="Template task",
     output_subdir="template_task",
-    supports_subtasks=False,
     prepare_task=_prepare_template_task,
 )

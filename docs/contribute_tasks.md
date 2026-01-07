@@ -88,18 +88,14 @@ running the engine. Your task code should not call providers directly.
 
 ### 5. Register the Task
 
-Tasks are discovered via `TASK_REGISTRY` in `src/pipeline.py`. This registry is a map
-from task name to metadata that tells the pipeline how to run it. Each entry includes
-fields like:
-- `run`: the Prefect task function (from your `run.py`).
-- `config_name`: the name of the task config to load from `src/tasks/<task>/task.json`.
-- `display_name`: human-readable label for logs.
-- `set_api_endpoint` and `set_generation_config`: whether to inject extra config.
-- `provider_types`: which provider types are allowed for this task.
+Tasks are discovered via `task.json` entrypoints. Add either:
+- `runner_entrypoint`: path to the `run_*` function (for TaskGroupSpec runners).
+- `entrypoint`: path to the task class (for SimpleTask-only implementations).
 
-Add your task name as a key in `TASK_REGISTRY` and make sure the key matches the name
-used in configs (e.g., `tasks: ["my_task"]`). If the task is not registered, Benchy
-will ignore it even if it appears in configs.
+Common metadata fields to include:
+- `display_name`: human-readable label for logs.
+- `provider_types`: which provider types are allowed for this task.
+- `pipeline_overrides`: set `set_api_endpoint` / `set_generation_config` when needed.
 
 ### 6. Leaderboard (Optional)
 
@@ -118,7 +114,7 @@ python eval.py --config configs/tests/spanish-gptoss.yaml --limit 2
 ## Common Pitfalls
 
 - Missing `capability_requirements` can allow incompatible runs that fail later.
-- Forgetting to register the task in `TASK_REGISTRY` prevents it from running.
+- Forgetting to set `entrypoint` or `runner_entrypoint` prevents the task from running.
 - Task outputs should follow the standard format expected by `save_results()` so
   leaderboard tooling can parse metrics consistently.
 - Multiple-choice tasks must provide `choices` for logprobs scoring; without them,

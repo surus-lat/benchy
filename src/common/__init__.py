@@ -21,8 +21,11 @@ from .dataset_utils import (
 )
 from .choice_utils import (
     CHOICE_LABELS,
+    DEFAULT_ANSWER_MARKERS,
     format_choices,
+    extract_answer_segment,
     parse_choice_index,
+    parse_choice_prediction,
 )
 
 __all__ = [
@@ -38,6 +41,9 @@ __all__ = [
     "iterate_samples",
     # Choice helpers
     "CHOICE_LABELS",
+    "DEFAULT_ANSWER_MARKERS",
     "format_choices",
+    "extract_answer_segment",
     "parse_choice_index",
+    "parse_choice_prediction",
 ]
