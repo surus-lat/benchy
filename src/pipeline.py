@@ -10,7 +10,13 @@ from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
 from .task_completion_checker import TaskCompletionChecker
-from .tasks.registry import is_simple_task_config, run_simple_task, resolve_entrypoint
+from .tasks.registry import (
+    is_simple_task_config,
+    run_simple_task,
+    resolve_entrypoint,
+    is_handler_based_task,
+    discover_and_run_handler_task,
+)
 import os
 import sys
 import logging
@@ -330,7 +336,58 @@ def benchmark_pipeline(
         }
     
     for task_name in pending_tasks:
-        # Load the task config for each requested task name.
+        # Check if this is a handler-based task first (new system)
+        if is_handler_based_task(task_name):
+            logger.info(f"Running {task_name} using convention-based handler system")
+            
+            # For handler-based tasks, construct minimal config from metadata
+            from .tasks.registry import discover_task_group
+            group_info = discover_task_group(task_name.split('.')[0])
+            
+            if group_info:
+                # Build minimal task config from metadata
+                task_config = {
+                    "name": group_info.name,
+                    "display_name": group_info.display_name,
+                    "description": group_info.description,
+                    "tasks": [s.name for s in group_info.subtasks],
+                    "defaults": task_defaults_overrides or {},
+                    "prompts": {},
+                    "task_configs": {},
+                }
+                
+                # Merge metadata capability requirements
+                if "capability_requirements" in group_info.metadata:
+                    task_config["capability_requirements"] = group_info.metadata["capability_requirements"]
+                
+                task_configs_by_name[task_name] = task_config
+                display_name = group_info.display_name
+                logger.info(f"Running {display_name} evaluation...")
+                
+                # Build cloud provider config if needed
+                cloud_provider_config = None
+                if provider_config:
+                    cloud_provider_config = {
+                        **provider_config,
+                        "provider_type": provider_type,
+                    }
+                
+                try:
+                    task_results[task_name] = discover_and_run_handler_task(
+                        task_ref=task_name,
+                        model_name=model_name,
+                        output_path=model_output_path,
+                        server_info=server_info,
+                        task_config=task_config,
+                        limit=limit,
+                        provider_config=cloud_provider_config,
+                    )
+                    continue
+                except Exception as e:
+                    logger.error(f"Failed to run handler-based task {task_name}: {e}")
+                    raise
+        
+        # Fall back to legacy systems - load task.json config
         try:
             task_config = config_manager.get_task_config(task_name, task_defaults_overrides)
         except FileNotFoundError:
@@ -364,6 +421,7 @@ def benchmark_pipeline(
                 "provider_type": provider_type,
             }
 
+        # Legacy systems
         # Prefer explicit runner entrypoints; otherwise fall back to SimpleTask entrypoints.
         runner_entrypoint = task_config.get("runner_entrypoint")
         if runner_entrypoint:
