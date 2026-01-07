@@ -45,8 +45,30 @@ SUMMARY_SKIP_KEYS = {
 def _summarize_task_metrics(
     metrics: Dict[str, Any],
     metrics_manifest: Optional[list] = None,
+) -> Dict[str, Any]:
+    """Filter aggregate metrics to numeric values excluding counts/metadata.
+    
+    For tasks with multiple subtasks, preserves the 'subtasks' structure.
+    """
+    # Check if this is a multi-subtask result
+    if "subtasks" in metrics and isinstance(metrics["subtasks"], dict):
+        # Recursively summarize each subtask
+        return {
+            "subtasks": {
+                subtask_name: _summarize_single_task_metrics(subtask_metrics, metrics_manifest)
+                for subtask_name, subtask_metrics in metrics["subtasks"].items()
+            }
+        }
+    
+    # Single task or flat metrics
+    return _summarize_single_task_metrics(metrics, metrics_manifest)
+
+
+def _summarize_single_task_metrics(
+    metrics: Dict[str, Any],
+    metrics_manifest: Optional[list] = None,
 ) -> Dict[str, float]:
-    """Filter aggregate metrics to numeric values excluding counts/metadata."""
+    """Summarize metrics for a single task/subtask."""
     summarized: Dict[str, float] = {}
     if metrics_manifest:
         for key in metrics_manifest:
@@ -342,15 +364,27 @@ def benchmark_pipeline(
             
             # For handler-based tasks, construct minimal config from metadata
             from .tasks.registry import discover_task_group
-            group_info = discover_task_group(task_name.split('.')[0])
+            parts = task_name.split('.')
+            group_name = parts[0]
+            specific_subtask = parts[1] if len(parts) > 1 else None
+            
+            group_info = discover_task_group(group_name)
             
             if group_info:
+                # Determine which subtasks to run
+                if specific_subtask:
+                    # Specific subtask requested: only run that one
+                    subtasks_to_run = [specific_subtask]
+                else:
+                    # No specific subtask: run all subtasks in the group
+                    subtasks_to_run = [s.name for s in group_info.subtasks]
+                
                 # Build minimal task config from metadata
                 task_config = {
                     "name": group_info.name,
                     "display_name": group_info.display_name,
                     "description": group_info.description,
-                    "tasks": [s.name for s in group_info.subtasks],
+                    "tasks": subtasks_to_run,
                     "defaults": task_defaults_overrides or {},
                     "prompts": {},
                     "task_configs": {},

@@ -1,0 +1,22 @@
+name: structured_extraction
+display_name: Structured Extraction
+description: Structured data extraction using guided JSON schema
+
+capability_requirements:
+  requires_logprobs: optional
+  requires_multimodal: optional
+  requires_schema: preferred
+  requires_files: optional
+  requires_streaming: optional
+
+subtasks:
+  paraloq:
+    description: Structured JSON data extraction from diverse text sources
+    url: https://huggingface.co/datasets/paraloq/json_data_extraction
+    long_description: "Paraloq evaluates AI systems' capabilities for extracting structured information from unstructured text and returning it in JSON format. Based on the paraloq/json_data_extraction dataset, this task tests models' ability to parse diverse document types including medical records, e-commerce listings, business documents, travel itineraries, media content, technology specifications, and manufacturing reports. The evaluation focuses on the model's precision in extracting all available information while adhering to provided JSON schemas, testing both comprehension and structured output generation capabilities across multiple domains."
+    
+  chat_extract:
+    description: Structured data extraction from chat conversations
+    dataset_url: https://huggingface.co/datasets/mauroibz/chat_structured_extraction
+    long_description: "ChatExtract evaluates models' ability to extract structured information from conversational chat data following a JSON schema. This task tests the model's capability to parse informal conversation text and accurately extract key information fields while maintaining schema compliance."
+

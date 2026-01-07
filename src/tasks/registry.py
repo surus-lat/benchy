@@ -335,13 +335,27 @@ def build_handler_task_spec(
         # Load and instantiate the handler
         return load_subtask_handler(subtask_info, handler_config)
 
+    def _aggregate_metrics(all_metrics: Dict[str, Dict[str, Any]], subtasks_run: List[str]) -> Dict[str, Any]:
+        """Aggregate metrics from multiple subtasks.
+        
+        For single subtask: return metrics directly (flat).
+        For multiple subtasks: return under 'subtasks' key for clarity.
+        """
+        if len(subtasks_run) == 1:
+            # Single subtask: keep metrics flat for backward compatibility
+            return all_metrics.get(subtasks_run[0], {})
+        else:
+            # Multiple subtasks: structure under 'subtasks' key
+            return {"subtasks": {name: all_metrics.get(name, {}) for name in subtasks_run}}
+
     return TaskGroupSpec(
         name=group_info.name,
         display_name=group_info.display_name,
         output_subdir=group_info.name,
-        supports_subtasks=len(subtasks) > 1,
+        supports_subtasks=True,  # Always True for handler-based tasks
         default_subtasks=[s.name for s in subtasks],
         prepare_task=_prepare_task,
+        aggregate_metrics=_aggregate_metrics,
     )
 
 
