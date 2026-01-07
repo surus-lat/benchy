@@ -44,7 +44,7 @@ Then the `run_<task>()` wrapper simply calls `run_task_group(...)`.
    - If you preload shared resources, wire them into `setup` and pass through `context.shared`.
 
 5. **Register the task**
-   - Add the task to `src/pipeline.py` `TASK_REGISTRY`.
+   - Set `runner_entrypoint` in `task.json` (or `entrypoint` for SimpleTask).
 
 ## Example
 

@@ -9,7 +9,7 @@ This guide shows how to implement new benchmark tasks using the modular engine.
 │                           Pipeline                                   │
 │  - Manages provider (vLLM server, cloud APIs)                       │
 │  - Builds connection_info dict                                       │
-│  - Dispatches tasks via TASK_REGISTRY                                │
+│  - Dispatches tasks via task.json entrypoints                        │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -76,6 +76,10 @@ Single-task config (no subtasks):
 {
   "name": "my_task",
   "description": "Brief description of what this task evaluates",
+  "display_name": "My Task",
+  "task_format": "freeform",
+  "runner_entrypoint": "src.tasks.my_task.run:run_my_task",
+  "provider_types": ["openai", "anthropic", "surus", "together"],
   "dataset": {
     "data_file": "data.jsonl"
   },
@@ -111,6 +115,10 @@ Grouped task config (with subtasks):
 {
   "name": "my_task",
   "description": "Brief description of what this task evaluates",
+  "display_name": "My Task",
+  "task_format": "grouped",
+  "runner_entrypoint": "src.tasks.my_task.run:run_my_task",
+  "provider_types": ["openai", "anthropic", "surus", "together"],
   "tasks": [
     "subtask1",
     "subtask2"
@@ -154,12 +162,19 @@ Optional `capability_requirements` lets you mark requirements as:
 `required`, `preferred`, or `optional` (for requires_multimodal/requires_schema/
 requires_files/requires_logprobs/requires_streaming).
 
+`task_format` should be one of: `multiple_choice`, `freeform`, `structured`, or `grouped`.
+This is used for config validation and to keep config shapes discoverable.
+
 Copy/paste starter (grouped task with multiple-choice, structured, and freeform subtasks):
 
 ```json
 {
   "name": "my_task",
   "description": "Example grouped task with three subtask types",
+  "display_name": "My Task",
+  "task_format": "grouped",
+  "runner_entrypoint": "src.tasks.my_task.run:run_my_task",
+  "provider_types": ["openai", "anthropic", "surus", "together"],
   "tasks": [
     "mcq_example",
     "structured_example",
@@ -466,20 +481,30 @@ For grouped tasks, set `supports_subtasks=True` and implement `aggregate_metrics
 Use `setup` / `teardown` in the spec to load shared resources once (metrics models,
 dataset caches) and reuse them across subtasks.
 
-### 4. Register Task in Pipeline (`src/pipeline.py`)
+### 4. Register Task in task.json
 
-Add an entry to `TASK_REGISTRY`:
+Declare an entrypoint so the pipeline can invoke your task runner:
 
-```python
-TASK_REGISTRY = {
-    "my_task": {
-        "run": run_my_task,
-        "config_name": "my_task",
-        "display_name": "My task",
-        "set_api_endpoint": True,
-        "set_generation_config": True,
-        "provider_types": ["openai", "anthropic", "surus", "together"],
-    },
+```json
+{
+  "name": "my_task",
+  "display_name": "My task",
+  "runner_entrypoint": "src.tasks.my_task.run:run_my_task",
+  "provider_types": ["openai", "anthropic", "surus", "together"],
+  "pipeline_overrides": {
+    "set_api_endpoint": true,
+    "set_generation_config": true
+  }
+}
+```
+
+For SimpleTask-only implementations, use the class entrypoint instead:
+
+```json
+{
+  "name": "my_task",
+  "task_format": "freeform",
+  "entrypoint": "src.tasks.my_task.task:MyTask"
 }
 ```
 
@@ -554,10 +579,9 @@ python eval.py --config configs/models/openai_gpt-4o-mini.yaml
 ## Minimal Starter Example (Single Task)
 
 1. Copy the template: `cp -r src/tasks/_template src/tasks/my_task`
-2. Update `src/tasks/my_task/task.json` with `dataset.data_file` and prompts.
+2. Update `src/tasks/my_task/task.json` with `entrypoint`, dataset, prompts, and provider_types.
 3. Update `src/tasks/my_task/task.py` constants and metrics.
-4. Update `src/tasks/my_task/run.py` `TaskGroupSpec` names.
-5. Register in `src/pipeline.py` `TASK_REGISTRY`.
+4. If you need a custom runner, update `src/tasks/my_task/run.py` and set `runner_entrypoint` in task.json.
 
 ## Example: Complete Reference
 
@@ -677,11 +701,10 @@ def get_error_metrics(self, error: str, error_type: Optional[str] = None):
 ### Required
 
 - [ ] Create `src/tasks/my_task/task.json`
-- [ ] Create task class with `load()`, `get_samples()`, `get_prompt()`, `calculate_metrics()`, `aggregate_metrics()`
-- [ ] Implement `get_error_metrics()` for error handling
+- [ ] Create task class (SimpleTask or BaseTask)
+- [ ] Ensure `entrypoint` or `runner_entrypoint` is set in task.json
 - [ ] Set capability flags (`answer_type`, `requires_logprobs`, etc.) as needed
-- [ ] Create `TaskGroupSpec` and `run_task_group` wrapper in `src/tasks/my_task/run.py`
-- [ ] Register in `src/pipeline.py` `TASK_REGISTRY`
+- [ ] If using a custom runner, create `TaskGroupSpec` + `run_task_group` wrapper in `src/tasks/my_task/run.py`
 
 ### Optional
 

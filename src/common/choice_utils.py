@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from typing import Iterable, List, Optional, Sequence
 
 CHOICE_LABELS = [chr(ord("A") + i) for i in range(26)]
+DEFAULT_ANSWER_MARKERS = ("answer", "respuesta", "label", "etiqueta", "salida", "output")
 
 
 def normalize_text(text: str) -> str:
@@ -96,3 +98,112 @@ def parse_choice_index(
             return idx
 
     return None
+
+
+def extract_answer_segment(response: str, markers: Sequence[str] = DEFAULT_ANSWER_MARKERS) -> str:
+    """Extract the answer segment from a response string.
+
+    Uses the last matching marker (e.g., "Answer:") to reduce false positives.
+    """
+    # Find the last marker to avoid capturing earlier instruction text.
+    lowered = response.lower()
+    last_pos = -1
+    for marker in markers:
+        idx = lowered.rfind(marker)
+        if idx > last_pos:
+            last_pos = idx
+    if last_pos == -1:
+        return response.strip()
+
+    # Trim the marker prefix and any colon separator.
+    segment = response[last_pos:]
+    split_idx = segment.find(":")
+    if split_idx != -1:
+        segment = segment[split_idx + 1 :]
+    return segment.strip()
+
+
+def parse_choice_prediction(
+    prediction: object,
+    choices: Sequence[str],
+    *,
+    labels: Optional[Sequence[str]] = None,
+    label_to_index: Optional[dict] = None,
+    answer_markers: Sequence[str] = DEFAULT_ANSWER_MARKERS,
+) -> Optional[int]:
+    """Parse a model prediction into a choice index.
+
+    Supports numeric labels, letter labels, JSON payloads, or freeform text.
+    """
+    # Fast-path empty predictions.
+    if prediction is None:
+        return None
+
+    # Parse common JSON-like outputs (dict/list/JSON string).
+    if isinstance(prediction, dict):
+        for key in ("label", "answer", "prediction", "category", "class"):
+            if key in prediction:
+                return parse_choice_prediction(
+                    prediction[key],
+                    choices,
+                    labels=labels,
+                    label_to_index=label_to_index,
+                    answer_markers=answer_markers,
+                )
+        if len(prediction) == 1:
+            return parse_choice_prediction(
+                next(iter(prediction.values())),
+                choices,
+                labels=labels,
+                label_to_index=label_to_index,
+                answer_markers=answer_markers,
+            )
+        return None
+
+    if isinstance(prediction, list):
+        if len(prediction) == 1:
+            return parse_choice_prediction(
+                prediction[0],
+                choices,
+                labels=labels,
+                label_to_index=label_to_index,
+                answer_markers=answer_markers,
+            )
+        return None
+
+    # Handle numeric labels directly.
+    if isinstance(prediction, (bool, int, float)):
+        return parse_choice_index(
+            prediction,
+            choices,
+            labels=labels,
+            label_to_index=label_to_index,
+        )
+
+    # Fall back to text parsing.
+    text = str(prediction).strip()
+    if not text:
+        return None
+
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if parsed is not None:
+            return parse_choice_prediction(
+                parsed,
+                choices,
+                labels=labels,
+                label_to_index=label_to_index,
+                answer_markers=answer_markers,
+            )
+
+    # Trim to an answer-only segment before parsing.
+    answer_text = extract_answer_segment(text, markers=answer_markers)
+    return parse_choice_index(
+        answer_text,
+        choices,
+        labels=labels,
+        label_to_index=label_to_index,
+    )
