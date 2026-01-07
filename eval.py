@@ -9,21 +9,13 @@ from typing import Optional
 # Load environment variables from .env file
 load_dotenv()
 
-# Set Prefect API URL BEFORE importing Prefect modules
-# This must be done before any Prefect imports
-if 'PREFECT_API_URL' not in os.environ:
-    os.environ['PREFECT_API_URL'] = 'http://localhost:4200/api'
-
 import logging
 import signal
-
-from prefect import serve
 
 from src.config_loader import load_config
 from src.config_manager import ConfigManager
 from src.gpu_config import load_gpu_config
 from src.logging_utils import setup_file_logging
-from src.pipeline import benchmark_pipeline, test_vllm_server
 from src.run_id_manager import (
     generate_run_id,
     get_prefect_flow_name,
@@ -251,6 +243,27 @@ def main():
     if args.log_samples and args.no_log_samples:
         logger.error("Cannot specify both --log-samples and --no-log-samples")
         return
+
+    prefect_enabled = args.register
+    if not prefect_enabled:
+        prefect_enabled = os.environ.get("BENCHY_ENABLE_PREFECT", "").lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+
+    if prefect_enabled:
+        os.environ.pop("BENCHY_DISABLE_PREFECT", None)
+        if args.prefect_url:
+            os.environ["PREFECT_API_URL"] = args.prefect_url
+        elif "PREFECT_API_URL" not in os.environ:
+            os.environ["PREFECT_API_URL"] = "http://localhost:4200/api"
+    else:
+        os.environ.setdefault("BENCHY_DISABLE_PREFECT", "1")
+
+    # Prefect-dependent imports must happen after BENCHY_DISABLE_PREFECT is set.
+    from src.prefect_compat import PREFECT_AVAILABLE, serve
+    from src.pipeline import benchmark_pipeline, test_vllm_server
     
     logger.info("Starting benchy - vLLM-powered ML model benchmarking")
     
@@ -263,12 +276,13 @@ def main():
         logger.info(f"Python path: {sys.executable}")
         logger.info(f"Working directory: {os.getcwd()}")
     
-    # Override Prefect API URL if specified via command line
-    if args.prefect_url:
-        os.environ['PREFECT_API_URL'] = args.prefect_url
-        logger.info(f"Using Prefect API URL from command line: {args.prefect_url}")
+    if prefect_enabled:
+        logger.info(
+            "Prefect enabled; using API URL: "
+            f"{os.environ.get('PREFECT_API_URL', 'http://localhost:4200/api')}"
+        )
     else:
-        logger.info(f"Using Prefect API URL: {os.environ.get('PREFECT_API_URL', 'http://localhost:4200/api')}")
+        logger.info("Prefect disabled; running pipeline without orchestration")
     
     # Load configuration
     try:
@@ -416,6 +430,12 @@ def main():
     
     # Handle flow registration if requested
     if args.register:
+        if not PREFECT_AVAILABLE:
+            logger.error(
+                "Prefect is disabled or not installed; install with `pip install .[prefect]` "
+                "and unset BENCHY_DISABLE_PREFECT to register flows."
+            )
+            return
         logger.info("Registering flows with Prefect server for dashboard visibility...")
         # Set flow names with run_id prefix
         benchmark_pipeline.name = get_prefect_flow_name("benchmark_pipeline", run_id)

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional, Dict, Any
-from prefect import flow
+from .prefect_compat import flow
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .inference.vllm_config import VLLMServerConfig
 from .config_loader import load_config

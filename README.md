@@ -37,28 +37,84 @@ interfaces fit together if you want a more detailed mental model.
 - Python 3.12+
 - CUDA-compatible GPU(s) for local vLLM (not required for cloud providers)
 - Docker (optional, for Prefect UI)
+- [uv](https://github.com/astral-sh/uv) (recommended, but optional - traditional venv + pip also works)
 
 ### Install
 
-```bash
-# Recommended with uv
-uv sync
-
-# Or with venv + pip
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-Optional setup helper (prefetches structured extraction data):
+**Option 1: Using the setup script (recommended)**
 
 ```bash
 bash setup.sh
 ```
 
-If you use cloud providers, copy `env.example` to `.env` and fill in API keys.
+This will:
+- Create a virtual environment (`.venv`)
+- Install all dependencies
+- Optionally download structured extraction dataset
+
+Optional extras (comma-separated) and dataset skip:
+
+```bash
+BENCHY_EXTRAS=translation,prefect BENCHY_SKIP_DATASET=1 bash setup.sh
+```
+
+**Option 2: Manual setup with uv (recommended for developers)**
+
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create venv and install dependencies
+uv venv --python 3.12
+source .venv/bin/activate
+uv sync
+```
+
+**Option 3: Manual setup with traditional venv + pip**
+
+```bash
+# Create virtual environment (use Python 3.12)
+python3.12 -m venv .venv
+source .venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip setuptools wheel
+
+# Install dependencies
+pip install -e .
+```
+
+**Optional extras**
+
+Prefect orchestration (optional):
+
+```bash
+pip install -e '.[prefect]'
+# or with uv:
+uv sync --extra prefect
+```
+
+Translation metrics (only for translation tasks):
+
+```bash
+pip install '.[translation]'
+# or with uv:
+uv sync --extra translation
+```
+
+**Environment setup**
+
+If you use cloud providers, copy `env.example` to `.env` and fill in API keys:
+
+```bash
+cp env.example .env
+# Edit .env with your API keys
+```
 
 ### Prefect UI (Optional)
+
+Prefect is disabled by default; enable it with `BENCHY_ENABLE_PREFECT=1` (or `--register`)
+and install the extra dependency.
 
 ```bash
 docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0
