@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from prefect import task
+from ...prefect_compat import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from .task import ClassifyTask

@@ -8,7 +8,7 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
-from prefect import task
+from ...prefect_compat import task
 
 from ...engine import (
     BenchmarkRunner,

@@ -7,8 +7,7 @@ import time
 import requests
 import psutil
 from typing import Dict, Any, Optional
-from prefect import task
-from prefect.cache_policies import NO_CACHE
+from ..prefect_compat import task, NO_CACHE
 
 from .venv_manager import VLLMVenvManager
 from .vllm_config import VLLMServerConfig

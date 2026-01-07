@@ -43,6 +43,7 @@ logs/
 # Data
 *.jsonl
 *.json
+!src/tasks/**/task.json
 !configs/**/*.json
 !configs/**/*.yaml
 *.csv

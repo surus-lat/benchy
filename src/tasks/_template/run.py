@@ -1,8 +1,16 @@
-"""Template task - grouped entry point for multiple formats."""
+"""Template task - grouped entry point for multiple formats.
 
-from typing import Any, Dict, Optional
+The task class (TemplateTask) handles:
+- Auto-downloading data from HuggingFace if needed
+- Preprocessing samples to eval format
+- Metrics calculation
 
-from prefect import task
+This file just wires everything together.
+"""
+
+import logging
+from typing import Dict, Any, Optional
+from ...prefect_compat import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
 from .task import (

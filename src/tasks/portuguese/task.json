@@ -1,0 +1,178 @@
+{
+  "name": "portuguese",
+  "display_name": "Portuguese language",
+  "description": "Portuguese language evaluation benchmark",
+  "task_format": "grouped",
+  "runner_entrypoint": "src.tasks.portuguese.run:run_portuguese",
+  "provider_types": [
+    "openai",
+    "anthropic",
+    "surus",
+    "together"
+  ],
+  "pipeline_overrides": {
+    "set_api_endpoint": true,
+    "set_generation_config": true
+  },
+  "tasks": [
+    "assin2_rte",
+    "assin2_sts",
+    "bluex",
+    "enem_challenge",
+    "oab_exams"
+  ],
+  "task_configs": {
+    "assin2_rte": {
+      "dataset_path": "assin2",
+      "split": "test",
+      "description": "Abaixo est\u00e3o pares de premissa e hip\u00f3tese. Para cada par, indique se a hip\u00f3tese\npode ser inferida a partir da premissa, responda apenas com \"Sim\" ou \"N\u00e3o\".\n\n",
+      "fewshot": {
+        "split": "train",
+        "id_column": "sentence_pair_id",
+        "id_list": [],
+        "num_fewshot": 0
+      }
+    },
+    "assin2_sts": {
+      "dataset_path": "assin2",
+      "split": "test",
+      "description": "Abaixo est\u00e3o pares de frases que voc\u00ea deve avaliar o grau de similaridade.\nD\u00ea uma pontua\u00e7\u00e3o entre 1,0 e 5,0, sendo 1,0 pouco similar e 5,0 muito similar.\n\n",
+      "fewshot": {
+        "split": "train",
+        "id_column": "sentence_pair_id",
+        "id_list": [],
+        "num_fewshot": 0
+      }
+    },
+    "bluex": {
+      "dataset_path": "eduagarcia-temp/BLUEX_without_images",
+      "split": "train",
+      "description": "As perguntas a seguir s\u00e3o quest\u00f5es de m\u00faltipla escolha de provas de vestibular\nde universidades brasileiras, selecione a \u00fanica alternativa correta e responda\napenas com as letras \"A\", \"B\", \"C\", \"D\" ou \"E\".\n\n",
+      "fewshot": {
+        "split": "train",
+        "id_column": "id",
+        "id_list": [],
+        "num_fewshot": 0
+      }
+    },
+    "enem_challenge": {
+      "dataset_path": "eduagarcia/enem_challenge",
+      "split": "train",
+      "description": "As perguntas a seguir s\u00e3o quest\u00f5es de m\u00faltipla escolha do Exame Nacional do Ensino\nM\u00e9dio (ENEM), selecione a \u00fanica alternativa correta e responda apenas com as letras\n\"A\", \"B\", \"C\", \"D\" ou \"E\".\n\n",
+      "fewshot": {
+        "split": "train",
+        "id_column": "id",
+        "id_list": [],
+        "num_fewshot": 0
+      }
+    },
+    "oab_exams": {
+      "dataset_path": "eduagarcia/oab_exams",
+      "split": "train",
+      "description": "As perguntas a seguir s\u00e3o quest\u00f5es de m\u00faltipla escolha do Exame de Ordem da Ordem\ndos Advogados do Brasil (OAB), selecione a \u00fanica alternativa correta e responda\napenas com as letras \"A\", \"B\", \"C\" ou \"D\".\n\n",
+      "fewshot": {
+        "split": "train",
+        "id_column": "id",
+        "id_list": [],
+        "num_fewshot": 0
+      }
+    }
+  },
+  "prompts": {
+    "system": "",
+    "user": ""
+  },
+  "defaults": {
+    "batch_size": 20,
+    "log_samples": false,
+    "temperature": 0.0,
+    "max_tokens": 512,
+    "timeout": 120,
+    "max_retries": 3
+  },
+  "output": {
+    "subdirectory": "portuguese"
+  },
+  "metrics_manifest": [
+    "acc",
+    "f1_macro",
+    "mse",
+    "pearson",
+    "error_rate"
+  ],
+  "group": "latam_pr",
+  "group_metadata": {
+    "name": "Portuguese LATAM",
+    "description": "Portuguese language tasks for Latin America",
+    "description_en": "Portuguese language tasks for Latin America",
+    "description_es": "Tareas en portugu\u00e9s para Am\u00e9rica Latina",
+    "description_pt": "Tarefas em portugu\u00eas para a Am\u00e9rica Latina",
+    "long_description": "Suite of selected tasks from the Portuguese LATAM group designed to evaluate the performance of models in the Portuguese language. Based on the work of the Open Portuguese LLM Leaderboard, these tasks were carefully selected to measure the capabilities of language models in understanding Portuguese. The tasks cover a wide range of linguistic abilities, from basic comprehension to complex reasoning in Portuguese. The evaluation suite includes tasks like ASSIN2 for textual entailment and semantic similarity, BLUEX for university entrance exams, and ENEM for standardized testing comprehension. This comprehensive set of benchmarks helps assess how well language models can process and generate Portuguese text across different contexts and difficulty levels.",
+    "long_description_en": "Suite of selected tasks from the Portuguese LATAM group designed to evaluate the performance of models in the Portuguese language. Based on the work of the Open Portuguese LLM Leaderboard, these tasks were carefully selected to measure the capabilities of language models in understanding Portuguese. The tasks cover a wide range of linguistic abilities, from basic comprehension to complex reasoning in Portuguese. The evaluation suite includes tasks like ASSIN2 for textual entailment and semantic similarity, BLUEX for university entrance exams, and ENEM for standardized testing comprehension. This comprehensive set of benchmarks helps assess how well language models can process and generate Portuguese text across different contexts and difficulty levels.",
+    "long_description_es": "Conjunto de tareas seleccionadas del grupo LATAM en portugu\u00e9s, dise\u00f1ado para evaluar el desempe\u00f1o de los modelos en dicho idioma. Basado en el trabajo del Open Portuguese LLM Leaderboard, estas tareas fueron cuidadosamente elegidas para medir la capacidad de los modelos de lenguaje para comprender el portugu\u00e9s. Cubren un amplio espectro de habilidades, desde comprensi\u00f3n b\u00e1sica hasta razonamiento complejo. La suite incluye ASSIN2 para inferencia textual y similitud sem\u00e1ntica, BLUEX para ex\u00e1menes de ingreso a la universidad y ENEM para comprensi\u00f3n en pruebas estandarizadas. Este conjunto permite evaluar c\u00f3mo los modelos procesan y generan texto en portugu\u00e9s en distintos contextos y niveles de dificultad.",
+    "long_description_pt": "Conjunto de tarefas selecionadas do grupo LATAM em portugu\u00eas, projetado para avaliar o desempenho dos modelos no idioma. Com base no Open Portuguese LLM Leaderboard, essas tarefas foram escolhidas para medir a capacidade dos modelos de compreender o portugu\u00eas. As tarefas cobrem desde compreens\u00e3o b\u00e1sica at\u00e9 racioc\u00ednio complexo. A su\u00edte inclui ASSIN2 para infer\u00eancia textual e similaridade sem\u00e2ntica, BLUEX para vestibulares e ENEM para compreens\u00e3o em exames padronizados. Esse conjunto avalia como os modelos processam e geram texto em portugu\u00eas em diversos contextos e n\u00edveis de dificuldade.",
+    "repository": "https://github.com/surus-lat/portuguese-bench"
+  },
+  "task_metadata": {
+    "assin2_rte": {
+      "description": "Portuguese RTE (Recognizing Textual Entailment) from ASSIN2",
+      "description_en": "Portuguese RTE (Recognizing Textual Entailment) from ASSIN2",
+      "description_es": "RTE en portugu\u00e9s (reconocimiento de inferencia textual) de ASSIN2",
+      "description_pt": "RTE em portugu\u00eas (Reconhecimento de Entailment Textual) do ASSIN2",
+      "long_description": "ASSIN2 (Avalia\u00e7\u00e3o de Similaridade Sem\u00e2ntica e de Infer\u00eancia Textual) is a Brazilian Portuguese benchmark. This RTE configuration predicts whether a hypothesis is entailed by a premise for sentence pairs in PT-BR, enabling evaluation of textual inference capabilities.",
+      "long_description_en": "ASSIN2 (Semantic Similarity and Textual Inference Evaluation) is a Brazilian Portuguese benchmark. This RTE setup predicts whether a hypothesis is entailed by a premise for PT-BR sentence pairs, enabling evaluation of textual inference.",
+      "long_description_es": "ASSIN2 (Evaluaci\u00f3n de Similitud Sem\u00e1ntica e Inferencia Textual) es un benchmark en portugu\u00e9s de Brasil. Esta configuraci\u00f3n de RTE predice si una hip\u00f3tesis se infiere de una premisa para pares de oraciones en PT-BR, evaluando la inferencia textual.",
+      "long_description_pt": "ASSIN2 (Avalia\u00e7\u00e3o de Similaridade Sem\u00e2ntica e de Infer\u00eancia Textual) \u00e9 um benchmark em portugu\u00eas do Brasil. Esta configura\u00e7\u00e3o de RTE prev\u00ea se uma hip\u00f3tese \u00e9 implicada por uma premissa em pares de frases em PT-BR, avaliando a infer\u00eancia textual.",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/nilc-nlp/assin2"
+    },
+    "assin2_sts": {
+      "description": "Portuguese STS (Semantic Textual Similarity) from ASSIN2",
+      "description_en": "Portuguese STS (Semantic Textual Similarity) from ASSIN2",
+      "description_es": "STS en portugu\u00e9s (similitud sem\u00e1ntica textual) de ASSIN2",
+      "description_pt": "STS em portugu\u00eas (Similaridade Textual Sem\u00e2ntica) do ASSIN2",
+      "long_description": "The ASSIN2 STS track measures semantic similarity between pairs of Brazilian Portuguese sentences on a 1\u20135 scale. It evaluates fine-grained understanding of meaning and paraphrase in PT-BR.",
+      "long_description_en": "The ASSIN2 STS track measures semantic similarity between pairs of Brazilian Portuguese sentences on a 1\u20135 scale, evaluating nuanced understanding of meaning and paraphrase in PT-BR.",
+      "long_description_es": "La pista STS de ASSIN2 mide la similitud sem\u00e1ntica entre pares de oraciones en portugu\u00e9s de Brasil en una escala de 1\u20135, evaluando la comprensi\u00f3n fina del significado y la par\u00e1frasis en PT-BR.",
+      "long_description_pt": "A trilha STS do ASSIN2 mede a similaridade sem\u00e2ntica entre pares de frases em portugu\u00eas do Brasil em uma escala de 1\u20135, avaliando a compreens\u00e3o detalhada de significado e par\u00e1frase em PT-BR.",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/nilc-nlp/assin2"
+    },
+    "bluex": {
+      "description": "Portuguese BLUEX benchmark",
+      "description_en": "Portuguese BLUEX benchmark",
+      "description_es": "Benchmark portugu\u00e9s BLUEX",
+      "description_pt": "Benchmark portugu\u00eas BLUEX",
+      "long_description": "BLUEX is a multiple-choice benchmark built from Brazilian university entrance exams (vestibulares), covering diverse subjects in Portuguese. This configuration uses a version without images to allow pure text evaluation.",
+      "long_description_en": "BLUEX is a multiple-choice benchmark built from Brazilian university entrance exams (vestibulares), covering diverse subjects in Portuguese. This setup uses a version without images to allow text-only evaluation.",
+      "long_description_es": "BLUEX es un benchmark de opci\u00f3n m\u00faltiple construido a partir de ex\u00e1menes de ingreso universitario brasile\u00f1os (vestibulares), que cubre diversas materias en portugu\u00e9s. Esta configuraci\u00f3n sin im\u00e1genes permite evaluaci\u00f3n solo con texto.",
+      "long_description_pt": "BLUEX \u00e9 um benchmark de m\u00faltipla escolha constru\u00eddo a partir de vestibulares brasileiros, cobrindo diversas disciplinas em portugu\u00eas. Esta configura\u00e7\u00e3o sem imagens permite avalia\u00e7\u00e3o apenas em texto.",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/eduagarcia-temp/BLUEX_without_images"
+    },
+    "enem_challenge": {
+      "description": "Multiple Choice Questions from the ENEM Exam",
+      "description_en": "Multiple-choice questions from the ENEM exam",
+      "description_es": "Preguntas de opci\u00f3n m\u00faltiple del examen ENEM",
+      "description_pt": "Quest\u00f5es de m\u00faltipla escolha do exame ENEM",
+      "long_description": "University Entrance Exam as a Guiding Test for Artificial Intelligence\nhttps://www.ime.usp.br/~ddm/project/enem/ENEM-GuidingTest.pdf\n\nThe ENEM Challenge consists in designing an autonomous system that matches the performance of a human students on the exam. The overall goal is to foster and evaluate the development of Artificial Intelligence techniques that have good performance on complex cognitive tasks, not particularly designed for AI systems. In addition, this challenge aims to promote and give more visiblity to the development of NLP tools for Brazilian Portuguese.\n\nHomepage: https://www.ime.usp.br/~ddm/project/enem",
+      "long_description_en": "University Entrance Exam as a Guiding Test for Artificial Intelligence\nhttps://www.ime.usp.br/~ddm/project/enem/ENEM-GuidingTest.pdf\n\nThe ENEM Challenge consists of designing an autonomous system that matches the performance of human students on the exam. The goal is to foster and evaluate AI techniques that perform well on complex cognitive tasks not specifically designed for AI, while promoting the development of NLP tools for Brazilian Portuguese.\n\nHomepage: https://www.ime.usp.br/~ddm/project/enem",
+      "long_description_es": "Examen de ingreso universitario como prueba gu\u00eda para la inteligencia artificial\nhttps://www.ime.usp.br/~ddm/project/enem/ENEM-GuidingTest.pdf\n\nEl Desaf\u00edo ENEM consiste en dise\u00f1ar un sistema aut\u00f3nomo que iguale el desempe\u00f1o de estudiantes humanos en el examen. El objetivo es fomentar y evaluar t\u00e9cnicas de IA que funcionen bien en tareas cognitivas complejas no dise\u00f1adas espec\u00edficamente para IA, adem\u00e1s de promover el desarrollo de herramientas de PLN para el portugu\u00e9s brasile\u00f1o.\n\nP\u00e1gina: https://www.ime.usp.br/~ddm/project/enem",
+      "long_description_pt": "Exame de ingresso universit\u00e1rio como teste orientador para intelig\u00eancia artificial\nhttps://www.ime.usp.br/~ddm/project/enem/ENEM-GuidingTest.pdf\n\nO Desafio ENEM consiste em projetar um sistema aut\u00f4nomo que atinja o desempenho de estudantes humanos no exame. O objetivo \u00e9 fomentar e avaliar t\u00e9cnicas de IA com bom desempenho em tarefas cognitivas complexas n\u00e3o projetadas especificamente para IA, al\u00e9m de promover o desenvolvimento de ferramentas de PLN para o portugu\u00eas do Brasil.\n\nP\u00e1gina: https://www.ime.usp.br/~ddm/project/enem",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/eduagarcia/enem_challenge"
+    },
+    "oab_exams": {
+      "description": "Portuguese OAB (Brazilian Bar Association) exams",
+      "description_en": "Portuguese OAB (Brazilian Bar Association) exams",
+      "description_es": "Ex\u00e1menes de la OAB (abogac\u00eda brasile\u00f1a) en portugu\u00e9s",
+      "description_pt": "Exames da OAB (Ordem dos Advogados do Brasil) em portugu\u00eas",
+      "long_description": "Multiple-choice questions from Brazil's OAB Bar examinations across legal domains. Evaluates legal reasoning, reading comprehension, and knowledge of Brazilian law in Portuguese.",
+      "long_description_en": "Multiple-choice questions from Brazil's OAB Bar exams across legal domains. Evaluates legal reasoning, reading comprehension, and knowledge of Brazilian law in Portuguese.",
+      "long_description_es": "Preguntas de opci\u00f3n m\u00faltiple de los ex\u00e1menes de la OAB de Brasil en distintos \u00e1mbitos jur\u00eddicos. Eval\u00faa razonamiento legal, comprensi\u00f3n lectora y conocimiento del derecho brasile\u00f1o en portugu\u00e9s.",
+      "long_description_pt": "Quest\u00f5es de m\u00faltipla escolha dos exames da OAB do Brasil em v\u00e1rias \u00e1reas do direito. Avalia racioc\u00ednio jur\u00eddico, compreens\u00e3o de leitura e conhecimento do direito brasileiro em portugu\u00eas.",
+      "fewshot": 0,
+      "URL": "https://huggingface.co/datasets/eduagarcia/oab_exams"
+    }
+  }
+}
