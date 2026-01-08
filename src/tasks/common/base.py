@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Tuple
+from typing import Any, ClassVar, Dict, Iterator, List, Optional, Protocol, Tuple
 
 from .utils.dataset_utils import (
     download_huggingface_dataset,
@@ -131,7 +131,7 @@ class BaseHandler:
     requires_files: bool = False
     system_prompt: str = ""
     user_prompt_template: str = "{text}"
-    metrics: List[Any] = []
+    metrics: ClassVar[List[Any]] = []
     default_data_file: str = "data.jsonl"
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -198,10 +198,6 @@ class BaseHandler:
             save_to_jsonl(processed, self.data_file)
             logger.info(f"Cached {len(processed)} samples to {self.data_file}")
             return processed
-
-        # Load from local JSONL
-        if self.data_file.exists():
-            return load_jsonl_dataset(self.data_file)
 
         raise FileNotFoundError(
             f"No dataset found. Set 'dataset' attribute or provide {self.data_file}"
