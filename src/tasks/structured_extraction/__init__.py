@@ -6,7 +6,8 @@ Tasks are discovered automatically from the .py files in this directory.
 
 # Export handlers for direct imports (optional, mainly for testing)
 from .chat_extract import ChatExtract
+from .email_extract import EmailExtract
 from .paraloq import Paraloq
 
-__all__ = ["ChatExtract", "Paraloq"]
+__all__ = ["ChatExtract", "EmailExtract", "Paraloq"]
 

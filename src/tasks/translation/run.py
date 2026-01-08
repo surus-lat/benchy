@@ -22,7 +22,7 @@ from ..group_runner import (
     ensure_task_interface_compatibility,
     run_task_group,
 )
-from ..summary_reporter import write_group_summary
+from ...common.summary_reporter import write_group_summary
 from .metrics import load_comet_model
 
 logger = logging.getLogger(__name__)

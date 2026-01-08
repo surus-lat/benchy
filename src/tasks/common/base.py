@@ -210,7 +210,11 @@ class BaseHandler:
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
         """Transform a raw dataset sample to eval format.
         
-        Override this to normalize fields into the expected eval schema.
+        Default behavior:
+        - If sample already has core fields (id, text) → return as-is (already preprocessed)
+        - Otherwise, add missing id field
+        
+        Override this to customize field extraction from raw dataset samples.
         
         Args:
             raw_sample: Raw sample from dataset
@@ -219,6 +223,12 @@ class BaseHandler:
         Returns:
             Processed sample dict or None to skip
         """
+        # If sample is already preprocessed (has id and text at minimum), return as-is
+        # This allows load_dataset() to fully preprocess samples
+        if "id" in raw_sample and "text" in raw_sample:
+            return raw_sample
+        
+        # Otherwise, ensure it has an id
         sample = dict(raw_sample)
         if "id" not in sample:
             sample["id"] = f"{self.name}_{idx}"
