@@ -10,7 +10,7 @@ The format handler system provides a streamlined way to create new benchmark tas
 
 ```python
 # src/tasks/my_task/my_subtask.py
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 class MySubtask(MultipleChoiceHandler):
     """Your task description here."""
@@ -73,7 +73,7 @@ For classification tasks with discrete label choices.
 
 **Example**:
 ```python
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 class SentimentAnalysis(MultipleChoiceHandler):
     dataset = "imdb"
@@ -95,7 +95,7 @@ For tasks requiring JSON output following a schema.
 
 **Example**:
 ```python
-from ..formats import StructuredHandler
+from ..common import StructuredHandler
 
 class EntityExtraction(StructuredHandler):
     dataset = "org/extraction-dataset"
@@ -122,7 +122,7 @@ For open-ended text generation.
 
 **Example**:
 ```python
-from ..formats import FreeformHandler
+from ..common import FreeformHandler
 from ..metrics import ExactMatch, F1Score, BLEUScore
 
 class Translation(FreeformHandler):
@@ -146,7 +146,7 @@ For image/file input with structured JSON output.
 
 **Example**:
 ```python
-from ..formats import MultimodalStructuredHandler
+from ..common import MultimodalStructuredHandler
 
 class InvoiceExtraction(MultimodalStructuredHandler):
     source_dir = "./invoice_data"
@@ -461,7 +461,7 @@ benchy eval my_task
 
 ```python
 # src/tasks/sentiment/imdb.py
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 class Imdb(MultipleChoiceHandler):
     """IMDB movie review sentiment classification."""
@@ -493,7 +493,7 @@ subtasks:
 
 ```python
 # src/tasks/extraction/entities.py
-from ..formats import StructuredHandler
+from ..common import StructuredHandler
 
 class Entities(StructuredHandler):
     """Named entity extraction from news articles."""
@@ -517,7 +517,7 @@ Create a base class for shared logic:
 
 ```python
 # src/tasks/my_task/base.py
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 class MyTaskBase(MultipleChoiceHandler):
     """Shared logic for all my_task subtasks."""

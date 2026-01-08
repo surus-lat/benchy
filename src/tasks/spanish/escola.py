@@ -42,7 +42,7 @@ class Escola(CachedDatasetMixin, MultipleChoiceHandler):
             processed.append({
                 "id": raw_sample.get("idx", f"escola_{idx}"),
                 "text": text,
-                "choices": ["no", "sí"],
+                "choices": ["No", "Sí"],
                 "expected": label,
             })
         

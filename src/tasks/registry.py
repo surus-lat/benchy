@@ -177,6 +177,141 @@ class TaskGroupInfo:
     metadata_file: Optional[Path]
 
 
+_PRIMARY_METRIC_PRIORITY = [
+    "accuracy",
+    "acc",
+    "exact_match",
+    "f1_macro",
+    "pearson",
+    "comet",
+    "chrf",
+    "bleu",
+    "overall_extraction_quality_score",
+    "extraction_quality_score",
+    "field_f1_partial",
+    "mse",
+]
+
+_AGGREGATION_SKIP_KEYS = {
+    "total_samples",
+    "valid_samples",
+    "error_count",
+    "error_rate",
+    "total_duration",
+    "throughput",
+    "run_samples",
+    "sample_count",
+}
+
+
+def _metric_weight(metrics: Dict[str, Any]) -> float:
+    for key in ("valid_samples", "total_samples"):
+        value = metrics.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+    return 0.0
+
+
+def _select_primary_metric(
+    metrics: Dict[str, Any],
+    preferred: Optional[str] = None,
+) -> tuple[Optional[str], Optional[float]]:
+    if preferred and preferred != "auto":
+        value = metrics.get(preferred)
+        if isinstance(value, (int, float)):
+            return preferred, float(value)
+
+    for key in _PRIMARY_METRIC_PRIORITY:
+        value = metrics.get(key)
+        if isinstance(value, (int, float)):
+            return key, float(value)
+
+    return None, None
+
+
+def _sample_weighted_aggregate(
+    per_subtask_metrics: Dict[str, Dict[str, Any]],
+    primary_metric: Optional[str],
+) -> Dict[str, Any]:
+    aggregated: Dict[str, Any] = {}
+
+    total_samples = sum(
+        m.get("total_samples", 0) for m in per_subtask_metrics.values() if isinstance(m.get("total_samples"), (int, float))
+    )
+    valid_samples = sum(
+        m.get("valid_samples", 0) for m in per_subtask_metrics.values() if isinstance(m.get("valid_samples"), (int, float))
+    )
+    error_count = 0.0
+    for metrics in per_subtask_metrics.values():
+        if isinstance(metrics.get("error_count"), (int, float)):
+            error_count += float(metrics.get("error_count"))
+        else:
+            total = metrics.get("total_samples")
+            valid = metrics.get("valid_samples")
+            if isinstance(total, (int, float)) and isinstance(valid, (int, float)):
+                error_count += float(total - valid)
+
+    aggregated["total_samples"] = int(total_samples)
+    aggregated["valid_samples"] = int(valid_samples)
+    aggregated["error_count"] = int(error_count)
+    aggregated["error_rate"] = (error_count / total_samples) if total_samples > 0 else 0.0
+
+    numeric_keys: set[str] = set()
+    for metrics in per_subtask_metrics.values():
+        for key, value in metrics.items():
+            if key in _AGGREGATION_SKIP_KEYS:
+                continue
+            if isinstance(value, (int, float)):
+                numeric_keys.add(key)
+
+    for key in sorted(numeric_keys):
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for metrics in per_subtask_metrics.values():
+            value = metrics.get(key)
+            if not isinstance(value, (int, float)):
+                continue
+            weight = _metric_weight(metrics)
+            if weight <= 0:
+                continue
+            weighted_sum += float(value) * weight
+            total_weight += weight
+        if total_weight > 0:
+            aggregated[key] = weighted_sum / total_weight
+
+    if primary_metric:
+        if primary_metric == "auto":
+            weighted_sum = 0.0
+            total_weight = 0.0
+            for metrics in per_subtask_metrics.values():
+                _, value = _select_primary_metric(metrics)
+                if value is None:
+                    continue
+                weight = _metric_weight(metrics)
+                if weight <= 0:
+                    continue
+                weighted_sum += value * weight
+                total_weight += weight
+            if total_weight > 0:
+                aggregated["overall_score"] = weighted_sum / total_weight
+        else:
+            weighted_sum = 0.0
+            total_weight = 0.0
+            for metrics in per_subtask_metrics.values():
+                value = metrics.get(primary_metric)
+                if not isinstance(value, (int, float)):
+                    continue
+                weight = _metric_weight(metrics)
+                if weight <= 0:
+                    continue
+                weighted_sum += float(value) * weight
+                total_weight += weight
+            if total_weight > 0:
+                aggregated[primary_metric] = weighted_sum / total_weight
+
+    return aggregated
+
+
 def _snake_to_pascal(snake_str: str) -> str:
     """Convert snake_case to PascalCase.
     
@@ -338,6 +473,10 @@ def build_handler_task_spec(
         # Load and instantiate the handler
         return load_subtask_handler(subtask_info, handler_config)
 
+    aggregation_config = group_info.metadata.get("aggregation", {}) if group_info.metadata else {}
+    aggregation_method = aggregation_config.get("method")
+    primary_metric = aggregation_config.get("primary_metric")
+
     def _aggregate_metrics(all_metrics: Dict[str, Dict[str, Any]], subtasks_run: List[str]) -> Dict[str, Any]:
         """Aggregate metrics from multiple subtasks.
         
@@ -349,7 +488,14 @@ def build_handler_task_spec(
             return all_metrics.get(subtasks_run[0], {})
         else:
             # Multiple subtasks: structure under 'subtasks' key
-            return {"subtasks": {name: all_metrics.get(name, {}) for name in subtasks_run}}
+            per_subtask = {name: all_metrics.get(name, {}) for name in subtasks_run}
+            if aggregation_method == "sample_weighted":
+                aggregated = _sample_weighted_aggregate(per_subtask, primary_metric)
+                return {
+                    "subtasks": per_subtask,
+                    "aggregated_metrics": aggregated,
+                }
+            return {"subtasks": per_subtask}
 
     return TaskGroupSpec(
         name=group_info.name,

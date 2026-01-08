@@ -82,7 +82,7 @@ If you see: "missing 'choices'":
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 from .utils.choice_utils import format_choices, parse_choice_prediction
 from .metrics import MultipleChoiceAccuracy
@@ -153,7 +153,7 @@ class MultipleChoiceHandler(BaseHandler):
     # IMPORTANT: See class and module docstrings for when to use this!
     # - Set for simple tasks: labels = {0: "No", 1: "Yes"}
     # - Omit for complex tasks where samples provide their own choices
-    labels: Dict[Any, str] = {}
+    labels: ClassVar[Dict[Any, str]] = {}
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the multiple choice handler."""
