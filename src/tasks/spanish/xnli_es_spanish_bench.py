@@ -36,7 +36,6 @@ class XnliEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
             "es", 
             split="test", 
             cache_dir=str(self.data_dir / "cache"),
-            trust_remote_code=True
         )
         
         processed = []
@@ -55,4 +54,3 @@ class XnliEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
             })
         
         save_to_jsonl(processed, output_path)
-

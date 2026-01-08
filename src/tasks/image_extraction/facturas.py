@@ -1,5 +1,6 @@
 """Facturas - invoice/receipt structured data extraction from images."""
 
+import copy
 import json
 import logging
 import shutil
@@ -64,8 +65,9 @@ class Facturas(MultimodalStructuredHandler):
         if config and "source_dir" in config:
             self.source_dir = Path(config["source_dir"])
         elif self.source_dir is None:
-            # Default to test data directory
-            self.source_dir = Path(__file__).parent.parent.parent.parent / "test_image_request"
+            self.source_dir = None
+
+        self.metrics_config = copy.deepcopy(self.metrics_config)
 
         super().__init__(config)
 
@@ -144,8 +146,12 @@ class Facturas(MultimodalStructuredHandler):
         jpgs_dir = self.data_dir / "jpgs"
 
         for idx, item in enumerate(raw_data):
-            filename = item.get("filename", f"image_{idx}")
-            image_path = jpgs_dir / f"{filename}.jpg"
+            raw_name = item.get("filename")
+            if raw_name:
+                clean_name = Path(str(raw_name)).stem
+            else:
+                clean_name = f"image_{idx}"
+            image_path = jpgs_dir / f"{clean_name}.jpg"
 
             if not image_path.exists():
                 logger.warning(f"Image not found: {image_path}, skipping")
@@ -155,10 +161,10 @@ class Facturas(MultimodalStructuredHandler):
             expected = {k: v for k, v in item.items() if k not in ("filename", "cae")}
 
             sample = {
-                "id": f"factura_{idx:04d}_{filename}",
+                "id": f"factura_{idx:04d}_{clean_name}",
                 "image_path": str(image_path),
                 "expected": expected,
-                "filename": filename,
+                "filename": raw_name or clean_name,
             }
 
             # Add schema only if it exists
@@ -216,4 +222,3 @@ class Facturas(MultimodalStructuredHandler):
         else:
             # No schema mode (SURUS Factura)
             return "Extract all data from this invoice/receipt image as structured JSON."
-

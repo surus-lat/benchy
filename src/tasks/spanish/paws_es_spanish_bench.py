@@ -76,7 +76,6 @@ class PawsEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
             "es", 
             split=self.split, 
             cache_dir=str(self.data_dir / "cache"),
-            trust_remote_code=True
         )
         
         processed = []
