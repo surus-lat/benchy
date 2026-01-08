@@ -35,9 +35,8 @@ task_defaults:
 
 # Task-specific configuration
 structured_extraction:
-  tasks:
-    - "paraloq"
-    - "chat_extract"
+  # No tasks list = allow any subtask to run
+  # This lets you run any structured_extraction subtask via CLI
   
   defaults:
     batch_size: 5 # Conservative for external API

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from ...prefect_compat import task
 
 from ..group_runner import TaskGroupSpec, SubtaskContext, run_task_group
-from ..summary_reporter import write_group_summary
+from ...common.summary_reporter import write_group_summary
 
 from .datasets.assin2_rte.task import Assin2RteTask
 from .datasets.assin2_sts.task import Assin2StsTask

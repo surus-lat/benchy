@@ -395,8 +395,20 @@ def main():
     if tasks_override:
         logger.info(f"Using task overrides from CLI: {tasks_override}")
         if is_system_provider and config_tasks:
-            allowed = [task for task in tasks_override if task in config_tasks]
-            disallowed = [task for task in tasks_override if task not in config_tasks]
+            # Check if task or its parent group is in config_tasks
+            # E.g., 'structured_extraction.email_extract' should be allowed if 'structured_extraction' is in config
+            allowed = []
+            disallowed = []
+            for task in tasks_override:
+                # Check if task itself is in config
+                if task in config_tasks:
+                    allowed.append(task)
+                # Check if parent group is in config (e.g., 'structured_extraction' for 'structured_extraction.email_extract')
+                elif '.' in task and task.split('.')[0] in config_tasks:
+                    allowed.append(task)
+                else:
+                    disallowed.append(task)
+            
             if disallowed:
                 logger.warning(
                     f"Ignoring tasks not declared in system config: {disallowed}"
