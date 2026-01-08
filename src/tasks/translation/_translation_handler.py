@@ -7,6 +7,7 @@ Extends FreeformHandler with translation-specific features:
 """
 
 import logging
+import re
 from collections import defaultdict
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -233,6 +234,7 @@ class TranslationHandler(FreeformHandler):
         
         # Group by language (for leaderboard)
         by_language = defaultdict(list)
+        language_code_re = re.compile(r"^[a-z]{2,3}$")
         for pair, pair_metrics in per_pair.items():
             # Extract languages from pair
             # Handle both formats: "en_es" and "eng_spa" or "spa_Latn-arb_Arab"
@@ -243,13 +245,18 @@ class TranslationHandler(FreeformHandler):
                 # Extract base language codes (first 3 chars usually)
                 # eng_spa -> eng, spa
                 # spa_Latn-arb_Arab -> spa, arb
-                lang1 = parts[0][:3] if len(parts[0]) > 2 else parts[0]
-                lang2 = parts[-1][:3] if len(parts) > 1 and len(parts[-1]) > 2 else (parts[-1] if len(parts) > 1 else "")
+                lang1_raw = parts[0]
+                lang1 = lang1_raw[:3] if len(lang1_raw) > 2 else lang1_raw
+                lang2 = ""
+                for part in parts[1:]:
+                    if language_code_re.match(part):
+                        lang2 = part[:3] if len(part) > 2 else part
+                        break
                 
                 # Add metrics to both languages
-                if lang1:
+                if pair_metrics and lang1:
                     by_language[lang1].append(pair_metrics)
-                if lang2 and lang2 != lang1:
+                if pair_metrics and lang2 and lang2 != lang1:
                     by_language[lang2].append(pair_metrics)
         
         # Average by language
@@ -271,4 +278,3 @@ class TranslationHandler(FreeformHandler):
             "per_pair": per_pair,
             "per_language": per_language,
         }
-

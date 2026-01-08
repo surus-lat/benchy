@@ -11,5 +11,4 @@ subtasks:
 # Aggregation: sample-weighted average across all subtasks
 aggregation:
   method: "sample_weighted"
-  primary_metric: "acc"  # For multiple-choice tasks
-
+  primary_metric: "auto"  # Sample-weighted across subtasks using each subtask's primary metric

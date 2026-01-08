@@ -59,4 +59,9 @@ subtasks:
     description: Spanish WNLI (Winograd Natural Language Inference)
     long_description: Spanish WNLI is a localized Winograd-style NLI task. Given two sentences, the model decides whether the second follows (Verdadero) from the first or not (Falso).
     url: https://huggingface.co/datasets/PlanTL-GOB-ES/wnli-es
+    
+  xnli_es_spanish_bench:
+    description: Spanish XNLI (Cross-lingual Natural Language Inference)
+    long_description: Spanish subset of XNLI, a cross-lingual NLI benchmark. Given a premise and hypothesis, the model determines their relationship: entailment (implicación), neutral, or contradiction (contradicción).
+    url: https://huggingface.co/datasets/facebook/xnli
 
