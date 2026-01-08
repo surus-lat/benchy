@@ -201,7 +201,11 @@ def _is_subtask_file(file_path: Path) -> bool:
     """
     if not file_path.suffix == ".py":
         return False
-    if file_path.stem in ["__init__", "__pycache__", "run", "base", "task"]:
+    excluded_stems = [
+        "__init__", "__pycache__", "run", "base", "task",
+        "metrics", "preprocessing", "spanish_handlers"  # Helper modules
+    ]
+    if file_path.stem in excluded_stems:
         return False
     if file_path.stem.startswith("_"):
         return False

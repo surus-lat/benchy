@@ -3,7 +3,7 @@
 Binary classification task for detecting environmental claims in text.
 """
 
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 
 class EnvironmentalClaims(MultipleChoiceHandler):
@@ -12,6 +12,11 @@ class EnvironmentalClaims(MultipleChoiceHandler):
     This task evaluates models on their ability to detect whether a given
     sentence contains an environmental claim or not.
     """
+
+    # Task metadata
+    name = "environmental_claims"
+    display_name = "Environmental Claims"
+    description = "Binary classification for environmental claim detection"
 
     # Dataset configuration
     dataset = "climatebert/environmental_claims"
@@ -32,7 +37,7 @@ class EnvironmentalClaims(MultipleChoiceHandler):
         Returns:
             Tuple of (system_prompt, user_prompt)
         """
-        from ...common import format_choices
+        from ..common import format_choices
 
         choices_text = format_choices(
             sample.get("choices", []), sample.get("choice_labels")
