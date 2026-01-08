@@ -58,11 +58,14 @@ class StructuredHandler(BaseHandler):
     def metrics_calculator(self):
         """Lazy initialization of structured extraction metrics calculator.
         
+        The real MetricsCalculator from the original structured task,
+        preserving EQS calculation and comprehensive error classification.
+        
         Returns:
             MetricsCalculator instance
         """
         if self._metrics_calc is None:
-            from ..structured.metrics import MetricsCalculator
+            from .utils.structured_metrics_calculator import MetricsCalculator
 
             # Build metrics config
             metrics_cfg = {}
@@ -71,7 +74,10 @@ class StructuredHandler(BaseHandler):
             elif self.config and "metrics" in self.config:
                 metrics_cfg.update(self.config["metrics"])
 
-            self._metrics_calc = MetricsCalculator({"metrics": metrics_cfg})
+            # Check if strict mode is enabled
+            strict = metrics_cfg.get("strict", False)
+            
+            self._metrics_calc = MetricsCalculator({"metrics": metrics_cfg}, strict=strict)
         return self._metrics_calc
 
     def preprocess_sample(

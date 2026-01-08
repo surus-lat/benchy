@@ -12,8 +12,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-from ...common import format_choices, parse_choice_index
-from ..metrics import MultipleChoiceAccuracy
+from .utils.choice_utils import format_choices, parse_choice_prediction
+from .metrics import MultipleChoiceAccuracy
 from .base import BaseHandler
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,10 @@ class MultipleChoiceHandler(BaseHandler):
     answer_type = "multiple_choice"
     prefers_logprobs = True
     choice_labels_field: Optional[str] = None
+    system_prompt = "You will only answer with the correct choice. No other text or explanation is allowed."
+    
+    # Parsing strictness (set to False for more permissive matching)
+    strict_parsing: bool = True
 
     # Required attributes (must be set in subclass)
     labels: Dict[Any, str] = {}
@@ -212,13 +216,14 @@ class MultipleChoiceHandler(BaseHandler):
         if error:
             return self.get_error_metrics(error, error_type)
 
-        # Parse prediction if it's text
-        if isinstance(prediction, str):
-            prediction_idx = parse_choice_index(
-                prediction, sample.get("choice_labels", [])
-            )
-        else:
-            prediction_idx = prediction
+        # Use choice_utils for robust parsing (with strict mode control)
+        prediction_idx = parse_choice_prediction(
+            prediction,
+            sample.get("choices", []),
+            labels=sample.get("choice_labels"),
+            label_to_index=sample.get("label_to_index"),
+            strict=self.strict_parsing,
+        )
 
         # Calculate correctness
         correct = prediction_idx == expected if prediction_idx is not None else False
@@ -228,7 +233,14 @@ class MultipleChoiceHandler(BaseHandler):
 
         # Run additional metrics if defined
         for metric in self.metrics:
-            metric_output = metric.compute(prediction_idx, expected, sample)
+            # Use per_sample() for metric protocol, or compute() for ScalarMetric subclasses
+            if hasattr(metric, 'per_sample'):
+                metric_output = metric.per_sample(prediction_idx, expected, sample)
+            elif hasattr(metric, 'compute'):
+                metric_output = metric.compute(prediction_idx, expected, sample)
+            else:
+                continue
+                
             if isinstance(metric_output, dict):
                 metrics_result.update(metric_output)
             else:

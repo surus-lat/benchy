@@ -4,7 +4,7 @@ Multi-class classification task for identifying personality disorder diagnoses
 based on symptoms.
 """
 
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 
 class DiagTest(MultipleChoiceHandler):
@@ -13,6 +13,11 @@ class DiagTest(MultipleChoiceHandler):
     This task evaluates models on their ability to classify personality disorder
     categories based on symptom descriptions.
     """
+
+    # Task metadata
+    name = "diag_test"
+    display_name = "DiagTest"
+    description = "Clinical diagnostic category classification"
 
     # Dataset configuration
     dataset = "somosnlp-hackathon-2023/DiagTrast"
@@ -39,7 +44,7 @@ class DiagTest(MultipleChoiceHandler):
         Returns:
             Tuple of (system_prompt, user_prompt)
         """
-        from ...common import format_choices
+        from ..common import format_choices
 
         choices_text = format_choices(
             sample.get("choices", []), sample.get("choice_labels")

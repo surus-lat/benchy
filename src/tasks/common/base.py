@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Protocol, Tuple
 
-from ...common.dataset_utils import (
+from .utils.dataset_utils import (
     download_huggingface_dataset,
     iterate_samples,
     load_jsonl_dataset,

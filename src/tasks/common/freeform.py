@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..metrics import ExactMatch, F1Score
+from .metrics import ExactMatch, F1Score
 from .base import BaseHandler
 
 logger = logging.getLogger(__name__)
@@ -154,7 +154,14 @@ class FreeformHandler(BaseHandler):
 
         for metric in self.metrics:
             try:
-                metric_output = metric.compute(pred_normalized, exp_normalized, sample)
+                # Use per_sample() for metric protocol, or compute() for ScalarMetric subclasses
+                if hasattr(metric, 'per_sample'):
+                    metric_output = metric.per_sample(pred_normalized, exp_normalized, sample)
+                elif hasattr(metric, 'compute'):
+                    metric_output = metric.compute(pred_normalized, exp_normalized, sample)
+                else:
+                    continue
+                    
                 if isinstance(metric_output, dict):
                     metrics_result.update(metric_output)
                 else:
