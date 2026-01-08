@@ -75,8 +75,8 @@ metrics:
   
   descriptions:
     comet: "Neural metric evaluating semantic similarity (0-1, higher is better)"
-    bleu: "N-gram overlap metric (0-100, higher is better)"
-    chrf: "Character n-gram F-score (0-100, higher is better)"
+    bleu: "N-gram overlap metric (0-1, higher is better)"
+    chrf: "Character n-gram F-score (0-1, higher is better)"
 
 notes: |
   IMPORTANT: This task requires the COMET model (1.5GB, 2-5 minutes to load).
@@ -85,4 +85,3 @@ notes: |
   
   Translation pairs are bidirectional (A->B and B->A) and scores are averaged.
   Per-language scores are reported for leaderboard (e.g., English, French, Spanish).
-
