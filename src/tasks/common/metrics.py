@@ -166,3 +166,68 @@ class MultipleChoiceAccuracy:
         valid = [entry for entry in values if entry.get("valid")]
         accuracy = sum(entry.get("accuracy", 0.0) for entry in valid) / len(valid) if valid else 0.0
         return {"accuracy": accuracy}
+
+
+@dataclass(frozen=True)
+class MeanSquaredError(ScalarMetric):
+    """Mean Squared Error for regression tasks.
+    
+    Computes (prediction - expected)^2 per sample.
+    """
+    
+    name: str = "mse"
+    
+    def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        try:
+            pred_val = float(prediction)
+            exp_val = float(expected)
+            return (pred_val - exp_val) ** 2
+        except (TypeError, ValueError):
+            return 0.0
+
+
+@dataclass(frozen=True)
+class PearsonCorrelation:
+    """Pearson correlation coefficient for regression tasks.
+    
+    Requires aggregation across all samples to compute correlation.
+    """
+    
+    name: str = "pearson"
+    
+    def per_sample(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
+        # Store individual values for correlation computation during aggregation
+        try:
+            pred_val = float(prediction)
+            exp_val = float(expected)
+            return {
+                "prediction": pred_val,
+                "expected": exp_val,
+                "valid": True,
+            }
+        except (TypeError, ValueError):
+            return {"valid": False}
+    
+    def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
+        import math
+        
+        valid = [entry for entry in values if entry.get("valid")]
+        if len(valid) < 2:
+            return {"pearson": 0.0}
+        
+        predictions = [entry["prediction"] for entry in valid]
+        expectations = [entry["expected"] for entry in valid]
+        
+        # Compute Pearson correlation
+        mean_pred = sum(predictions) / len(predictions)
+        mean_exp = sum(expectations) / len(expectations)
+        
+        numerator = sum((p - mean_pred) * (e - mean_exp) for p, e in zip(predictions, expectations))
+        denom_pred = sum((p - mean_pred) ** 2 for p in predictions)
+        denom_exp = sum((e - mean_exp) ** 2 for e in expectations)
+        denominator = math.sqrt(denom_pred * denom_exp)
+        
+        if denominator == 0:
+            return {"pearson": 0.0}
+        
+        return {"pearson": numerator / denominator}

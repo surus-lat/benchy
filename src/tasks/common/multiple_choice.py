@@ -5,6 +5,78 @@ This handler encapsulates common logic for multiple-choice tasks including:
 - Logprobs-based scoring when available
 - Standard accuracy metrics
 - Fallback to text parsing when logprobs unavailable
+
+IMPORTANT: Understanding the `labels` Attribute
+================================================
+
+The `labels` attribute is OPTIONAL and controls how choices are handled.
+There are two modes of operation:
+
+MODE 1: Task-Level Labels (Simple Tasks)
+-----------------------------------------
+Use this when ALL samples share the same choices.
+
+Example:
+    class YesNoTask(MultipleChoiceHandler):
+        labels = {0: "No", 1: "Yes"}  # All samples use these choices
+        dataset_name = "my/dataset"
+        
+In this mode:
+- The handler extracts `text` and `label` from each sample
+- It automatically adds `choices`, `choice_labels`, and `expected` index
+- The `labels` dict maps dataset label values to choice text
+- Works with datasets that have a simple label column (0/1, "yes"/"no", etc.)
+
+MODE 2: Per-Sample Choices (Complex Tasks)
+-------------------------------------------
+Use this when choices vary per sample (e.g., different questions have different options).
+
+Example:
+    class ExamTask(MultipleChoiceHandler):
+        # NO labels attribute!
+        dataset_name = "my/exam-dataset"
+        
+        def _download_and_cache(self, output_path):
+            raw = download_huggingface_dataset(self.dataset_name)
+            processed = []
+            for sample in raw:
+                processed.append({
+                    "id": sample["id"],
+                    "text": sample["question"],
+                    "choices": ["Option A", "Option B", "Option C"],  # Per-sample!
+                    "choice_labels": ["A", "B", "C"],
+                    "expected": sample["correct_idx"],
+                })
+            save_to_jsonl(processed, output_path)
+
+In this mode:
+- Each sample provides its own `choices`, `choice_labels`, and `expected`
+- The `labels` attribute is NOT needed
+- You have full control over choice formatting per sample
+- Useful for exams where questions have different numbers of choices
+
+When to Use Which Mode?
+------------------------
+Task-Level Labels (MODE 1):
+  ✅ All samples have the same set of choices
+  ✅ Dataset has a simple label field (0/1, "positive"/"negative", etc.)
+  ✅ You want minimal code
+  
+Per-Sample Choices (MODE 2):
+  ✅ Different samples have different choices
+  ✅ Different numbers of choices per sample
+  ✅ Choices need custom formatting per sample
+  ✅ You're downloading from HuggingFace with complex structure
+
+Error Messages
+--------------
+If you see: "requires 'labels' attribute":
+  → You're in MODE 1 but forgot to define labels
+  → Add: labels = {0: "Choice1", 1: "Choice2"}
+
+If you see: "missing 'choices'":
+  → You're in MODE 2 but samples don't have choices
+  → Add choices/choice_labels/expected in _download_and_cache()
 """
 
 from __future__ import annotations
@@ -26,16 +98,46 @@ class MultipleChoiceHandler(BaseHandler):
     label mapping, choice formatting, logprobs-based scoring, and accuracy metrics.
     
     Class Attributes (in addition to BaseHandler):
-        labels: Dict mapping label values to display text (e.g., {0: "No", 1: "Yes"})
+        labels: OPTIONAL dict mapping label values to choice text
+                Example: {0: "No", 1: "Yes"}
+                - Set this for simple tasks where all samples share the same choices
+                - Omit this for complex tasks where samples provide their own choices
+                See module docstring for detailed explanation of the two modes.
+        
         label_field: Field name for the label in raw data (default: "label")
+                     Only used in MODE 1 (task-level labels)
+        
+        text_field: Field name for the question text (default: "text")
+                    Only used in MODE 1 (task-level labels)
+        
         choice_labels_field: Optional field for custom choice labels
+        
         prefers_logprobs: Whether to prefer logprobs scoring (default: True)
+                          When True, uses first-token log probabilities for prediction
+                          When False or unavailable, falls back to text parsing
     
-    Example:
-        class MyMCQTask(MultipleChoiceHandler):
-            dataset = "org/my-dataset"
-            labels = {0: "No", 1: "Yes", 2: "Maybe"}
-            system_prompt = "You are a classifier."
+    Examples:
+        # MODE 1: Task-level labels (simple)
+        class SentimentTask(MultipleChoiceHandler):
+            dataset_name = "sentiment/dataset"
+            labels = {0: "Negative", 1: "Positive"}  # Required!
+            # Handler extracts text/label and adds choices automatically
+        
+        # MODE 2: Per-sample choices (complex)
+        class ExamTask(CachedDatasetMixin, MultipleChoiceHandler):
+            dataset_name = "exam/dataset"
+            # No labels! Samples provide their own choices
+            
+            def _download_and_cache(self, output_path):
+                raw = download_huggingface_dataset(self.dataset_name)
+                processed = []
+                for sample in raw:
+                    processed.append({
+                        "text": sample["question"],
+                        "choices": sample["options"],  # Per-sample!
+                        "expected": sample["answer_idx"],
+                    })
+                save_to_jsonl(processed, output_path)
     """
 
     # Multiple choice defaults
@@ -47,29 +149,27 @@ class MultipleChoiceHandler(BaseHandler):
     # Parsing strictness (set to False for more permissive matching)
     strict_parsing: bool = True
 
-    # Required attributes (must be set in subclass)
+    # Optional task-level labels
+    # IMPORTANT: See class and module docstrings for when to use this!
+    # - Set for simple tasks: labels = {0: "No", 1: "Yes"}
+    # - Omit for complex tasks where samples provide their own choices
     labels: Dict[Any, str] = {}
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the multiple choice handler."""
         super().__init__(config)
 
-        # Validate labels
-        if not self.labels:
-            raise ValueError(
-                f"{self.__class__.__name__} requires 'labels' attribute "
-                "(e.g., labels = {{0: 'No', 1: 'Yes'}})"
-            )
-
-        # Build choice mapping
+        # Build choice mapping from labels if provided
+        # If not provided, samples must provide their own choice_labels
         self.label_to_index = {}
         self.choice_texts = []
         self.choice_labels = []
 
-        for idx, (value, text) in enumerate(sorted(self.labels.items())):
-            self.label_to_index[value] = idx
-            self.choice_texts.append(text)
-            self.choice_labels.append(str(value))
+        if self.labels:
+            for idx, (value, text) in enumerate(sorted(self.labels.items())):
+                self.label_to_index[value] = idx
+                self.choice_texts.append(text)
+                self.choice_labels.append(str(value))
 
         # Set default metrics
         if not self.metrics:
@@ -80,8 +180,44 @@ class MultipleChoiceHandler(BaseHandler):
     ) -> Optional[Dict[str, Any]]:
         """Transform a raw dataset sample to eval format.
         
-        Extracts text and label, maps label to choice index, and attaches
-        choice information.
+        This method handles TWO MODES of operation:
+        
+        MODE 1: Task-Level Labels (automatic preprocessing)
+        ---------------------------------------------------
+        When the task defines `labels` attribute, this method extracts text and label
+        from the sample and automatically adds choice information.
+        
+        Expected sample format:
+            {
+                "text": "Is this positive?",  # Or whatever text_field is set to
+                "label": 1,                    # Or whatever label_field is set to
+            }
+        
+        Output format:
+            {
+                "id": "task_name_0",
+                "text": "Is this positive?",
+                "expected": 1,
+                "choices": ["Negative", "Positive"],
+                "choice_labels": ["0", "1"],
+                "label_to_index": {0: 0, 1: 1},
+            }
+        
+        MODE 2: Per-Sample Choices (passthrough)
+        -----------------------------------------
+        When samples already have `choices` and `expected`, this method assumes
+        they're already preprocessed and passes them through (only adding ID if missing).
+        
+        Expected sample format:
+            {
+                "text": "What is the capital of France?",
+                "choices": ["London", "Paris", "Berlin"],
+                "choice_labels": ["A", "B", "C"],
+                "expected": 1,  # Index of correct choice
+            }
+        
+        Output format: (mostly unchanged)
+            Same as input, with "id" added if missing
         
         Args:
             raw_sample: Raw sample from dataset
@@ -89,13 +225,36 @@ class MultipleChoiceHandler(BaseHandler):
             
         Returns:
             Processed sample with choices, expected index, etc.
+            None if sample should be skipped
+            
+        Raises:
+            ValueError: If in MODE 1 but labels attribute not set
         """
+        # MODE 2: If sample already has choices and expected, it's preprocessed
+        if "choices" in raw_sample and "expected" in raw_sample:
+            sample = dict(raw_sample)
+            if "id" not in sample:
+                sample["id"] = f"{self.get_task_name()}_{idx}"
+            return sample
+        
+        # MODE 1: Extract from text_field and label_field, use task-level labels
         text = raw_sample.get(self.text_field)
         label_raw = raw_sample.get(self.label_field)
 
         if text is None or label_raw is None:
             logger.warning(f"Skipping sample {idx}: missing text or label")
             return None
+
+        # Validate we have labels to map to
+        if not self.label_to_index:
+            raise ValueError(
+                f"\n{self.__class__.__name__} is in MODE 1 (extracting from {self.text_field}/{self.label_field}) "
+                f"but 'labels' attribute is not set.\n\n"
+                f"Fix this by either:\n"
+                f"  1. Add task-level labels: labels = {{0: 'Choice1', 1: 'Choice2'}}\n"
+                f"  2. Preprocess samples in _download_and_cache() to include 'choices' and 'expected'\n\n"
+                f"See MultipleChoiceHandler docstring for detailed explanation of the two modes."
+            )
 
         # Coerce label to correct type
         label_value = self._coerce_label(label_raw)

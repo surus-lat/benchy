@@ -84,6 +84,8 @@ from .metrics import (
     ExactMatch,
     F1Score,
     MultipleChoiceAccuracy,
+    MeanSquaredError,
+    PearsonCorrelation,
 )
 
 # Utilities (auxiliary but still important)
@@ -106,6 +108,14 @@ from .utils.choice_utils import (
 from .utils.structured_metrics_calculator import MetricsCalculator
 from .utils.partial_matching import PartialMatcher
 
+# Text processing utilities
+from .utils.text_utils import (
+    normalize_spaces,
+    remove_accents,
+    extract_float_score,
+    format_score_with_comma,
+)
+
 __all__ = [
     # Format handlers
     "BaseHandler",
@@ -123,6 +133,8 @@ __all__ = [
     "ExactMatch",
     "F1Score",
     "MultipleChoiceAccuracy",
+    "MeanSquaredError",
+    "PearsonCorrelation",
     # Dataset utilities
     "download_huggingface_dataset",
     "load_jsonl_dataset",
@@ -137,4 +149,9 @@ __all__ = [
     # Structured extraction utilities
     "MetricsCalculator",
     "PartialMatcher",
+    # Text processing utilities
+    "normalize_spaces",
+    "remove_accents",
+    "extract_float_score",
+    "format_score_with_comma",
 ]
