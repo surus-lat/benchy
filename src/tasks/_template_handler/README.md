@@ -37,7 +37,7 @@ For a simple multiple choice task, you only need:
 
 ```python
 # src/tasks/my_task/my_subtask.py
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 class MySubtask(MultipleChoiceHandler):
     dataset = "org/my-dataset"

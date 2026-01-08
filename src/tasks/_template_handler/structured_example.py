@@ -4,7 +4,7 @@ This example shows how to create a structured extraction task.
 Replace this with your actual task implementation.
 """
 
-from ..formats import StructuredHandler
+from ..common import StructuredHandler
 
 
 class StructuredExample(StructuredHandler):
@@ -57,26 +57,27 @@ class StructuredExample(StructuredHandler):
     }
 
     # Optional: Custom prompt generation
-    def get_prompt(self, sample):
-        """Build prompt for structured extraction.
-        
-        Args:
-            sample: Sample dict with text and schema
-            
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-        """
-        import json
-
-        schema = sample.get("schema", {})
-        schema_str = json.dumps(schema, indent=2) if schema else ""
-
-        user_prompt = (
-            f"Extract information from the following text:\n\n"
-            f"{sample.get('text', '')}\n\n"
-            f"Follow this JSON schema:\n{schema_str}\n\n"
-            f"Return valid JSON matching the schema exactly."
-        )
-
-        return self.system_prompt, user_prompt
+    # The default prompt is usually good enough - uncomment only if you need customization
+    # def get_prompt(self, sample):
+    #     """Build prompt for structured extraction.
+    #     
+    #     Args:
+    #         sample: Sample dict with text and schema
+    #         
+    #     Returns:
+    #         Tuple of (system_prompt, user_prompt)
+    #     """
+    #     import json
+    #
+    #     schema = sample.get("schema", {})
+    #     schema_str = json.dumps(schema, indent=2) if schema else ""
+    #
+    #     user_prompt = (
+    #         f"Extract information from the following text:\n\n"
+    #         f"{sample.get('text', '')}\n\n"
+    #         f"Follow this JSON schema:\n{schema_str}\n\n"
+    #         f"Return valid JSON matching the schema exactly."
+    #     )
+    #
+    #     return self.system_prompt, user_prompt
 
