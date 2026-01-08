@@ -48,6 +48,7 @@ logs/
 !configs/**/*.yaml
 *.csv
 *.parquet
+src/tasks/**/.data/
 
 # Model outputs
 results/
