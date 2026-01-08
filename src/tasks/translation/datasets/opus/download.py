@@ -14,6 +14,20 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Language code to name mapping
+LANGUAGE_NAMES = {
+    "en": "English",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "ar": "Arabic",
+    "zh": "Chinese",
+    "hi": "Hindi",
+}
+
+
 def download_and_preprocess_opus(
     dataset_name: str,
     language_pairs: List[str],
@@ -66,15 +80,35 @@ def download_and_preprocess_opus(
                     tgt_text = translation.get(tgt_lang, "")
                     
                     if src_text and tgt_text:
-                        sample = {
-                            "id": f"opus_{pair}_{idx}",
+                        # Create bidirectional samples (A->B and B->A)
+                        # Sample 1: src -> tgt
+                        sample_ab = {
+                            "id": f"opus_{pair}_{idx}_ab",
                             "source_text": src_text,
                             "target_text": tgt_text,
                             "source_lang": src_lang,
                             "target_lang": tgt_lang,
-                            "language_pair": pair,
+                            "source_language": LANGUAGE_NAMES.get(src_lang, src_lang),
+                            "target_language": LANGUAGE_NAMES.get(tgt_lang, tgt_lang),
+                            "language_pair": pair.replace("-", "_"),
+                            "direction": f"{src_lang}->{tgt_lang}",
                         }
-                        f.write(json.dumps(sample, ensure_ascii=False) + "\n")
+                        f.write(json.dumps(sample_ab, ensure_ascii=False) + "\n")
+                        sample_count += 1
+                        
+                        # Sample 2: tgt -> src (reverse direction)
+                        sample_ba = {
+                            "id": f"opus_{pair}_{idx}_ba",
+                            "source_text": tgt_text,
+                            "target_text": src_text,
+                            "source_lang": tgt_lang,
+                            "target_lang": src_lang,
+                            "source_language": LANGUAGE_NAMES.get(tgt_lang, tgt_lang),
+                            "target_language": LANGUAGE_NAMES.get(src_lang, src_lang),
+                            "language_pair": pair.replace("-", "_"),
+                            "direction": f"{tgt_lang}->{src_lang}",
+                        }
+                        f.write(json.dumps(sample_ba, ensure_ascii=False) + "\n")
                         sample_count += 1
             
             counts[pair] = sample_count

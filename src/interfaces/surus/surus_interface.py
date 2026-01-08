@@ -47,6 +47,12 @@ class SurusInterface(HTTPInterface):
         """
         text = request["text"]
         schema = request["schema"]
+        
+        # Sanitize schema for OpenAI compatibility (SURUS uses OpenAI-compatible format)
+        if schema:
+            from ...common.schema_sanitizer import sanitize_schema_for_openai_strict
+            schema = sanitize_schema_for_openai_strict(schema)
+        
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"

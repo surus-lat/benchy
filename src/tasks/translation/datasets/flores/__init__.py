@@ -1,10 +1,9 @@
-"""FLORES+ translation dataset."""
+"""FLORES dataset utilities.
 
-from .task import FloresTask
+This module contains preprocessing logic for FLORES+ translation data.
+The task implementation is in src/tasks/translation/flores.py (handler-based).
+"""
 
-__all__ = ["FloresTask"]
+from .download import download_and_preprocess_flores
 
-
-
-
-
+__all__ = ["download_and_preprocess_flores"]

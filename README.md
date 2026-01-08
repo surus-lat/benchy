@@ -21,14 +21,15 @@ step-by-step usage guide.
 
 ## How Benchy Works
 
-- **Tasks** define data loading, prompt formatting, metrics, and capability requirements.
-- **Interfaces** translate task samples into provider-specific requests.
-- **TaskGroupRunner** builds connection info, instantiates tasks, and dispatches to the engine.
-- **BenchmarkRunner** batches requests, retries failures, and aggregates metrics.
+- **Tasks** are built using **format handlers** (MultipleChoice, Structured, Freeform, Multimodal)
+- **Handlers** provide data loading, prompt formatting, metrics, and capability checking
+- **Interfaces** translate task samples into provider-specific requests
+- **TaskGroupRunner** builds connection info, instantiates tasks, and dispatches to the engine
+- **BenchmarkRunner** batches requests, retries failures, and aggregates metrics
 
-This design lets you add a new task without reworking inference, and add a new provider without
-changing evaluation logic. The architecture doc below goes deeper into how the engine, tasks, and
-interfaces fit together if you want a more detailed mental model.
+This design lets you add a new task with ~30-50 lines of code (vs. 200-400 in the old system),
+and add a new provider without changing evaluation logic. Tasks focus on **what to evaluate**,
+while handlers and interfaces handle **how to evaluate it**.
 
 ## Quickstart (Developers)
 
@@ -150,7 +151,13 @@ benchy/
 ├── src/
 │   ├── pipeline.py          # Main Prefect pipeline
 │   ├── interfaces/          # Provider interfaces
-│   ├── tasks/               # Task implementations + task.json configs
+│   ├── tasks/
+│   │   ├── common/          # Format handlers and shared utilities
+│   │   ├── spanish/         # Spanish language tasks
+│   │   ├── portuguese/      # Portuguese language tasks
+│   │   ├── structured_extraction/  # JSON extraction tasks
+│   │   ├── image_extraction/       # Vision-language tasks
+│   │   └── _template_handler/      # Task templates
 │   └── leaderboard/         # Results processing
 └── eval.py                  # CLI entry point
 ```
@@ -180,12 +187,23 @@ This generates per-model summaries and leaderboard tables under `outputs/publish
 
 ## Documentation
 
-- `docs/evaluating_models.md`
-- `docs/contribute_tasks.md`
-- `docs/contributing_providers.md`
-- `docs/architecture.md`
-- `src/tasks/TASK_TEMPLATE.md` (deep task implementation details)
-- `docs/GENERATION_CONFIG.md` and `docs/VLLM_VERSION_MANAGEMENT.md`
+### For Users
+- `docs/evaluating_models.md` - Running benchmarks and understanding results
+
+### For Contributors
+- `docs/contribute_tasks.md` - **Adding new tasks with the handler system** (recommended read!)
+- `docs/contributing_providers.md` - Adding new model providers
+- `src/tasks/_template_handler/README.md` - Complete task examples and patterns
+
+### Architecture & Internals
+- `docs/architecture.md` - System design and component interaction
+- `docs/GENERATION_CONFIG.md` - Generation parameters and sampling
+- `docs/VLLM_VERSION_MANAGEMENT.md` - Managing vLLM versions
+
+### Quick References
+- `src/tasks/_template_handler/` - Copy-paste task templates
+- `src/tasks/common/` - Handler classes with extensive documentation
+- `configs/templates/` - Fully documented configuration examples
 
 ## Contributing
 

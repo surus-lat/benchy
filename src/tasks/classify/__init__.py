@@ -1,5 +1,8 @@
-"""Classification benchmark module."""
+"""Classification benchmark module.
 
-from .run import run_classify
+This module uses the new handler-based task system.
+Tasks are discovered automatically from the .py files in this directory.
+"""
 
-__all__ = ["run_classify"]
+# Handler-based tasks are auto-discovered, no imports needed
+__all__ = []

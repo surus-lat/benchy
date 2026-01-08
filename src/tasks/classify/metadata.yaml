@@ -1,0 +1,22 @@
+name: classify
+display_name: Classification Tasks
+description: Multiple-choice classification benchmarks
+
+capability_requirements:
+  requires_logprobs: preferred
+  requires_multimodal: optional
+  requires_schema: optional
+  requires_files: optional
+  requires_streaming: optional
+
+subtasks:
+  environmental_claims:
+    description: Environmental claim detection (binary classification)
+    citation: "@misc{stammbach2022environmental,\\n  title = {A Dataset for Detecting Real-World Environmental Claims},\\n  author = {Stammbach, Dominik and Webersinke, Nicolas and Bingler, Julia Anna and Kraus, Mathias and Leippold, Markus},\\n  year = {2022},\\n  doi = {10.48550/ARXIV.2209.00507},\\n  url = {https://arxiv.org/abs/2209.00507},\\n  publisher = {arXiv}\\n}"
+    url: https://huggingface.co/datasets/climatebert/environmental_claims
+    
+  diag_test:
+    description: Clinical diagnostic category classification
+    credits: somosnlp
+    url: https://huggingface.co/datasets/somosnlp-hackathon-2023/DiagTrast
+

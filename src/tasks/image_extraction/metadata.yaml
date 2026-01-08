@@ -1,0 +1,14 @@
+name: image_extraction
+display_name: Image Extraction
+description: Structured data extraction from images using vision-language models
+
+capability_requirements:
+  requires_multimodal: required
+  requires_files: required
+  requires_schema: optional  # Some subtasks use schema, some don't
+
+subtasks:
+  facturas:
+    description: Extract structured data from invoice/factura images
+    long_description: "Facturas evaluates vision-language models on extracting structured data from invoice and receipt images. Optimized for document extraction with lenient metrics where numeric accuracy is critical. Compatible with SURUS Factura endpoint which returns structured JSON without requiring a schema."
+

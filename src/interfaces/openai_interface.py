@@ -301,11 +301,17 @@ class OpenAIInterface:
             params[self._max_tokens_key()] = self.max_tokens
 
             if schema and self.use_structured_outputs:
-                params["extra_body"] = {"structured_outputs": {"json": schema}}
+                # vLLM structured outputs
+                from ..common.schema_sanitizer import sanitize_schema_for_vllm
+                sanitized_schema = sanitize_schema_for_vllm(schema)
+                params["extra_body"] = {"structured_outputs": {"json": sanitized_schema}}
             elif schema:
+                # OpenAI strict mode structured outputs
+                from ..common.schema_sanitizer import sanitize_schema_for_openai_strict
+                sanitized_schema = sanitize_schema_for_openai_strict(schema)
                 params["response_format"] = {
                     "type": "json_schema",
-                    "json_schema": {"name": "extraction", "strict": True, "schema": schema},
+                    "json_schema": {"name": "extraction", "strict": True, "schema": sanitized_schema},
                 }
 
             response = await self.client.chat.completions.create(**params)

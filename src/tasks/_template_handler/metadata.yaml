@@ -1,0 +1,23 @@
+name: template_handler
+display_name: Template Task (Handler System)
+description: Template for creating new tasks using the handler system
+
+capability_requirements:
+  requires_logprobs: optional
+  requires_multimodal: optional
+  requires_schema: optional
+  requires_files: optional
+  requires_streaming: optional
+
+subtasks:
+  mcq_example:
+    description: Multiple choice example subtask
+    citation: "Add citation if applicable"
+    url: https://link-to-dataset-if-applicable
+    
+  structured_example:
+    description: Structured extraction example subtask
+    
+  freeform_example:
+    description: Freeform text generation example subtask
+
