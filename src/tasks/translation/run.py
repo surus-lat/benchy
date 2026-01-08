@@ -1,28 +1,19 @@
 """Translation benchmark - Prefect task entry point.
 
 This is the main entry point for the translation task.
-It uses the generic benchmark engine to run evaluation.
+It uses the handler-based task system with TaskGroupSpec for COMET model lifecycle.
 """
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 from ...prefect_compat import task
 
-from ...engine import (
-    BenchmarkRunner,
-    save_results,
-    get_interface_for_provider,
-)
 from ..group_runner import (
     TaskGroupSpec,
-    SubtaskContext,
     TaskGroupContext,
-    ensure_task_interface_compatibility,
     run_task_group,
 )
-from ...common.summary_reporter import write_group_summary
 from .metrics import load_comet_model
 
 logger = logging.getLogger(__name__)
@@ -30,6 +21,42 @@ logger = logging.getLogger(__name__)
 # Data and cache directories relative to this module
 DATA_DIR = Path(__file__).parent / '.data'
 CACHE_DIR = Path(__file__).parent / 'cache'
+
+
+def _prepare_translation_task(subtask_name: str, context: TaskGroupContext):
+    """Prepare a translation task instance with COMET model.
+    
+    Args:
+        subtask_name: Name of subtask ("opus" or "flores")
+        context: Task group context with shared COMET model
+        
+    Returns:
+        Task instance (Opus or Flores)
+    """
+    from .opus import Opus
+    from .flores import Flores
+    
+    logger.info(f"Preparing translation task: {subtask_name}")
+    
+    # Get COMET model from shared context
+    comet_model = context.shared.get("comet_model") if context.shared else None
+    
+    # Build task config
+    task_config = {
+        "comet_model": comet_model,
+    }
+    
+    # Add subtask-specific config if available
+    subtask_config = context.task_config.get("task_configs", {}).get(subtask_name, {})
+    task_config.update(subtask_config)
+    
+    # Create task instance
+    if subtask_name == "opus":
+        return Opus(config=task_config)
+    elif subtask_name == "flores":
+        return Flores(config=task_config)
+    else:
+        raise ValueError(f"Unknown translation subtask: {subtask_name}")
 
 
 @task
@@ -72,94 +99,29 @@ def run_translation(
 
 
 def _setup_translation(context: TaskGroupContext) -> Dict[str, Any]:
+    """Load COMET model once and share across all translation subtasks.
+    
+    This is critical for performance - COMET takes 2-5 minutes to load.
+    Loading once and sharing saves hours of compute time.
+    """
+    logger.info("Loading COMET model for translation evaluation...")
     comet_model = load_comet_model()
     if comet_model is None:
+        logger.warning("COMET model not available - COMET scores will be 0")
         return {}
+    logger.info("COMET model loaded successfully and will be shared across all subtasks")
     return {"comet_model": comet_model}
 
 
-def _run_subtask(
-    subtask_name: str,
-    subtask_config: Dict,
-    task_config: Dict,
-    model_name: str,
-    connection_info: Dict,
-    provider_type: str,
-    task_output_path: Path,
-    limit: Optional[int],
-    defaults: Dict,
-    prompts: Dict,
-    shared: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Run a single subtask (opus or flores).
-    
-    Args:
-        subtask_name: Name of subtask ("opus" or "flores")
-        subtask_config: Configuration for this subtask
-        task_config: Full task configuration
-        model_name: Model name
-        connection_info: Connection info for interface
-        provider_type: Provider type
-        task_output_path: Base output path
-        limit: Sample limit
-        defaults: Default settings
-        prompts: Prompt templates
-        
-    Returns:
-        Results dictionary
-    """
-    shared = shared or {}
-    comet_model = shared.get("comet_model")
-
-    capability_requirements = task_config.get("capability_requirements", {})
-
-    if subtask_name == "opus":
-        return _run_opus_subtask(
-            subtask_config=subtask_config,
-            model_name=model_name,
-            connection_info=connection_info,
-            provider_type=provider_type,
-            task_output_path=task_output_path,
-            limit=limit,
-            defaults=defaults,
-            prompts=prompts,
-            comet_model=comet_model,
-            capability_requirements=capability_requirements,
-        )
-    elif subtask_name == "flores":
-        return _run_flores_subtask(
-            subtask_config=subtask_config,
-            model_name=model_name,
-            connection_info=connection_info,
-            provider_type=provider_type,
-            task_output_path=task_output_path,
-            limit=limit,
-            defaults=defaults,
-            prompts=prompts,
-            comet_model=comet_model,
-            capability_requirements=capability_requirements,
-        )
-    else:
-        raise ValueError(f"Unknown subtask: {subtask_name}")
+# Old custom subtask runners removed - now using handler-based system
 
 
-def _run_translation_subtask(context: SubtaskContext) -> Dict[str, Any]:
-    return _run_subtask(
-        subtask_name=context.subtask_name,
-        subtask_config=context.subtask_config,
-        task_config=context.task_config,
-        model_name=context.model_name,
-        connection_info=context.connection_info,
-        provider_type=context.provider_type,
-        task_output_path=context.output_dir,
-        limit=context.limit,
-        defaults=context.defaults,
-        prompts=context.prompts,
-        shared=context.shared,
-    )
+# Remove old custom runner - now using default handler-based runner
 
 
-def _run_opus_subtask(
+# Old OPUS runner removed - now using Opus handler class
+
+def _old_run_opus_subtask_DEPRECATED(
     subtask_config: Dict,
     model_name: str,
     connection_info: Dict,
@@ -575,9 +537,8 @@ TRANSLATION_SPEC = TaskGroupSpec(
     name="translation",
     display_name="Translation",
     output_subdir="translation",
-    default_subtasks=["opus"],
-    run_subtask=_run_translation_subtask,
-    aggregate_metrics=_aggregate_subtask_metrics,
-    write_summary=_save_aggregated_summary,
-    setup=_setup_translation,
+    default_subtasks=["opus", "flores"],
+    setup=_setup_translation,  # Load COMET model once
+    prepare_task=_prepare_translation_task,  # Create handler instances with COMET model
+    teardown=None,  # Python GC handles COMET model cleanup
 )
