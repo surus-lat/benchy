@@ -4,8 +4,7 @@ This example shows how to create a freeform text generation task.
 Replace this with your actual task implementation.
 """
 
-from ..formats import FreeformHandler
-from ..metrics import ExactMatch, F1Score
+from ..common import FreeformHandler, ExactMatch, F1Score
 
 
 class FreeformExample(FreeformHandler):
@@ -46,39 +45,41 @@ class FreeformExample(FreeformHandler):
     case_sensitive = False  # Case-insensitive comparison
 
     # Optional: Custom prompt generation
-    def get_prompt(self, sample):
-        """Build prompt for text generation.
-        
-        Args:
-            sample: Sample dict with input text
-            
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-        """
-        user_prompt = f"Input: {sample.get('input', '')}\n\nGenerate appropriate output:"
-        return self.system_prompt, user_prompt
+    # Uncomment only if the default prompt template isn't sufficient
+    # def get_prompt(self, sample):
+    #     """Build prompt for text generation.
+    #     
+    #     Args:
+    #         sample: Sample dict with input text
+    #         
+    #     Returns:
+    #         Tuple of (system_prompt, user_prompt)
+    #     """
+    #     user_prompt = f"Input: {sample.get('input', '')}\n\nGenerate appropriate output:"
+    #     return self.system_prompt, user_prompt
 
     # Optional: Custom preprocessing
-    def preprocess_sample(self, raw_sample, idx):
-        """Transform raw sample to eval format.
-        
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
-        Returns:
-            Processed sample or None to skip
-        """
-        # Extract fields
-        input_text = raw_sample.get(self.text_field)
-        output_text = raw_sample.get(self.label_field)
-
-        if not input_text or not output_text:
-            return None  # Skip invalid samples
-
-        return {
-            "id": f"{self.get_task_name()}_{idx}",
-            "input": str(input_text),
-            "expected": str(output_text),
-        }
+    # Uncomment only if you need to transform the dataset format
+    # def preprocess_sample(self, raw_sample, idx):
+    #     """Transform raw sample to eval format.
+    #     
+    #     Args:
+    #         raw_sample: Raw sample from dataset
+    #         idx: Sample index
+    #         
+    #     Returns:
+    #         Processed sample or None to skip
+    #     """
+    #     # Extract fields
+    #     input_text = raw_sample.get(self.text_field)
+    #     output_text = raw_sample.get(self.label_field)
+    #
+    #     if not input_text or not output_text:
+    #         return None  # Skip invalid samples
+    #
+    #     return {
+    #         "id": f"{self.get_task_name()}_{idx}",
+    #         "input": str(input_text),
+    #         "expected": str(output_text),
+    #     }
 

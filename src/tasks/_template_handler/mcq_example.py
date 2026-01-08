@@ -4,7 +4,7 @@ This example shows how to create a multiple choice task with minimal code.
 Replace this with your actual task implementation.
 """
 
-from ..formats import MultipleChoiceHandler
+from ..common import MultipleChoiceHandler
 
 
 class McqExample(MultipleChoiceHandler):
@@ -42,29 +42,30 @@ class McqExample(MultipleChoiceHandler):
     # user_prompt_template = "{text}\n\nChoose the correct option."
 
     # Optional: Customize prompt generation
-    def get_prompt(self, sample):
-        """Build prompt for this subtask.
-        
-        Args:
-            sample: Sample dict with text, choices, choice_labels
-            
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-        """
-        from ...common import format_choices
-
-        # Format choices nicely
-        choices_text = format_choices(
-            sample.get("choices", []),
-            sample.get("choice_labels")
-        )
-
-        # Build user prompt
-        user_prompt = (
-            f"Question: {sample.get('text', '')}\n\n"
-            f"Options:\n{choices_text}\n\n"
-            f"Answer (label only):"
-        )
-
-        return self.system_prompt, user_prompt
+    # Uncomment and modify if you need custom prompts
+    # def get_prompt(self, sample):
+    #     """Build prompt for this subtask.
+    #     
+    #     Args:
+    #         sample: Sample dict with text, choices, choice_labels
+    #         
+    #     Returns:
+    #         Tuple of (system_prompt, user_prompt)
+    #     """
+    #     from ..common import format_choices
+    #
+    #     # Format choices nicely
+    #     choices_text = format_choices(
+    #         sample.get("choices", []),
+    #         sample.get("choice_labels")
+    #     )
+    #
+    #     # Build user prompt
+    #     user_prompt = (
+    #         f"Question: {sample.get('text', '')}\n\n"
+    #         f"Options:\n{choices_text}\n\n"
+    #         f"Answer (label only):"
+    #     )
+    #
+    #     return self.system_prompt, user_prompt
 
