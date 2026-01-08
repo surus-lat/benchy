@@ -86,18 +86,15 @@ class MultimodalStructuredHandler(BaseHandler):
             DocumentExtractionMetrics or MetricsCalculator instance
         """
         if self._metrics_calc is None:
-            # Try to use document extraction metrics (for image tasks)
-            # Fall back to standard structured metrics if unavailable
+            # Use the common MetricsCalculator from utils
             try:
-                from ..image_extraction.metrics import DocumentExtractionMetrics
-                metrics_cls = DocumentExtractionMetrics
-            except ImportError:
-                from ..structured.metrics import MetricsCalculator
-                metrics_cls = MetricsCalculator
-
-            # Build metrics config
-            merged_config = self._get_merged_config()
-            self._metrics_calc = metrics_cls(merged_config)
+                from .utils.structured_metrics_calculator import MetricsCalculator
+                merged_config = self._get_merged_config()
+                strict = merged_config.get("strict", False)
+                self._metrics_calc = MetricsCalculator({"metrics": merged_config}, strict=strict)
+            except ImportError as e:
+                logger.error(f"Could not import MetricsCalculator: {e}")
+                raise
 
         return self._metrics_calc
 

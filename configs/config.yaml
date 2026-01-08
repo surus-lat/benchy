@@ -121,6 +121,8 @@ leaderboard:
       primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
     
     image_extraction:
+      # NOTE: image_extraction is now a subtask of structured_extraction
+      # Use structured_extraction.image_extract instead
       processor: "structured_extraction_results_processor"
       category_score_key: "image_extraction"
       output_prefix: "image_extraction"
