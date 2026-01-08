@@ -92,7 +92,7 @@ class EnemChallenge(CachedDatasetMixin, MultipleChoiceHandler):
             return answer_key
         elif isinstance(answer_key, str) and answer_key in labels:
             return labels.index(answer_key)
-        logger.warning(f"Missing answer key for sample, defaulting to 0")
+        logger.warning("Missing answer key for sample, defaulting to 0")
         return 0
 
     def format_prompt(self, sample: Dict[str, Any]) -> str:
