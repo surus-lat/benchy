@@ -203,7 +203,7 @@ class Facturas(MultimodalStructuredHandler):
         src_metrics_config = self.source_dir / "metrics_config.json"
         if src_metrics_config.exists():
             shutil.copy2(src_metrics_config, self.data_dir / "metrics_config.json")
-            logger.info(f"Copied metrics_config.json from source")
+            logger.info("Copied metrics_config.json from source")
 
         logger.info(f"Copied source data to {self.data_dir}")
 
