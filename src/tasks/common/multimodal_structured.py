@@ -153,6 +153,12 @@ class MultimodalStructuredHandler(BaseHandler):
             with open(schema_file, "r") as f:
                 self.schema = json.load(f)
 
+        # Validate schema was loaded when required
+        if self.requires_schema and self.schema is None:
+            raise FileNotFoundError(
+                f"Schema file not found in {self.data_dir} and requires_schema is True"
+            )
+
         # Load dataset metrics config if available
         metrics_config_file = self.data_dir / "metrics_config.json"
         if metrics_config_file.exists():
