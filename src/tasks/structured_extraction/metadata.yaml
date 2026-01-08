@@ -19,4 +19,9 @@ subtasks:
     description: Structured data extraction from chat conversations
     dataset_url: https://huggingface.co/datasets/mauroibz/chat_structured_extraction
     long_description: "ChatExtract evaluates models' ability to extract structured information from conversational chat data following a JSON schema. This task tests the model's capability to parse informal conversation text and accurately extract key information fields while maintaining schema compliance."
+  
+  email_extract:
+    description: Extract structured customer data from support emails
+    dataset_url: https://huggingface.co/datasets/mauroibz/email_extract
+    long_description: "EmailExtract evaluates models' ability to extract structured customer information from Spanish-language customer support emails. The task tests extraction of customer details, order information, and issue descriptions from informal email text."
 
