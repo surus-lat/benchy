@@ -23,7 +23,22 @@ class MgsmDirectEsSpanishBench(CachedTSVMixin, FreeformHandler):
     user_prompt_template = "{text}"
     
     def _download_tsv_and_cache(self, output_path: Path):
-        """Download and transform MGSM TSV to JSONL."""
+        """
+        Download the MGSM TSV from the Hugging Face dataset and save it as a JSONL file of prompt/answer records.
+        
+        Each non-empty TSV line with at least two tab-separated fields is converted into a record with keys:
+        - `id`: "mgsm_{index}"
+        - `text`: "Pregunta: {question}\nRespuesta: "
+        - `expected`: the answer as a string
+        
+        Lines with fewer than two fields are skipped.
+        
+        Parameters:
+        	output_path (Path): Destination path for the output JSONL file.
+        
+        Raises:
+        	ImportError: If the `huggingface_hub` package is not installed (message: "huggingface_hub required. Install with: pip install huggingface_hub").
+        """
         try:
             from huggingface_hub import hf_hub_download
         except ImportError:

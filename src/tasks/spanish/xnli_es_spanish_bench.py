@@ -25,7 +25,17 @@ class XnliEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform XNLI-es dataset to eval format."""
+        """
+        Convert the XNLI Spanish test split into a multiple-choice evaluation format and save it as a JSONL file.
+        
+        Loads the XNLI Spanish test dataset, transforms each sample into a dict with keys `id`, `text`, `choices`, and `expected`, and writes the resulting list to `output_path` in JSONL format.
+        
+        Parameters:
+            output_path (Path): Destination file path for the generated JSONL.
+        
+        Raises:
+            ImportError: If the `datasets` library is not installed.
+        """
         try:
             from datasets import load_dataset
         except ImportError:
@@ -55,4 +65,3 @@ class XnliEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
             })
         
         save_to_jsonl(processed, output_path)
-

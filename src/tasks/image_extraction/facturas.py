@@ -59,7 +59,12 @@ class Facturas(MultimodalStructuredHandler):
     }
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize facturas task."""
+        """
+        Initialize the Facturas task, setting up data source and loading dataset metrics.
+        
+        Parameters:
+            config (Optional[Dict[str, Any]]): Optional configuration dictionary. If it contains a "source_dir" key, that path is used as the dataset source directory; otherwise a default test data directory is used. The initializer calls the superclass constructor and then loads any dataset-specific metrics configuration into self.metrics_config.
+        """
         # Set source_dir BEFORE calling super().__init__()
         if config and "source_dir" in config:
             self.source_dir = Path(config["source_dir"])
@@ -73,7 +78,11 @@ class Facturas(MultimodalStructuredHandler):
         self._load_dataset_metrics_config()
 
     def _load_dataset_metrics_config(self):
-        """Load dataset-specific metrics configuration from .data/metrics_config.json."""
+        """
+        Load dataset-specific metrics configuration from the task data directory and merge it into the runtime metrics configuration.
+        
+        If a metrics_config.json file exists in the data directory, its contents are parsed and merged into self.metrics_config, overriding or extending existing keys as needed. Any errors during loading or parsing are logged as warnings and do not raise exceptions.
+        """
         metrics_config_file = self.data_dir / "metrics_config.json"
         if metrics_config_file.exists():
             logger.info(f"Loading dataset metrics config from {metrics_config_file}")
@@ -88,7 +97,17 @@ class Facturas(MultimodalStructuredHandler):
                 logger.warning(f"Failed to load dataset metrics config: {e}")
 
     def _deep_merge(self, base: Dict, override: Dict) -> None:
-        """Recursively merge override dict into base dict."""
+        """
+        Recursively merge keys from `override` into `base`, modifying `base` in place.
+        
+        When a key exists in both dictionaries and both corresponding values are dictionaries,
+        their contents are merged recursively. For all other cases, the value from `override`
+        replaces the value in `base`.
+        
+        Parameters:
+            base (Dict): Destination dictionary that will be updated in place.
+            override (Dict): Source dictionary whose keys and values override or extend `base`.
+        """
         for key, value in override.items():
             if key in base and isinstance(base[key], dict) and isinstance(value, dict):
                 self._deep_merge(base[key], value)
@@ -96,19 +115,13 @@ class Facturas(MultimodalStructuredHandler):
                 base[key] = value
 
     def _load_samples(self) -> list:
-        """Load facturas dataset samples.
+        """
+        Load dataset samples from the dataset's datos.json file and assemble sample records with resolved image paths.
         
-        Overrides MultimodalStructuredHandler._load_samples() to use
-        datos.json instead of expected.json.
-
-        Expected structure:
-            .data/
-            ├── schema.json          # JSON Schema (optional)
-            ├── datos.json           # Ground truth array
-            ├── metrics_config.json  # Optional dataset-specific config
-            └── jpgs/                # Invoice/receipt images
-                ├── factura_001.jpg
-                └── ...
+        If datos.json is missing in self.data_dir, attempts to copy dataset files from self.source_dir (raises FileNotFoundError if source_dir is not set or does not exist). Optionally loads schema.json when present; each returned sample will include the schema when available. Each sample is a dict containing: id, image_path, expected (input item with "filename" and "cae" removed), and filename. Items whose referenced image file is missing are skipped.
+        
+        Returns:
+            list: A list of sample dictionaries ready for processing.
         """
         # Check if data exists, otherwise copy from source
         if not (self.data_dir / "datos.json").exists():
@@ -171,7 +184,18 @@ class Facturas(MultimodalStructuredHandler):
         return dataset
 
     def _copy_source_data(self) -> None:
-        """Copy source data to local .data directory."""
+        """
+        Copy dataset files from the configured source_dir into the task's local data directory.
+        
+        Creates self.data_dir if needed and copies the following from self.source_dir:
+        - Optional schema.json (logged if present; absence is allowed for schema-less mode).
+        - Required datos.json (must exist).
+        - Required jpgs directory (copied; any existing destination jpgs directory is replaced).
+        - Optional metrics_config.json (logged if present).
+        
+        Raises:
+            FileNotFoundError: If datos.json or the jpgs directory is missing in self.source_dir.
+        """
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy schema.json (optional)
@@ -208,7 +232,15 @@ class Facturas(MultimodalStructuredHandler):
         logger.info(f"Copied source data to {self.data_dir}")
 
     def format_prompt(self, sample: Dict[str, Any]) -> str:
-        """Format the user prompt for a sample."""
+        """
+        Builds the user-facing prompt for a sample, embedding the sample schema when present.
+        
+        Parameters:
+            sample (Dict[str, Any]): Sample dictionary. If it contains a "schema" key, the schema (a JSON-serializable object) will be included in the prompt.
+        
+        Returns:
+            str: The formatted prompt. If `sample` contains a schema, the prompt includes a pretty-printed JSON schema block; otherwise it returns a minimal instruction for schema-free extraction.
+        """
         # If schema is present, include it in the prompt
         if "schema" in sample:
             schema_str = json.dumps(sample["schema"], indent=2)
@@ -216,4 +248,3 @@ class Facturas(MultimodalStructuredHandler):
         else:
             # No schema mode (SURUS Factura)
             return "Extract all data from this invoice/receipt image as structured JSON."
-

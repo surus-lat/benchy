@@ -23,11 +23,29 @@ class Metric(Protocol):
     name: str
 
     def per_sample(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
-        """Return per-sample metrics as a dict."""
+        """
+        Compute per-sample metric values for a single example.
+        
+        Parameters:
+            prediction (Any): Model output for the sample.
+            expected (Any): Ground-truth target or reference for the sample.
+            sample (Dict[str, Any]): The original sample metadata (may include fields used by the metric, e.g., choices or labels).
+        
+        Returns:
+            Dict[str, Any]: A mapping of metric keys to per-sample values. For scalar metrics this is typically {name: float}; other metrics may return richer payloads (e.g., validity flags or error information).
+        """
         ...
 
     def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Aggregate metrics across samples."""
+        """
+        Compute the mean of numeric per-sample values for this metric.
+        
+        Parameters:
+            values (List[Dict[str, Any]]): Per-sample payloads produced by `per_sample`; each item may contain this metric's key mapped to a numeric value.
+        
+        Returns:
+            Dict[str, float]: A mapping from the metric's `name` to the mean of all numeric values found under that key. If no valid numeric values are present, returns `{name: 0.0}`.
+        """
         ...
 
 
@@ -41,12 +59,43 @@ class ScalarMetric:
     name: str
 
     def per_sample(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Compute the metric for a single sample and return it keyed by the metric's name.
+        
+        Parameters:
+            prediction: The model's prediction for the sample.
+            expected: The ground-truth value or values for the sample.
+            sample (Dict[str, Any]): The original sample metadata.
+        
+        Returns:
+            Dict[str, Any]: A dictionary mapping the metric's `name` to the per-sample numeric score produced by `compute`.
+        """
         return {self.name: self.compute(prediction, expected, sample)}
 
     def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        """
+        Compute the scalar metric value for a single sample.
+        
+        Parameters:
+            prediction (Any): The model's prediction for this sample.
+            expected (Any): The ground-truth value(s) for this sample.
+            sample (Dict[str, Any]): The original sample dictionary; may include metadata (e.g., choices, labels) used to compute the metric.
+        
+        Returns:
+            float: Numeric score for this sample.
+        """
         raise NotImplementedError
 
     def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Compute the mean of numeric per-sample values for this metric.
+        
+        Parameters:
+            values (List[Dict[str, Any]]): List of per-sample metric dictionaries; each dictionary may contain this metric's key (`self.name`).
+        
+        Returns:
+            Dict[str, float]: A dictionary mapping this metric's name to the mean of all numeric values found under that key across `values`. If no numeric values are present, the mean is `0.0`.
+        """
         scores = [entry.get(self.name) for entry in values if isinstance(entry.get(self.name), (int, float))]
         mean_score = sum(scores) / len(scores) if scores else 0.0
         return {self.name: mean_score}
@@ -64,6 +113,17 @@ class ExactMatch(ScalarMetric):
     strip: bool = True
 
     def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        """
+        Determine whether a prediction exactly matches the expected value after optional stripping and case normalization.
+        
+        Parameters:
+            prediction: The model output to compare; will be converted to string. If `None`, treated as non-matching.
+            expected: The reference value to compare against; will be converted to string. If `None`, treated as non-matching.
+            sample: Unused in this metric; included for signature compatibility.
+        
+        Returns:
+            `1.0` if the (optionally stripped and case-normalized) string form of `prediction` equals that of `expected`, `0.0` otherwise.
+        """
         if prediction is None or expected is None:
             return 0.0
         pred_text = str(prediction)
@@ -79,6 +139,15 @@ class ExactMatch(ScalarMetric):
 
 def _normalize_tokens(text: Any) -> List[str]:
     # Normalize predictions/targets into lowercase whitespace tokens.
+    """
+    Normalize input into a flat list of lowercase whitespace-delimited tokens.
+    
+    Parameters:
+        text (Any): Input to normalize. If None, returns an empty list. If a list, elements are recursively flattened and tokenized. Otherwise the input is converted to a string, lowercased, trimmed, and split on whitespace.
+    
+    Returns:
+        List[str]: A list of lowercase tokens extracted from the input.
+    """
     if text is None:
         return []
     if isinstance(text, list):
@@ -99,6 +168,17 @@ class F1Score(ScalarMetric):
     name: str = "f1"
 
     def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        """
+        Compute the token-level F1 score between a prediction and an expected reference or set of references.
+        
+        Parameters:
+            prediction: Predicted text or tokens to be tokenized and compared.
+            expected: Reference text or list of reference texts. If a list is provided, the maximum F1 over all references is returned.
+            sample: Additional sample metadata (unused by this implementation).
+        
+        Returns:
+            float: F1 score in the range 0.0 to 1.0; returns 0.0 for empty or invalid references.
+        """
         pred_tokens = _normalize_tokens(prediction)
         if isinstance(expected, list):
             return max(self._f1(pred_tokens, _normalize_tokens(option)) for option in expected) if expected else 0.0
@@ -107,6 +187,14 @@ class F1Score(ScalarMetric):
 
     def _f1(self, pred_tokens: List[str], expected_tokens: List[str]) -> float:
         # Compute precision/recall over token overlap.
+        """
+        Compute the F1 score between two token sequences using token overlap with multiset semantics.
+        
+        This treats tokens as multisets (counting repeated tokens), computes precision and recall from the overlapping token counts, and returns their harmonic mean. If either token list is empty or there is no overlap, the score is 0.0.
+        
+        Returns:
+            float: F1 score in the range 0.0 to 1.0.
+        """
         if not pred_tokens or not expected_tokens:
             return 0.0
         pred_set = list(pred_tokens)
@@ -139,6 +227,25 @@ class MultipleChoiceAccuracy:
 
     def per_sample(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
         # Parse the prediction into a choice index using sample choices.
+        """
+        Parse a model prediction into a choice index using sample metadata and report per-sample validity and accuracy.
+        
+        Parameters:
+            prediction: The raw model output to be interpreted as a choice.
+            expected: The expected choice index (or label converted to index) for this sample.
+            sample (dict): Sample metadata used to parse the prediction. Expected keys:
+                - "choices" (list): list of choice strings (optional).
+                - "choice_labels" (list): list of labels corresponding to choices (optional).
+                - "label_to_index" (dict): mapping from label to choice index (optional).
+        
+        Returns:
+            dict: Per-sample result with the following keys:
+                - "valid" (bool): `True` if the prediction could be parsed to a choice index, `False` otherwise.
+                - "accuracy" (float): `1.0` if the parsed choice equals `expected`, `0.0` otherwise.
+                - "correct" (bool): `True` if the parsed choice equals `expected`, `False` otherwise.
+                - "error" (str, optional): Present when `"valid"` is `False`; human-readable error message.
+                - "error_type" (str, optional): Present when `"valid"` is `False`; error category (e.g., `"invalid_response"`).
+        """
         parsed = parse_choice_prediction(
             prediction,
             sample.get("choices", []),
@@ -163,6 +270,15 @@ class MultipleChoiceAccuracy:
 
     def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
         # Aggregate accuracy over valid samples only.
+        """
+        Aggregate accuracy across samples marked as valid.
+        
+        Parameters:
+            values (List[Dict[str, Any]]): Per-sample metric payloads produced by `per_sample`. Entries with `"valid": True` are considered; their `"accuracy"` values (if present) are used.
+        
+        Returns:
+            Dict[str, float]: A dictionary with key `"accuracy"` whose value is the mean accuracy over valid samples, or `0.0` if no valid samples are present.
+        """
         valid = [entry for entry in values if entry.get("valid")]
         accuracy = sum(entry.get("accuracy", 0.0) for entry in valid) / len(valid) if valid else 0.0
         return {"accuracy": accuracy}
@@ -178,6 +294,16 @@ class MeanSquaredError(ScalarMetric):
     name: str = "mse"
     
     def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        """
+        Compute the squared error between the prediction and expected values after converting them to floats.
+        
+        Parameters:
+            prediction: Value that can be converted to float (e.g., numeric string or number).
+            expected: Value that can be converted to float.
+        
+        Returns:
+            float: The squared difference (prediction - expected) ** 2; `0.0` if either value cannot be converted to a float.
+        """
         try:
             pred_val = float(prediction)
             exp_val = float(expected)
@@ -197,6 +323,18 @@ class PearsonCorrelation:
     
     def per_sample(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
         # Store individual values for correlation computation during aggregation
+        """
+        Prepare a per-sample numeric record for Pearson correlation aggregation.
+        
+        Parameters:
+            prediction: Value to interpret as the predicted numeric value; will be converted to float.
+            expected: Value to interpret as the expected (ground-truth) numeric value; will be converted to float.
+            sample: Per-sample metadata (unused by this method).
+        
+        Returns:
+            dict: If both conversions succeed, returns {"prediction": <float>, "expected": <float>, "valid": True}.
+                  If conversion fails, returns {"valid": False}.
+        """
         try:
             pred_val = float(prediction)
             exp_val = float(expected)
@@ -209,6 +347,15 @@ class PearsonCorrelation:
             return {"valid": False}
     
     def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Compute the Pearson correlation coefficient between numeric predictions and expected values across valid samples.
+        
+        Parameters:
+            values (List[Dict[str, Any]]): Per-sample payloads produced by `per_sample`, where each dict must include a truthy `"valid"` key for usable samples and numeric `"prediction"` and `"expected"` keys.
+        
+        Returns:
+            Dict[str, float]: A mapping {"pearson": r} where `r` is the Pearson correlation coefficient. Returns 0.0 if fewer than two valid samples are present or if the correlation is undefined due to zero variance.
+        """
         import math
         
         valid = [entry for entry in values if entry.get("valid")]

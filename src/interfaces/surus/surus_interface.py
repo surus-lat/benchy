@@ -31,19 +31,21 @@ class SurusInterface(HTTPInterface):
         client: httpx.AsyncClient,
         request: Dict,
     ) -> Optional[Dict]:
-        """Make request to SURUS /extract endpoint.
-
-        Args:
-            client: HTTP client
-            request: Request dict with text and schema
-
+        """
+        Send the provided text and optional schema to the SURUS /extract endpoint and return the parsed JSON response.
+        
+        Parameters:
+            request (Dict): Dictionary containing:
+                - "text" (str): The input text to extract from.
+                - "schema" (Optional[Dict]): An optional JSON schema; if present it will be sanitized for OpenAI compatibility.
+        
         Returns:
-            Response dictionary or None on error
-            
+            dict: Parsed JSON response from the SURUS API.
+        
         Raises:
-            httpx.TimeoutException: On request timeout
-            httpx.ConnectError: On connection failure
-            httpx.HTTPStatusError: On HTTP error responses
+            httpx.TimeoutException: If the request times out.
+            httpx.ConnectError: If a connection error occurs.
+            httpx.HTTPStatusError: If the response has a non-2xx HTTP status.
         """
         text = request["text"]
         schema = request["schema"]

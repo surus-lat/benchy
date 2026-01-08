@@ -58,7 +58,15 @@ class MultimodalStructuredHandler(BaseHandler):
     metrics_config: Optional[Dict[str, Any]] = None
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the multimodal structured handler."""
+        """
+        Constructs a handler configured to load multimodal data and metrics from a required source directory.
+        
+        Parameters:
+            config (Optional[Dict[str, Any]]): Optional configuration overrides. If present, the key `"source_dir"` will override the class-level `source_dir` used to locate image/file sources and dataset files.
+        
+        Raises:
+            ValueError: If no `source_dir` is configured after applying `config`.
+        """
         super().__init__(config)
 
         # Override source_dir from config if provided
@@ -80,10 +88,14 @@ class MultimodalStructuredHandler(BaseHandler):
 
     @property
     def metrics_calculator(self):
-        """Lazy initialization of document extraction metrics calculator.
+        """
+        Lazily initialize and return the metrics calculator configured for this handler.
         
         Returns:
-            DocumentExtractionMetrics or MetricsCalculator instance
+            MetricsCalculator: An instance configured to compute document-extraction and schema-based metrics, cached after first creation.
+        
+        Raises:
+            ImportError: If the MetricsCalculator implementation cannot be imported.
         """
         if self._metrics_calc is None:
             # Use the common MetricsCalculator from utils
@@ -99,10 +111,13 @@ class MultimodalStructuredHandler(BaseHandler):
         return self._metrics_calc
 
     def _get_merged_config(self) -> Dict:
-        """Get merged configuration with dataset-specific metrics config.
+        """
+        Produce a configuration dictionary that merges the handler's base config with class-level and dataset-specific metrics settings.
+        
+        The returned dictionary is a deep copy of self.config (or an empty dict) with a "metrics" mapping created if needed and updated by self.metrics_config and then by self.dataset_metrics_config. Values from dataset-specific configuration override or extend class-level metrics entries.
         
         Returns:
-            Merged configuration dictionary
+            merged (Dict): The merged configuration dictionary.
         """
         import copy
 
@@ -123,11 +138,12 @@ class MultimodalStructuredHandler(BaseHandler):
         return merged
 
     def _deep_merge(self, base: Dict, override: Dict) -> None:
-        """Recursively merge override dict into base dict.
+        """
+        Recursively merge values from `override` into `base`, modifying `base` in place.
         
-        Args:
-            base: Base dictionary (modified in place)
-            override: Override dictionary
+        Parameters:
+            base (Dict): Target dictionary to be updated (modified in place).
+            override (Dict): Source dictionary whose values overwrite or are merged into `base`; when both `base[key]` and `override[key]` are dicts, the merge recurses.
         """
         for key, value in override.items():
             if key in base and isinstance(base[key], dict) and isinstance(value, dict):
@@ -136,7 +152,17 @@ class MultimodalStructuredHandler(BaseHandler):
                 base[key] = value
 
     def load(self) -> None:
-        """Load dataset, copying from source if needed."""
+        """
+        Load dataset artifacts into the handler, copying files from the configured source directory when necessary.
+        
+        This method ensures a schema is present in the task data directory (copying files from self.source_dir if the schema is missing), then loads:
+        - schema.json into self.schema (if present),
+        - metrics_config.json into self.dataset_metrics_config (if present),
+        - expected dataset samples via self._load_samples() into self.dataset_data.
+        
+        Raises:
+            FileNotFoundError: if the configured source directory does not exist when a copy is required.
+        """
         # Check if data exists, otherwise copy from source
         if not (self.data_dir / "schema.json").exists():
             if not self.source_path.exists():
@@ -175,10 +201,21 @@ class MultimodalStructuredHandler(BaseHandler):
                 logger.debug(f"Copied {file_path.name}")
 
     def _load_samples(self) -> List[Dict]:
-        """Load samples from data directory.
+        """
+        Load dataset samples by pairing expected outputs with corresponding files in the task data directory.
+        
+        Searches for each entry in `data_dir/expected.json` and resolves an input file by using the entry key or the key plus common extensions (.jpg, .jpeg, .png, .pdf). Entries without a resolvable file are skipped.
         
         Returns:
-            List of sample dicts with image paths, schemas, and expected outputs
+            A list of sample dictionaries, each containing:
+              - `id` (str): unique sample identifier,
+              - `image_path` (str): path to the input file,
+              - `schema` (dict|None): task schema,
+              - `expected` (Any): expected output for the sample,
+              - `file_key` (str): original key from expected.json.
+        
+        Raises:
+            FileNotFoundError: if `data_dir/expected.json` does not exist.
         """
         samples = []
 
@@ -219,13 +256,14 @@ class MultimodalStructuredHandler(BaseHandler):
         return samples
 
     def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
-        """Iterate over dataset samples.
+        """
+        Yield dataset samples in order, optionally limiting the number returned.
         
-        Args:
-            limit: Maximum number of samples to return
-            
-        Yields:
-            Sample dictionaries with image paths and schemas
+        Parameters:
+            limit (Optional[int]): Maximum number of samples to yield; if None, yield all samples.
+        
+        Returns:
+            Iterator[Dict[str, Any]]: An iterator over sample dictionaries. Each sample contains keys such as the image path and the associated schema.
         """
         if self.dataset_data is None:
             raise RuntimeError("Dataset not loaded. Call load() first.")
@@ -238,15 +276,16 @@ class MultimodalStructuredHandler(BaseHandler):
             count += 1
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
-        """Build prompts for multimodal structured extraction.
+        """
+        Constructs the system and user prompts for a sample, embedding the sample's schema into the user prompt.
         
-        Includes schema information in the prompt.
+        If the handler has a `user_prompt_template` containing the placeholder `{schema}`, that template is used with the sample schema substituted; otherwise a default user prompt instructing extraction and to return JSON matching the schema is produced.
         
-        Args:
-            sample: Sample with schema
-            
+        Parameters:
+            sample (Dict[str, Any]): Sample dictionary; the optional `"schema"` key is pretty-printed and included in the user prompt.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple[str, str]: `(system_prompt, user_prompt)` where `user_prompt` includes the sample schema as formatted JSON.
         """
         schema = sample.get("schema", {})
         schema_str = json.dumps(schema, indent=2) if schema else ""
@@ -272,19 +311,18 @@ class MultimodalStructuredHandler(BaseHandler):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for structured extraction prediction.
+        """
+        Compute structured-extraction metrics for a prediction against the expected output using the handler's metrics calculator.
         
-        Uses the document extraction metrics calculator.
+        Parameters:
+            prediction: Model output to evaluate (typically a dict or parsed JSON).
+            expected: Ground-truth structured output to compare against.
+            sample: Sample dictionary; the schema is read from sample.get("schema", {}).
+            error: Optional error message observed while producing the prediction.
+            error_type: Optional categorical error type.
         
-        Args:
-            prediction: Model output (should be dict/JSON)
-            expected: Expected output dict
-            sample: Full sample dict with schema
-            error: Error message if any
-            error_type: Type of error
-            
         Returns:
-            Comprehensive metrics dict
+            dict: A dictionary of computed metrics (per-sample structured extraction and validation scores).
         """
         return self.metrics_calculator.calculate_all(
             prediction=prediction,
@@ -297,14 +335,15 @@ class MultimodalStructuredHandler(BaseHandler):
     def get_error_metrics(
         self, error: str, error_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Return error metrics for failed predictions.
+        """
+        Compute metrics representing a failed prediction using the provided error information.
         
-        Args:
-            error: Error message
-            error_type: Type of error
-            
+        Parameters:
+            error (str): Error message describing the failure.
+            error_type (Optional[str]): Optional error classification or code.
+        
         Returns:
-            Metrics dict matching structure of successful predictions
+            Dict[str, Any]: Metrics dictionary following the same structure as successful prediction metrics, populated for an error case (no prediction).
         """
         return self.metrics_calculator.calculate_all(
             prediction=None,
@@ -315,13 +354,21 @@ class MultimodalStructuredHandler(BaseHandler):
         )
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate structured extraction metrics across all samples.
+        """
+        Aggregate per-sample structured-extraction metrics into dataset-level statistics.
         
-        Args:
-            all_metrics: List of per-sample metrics
-            
+        Parameters:
+            all_metrics (List[Dict]): List of per-sample metric dictionaries.
+        
         Returns:
-            Aggregated metrics dict
+            Dict[str, Any]: Aggregated metrics including:
+                - total_samples: total number of samples processed
+                - valid_samples: number of samples marked as valid
+                - error_count: number of invalid samples
+                - schema_validity_rate: fraction of samples with schema_validity > 0.5
+                - exact_match_rate: fraction of samples with exact_match == True
+                - error_rate: fraction of invalid samples
+                - <numeric metric names>: averaged numeric scores for each metric present
         """
         if not all_metrics:
             return {}
@@ -364,4 +411,3 @@ class MultimodalStructuredHandler(BaseHandler):
                 aggregated[metric_name] = sum(values) / len(values)
 
         return aggregated
-

@@ -67,7 +67,12 @@ class EmailExtract(CachedDatasetMixin, StructuredHandler):
     )
     
     def _download_and_cache(self, output_path: Path):
-        """Download and preprocess email extraction dataset."""
+        """
+        Download the source dataset, normalize each sample to the task schema, and write the processed samples to a JSON Lines file.
+        
+        Parameters:
+            output_path (Path): File path where the processed samples will be saved in JSON Lines format. Each record contains the keys `id` (six-digit zero-padded identifier), `text` (email content), `schema` (the JSON schema used for extraction), and `expected` (the labeled extraction from the source sample).
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,
@@ -90,5 +95,14 @@ class EmailExtract(CachedDatasetMixin, StructuredHandler):
         logger.info(f"Cached {len(processed)} samples to {output_path}")
     
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
-        """Samples are already preprocessed in _download_and_cache."""
+        """
+        Return the input sample unchanged because preprocessing is performed in _download_and_cache.
+        
+        Parameters:
+            raw_sample (Dict[str, Any]): The raw dataset sample.
+            idx (int): Index of the sample in the dataset; ignored by this implementation.
+        
+        Returns:
+            Dict[str, Any]: The original `raw_sample` unchanged.
+        """
         return raw_sample

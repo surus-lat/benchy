@@ -30,28 +30,21 @@ class MetricsCalculator:
     """Calculate comprehensive metrics for structured data extraction."""
 
     def __init__(self, config: Dict, strict: bool = False):
-        """Initialize metrics calculator.
-
-        Args:
-            config: Configuration dictionary with structure:
+        """
+        Configure the MetricsCalculator and initialize its partial matching behavior.
+        
+        Parameters:
+            config (Dict): Configuration dictionary containing metric settings and matching/normalization rules.
+                Expected structure (keys shown for reference):
                 {
                     "metrics": {
-                        "partial_credit": 0.3,
-                        "extraction_quality_score": {
-                            "weights": {
-                                "schema_validity": 0.15,
-                                "field_f1_partial": 0.70,
-                                "inverted_hallucination": 0.15
-                            }
-                        },
-                        "partial_matching": {
-                            "string": {...},
-                            "number": {...}
-                        },
+                        "partial_credit": float,
+                        "extraction_quality_score": {"weights": {"schema_validity": float, "field_f1_partial": float, "inverted_hallucination": float}},
+                        "partial_matching": {"string": {...}, "number": {...}},
                         "normalization": {...}
                     }
                 }
-            strict: If True, use stricter matching thresholds (default: False)
+            strict (bool): When True, enable stricter matching thresholds for field comparison (default: False).
         """
         self.config = config
         self.partial_matcher = PartialMatcher(config, strict=strict)
@@ -64,17 +57,24 @@ class MetricsCalculator:
         error: str = None,
         error_type: str = None
     ) -> Dict:
-        """Calculate all metrics for a single sample.
-
-        Args:
-            prediction: Model's predicted output
-            expected: Expected (ground truth) output
-            schema: Target JSON schema
-            error: Error message if generation failed
-            error_type: Type of error ('connectivity_error' or 'invalid_response')
-
+        """
+        Compute the full set of per-sample extraction metrics and diagnostics for a predicted output.
+        
+        Parameters:
+            prediction (Dict): Model's predicted output (may be None or malformed).
+            expected (Dict): Ground-truth output to compare against.
+            schema (Dict): JSON schema used to validate the prediction.
+            error (str, optional): Error message produced during generation, if any.
+            error_type (str, optional): Error category; recognized value "connectivity_error" causes an early return.
+        
         Returns:
-            Dictionary of metric scores and diagnostics
+            Dict: A metrics dictionary containing status and diagnostics, including:
+                - validity and error flags (valid, error, error_type, connectivity_error)
+                - schema validity and schema_complexity
+                - extraction metrics (extraction_quality_score, exact_match, field_f1_partial, field_f1_strict,
+                  field_precision_*/field_recall_*, type_accuracy)
+                - diagnostic distributions and lists (match_distribution, composite_scores)
+                - hallucination_rate and other per-sample diagnostic counts
         """
         metrics = {
             # Basic status
@@ -175,14 +175,17 @@ class MetricsCalculator:
         return metrics
 
     def _validate_schema(self, output: Any, schema: Dict) -> bool:
-        """Validate output against JSON schema.
-
-        Args:
-            output: Output to validate (should be dict, but may be other types)
-            schema: JSON schema for validation
-
+        """
+        Validate a decoded output against a provided JSON schema.
+        
+        Considers non-dict outputs invalid when a schema with object `properties` is supplied. If the schema is empty or has no `properties`, validation is skipped and treated as valid. Uses jsonschema validation and returns False on validation errors or unexpected exceptions.
+        
+        Parameters:
+            output: The decoded model output to validate (commonly a dict).
+            schema: A JSON Schema object to validate against.
+        
         Returns:
-            True if valid, False otherwise
+            `True` if the output conforms to the schema or if the schema is empty/no properties, `False` otherwise.
         """
         # Quick type check - if output isn't a dict and schema expects object, it's invalid
         if not isinstance(output, dict):
@@ -205,20 +208,21 @@ class MetricsCalculator:
             return False
 
     def _exact_match(self, prediction: Dict, expected: Dict) -> bool:
-        """Check if prediction exactly matches expected output.
-
-        Uses value-based comparison instead of JSON string comparison
-        to handle float/int differences (1.0 vs 1) and key ordering.
+        """
+        Determine whether the prediction and expected structures are value-equal according to the calculator's comparison rules.
+        
+        @returns `True` if prediction and expected are equal under the value comparison rules, `False` otherwise.
         """
         return self._values_equal(prediction, expected)
 
     def _values_equal(self, val1: Any, val2: Any) -> bool:
-        """Recursively compare two values for equality.
-
-        Handles:
-        - Float/int equivalence (1.0 == 1)
-        - Nested dicts and lists
-        - String normalization for whitespace
+        """
+        Determine whether two values are equivalent according to the calculator's comparison rules.
+        
+        Compares values recursively: numeric types are compared with a small tolerance for floats, strings are compared case- and surrounding-whitespace-insensitively, and dicts/lists are compared structurally (matching keys for dicts and element-wise for lists).
+        
+        Returns:
+            True if the values are considered equal according to these rules, False otherwise.
         """
         # Handle None
         if val1 is None and val2 is None:
@@ -257,10 +261,23 @@ class MetricsCalculator:
         pred_fields: Dict[str, Any],
         exp_fields: Dict[str, Any]
     ) -> Dict[str, Dict]:
-        """Compare predicted and expected fields with partial matching.
+        """
+        Compare predicted and expected flattened fields and compute per-field match diagnostics.
+        
+        Parameters:
+            pred_fields (Dict[str, Any]): Flattened prediction mapping field paths to values.
+            exp_fields (Dict[str, Any]): Flattened expected mapping field paths to values.
         
         Returns:
-            Dictionary mapping field keys to comparison results
+            Dict[str, Dict]: Mapping from field key to a diagnostics dictionary with keys:
+                - status: "matched", "missed", or "spurious"
+                - match_type: descriptive match category (e.g., "exact", "partial", "missed", "spurious")
+                - score: numeric match score (0.0–1.0)
+                - type_match: `True` if predicted and expected types are identical, `False` otherwise
+                - error_severity: "critical" or "minor" describing the severity of the mismatch
+                - is_numeric: `True` if the expected (or predicted for spurious) value is numeric (int/float)
+                - predicted: the predicted value or `None` when missing
+                - expected: the expected value or `None` when spurious
         """
         results = {}
 
@@ -318,7 +335,34 @@ class MetricsCalculator:
         pred_fields: Dict,
         exp_fields: Dict
     ) -> Dict:
-        """Aggregate field-level results into metrics."""
+        """
+        Aggregate per-field comparison results into summary metrics and diagnostics.
+        
+        Parameters:
+            field_results (Dict[str, Dict]): Mapping from flattened field keys to per-field comparison results produced by _compare_fields. Each result must include at least `match_type`, `score`, and `type_match`; it may also include `error_severity` and `is_numeric`.
+            pred_fields (Dict): Flattened predicted fields (keys to values) for the sample.
+            exp_fields (Dict): Flattened expected fields (keys to values) for the sample.
+        
+        Returns:
+            Dict: A dictionary of aggregated metrics and diagnostics containing:
+                - field_f1_partial (float): F1 using partial credit for "partial" matches (configurable).
+                - field_f1_strict (float): F1 using only exact matches.
+                - field_precision_partial (float): Precision using partial credit.
+                - field_recall_partial (float): Recall using partial credit.
+                - field_precision_strict (float): Precision using only exact matches.
+                - field_recall_strict (float): Recall using only exact matches.
+                - type_accuracy (float): Fraction of expected fields whose types matched.
+                - hallucination_rate (float): Fraction of predicted fields that are spurious.
+                - match_distribution (Dict[str, int]): Counts of matches by category: exact, partial, incorrect, missed, spurious.
+                - composite_scores (List[float]): Positive per-field composite scores collected for diagnostics.
+                - critical_error_rate (float): Fraction of expected fields marked with critical error severity.
+                - minor_error_count (int): Total number of fields marked with minor error severity.
+                - critical_error_count (int): Total number of fields marked with critical error severity.
+                - field_accuracy_score (float): Strict field accuracy (exact_count / total_expected).
+                - numeric_precision_rate (float): Fraction of numeric expected fields that were exactly correct (1.0 if no numeric fields).
+                - numeric_fields_total (int): Number of expected fields flagged as numeric.
+                - numeric_fields_correct (int): Number of numeric expected fields with exact matches.
+        """
         # Get configurable partial credit (default 0.3)
         partial_credit = self.config.get("metrics", {}).get("partial_credit", 0.3)
 
@@ -437,14 +481,19 @@ class MetricsCalculator:
         }
 
     def _calculate_eqs(self, metrics: Dict) -> float:
-        """Calculate Extraction Quality Score (EQS).
+        """
+        Compute the Extraction Quality Score (EQS) for a sample.
         
-        EQS = 0.15 * schema_validity +
-              0.70 * field_f1_partial +
-              0.15 * (1 - hallucination_rate)
-
-        New weights emphasize F1 score more heavily to better differentiate
-        high-performing models in the 0.9-1.0 range.
+        EQS is a weighted combination of schema validity, field-level partial F1, and inverted hallucination rate. Weights are read from the instance configuration under `metrics.extraction_quality_score.weights`.
+        
+        Parameters:
+            metrics (dict): Per-sample metrics that must include the keys
+                `schema_validity`, `field_f1_partial`, and `hallucination_rate`.
+        
+        Returns:
+            float: EQS score (typically in the range 0.0 to 1.0) computed as
+            schema_validity * weight_schema + field_f1_partial * weight_f1 +
+            (1 - hallucination_rate) * weight_inverted_hallucination.
         """
         weights = self.config.get("metrics", {}).get("extraction_quality_score", {}).get("weights", {})
         validity_weight = weights.get("schema_validity", 0.15)
@@ -458,9 +507,33 @@ class MetricsCalculator:
         return eqs
 
     def _calculate_schema_complexity(self, schema: Dict) -> Dict:
-        """Calculate complexity metrics for a schema."""
+        """
+        Compute simple complexity metrics for a JSON Schema.
+        
+        Parameters:
+            schema (Dict): A JSON Schema represented as a nested dictionary.
+        
+        Returns:
+            Dict: A dictionary with these keys:
+                - total_fields (int): Total count of fields discovered in `properties` and `$defs`.
+                - required_fields (int): Number of entries in the schema's top-level `required` list.
+                - max_nesting_depth (int): Maximum detected nesting depth (root = 0).
+                - has_arrays (bool): True if the schema textually references arrays.
+                - has_nested_objects (bool): True if `$defs` are present or nesting depth > 1.
+        """
         def count_fields(obj, depth=0):
-            """Recursively count fields and track max depth."""
+            """
+            Compute the number of schema fields and the maximum nesting depth within a JSON Schema fragment.
+            
+            Parameters:
+                obj (dict): A JSON Schema fragment (typically containing "properties" and/or "$defs"). Non-dict inputs are treated as empty and return zeros.
+                depth (int): Current recursion depth (used internally; default 0).
+            
+            Returns:
+                tuple:
+                    total_fields (int): Total count of fields found in "properties" and nested definitions.
+                    max_depth (int): Maximum nesting depth encountered (root depth is `depth`).
+            """
             if not isinstance(obj, dict):
                 return 0, depth
 
@@ -505,15 +578,21 @@ class MetricsCalculator:
         }
 
     def _flatten_dict(self, d: Any, parent_key: str = "", sep: str = ".") -> Dict:
-        """Flatten nested dictionary, handling edge cases.
-
-        Args:
-            d: Input data (should be dict, but may be list or other types)
-            parent_key: Parent key for nested flattening
-            sep: Separator for key concatenation
-
+        """
+        Flatten a nested mapping into a single-level dictionary using dot-separated keys.
+        
+        This function converts nested dicts into a flat dict where nested keys are joined by `sep`.
+        Lists are represented by appending `[index]` to the key for each element. If `d` is None,
+        an empty dict is returned. Non-dict top-level inputs are wrapped as `{"root": value}` and
+        then flattened so callers receive a consistent mapping of keys to leaf values.
+        
+        Parameters:
+            d (Any): The input to flatten; expected to be a dict but may be a list or other type.
+            parent_key (str): Prefix to prepend to keys during recursion (used internally).
+            sep (str): Separator inserted between concatenated nested keys.
+        
         Returns:
-            Flattened dictionary
+            Dict: A flat dictionary mapping dotted keys (with list indices) to their corresponding leaf values.
         """
         # Handle non-dict inputs gracefully
         if d is None:
@@ -550,13 +629,13 @@ class MetricsCalculator:
         return dict(items)
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict:
-        """Aggregate metrics across all samples.
-
-        Args:
-            all_metrics: List of per-sample metrics
-
+        """
+        Aggregate per-sample metrics into a single summary report.
+        
+        All entries in `all_metrics` must be per-sample metric dictionaries produced by this calculator (e.g., containing keys like `valid`, `error`, `extraction_quality_score`, `field_f1_partial`, `match_distribution`, etc.). If `all_metrics` is empty, returns a defaults dictionary with zeros and empty structures.
+        
         Returns:
-            Dictionary of aggregated metrics
+            A dictionary containing aggregated counts, rates, averages, distribution percentages, composite score statistics, sample-level variance, diagnostic counters, and additional summary metrics (for example: `total_samples`, `valid_samples`, `error_count`, `response_rate`, `extraction_quality_score`, `overall_extraction_quality_score`, `schema_validity_rate`, `hallucination_rate`, `exact_match_rate`, field-level F1/precision/recall, `type_accuracy`, `match_distribution`, `composite_score_stats`, `sample_level_variance`, `critical_error_rate`, `field_accuracy_score`, `numeric_precision_rate`, numeric field totals/correct counts, and Imperfect Sample Quality metrics).
         """
         if not all_metrics:
             return {

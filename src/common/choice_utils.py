@@ -12,7 +12,14 @@ DEFAULT_ANSWER_MARKERS = ("answer", "respuesta", "label", "etiqueta", "salida", 
 
 
 def normalize_text(text: str) -> str:
-    """Normalize text for loose matching."""
+    """
+    Normalize text for loose, case-insensitive matching.
+    
+    Transforms the input to Unicode NFKD, removes diacritic/combining marks, converts to lowercase, replaces any run of non-alphanumeric characters with a single space, and trims surrounding whitespace.
+    
+    Returns:
+        The normalized text suitable for loose matching.
+    """
     normalized = unicodedata.normalize("NFKD", text)
     stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
     lowered = stripped.lower()
@@ -51,20 +58,18 @@ def parse_choice_index(
     label_to_index: Optional[dict] = None,
     strict: bool = True,
 ) -> Optional[int]:
-    """Parse a choice index from a model prediction.
-
-    Supports numeric indices, numeric label values (via label_to_index),
-    labeled letters (A/B), or matching against choice text.
+    """
+    Derive a 0-based choice index from a model prediction supporting numeric, labeled, and text answers.
     
-    Args:
-        prediction: Model output (can be int, str, etc.)
-        choices: List of choice strings
-        labels: Optional choice labels (e.g., ['A', 'B', 'C'])
-        label_to_index: Optional mapping of numeric labels to indices
-        strict: If False, allows partial matching (first 10 chars). Default True.
+    Parameters:
+        prediction (object): Model output to parse (e.g., int, float, bool, str). Various structured forms are accepted as text.
+        choices (Sequence[str]): Sequence of available choice strings.
+        labels (Optional[Sequence[str]]): Optional labels corresponding to choices (e.g., ['A', 'B', 'C']). If omitted, defaults to sequential alphabetic labels.
+        label_to_index (Optional[dict]): Optional mapping from numeric label values to choice indices.
+        strict (bool): If False, allow lenient partial matching against long choice text. Default True.
     
     Returns:
-        Choice index (0-based) or None if not found
+        Optional[int]: The selected choice index (0-based) if identified, `None` otherwise.
     """
     if prediction is None:
         return None
@@ -121,9 +126,17 @@ def parse_choice_index(
 
 
 def extract_answer_segment(response: str, markers: Sequence[str] = DEFAULT_ANSWER_MARKERS) -> str:
-    """Extract the answer segment from a response string.
-
-    Uses the last matching marker (e.g., "Answer:") to reduce false positives.
+    """
+    Extracts the portion of a response that likely contains the final answer.
+    
+    Searches for the last occurrence of any marker in `markers` (e.g., "answer", "respuesta") to locate the answer segment; if a marker and a colon are found, the marker and the colon are removed from the returned segment. If no marker is found, returns the trimmed original response.
+    
+    Parameters:
+        response (str): The full response text to extract from.
+        markers (Sequence[str]): Sequence of marker strings to search for; the last-occurring marker is used.
+    
+    Returns:
+        str: The extracted answer segment with surrounding whitespace removed.
     """
     # Find the last marker to avoid capturing earlier instruction text.
     lowered = response.lower()
@@ -152,20 +165,21 @@ def parse_choice_prediction(
     answer_markers: Sequence[str] = DEFAULT_ANSWER_MARKERS,
     strict: bool = True,
 ) -> Optional[int]:
-    """Parse a model prediction into a choice index.
-
-    Supports numeric labels, letter labels, JSON payloads, or freeform text.
+    """
+    Interpret a model prediction and return the corresponding 0-based choice index.
     
-    Args:
-        prediction: Model output (dict, list, str, int, etc.)
-        choices: List of choice strings
-        labels: Optional choice labels
-        label_to_index: Optional mapping of numeric labels to indices
-        answer_markers: Keywords to extract answer segment from response
-        strict: If False, allows partial matching. Default True.
+    Supports inputs in multiple forms (dict, list, JSON-like string, numeric label, single-letter label, or freeform text). Extracts an answer segment using the provided markers before matching; when strict is False, allows lenient partial matching against choices.
+    
+    Parameters:
+        prediction (object): Model output to interpret (may be dict, list, str, int, float, bool, etc.).
+        choices (Sequence[str]): Sequence of choice strings to match against.
+        labels (Optional[Sequence[str]]): Optional sequence of labels corresponding to choices (e.g., ["A", "B", "C"]).
+        label_to_index (Optional[dict]): Optional mapping from numeric or label values to choice indices.
+        answer_markers (Sequence[str]): Sequence of marker strings used to locate an answer segment within freeform text.
+        strict (bool): If False, allow partial/lenient matching when exact normalized matches are not found.
     
     Returns:
-        Choice index (0-based) or None if not found
+        Optional[int]: 0-based index of the matched choice, or None if no match can be determined.
     """
     # Fast-path empty predictions.
     if prediction is None:

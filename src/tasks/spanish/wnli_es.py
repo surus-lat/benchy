@@ -26,7 +26,17 @@ class WnliEs(CachedCSVMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_csv_and_cache(self, output_path: Path):
-        """Download and transform WNLI-es CSV to JSONL."""
+        """
+        Download the appropriate WNLI-es CSV for the configured split, convert each valid row to a JSONL record, and save the resulting list to output_path.
+        
+        Each processed record contains an `id` (`wnli_es_{index}` if present, otherwise a sequential id), `text` (combined prompt of sentence1 and sentence2), `choices` (["Falso", "Verdadero"]), and `expected` (the integer label). Rows missing `sentence1` or `sentence2` are skipped.
+        
+        Parameters:
+            output_path (Path): Destination path for the output JSONL file.
+        
+        Raises:
+            ImportError: If the `huggingface_hub` package is not installed.
+        """
         try:
             from huggingface_hub import hf_hub_download
         except ImportError:

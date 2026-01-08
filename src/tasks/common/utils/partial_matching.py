@@ -13,33 +13,26 @@ class PartialMatcher:
     """
 
     def __init__(self, config: Dict, strict: bool = False):
-        """Initialize partial matcher.
-
-        Args:
-            config: Configuration dictionary with structure:
-                {
-                    "metrics": {
-                        "partial_matching": {
-                            "string": {
-                                "exact_threshold": 0.95,
-                                "partial_threshold": 0.50,
-                                "token_overlap_weight": 0.5,
-                                "levenshtein_weight": 0.3,
-                                "containment_weight": 0.2
-                            },
-                            "number": {
-                                "relative_tolerance": 0.001,
-                                "absolute_tolerance": 1e-6
-                            }
-                        },
-                        "normalization": {
-                            "case_sensitive": False,
-                            "normalize_whitespace": True,
-                            "unicode_normalize": True
-                        }
-                    }
-                }
-            strict: If True, use stricter thresholds for matching (default: False)
+        """
+        Initialize the PartialMatcher with configuration values and an optional strict mode.
+        
+        Parameters:
+            config (Dict): Configuration dictionary. Function reads:
+                - metrics.partial_matching (dict): partial matching settings.
+                    - string (dict): string thresholds and weights:
+                        - exact_threshold (float)
+                        - partial_threshold (float)
+                        - token_overlap_weight (float)
+                        - levenshtein_weight (float)
+                        - containment_weight (float)
+                    - number (dict): numeric tolerances:
+                        - relative_tolerance (float)
+                        - absolute_tolerance (float)
+                - metrics.normalization (dict): normalization options:
+                    - case_sensitive (bool)
+                    - normalize_whitespace (bool)
+                    - unicode_normalize (bool)
+            strict (bool): If True, enable stricter matching thresholds and tolerances.
         """
         self.config = config.get("metrics", {}).get("partial_matching", {})
         self.string_config = self.config.get("string", {})
@@ -63,34 +56,43 @@ class PartialMatcher:
         return (result[0], result[1])
 
     def compare_values_with_severity(self, predicted: Any, expected: Any) -> Tuple[str, float, str]:
-        """Compare two values and return match type, score, and error severity.
-
-        Public method that exposes severity classification.
+        """
+        Determine match type, score, and error severity for the given predicted and expected values.
         
-        Args:
-            predicted: Predicted value
-            expected: Expected value
-
+        Parameters:
+            predicted: The value produced by a model or system.
+            expected: The reference value to compare against.
+        
         Returns:
-            Tuple of (match_type, score, error_severity) where:
-            - match_type: 'exact', 'partial', or 'incorrect'
-            - score: Float from 0.0 to 1.0
-            - error_severity: 'none', 'minor', or 'critical'
+            tuple: (match_type, score, error_severity)
+                - match_type: 'exact', 'partial', or 'incorrect'
+                - score: float between 0.0 and 1.0 indicating similarity
+                - error_severity: 'none', 'minor', or 'critical'
         """
         return self._compare_values_with_severity(predicted, expected)
 
     def _compare_values_with_severity(self, predicted: Any, expected: Any) -> Tuple[str, float, str]:
-        """Compare two values and return match type, score, and error severity.
-
-        Args:
-            predicted: Predicted value
-            expected: Expected value
-
+        """
+        Compare two values and classify their match type, numeric score, and error severity.
+        
+        Parameters:
+            predicted (Any): The value produced by the system.
+            expected (Any): The reference value to compare against.
+        
         Returns:
-            Tuple of (match_type, score, error_severity) where:
-            - match_type: 'exact', 'partial', or 'incorrect'
-            - score: Float from 0.0 to 1.0
-            - error_severity: 'none', 'minor', or 'critical'
+            Tuple[str, float, str]: A tuple of (match_type, score, error_severity):
+                - match_type: 'exact', 'partial', or 'incorrect'.
+                - score: similarity score between 0.0 and 1.0.
+                - error_severity: 'none', 'minor', or 'critical'.
+        
+        Behavior notes:
+            - Both values None -> ('exact', 1.0, 'none'); one None -> ('incorrect', 0.0, 'critical').
+            - Strings are compared for exact, partial, or incorrect similarity; casing/whitespace-only differences are treated as minor.
+            - Numeric comparisons yield 'exact' or 'incorrect'; non-exact numeric differences are treated as critical.
+            - Boolean mismatches are treated as critical.
+            - Values of differing types produce ('incorrect', 0.0, 'critical').
+            - Lists are compared for overlap; exact, partial, or incorrect outcomes map to severities none, minor, or critical respectively.
+            - For other types, equality yields exact/none, inequality yields incorrect/critical.
         """
         # Handle None/null
         if predicted is None and expected is None:
@@ -142,14 +144,11 @@ class PartialMatcher:
         return (match_type, score, severity)
 
     def _compare_strings(self, predicted: str, expected: str) -> Tuple[str, float]:
-        """Compare two strings with composite scoring.
-
-        Args:
-            predicted: Predicted string
-            expected: Expected string
-
+        """
+        Classifies similarity between two strings as 'exact', 'partial', or 'incorrect' and returns a similarity score.
+        
         Returns:
-            Tuple of (match_type, composite_score)
+            (match_type, score): `match_type` is one of `'exact'`, `'partial'`, or `'incorrect'`; `score` is a float in [0.0, 1.0] representing the computed similarity between the normalized `predicted` and `expected` strings.
         """
         # Normalize
         pred_norm = self._normalize_string(predicted)
@@ -179,14 +178,15 @@ class PartialMatcher:
             return ('incorrect', score)
 
     def _composite_score(self, predicted: str, expected: str) -> float:
-        """Calculate composite similarity score for strings.
-
-        Args:
-            predicted: Predicted string (normalized)
-            expected: Expected string (normalized)
-
+        """
+        Compute a weighted similarity score between two normalized strings.
+        
+        Parameters:
+            predicted (str): Predicted string, already normalized.
+            expected (str): Expected string, already normalized.
+        
         Returns:
-            Composite score from 0.0 to 1.0
+            composite (float): Similarity score in the range 0.0 to 1.0, where higher values indicate greater similarity.
         """
         # 1. Token Overlap F1
         pred_tokens = set(predicted.split())
@@ -229,14 +229,17 @@ class PartialMatcher:
         return composite
 
     def _compare_numbers(self, predicted: float, expected: float) -> Tuple[str, float]:
-        """Compare two numbers.
-
-        Args:
-            predicted: Predicted number
-            expected: Expected number
-
+        """
+        Determine whether two numbers match within configured tolerances.
+        
+        Uses strict-mode tolerances when enabled; otherwise reads relative and absolute tolerances from the instance configuration.
+        
+        Parameters:
+            predicted (float): The predicted numeric value.
+            expected (float): The expected numeric value.
+        
         Returns:
-            Tuple of (match_type, score)
+            Tuple[str, float]: `('exact', 1.0)` if |predicted - expected| <= absolute_tolerance + relative_tolerance * |expected|, `('incorrect', 0.0)` otherwise.
         """
         # In strict mode, use tighter tolerances
         if self.strict:
@@ -252,14 +255,22 @@ class PartialMatcher:
             return ('incorrect', 0.0)
 
     def _compare_arrays(self, predicted: List, expected: List) -> Tuple[str, float]:
-        """Compare two arrays using Jaccard similarity.
-
-        Args:
-            predicted: Predicted array
-            expected: Expected array
-
+        """
+        Compute a Jaccard-based similarity between two lists and classify the match as 'exact', 'partial', or 'incorrect'.
+        
+        Elements of both lists are converted to strings before comparison. If the expected list is empty, the result is 'exact' with score 1.0 only when the predicted list is also empty; otherwise the score is 0.0. The Jaccard score is |intersection| / |union| when the union is non-empty, or 1.0 when both sets are empty.
+        
+        Parameters:
+            predicted (List): Predicted list of elements (elements will be stringified for comparison).
+            expected (List): Expected list of elements (elements will be stringified for comparison).
+        
         Returns:
-            Tuple of (match_type, score)
+            Tuple[str, float]: A tuple of (match_type, score)
+                - match_type: 'exact' when score == 1.0, 'partial' when score >= partial_threshold, 'incorrect' otherwise.
+                - score: Jaccard similarity between 0.0 and 1.0.
+        
+        Notes:
+            The partial_threshold is 0.70 when the matcher is in strict mode, otherwise 0.50.
         """
         if not expected:
             score = 1.0 if not predicted else 0.0
@@ -288,13 +299,20 @@ class PartialMatcher:
             return ('incorrect', score)
 
     def _normalize_string(self, s: str) -> str:
-        """Normalize a string for comparison.
-
-        Args:
-            s: String to normalize
-
+        """
+        Normalize a string according to the instance's normalization settings.
+        
+        Parameters:
+            s (str): Input string to normalize.
+        
+        Description:
+            Applies the following transformations based on self.normalization:
+            - If "case_sensitive" is False, convert to lowercase.
+            - If "normalize_whitespace" is True, collapse consecutive whitespace to single spaces and trim leading/trailing whitespace.
+            - If "unicode_normalize" is True, apply Unicode NFKD normalization.
+        
         Returns:
-            Normalized string
+            str: The normalized string.
         """
         if not self.normalization.get("case_sensitive", False):
             s = s.lower()
@@ -304,4 +322,3 @@ class PartialMatcher:
             import unicodedata
             s = unicodedata.normalize('NFKD', s)
         return s
-

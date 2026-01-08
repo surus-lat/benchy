@@ -43,10 +43,13 @@ class CachedDatasetMixin:
     data_dir: Path
     
     def load_dataset(self) -> List[Dict[str, Any]]:
-        """Load dataset from cached file, auto-downloading if needed.
+        """
+        Load the dataset from a local JSONL cache, creating the cache by downloading if missing.
         
-        Uses the existing load_jsonl_dataset utility and triggers
-        _download_and_cache if the file doesn't exist.
+        If the cached file does not exist, calls the subclass-implemented `_download_and_cache` to produce it.
+        
+        Returns:
+            List[Dict[str, Any]]: The dataset loaded from the JSONL cache; each element is a mapping representing one example.
         """
         file_path = self.data_dir / self.dataset_file
         
@@ -60,19 +63,13 @@ class CachedDatasetMixin:
     
     @abstractmethod
     def _download_and_cache(self, output_path: Path):
-        """Download and transform dataset, saving to output_path.
+        """
+        Download, transform, and persist the dataset to the given JSONL file path.
         
-        This is the ONLY method subclasses need to implement.
-        Should use save_to_jsonl() from dataset_utils to save.
+        Subclasses must implement this to obtain the raw data, convert it into a list of JSON-serializable records, and write the result to output_path.
         
-        Args:
-            output_path: Path where processed JSONL should be saved
-        
-        Example:
-            def _download_and_cache(self, output_path: Path):
-                raw = download_huggingface_dataset(self.dataset_name, self.split)
-                processed = [self._transform(s) for s in raw]
-                save_to_jsonl(processed, output_path)
+        Parameters:
+            output_path (Path): File path where the processed JSONL dataset should be written.
         """
         pass
 
@@ -107,7 +104,14 @@ class CachedTSVMixin:
     tsv_filename: str
     
     def load_dataset(self) -> List[Dict[str, Any]]:
-        """Load from cached JSONL (TSV already converted)."""
+        """
+        Ensure the TSV-derived dataset is cached as a JSONL file and return its records.
+        
+        If the cached JSONL file is missing, triggers the subclass-implemented download-and-cache routine for `self.tsv_filename` before loading.
+        
+        Returns:
+            List[Dict[str, Any]]: Records loaded from the cached JSONL file.
+        """
         file_path = self.data_dir / self.dataset_file
         
         if not file_path.exists():
@@ -118,28 +122,13 @@ class CachedTSVMixin:
     
     @abstractmethod
     def _download_tsv_and_cache(self, output_path: Path):
-        """Download TSV, transform, and save as JSONL.
+        """
+        Download the TSV source, transform its rows to JSON-serializable objects, and save them as a JSONL file at output_path.
         
-        Args:
-            output_path: Path where processed JSONL should be saved
+        Subclasses must implement this to obtain the TSV (typically identified by self.tsv_filename), convert each row into the desired dict structure for the task, and persist the resulting list using save_to_jsonl to the given output_path.
         
-        Example:
-            def _download_tsv_and_cache(self, output_path: Path):
-                from huggingface_hub import hf_hub_download
-                
-                tsv_path = hf_hub_download(
-                    repo_id=self.dataset_name,
-                    filename=self.tsv_filename,
-                    cache_dir=str(self.data_dir / "cache"),
-                )
-                
-                processed = []
-                with open(tsv_path, "r") as f:
-                    for line in f:
-                        parts = line.strip().split('\\t')
-                        processed.append(self._transform(parts))
-                
-                save_to_jsonl(processed, output_path)
+        Parameters:
+            output_path (Path): Filesystem path where the produced JSONL file should be written.
         """
         pass
 
@@ -174,7 +163,14 @@ class CachedCSVMixin:
     csv_filename: str
     
     def load_dataset(self) -> List[Dict[str, Any]]:
-        """Load from cached JSONL (CSV already converted)."""
+        """
+        Load the dataset from a cached JSONL file, creating the cache by downloading and converting the CSV if the cached file is missing.
+        
+        If the cache file does not exist, this method calls the subclass-implemented `_download_csv_and_cache(output_path)` to download the CSV, transform rows to JSON objects, and save them as JSONL at the cache path.
+        
+        Returns:
+            List[Dict[str, Any]]: The dataset as a list of JSON-like records loaded from the cached JSONL file.
+        """
         file_path = self.data_dir / self.dataset_file
         
         if not file_path.exists():
@@ -185,29 +181,12 @@ class CachedCSVMixin:
     
     @abstractmethod
     def _download_csv_and_cache(self, output_path: Path):
-        """Download CSV, transform, and save as JSONL.
+        """
+        Download a CSV source, transform its rows into JSON-serializable records, and save them to `output_path` as JSONL.
         
-        Args:
-            output_path: Path where processed JSONL should be saved
+        Subclasses must implement this to retrieve the CSV (e.g., from a remote repo), convert each row into the desired dictionary shape, and persist the resulting list using `save_to_jsonl(output_path)`. The method should ensure `output_path` is created or overwritten with the processed JSONL content.
         
-        Example:
-            def _download_csv_and_cache(self, output_path: Path):
-                import csv
-                from huggingface_hub import hf_hub_download
-                
-                csv_path = hf_hub_download(
-                    repo_id=self.dataset_name,
-                    filename=self.csv_filename,
-                    cache_dir=str(self.data_dir / "cache"),
-                )
-                
-                processed = []
-                with open(csv_path, "r") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        processed.append(self._transform(row))
-                
-                save_to_jsonl(processed, output_path)
+        Parameters:
+            output_path (Path): Target filesystem path where the resulting JSONL file will be written.
         """
         pass
-

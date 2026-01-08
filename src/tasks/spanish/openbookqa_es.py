@@ -25,7 +25,14 @@ class OpenbookqaEs(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform OpenBookQA-es dataset to eval format."""
+        """
+        Transform the OpenBookQA-es Hugging Face dataset into evaluation JSONL and save it to output_path.
+        
+        Downloads the configured dataset split, converts each sample into dictionaries with keys "id", "text", "choices", and "expected" (the index of the correct choice), and writes the list as JSONL. If a sample's correct label is missing or not found among choice labels, `expected` defaults to 0.
+        
+        Parameters:
+            output_path (Path): Filesystem path where the resulting JSONL file will be written.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,

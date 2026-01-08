@@ -42,7 +42,12 @@ class FreeformHandler(BaseHandler):
     case_sensitive: bool = False
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the freeform handler."""
+        """
+        Initialize the FreeformHandler with optional configuration.
+        
+        Parameters:
+            config (Optional[Dict[str, Any]]): Configuration passed to the base handler used to customize behavior (e.g., metrics, text fields). If not provided or if no metrics are specified, default metrics `ExactMatch` and `F1Score` are assigned.
+        """
         super().__init__(config)
 
         # Set default metrics if not provided
@@ -52,16 +57,19 @@ class FreeformHandler(BaseHandler):
     def preprocess_sample(
         self, raw_sample: Dict[str, Any], idx: int
     ) -> Optional[Dict[str, Any]]:
-        """Transform a raw dataset sample to eval format.
+        """
+        Convert a raw dataset sample into the handler's evaluation sample format.
         
-        Extracts text input and expected text output.
+        Parameters:
+            raw_sample (Dict[str, Any]): Original dataset entry; expected to contain the handler's configured text_field and label_field.
+            idx (int): Index of the sample used to build a unique sample id.
         
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
         Returns:
-            Processed sample with text and expected fields
+            Optional[Dict[str, Any]]: A dict with keys:
+                - `id` (str): "{task_name}_{idx}" unique identifier.
+                - `text` (str): Stringified input text.
+                - `expected` (str): Stringified expected output.
+            Returns `None` if either the input text or expected label is missing.
         """
         text = raw_sample.get(self.text_field)
         expected = raw_sample.get(self.label_field)
@@ -77,13 +85,16 @@ class FreeformHandler(BaseHandler):
         }
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
-        """Build prompts for freeform text generation.
+        """
+        Builds the system and user prompts for a freeform generation sample.
         
-        Args:
-            sample: Sample with text field
-            
+        If the handler has a `user_prompt_template` attribute, the user prompt is produced by formatting that template with the sample; otherwise the sample's `"text"` field is used (empty string if missing).
+        
+        Parameters:
+            sample (Dict[str, Any]): Preprocessed sample containing at least a `"text"` key or keys referenced by `user_prompt_template`.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple[str, str]: (system_prompt, user_prompt) where `system_prompt` is taken from the handler's `system_prompt` attribute and `user_prompt` is constructed as described above.
         """
         # Use custom template if provided, otherwise simple format
         if hasattr(self, "user_prompt_template"):
@@ -94,13 +105,16 @@ class FreeformHandler(BaseHandler):
         return self.system_prompt, user_prompt
 
     def _normalize_text(self, text: str) -> str:
-        """Normalize text for comparison.
+        """
+        Normalize a text string for comparison according to the handler's normalization settings.
         
-        Args:
-            text: Input text
-            
+        If `normalize_prediction` is False the input is returned unchanged; otherwise the text is stripped of leading/trailing whitespace, optionally lowercased depending on `case_sensitive`, and internal whitespace is collapsed to single spaces.
+        
+        Parameters:
+            text (str): The input text to normalize.
+        
         Returns:
-            Normalized text
+            str: The normalized text.
         """
         if not self.normalize_prediction:
             return text
@@ -124,19 +138,24 @@ class FreeformHandler(BaseHandler):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for freeform text prediction.
+        """
+        Evaluate a prediction against the expected value using the handler's configured metrics.
         
-        Uses configured metrics (ExactMatch, F1Score, etc.) to evaluate the prediction.
+        If `error` is provided, returns the standardized error metrics produced by `get_error_metrics`.
+        String predictions and expected values are normalized according to the handler's normalization settings before evaluation; non-string values are passed through as-is.
         
-        Args:
-            prediction: Model output text
-            expected: Expected output text
-            sample: Full sample dict
-            error: Error message if any
-            error_type: Type of error
-            
+        Parameters:
+            prediction: Model output to evaluate (commonly a string).
+            expected: Ground-truth value to compare against.
+            sample: Original sample dictionary; passed to metric implementations for context.
+            error: Optional error message; when present causes an early error-metrics return.
+            error_type: Optional error classification included in error metrics.
+        
         Returns:
-            Metrics dict with scores from all configured metrics
+            A dictionary containing:
+              - `valid` (bool): True when metrics were computed, False for error cases.
+              - per-metric scores keyed by metric name (or metric output keys when a metric returns a dict).
+              - when `valid` is False, includes `error` and `error_type` fields as provided.
         """
         if error:
             return self.get_error_metrics(error, error_type)
@@ -177,14 +196,15 @@ class FreeformHandler(BaseHandler):
     def get_error_metrics(
         self, error: str, error_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Return error metrics for failed predictions.
+        """
+        Builds a standardized metrics dictionary representing a failed prediction.
         
-        Args:
-            error: Error message
-            error_type: Type of error
-            
+        Parameters:
+            error (str): Human-readable error message describing the failure.
+            error_type (Optional[str]): Optional error category or code.
+        
         Returns:
-            Metrics dict matching structure of successful predictions
+            Dict[str, Any]: A metrics dictionary with `valid` set to False, `error` and `error_type` populated, and each configured metric name mapped to 0.0.
         """
         error_metrics = {
             "valid": False,
@@ -200,15 +220,19 @@ class FreeformHandler(BaseHandler):
         return error_metrics
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate freeform text metrics across all samples.
+        """
+        Aggregate per-sample freeform metrics into dataset-level statistics.
         
-        Computes averages for all numeric metrics.
+        Parameters:
+            all_metrics (List[Dict]): List of per-sample metric dictionaries. Each dictionary should include a "valid" boolean (defaults to True if missing) and numeric metric entries keyed by metric name (e.g., "exactmatch", "f1score").
         
-        Args:
-            all_metrics: List of per-sample metrics
-            
         Returns:
-            Aggregated metrics dict
+            Dict[str, Any]: Aggregated metrics including:
+                - total_samples: total number of samples processed.
+                - valid_samples: number of samples marked valid.
+                - error_count: number of invalid samples.
+                - error_rate: ratio of invalid samples to total_samples.
+                - <metric_name>: average value of each numeric metric computed over valid samples.
         """
         if not all_metrics:
             return {}
@@ -236,4 +260,3 @@ class FreeformHandler(BaseHandler):
                 aggregated[metric_name] = sum(values) / len(values)
 
         return aggregated
-

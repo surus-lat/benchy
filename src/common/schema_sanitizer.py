@@ -8,21 +8,16 @@ logger = logging.getLogger(__name__)
 
 
 def sanitize_schema_for_openai_strict(schema: Dict) -> Dict:
-    """Sanitize a JSON schema to be compatible with OpenAI's strict mode.
+    """
+    Produce a JSON Schema compatible with OpenAI strict mode.
     
-    OpenAI's strict mode has specific requirements:
-    - No $schema, $id, description, title at top level
-    - No format constraints (date, email, uuid, etc.)
-    - No pattern, minLength, maxLength, minimum, maximum
-    - No allOf, oneOf, anyOf combiners
-    - Must have additionalProperties: false for objects
-    - All properties at each level must be required
+    Removes unsupported top-level keys and combiners, enforces object-level additionalProperties=false, and promotes object properties to required so the resulting schema meets OpenAI strict mode constraints.
     
-    Args:
-        schema: Original JSON schema
-        
+    Parameters:
+        schema (Dict): The input JSON Schema as a mapping.
+    
     Returns:
-        Sanitized schema compatible with OpenAI strict mode
+        Dict: A sanitized JSON Schema compatible with OpenAI strict mode.
     """
     schema = copy.deepcopy(schema)
     
@@ -44,10 +39,13 @@ def sanitize_schema_for_openai_strict(schema: Dict) -> Dict:
 
 
 def _sanitize_recursive_strict(obj: Any) -> None:
-    """Recursively sanitize a schema object in-place for OpenAI strict mode.
+    """
+    Sanitize a JSON Schema object in-place to conform to OpenAI strict mode.
     
-    Args:
-        obj: Schema object or sub-object to sanitize
+    Removes constraints and keywords unsupported by OpenAI strict mode, strips schema combiners (anyOf, oneOf, allOf), ensures object schemas set `additionalProperties` to False, and promotes all declared properties to required at the object level. Operates recursively on nested schemas and mutates `obj` in place.
+    
+    Parameters:
+        obj (Any): Schema object or sub-object to sanitize (modified in place).
     """
     if not isinstance(obj, dict):
         return
@@ -122,16 +120,16 @@ def _sanitize_recursive_strict(obj: Any) -> None:
 
 
 def sanitize_schema_for_vllm(schema: Dict) -> Dict:
-    """Sanitize a JSON schema to be compatible with vLLM's structured_outputs.
+    """
+    Sanitize a JSON Schema for compatibility with vLLM's structured_outputs.
     
-    vLLM uses grammar-based structured generation which doesn't support all
-    JSON Schema features. This is more permissive than OpenAI strict mode.
+    Removes top-level metadata keys and combiners (allOf, oneOf, anyOf), and recursively strips constraints and annotations that vLLM's grammar-based structured generation does not support so the returned schema can be used with vLLM structured outputs.
     
-    Args:
-        schema: Original JSON schema
-        
+    Parameters:
+        schema (Dict): The original JSON Schema to sanitize.
+    
     Returns:
-        Sanitized schema compatible with vLLM
+        Dict: A sanitized copy of the schema compatible with vLLM structured_outputs.
     """
     schema = copy.deepcopy(schema)
     
@@ -153,10 +151,13 @@ def sanitize_schema_for_vllm(schema: Dict) -> Dict:
 
 
 def _sanitize_recursive_vllm(obj: Any) -> None:
-    """Recursively sanitize a schema object in-place for vLLM.
+    """
+    Sanitize a JSON Schema subtree in-place for vLLM structured output compatibility.
     
-    Args:
-        obj: Schema object or sub-object to sanitize
+    Removes constraints unsupported by vLLM, strips any per-property "required" entries, recursively processes nested schema containers ($defs, definitions, items, additionalProperties), and removes combiners (`anyOf`, `oneOf`, `allOf`) while logging their removal. If `obj` is not a dict, the function is a no-op.
+    
+    Parameters:
+        obj (Any): Schema object or sub-object to sanitize in-place; expected to be a dict for any changes to occur.
     """
     if not isinstance(obj, dict):
         return
@@ -212,4 +213,3 @@ def _sanitize_recursive_vllm(obj: Any) -> None:
         if combiner in obj:
             logger.debug(f"Removing {combiner} for vLLM compatibility")
             obj.pop(combiner, None)
-

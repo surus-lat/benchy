@@ -9,7 +9,12 @@ from ..common import CachedDatasetMixin
 
 
 def _lowercase_first_letter(text: str) -> str:
-    """Lowercase the first letter of text."""
+    """
+    Return the input string with its first character converted to lowercase.
+    
+    Returns:
+        str: The original string with its first character lowercased; empty input is returned unchanged.
+    """
     if not text:
         return text
     return text[0].lower() + text[1:]
@@ -34,7 +39,14 @@ class CopaEs(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform COPA dataset to eval format."""
+        """
+        Download the COPA-es dataset, transform each example into evaluation format, and save as JSONL.
+        
+        Each processed example contains an `id`, a `text` composed from the premise and a Spanish connective derived from the question, a `choices` list with each choice's first letter lowercased, and an `expected` label. The resulting list is written to `output_path` as JSONL.
+        
+        Parameters:
+            output_path (Path): Destination file path where the transformed JSONL will be saved.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,

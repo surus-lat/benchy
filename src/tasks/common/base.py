@@ -34,29 +34,42 @@ class FormatHandler(Protocol):
         ...
 
     def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict]:
-        """Iterate over dataset samples.
+        """
+        Yield dataset samples in order, optionally limited to a maximum count.
         
-        Args:
-            limit: Maximum number of samples to return (None for all)
-            
+        Parameters:
+            limit (Optional[int]): Maximum number of samples to yield; None yields all samples.
+        
         Yields:
-            Sample dictionaries with at minimum: id, text, expected
+            Dict: Sample dictionaries containing at minimum `id`, `text`, and `expected`.
         """
         ...
 
     def get_prompt(self, sample: Dict) -> Tuple[str, str]:
-        """Build prompt messages for a sample.
+        """
+        Constructs the system and user prompts for a given sample.
         
-        Args:
-            sample: Sample dictionary from get_samples()
-            
+        Parameters:
+            sample (Dict): Sample dictionary whose fields are used to format the user prompt template.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple[str, str]: A pair (system_prompt, user_prompt). `system_prompt` is the handler's system_prompt; `user_prompt` is the user_prompt_template formatted with values from `sample`.
+        
+        Raises:
+            KeyError: If a field required by the user_prompt_template is missing from `sample`. The exception message identifies the missing field and the sample id when available.
         """
         ...
 
     def get_task_name(self) -> str:
-        """Get the task identifier for logging and checkpointing."""
+        """
+        Return the task identifier used for logging and checkpointing.
+        
+        If the instance `name` attribute is not "base_task", that value is returned.
+        Otherwise the identifier is derived from the handler class name by converting it to snake_case and removing a trailing `_handler` if present.
+        
+        Returns:
+            task_name (str): The resolved task identifier.
+        """
         ...
 
     def calculate_metrics(
@@ -67,28 +80,39 @@ class FormatHandler(Protocol):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for a single prediction.
+        """
+        Compute evaluation metrics for a single sample prediction, or return standardized error metrics when an error is provided.
         
-        Args:
-            prediction: Model output
-            expected: Expected output
-            sample: Full sample dict
-            error: Error message if generation failed
-            error_type: Type of error (connectivity_error, invalid_response)
-            
+        Parameters:
+            prediction: The model's predicted output for the sample.
+            expected: The ground-truth output for the sample.
+            sample: The full sample dictionary (may be used by metrics).
+            error: Optional error message describing a generation or evaluation failure.
+            error_type: Optional short error category (e.g., "connectivity_error", "invalid_response").
+        
         Returns:
-            Metrics dictionary
+            dict: Per-sample metrics. If `error` is provided, the dict will indicate the sample is invalid and include the error and `error_type` (e.g., {"valid": False, "error": ..., "error_type": ...}); otherwise it will include `"valid": True` and one or more metric values (either as named keys or nested dicts) produced by the configured metrics.
         """
         ...
 
     @property
     def answer_type(self) -> str:
-        """Expected answer type: 'freeform', 'structured', or 'multiple_choice'."""
+        """
+        Indicates the expected answer format for the task.
+        
+        Returns:
+            One of 'freeform', 'structured', or 'multiple_choice', indicating how model responses should be interpreted.
+        """
         ...
 
     @property
     def requires_logprobs(self) -> bool:
-        """Whether this task requires logprobs-based scoring."""
+        """
+        Indicates whether the handler requires logprobs-based scoring.
+        
+        Returns:
+            `true` if logprobs-based scoring is required by the task, `false` otherwise.
+        """
         ...
 
 
@@ -135,10 +159,15 @@ class BaseHandler:
     default_data_file: str = "data.jsonl"
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the handler.
+        """
+        Initialize the handler, store an optional configuration, and set up dataset storage paths.
         
-        Args:
-            config: Optional configuration dict (for compatibility with legacy code)
+        Parameters:
+            config (Optional[Dict[str, Any]]): Optional configuration overrides (legacy compatibility). If omitted, an empty configuration is used.
+        
+        Notes:
+            - Resolves the task's `.data` directory adjacent to the task module and sets `self.data_dir`.
+            - Sets `self.data_file` to `<data_dir>/<default_data_file>`.
         """
         self.config = config or {}
         self.dataset_data: Optional[List[Dict[str, Any]]] = None
@@ -148,10 +177,13 @@ class BaseHandler:
         self.data_file = self.data_dir / self.default_data_file
 
     def _resolve_data_dir(self) -> Path:
-        """Resolve the data directory for this task.
+        """
+        Resolve the data directory located adjacent to the task's module file.
+        
+        Determines the path by locating the file that defines the handler's class and returning its parent directory joined with ".data".
         
         Returns:
-            Path to .data directory adjacent to the task module
+            Path to the ".data" directory adjacent to the task module.
         """
         # Use class module location to find task directory
         import inspect
@@ -164,13 +196,21 @@ class BaseHandler:
         self.dataset_data = self.load_dataset()
 
     def load_dataset(self) -> List[Dict[str, Any]]:
-        """Load and preprocess the dataset.
+        """
+        Load the dataset, preprocess samples, and return the processed list.
         
-        If dataset path is set, downloads from HuggingFace and caches locally.
-        Otherwise loads from local JSONL file.
+        Attempts to load a cached JSONL at self.data_file. If not found and the handler's
+        `dataset` attribute is set, downloads the dataset from HuggingFace, applies
+        preprocess_sample to each item, caches the processed samples to self.data_file,
+        and returns them. If neither a remote dataset nor a cached/local JSONL is
+        available, raises FileNotFoundError.
         
         Returns:
-            List of preprocessed samples
+            List[Dict[str, Any]]: A list of preprocessed sample dictionaries.
+        
+        Raises:
+            FileNotFoundError: If no dataset is available via `self.dataset` and no local
+            cached JSONL exists at self.data_file.
         """
         # Check for cached data first
         if self.data_file.exists():
@@ -208,20 +248,19 @@ class BaseHandler:
         )
 
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
-        """Transform a raw dataset sample to eval format.
+        """
+        Convert a raw dataset record into the standardized evaluation sample format.
         
-        Default behavior:
-        - If sample already has core fields (id, text) → return as-is (already preprocessed)
-        - Otherwise, add missing id field
+        If the input already contains the core fields "id" and "text", it is returned unchanged.
+        Otherwise a shallow copy is made and an "id" is added if missing using the pattern
+        "{self.name}_{idx}". Subclasses may override to extract or transform fields differently.
         
-        Override this to customize field extraction from raw dataset samples.
+        Parameters:
+            raw_sample (Dict[str, Any]): Raw sample from the dataset.
+            idx (int): Index of the sample in the source dataset, used to generate an id when needed.
         
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
         Returns:
-            Processed sample dict or None to skip
+            Optional[Dict[str, Any]]: Processed sample dictionary, or `None` to skip the sample.
         """
         # If sample is already preprocessed (has id and text at minimum), return as-is
         # This allows load_dataset() to fully preprocess samples
@@ -235,29 +274,36 @@ class BaseHandler:
         return sample
 
     def get_samples(self, limit: Optional[int] = None) -> Iterator[Dict[str, Any]]:
-        """Iterate over dataset samples.
+        """
+        Yield samples from the already-loaded dataset.
         
-        Args:
-            limit: Maximum number of samples to return
-            
-        Yields:
-            Sample dictionaries
+        Parameters:
+            limit (Optional[int]): Maximum number of samples to yield; if None, yields all samples.
+        
+        Returns:
+            Iterator[Dict[str, Any]]: An iterator over sample dictionaries.
+        
+        Raises:
+            RuntimeError: If the dataset has not been loaded via `load()`.
         """
         if self.dataset_data is None:
             raise RuntimeError("Dataset not loaded. Call load() first.")
         return iterate_samples(self.dataset_data, limit=limit)
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
-        """Build prompts for LLM interfaces.
+        """
+        Builds the system and user prompts for a sample.
         
-        Uses system_prompt and user_prompt_template class attributes,
-        formatting the template with sample fields.
+        Formats the handler's user_prompt_template using fields from `sample` and returns the handler's system_prompt unchanged.
         
-        Args:
-            sample: Sample dictionary
-            
+        Parameters:
+            sample (Dict[str, Any]): Mapping of fields used to format `user_prompt_template`.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple[str, str]: A pair (system_prompt, user_prompt).
+        
+        Raises:
+            KeyError: If `user_prompt_template` references a field missing from `sample`; the error message includes the missing field name and the sample id when available.
         """
         try:
             user_prompt = self.user_prompt_template.format(**sample)
@@ -269,10 +315,11 @@ class BaseHandler:
         return self.system_prompt, user_prompt
 
     def get_task_name(self) -> str:
-        """Get the task identifier.
+        """
+        Return the task identifier used for logging and checkpointing.
         
         Returns:
-            Task name (class name in snake_case if not overridden)
+            task_name (str): The configured `name` if it is not "base_task"; otherwise the class name converted to snake_case with a trailing "_handler" removed.
         """
         if self.name != "base_task":
             return self.name
@@ -291,19 +338,18 @@ class BaseHandler:
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for a single prediction.
+        """
+        Compute per-sample metrics for a prediction using this handler's configured metrics.
         
-        Default implementation uses the metrics list. Override for custom logic.
+        Parameters:
+            prediction: The model's output for the sample.
+            expected: The expected/ground-truth value for the sample.
+            sample: The full sample dictionary (may be used by metric implementations).
+            error: Optional error message indicating generation or processing failure.
+            error_type: Optional classification of the error.
         
-        Args:
-            prediction: Model output
-            expected: Expected output
-            sample: Full sample dict
-            error: Error message if generation failed
-            error_type: Type of error
-            
         Returns:
-            Metrics dictionary
+            A dictionary mapping metric names to computed values. Always includes a "valid" boolean and, when `error` is provided, contains error information (see `get_error_metrics`).
         """
         if error:
             return self.get_error_metrics(error, error_type)
@@ -321,16 +367,18 @@ class BaseHandler:
     def get_error_metrics(
         self, error: str, error_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Return error metrics structure.
+        """
+        Return a standardized metrics dictionary representing a processing or evaluation error.
         
-        Override this to match your task's metrics structure.
+        Parameters:
+            error (str): Human-readable error message describing the failure.
+            error_type (Optional[str]): Optional machine-friendly error category or code.
         
-        Args:
-            error: Error message
-            error_type: Type of error
-            
         Returns:
-            Metrics dict with error information
+            Dict[str, Any]: Metrics dictionary with keys:
+                - `valid`: `False`.
+                - `error`: the provided error message.
+                - `error_type`: the provided error type or `None`.
         """
         return {
             "valid": False,
@@ -339,16 +387,20 @@ class BaseHandler:
         }
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate metrics across all samples.
+        """
+        Aggregate per-sample metrics into overall metrics.
         
-        Default implementation computes means for numeric fields.
-        Override for custom aggregation logic.
+        Computes:
+        - total_samples: total number of samples
+        - valid_samples: count of samples where `"valid"` is True (assumed True if missing)
+        - error_count: total_samples - valid_samples
+        - mean values for any numeric metric keys (ints or floats, excluding `"valid"`) calculated over only the valid samples.
         
-        Args:
-            all_metrics: List of per-sample metric dicts
-            
+        Parameters:
+            all_metrics (List[Dict]): List of per-sample metric dictionaries.
+        
         Returns:
-            Aggregated metrics dict
+            Dict[str, Any]: Aggregated metrics dictionary containing totals and per-metric means.
         """
         if not all_metrics:
             return {}
@@ -372,4 +424,3 @@ class BaseHandler:
                 aggregated[key] = sum(values) / len(values)
 
         return aggregated
-

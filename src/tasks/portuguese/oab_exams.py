@@ -36,7 +36,14 @@ class OabExams(CachedDatasetMixin, MultipleChoiceHandler):
     system_prompt = ""
 
     def _download_and_cache(self, output_path: Path):
-        """Download and preprocess OAB dataset."""
+        """
+        Download the configured OAB dataset from HuggingFace, preprocess each sample, and save the processed samples as a JSONL file.
+        
+        Each processed sample will include the keys: `id`, `text`, `choices`, `choice_labels`, and `expected` (index of the correct choice). The dataset is loaded from the class's `dataset_name` and `split`, and a local cache directory under `self.data_dir / "cache"` is used for the raw download.
+        
+        Parameters:
+            output_path (Path): Filesystem path where the resulting JSONL file of processed samples will be written.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,
@@ -61,7 +68,17 @@ class OabExams(CachedDatasetMixin, MultipleChoiceHandler):
         logger.info(f"Cached {len(processed)} samples to {output_path}")
 
     def _extract_choices(self, raw_sample: Dict) -> tuple:
-        """Extract choice labels and texts from raw sample."""
+        """
+        Extracts choice labels and option texts from a raw dataset sample.
+        
+        Supports 'choices' as a dict (with "label"/"labels" and "text"/"texts") or as a list of dicts or values. Normalizes and trims values to lists of strings; if no labels are present, returns default labels "A", "B", "C", ... up to the number of texts.
+        
+        Parameters:
+            raw_sample (Dict): Raw dataset sample expected to contain a "choices" field.
+        
+        Returns:
+            tuple: (labels, texts) where `labels` is a list of label strings and `texts` is a list of option text strings.
+        """
         choices = raw_sample.get("choices", {})
         labels = []
         texts = []
@@ -86,7 +103,20 @@ class OabExams(CachedDatasetMixin, MultipleChoiceHandler):
         return labels, texts
 
     def _extract_expected_index(self, raw_sample: Dict, labels: list) -> int:
-        """Extract the expected answer index."""
+        """
+        Determine the index of the correct answer within the provided labels.
+        
+        Parameters:
+            raw_sample (Dict): A sample dictionary that may contain the correct answer under the keys
+                "answerKey", "answer", or "label".
+            labels (list): Ordered list of choice labels (for example ["A", "B", "C", "D"]).
+        
+        Returns:
+            int: The index of the correct choice:
+                - If the sample's answer is an integer, that integer is returned.
+                - If the sample's answer is a string and matches an entry in `labels`, the matching index is returned.
+                - Returns 0 if no valid answer key is found or the answer does not match `labels`.
+        """
         answer_key = raw_sample.get("answerKey", raw_sample.get("answer", raw_sample.get("label")))
         if isinstance(answer_key, int):
             return answer_key
@@ -96,7 +126,18 @@ class OabExams(CachedDatasetMixin, MultipleChoiceHandler):
         return 0
 
     def format_prompt(self, sample: Dict[str, Any]) -> str:
-        """Format the user prompt for a sample."""
+        """
+        Builds the full user prompt for a sample by combining the task description, question text, and formatted choices.
+        
+        Parameters:
+            sample (Dict[str, Any]): A mapping representing the sample. Expected keys include:
+                - "text": the question text.
+                - "choices": the raw choices data used by the choice formatter.
+                - "choice_labels": optional labels for each choice.
+        
+        Returns:
+            str: The assembled prompt containing the class description, the question ("Pergunta:"), the formatted alternatives ("Alternativas:"), and the trailing "Resposta correta:" marker.
+        """
         choices_text = format_choices(sample.get("choices", []), sample.get("choice_labels"))
         doc_text = (
             f"Pergunta:\n{sample.get('text', '')}\n"
@@ -104,4 +145,3 @@ class OabExams(CachedDatasetMixin, MultipleChoiceHandler):
             "Resposta correta:"
         )
         return f"{self.description}{doc_text}".strip()
-

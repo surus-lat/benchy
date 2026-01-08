@@ -36,7 +36,14 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
     system_prompt = ""
 
     def _download_and_cache(self, output_path: Path):
-        """Download and preprocess BLUEX dataset."""
+        """
+        Download the configured BLUEX dataset, normalize each sample, and write a JSONL cache to the given path.
+        
+        Each cached record contains the fields: `id` (string), `text` (question text), `choices` (list of choice texts), `choice_labels` (list of choice labels), and `expected` (index of the correct choice). The dataset source and split are taken from the instance configuration.
+        
+        Parameters:
+            output_path (Path): Path to write the resulting JSONL file.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,
@@ -61,7 +68,15 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
         logger.info(f"Cached {len(processed)} samples to {output_path}")
 
     def _extract_choices(self, raw_sample: Dict) -> tuple:
-        """Extract choice labels and texts from raw sample."""
+        """
+        Normalize and extract choice labels and their corresponding texts from a raw dataset sample.
+        
+        Parameters:
+            raw_sample (Dict): Raw sample dictionary expected to contain a "choices" field, which may be a mapping or a list of choice entries.
+        
+        Returns:
+            tuple: (labels, texts) where `labels` is a list of choice label strings (e.g., "A", "B", ...) and `texts` is a list of choice text strings. Both lists are aligned by index.
+        """
         choices = raw_sample.get("choices", {})
         labels = []
         texts = []
@@ -86,7 +101,18 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
         return labels, texts
 
     def _extract_expected_index(self, raw_sample: Dict, labels: list) -> int:
-        """Extract the expected answer index."""
+        """
+        Resolve the index of the correct answer for a raw sample.
+        
+        Checks the keys "answerKey", "answer", and "label" (in that order). If the answer is an integer, it is returned as-is. If it is a string that matches one of `labels`, the corresponding index is returned. If no valid answer is found, a warning is logged and `0` is returned.
+        
+        Parameters:
+            raw_sample (Dict): The raw dataset sample which may contain the answer under "answerKey", "answer", or "label".
+            labels (list): Ordered list of choice labels to map label strings to indices.
+        
+        Returns:
+            int: Index of the correct choice; `0` if the answer key is missing or cannot be resolved.
+        """
         answer_key = raw_sample.get("answerKey", raw_sample.get("answer", raw_sample.get("label")))
         if isinstance(answer_key, int):
             return answer_key
@@ -96,7 +122,20 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
         return 0
 
     def format_prompt(self, sample: Dict[str, Any]) -> str:
-        """Format the user prompt for a sample."""
+        """
+        Builds the user-facing prompt for a BLUEX sample in Portuguese.
+        
+        Constructs a prompt containing the question text, the formatted list of alternatives, and the cue "Resposta correta:" appended at the end. The module-level `description` is prefixed to the prompt.
+        
+        Parameters:
+            sample (Dict[str, Any]): Sample dictionary expected to contain at least:
+                - "text": question text,
+                - "choices": list of choice texts,
+                - "choice_labels" (optional): list of labels for the choices.
+        
+        Returns:
+            str: The full formatted prompt string ready to present to the model.
+        """
         from ..common import format_choices
 
         choices_text = format_choices(sample.get("choices", []), sample.get("choice_labels"))
@@ -106,4 +145,3 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
             "Resposta correta:"
         )
         return f"{self.description}{doc_text}".strip()
-
