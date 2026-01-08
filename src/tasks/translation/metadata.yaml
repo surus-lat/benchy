@@ -1,0 +1,88 @@
+name: translation
+display_name: Translation
+description: Machine translation evaluation using OPUS and FLORES datasets
+
+long_description: |
+  Comprehensive machine translation evaluation suite combining FLORES+ and OPUS-100 datasets 
+  to assess multilingual translation capabilities. FLORES+ provides high-quality translations 
+  across Spanish, Portuguese, English, French, Italian, German, Hindi, Arabic and Chinese, 
+  covering 30 language pairs focused on Latin American and Iberian languages. OPUS-100 
+  contributes English-Spanish and English-Portuguese translation pairs from a large-scale 
+  multilingual corpus. Both datasets evaluate translation quality using COMET, BLEU and chrF 
+  metrics, with COMET as the primary reported metric. This evaluation suite measures models' 
+  ability to accurately translate between languages while maintaining semantic meaning and 
+  linguistic fluency across diverse text domains.
+
+capability_requirements:
+  requires_logprobs: none
+  requires_multimodal: none
+  requires_schema: none
+  requires_files: none
+  requires_streaming: optional
+
+subtasks:
+  opus:
+    description: OPUS-100 English-centric translation evaluation
+    dataset_url: https://huggingface.co/datasets/Helsinki-NLP/opus-100
+    long_description: |
+      OPUS-100 is an English-centric multilingual translation corpus covering 100 languages 
+      with approximately 55M sentence pairs. For this evaluation, we focus on English-Spanish 
+      and English-Portuguese translation pairs from this large-scale dataset. Translation 
+      quality is measured using COMET, BLEU, and chrF metrics, with COMET as the primary 
+      reported metric. This benchmark evaluates models' ability to translate between English 
+      and major Latin American languages using real-world parallel text data from diverse 
+      sources including legal documents, literature, and web content.
+    language_pairs:
+      - en-es  # English <-> Spanish (bidirectional)
+      - en-pt  # English <-> Portuguese (bidirectional)
+  
+  flores:
+    description: FLORES+ multilingual translation evaluation
+    dataset_url: https://huggingface.co/datasets/openlanguagedata/flores_plus
+    long_description: |
+      FLORES+ is a high-quality multilingual translation benchmark covering 30 language pairs 
+      focused on Latin American and Iberian languages. The evaluation includes bidirectional 
+      translation between Spanish, Portuguese, English, French, Italian, German, Hindi, 
+      Chinese and Arabic. Based on the FLORES-200 dataset but with enhanced quality for 
+      Latin American language variants, it measures translation accuracy using COMET, BLEU 
+      and chrF metrics, with COMET as the primary reported metric. The dataset provides 
+      professionally curated parallel sentences across diverse domains to evaluate semantic 
+      preservation and linguistic fluency in machine translation systems.
+    language_pairs:
+      # Spanish pairs (8 languages)
+      - arb_spa  # Arabic <-> Spanish
+      - cmn_spa  # Chinese <-> Spanish
+      - deu_spa  # German <-> Spanish
+      - eng_spa  # English <-> Spanish
+      - fra_spa  # French <-> Spanish
+      - hin_spa  # Hindi <-> Spanish
+      - ita_spa  # Italian <-> Spanish
+      - por_spa  # Portuguese <-> Spanish
+      # Portuguese pairs (7 languages, excluding spa)
+      - arb_por  # Arabic <-> Portuguese
+      - cmn_por  # Chinese <-> Portuguese
+      - deu_por  # German <-> Portuguese
+      - eng_por  # English <-> Portuguese
+      - fra_por  # French <-> Portuguese
+      - hin_por  # Hindi <-> Portuguese
+      - ita_por  # Italian <-> Portuguese
+
+metrics:
+  primary: comet
+  secondary:
+    - bleu
+    - chrf
+  
+  descriptions:
+    comet: "Neural metric evaluating semantic similarity (0-1, higher is better)"
+    bleu: "N-gram overlap metric (0-100, higher is better)"
+    chrf: "Character n-gram F-score (0-100, higher is better)"
+
+notes: |
+  IMPORTANT: This task requires the COMET model (1.5GB, 2-5 minutes to load).
+  The model is loaded ONCE via TaskGroupSpec setup and shared across all subtasks.
+  This is critical for performance - loading per language pair would add hours of compute.
+  
+  Translation pairs are bidirectional (A->B and B->A) and scores are averaged.
+  Per-language scores are reported for leaderboard (e.g., English, French, Spanish).
+
