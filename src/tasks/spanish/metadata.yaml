@@ -1,0 +1,62 @@
+name: spanish
+display_name: Spanish Language
+description: Spanish language evaluation benchmark
+
+capability_requirements:
+  requires_logprobs: preferred
+  requires_multimodal: optional
+  requires_schema: optional
+  requires_files: optional
+  requires_streaming: optional
+
+metrics_manifest:
+  - acc
+  - exact_match
+  - error_rate
+
+subtasks:
+  copa_es:
+    description: Spanish COPA (Choice of Plausible Alternatives)
+    long_description: Spanish version of COPA, a commonsense causal reasoning benchmark. Given a premise and a relation (cause/effect), the model selects the more plausible alternative in Spanish.
+    url: https://huggingface.co/datasets/BSC-LT/COPA-es
+    
+  escola:
+    description: Spanish EsCoLA (Spanish Corpus of Linguistic Acceptability)
+    long_description: EsCoLA contains Spanish sentences annotated for linguistic acceptability. The task is a binary judgment (acceptable vs. unacceptable), probing grammatical knowledge and fluency in Spanish.
+    url: https://huggingface.co/datasets/nbel/EsCoLA
+    
+  mgsm_direct_es_spanish_bench:
+    description: Spanish MGSM (Multilingual Grade School Math)
+    long_description: Spanish subset of MGSM, a multilingual grade-school math benchmark. This configuration expects direct numeric answers (no chain-of-thought), evaluating arithmetic and reasoning in Spanish.
+    url: https://huggingface.co/datasets/juletxara/mgsm
+    
+  openbookqa_es:
+    description: Spanish OpenBookQA
+    long_description: Spanish adaptation of OpenBookQA, a multiple-choice science QA benchmark requiring use of elementary science facts plus commonsense reasoning, localized to Spanish.
+    url: https://huggingface.co/datasets/BSC-LT/openbookqa-es
+    
+  paws_es_spanish_bench:
+    description: Spanish PAWS (Paraphrase Adversaries from Word Scrambling)
+    long_description: PAWS-X Spanish evaluates paraphrase identification with high-lexical-overlap sentence pairs. The model must determine whether two Spanish sentences are paraphrases.
+    url: https://huggingface.co/datasets/google-research-datasets/paws-x
+    
+  teleia_pce:
+    description: Teleia PCE (Prueba de Conocimientos Específicos)
+    long_description: Teleia Spanish assessment suite – PCE (specific knowledge) subtask. Three-option multiple-choice questions that evaluate formal Spanish knowledge and usage.
+    url: https://huggingface.co/datasets/migonsa/teleia
+    
+  teleia_cervantes_ave:
+    description: Teleia Cervantes AVE assessment
+    long_description: Teleia Spanish assessment suite – Cervantes AVE subtask. Multiple-choice questions targeting Spanish language competency (reading and grammar) with dataset_name=cervantes_ave.
+    url: https://huggingface.co/datasets/migonsa/teleia
+    
+  teleia_siele:
+    description: Teleia SIELE (Servicio Internacional de Evaluación de la Lengua Española)
+    long_description: Teleia Spanish assessment suite – SIELE-inspired subtask. Three-option multiple-choice items covering comprehension and grammatical accuracy in Spanish.
+    url: https://huggingface.co/datasets/migonsa/teleia
+    
+  wnli_es:
+    description: Spanish WNLI (Winograd Natural Language Inference)
+    long_description: Spanish WNLI is a localized Winograd-style NLI task. Given two sentences, the model decides whether the second follows (Verdadero) from the first or not (Falso).
+    url: https://huggingface.co/datasets/PlanTL-GOB-ES/wnli-es
+
