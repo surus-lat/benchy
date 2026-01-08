@@ -47,7 +47,13 @@ class ScalarMetric:
         raise NotImplementedError
 
     def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
-        scores = [entry.get(self.name) for entry in values if isinstance(entry.get(self.name), (int, float))]
+        import math
+        scores = [
+            entry.get(self.name) 
+            for entry in values 
+            if isinstance(entry.get(self.name), (int, float)) 
+            and not math.isnan(entry.get(self.name))
+        ]
         mean_score = sum(scores) / len(scores) if scores else 0.0
         return {self.name: mean_score}
 
@@ -183,7 +189,7 @@ class MeanSquaredError(ScalarMetric):
             exp_val = float(expected)
             return (pred_val - exp_val) ** 2
         except (TypeError, ValueError):
-            return 0.0
+            return float('nan')  # NaN signals invalid, excluded from mean
 
 
 @dataclass(frozen=True)
