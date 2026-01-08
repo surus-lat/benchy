@@ -52,13 +52,13 @@ class Flores(TranslationHandler):
     user_prompt_template = "Translate this sentence from {source_language} to {target_language}: {source_text}\n\nTranslation:"
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize FLORES translation task.
+        """
+        Initialize the FLORES+ translation task, apply optional config overrides, and set up data and cache directories.
         
-        Args:
-            config: Configuration dict with:
-                - comet_model: Preloaded COMET model
-                - language_pairs: List of pairs to evaluate (optional)
-                - split: Dataset split (dev or devtest, optional)
+        Parameters:
+            config (Optional[Dict[str, Any]]): Optional configuration overrides. Recognized keys:
+                - language_pairs (List[str]): Replace default language pairs for dataset loading.
+                - split (str): Dataset split to use (e.g., "devtest" or "dev").
         """
         super().__init__(config)
         
@@ -72,22 +72,15 @@ class Flores(TranslationHandler):
         self.cache_dir = Path(__file__).parent / "cache"
     
     def load_dataset(self) -> List[Dict]:
-        """Load FLORES translation dataset.
+        """
+        Load and return preprocessed FLORES+ translation samples for the configured language pairs.
         
-        This loads all language pairs specified in self.language_pairs.
-        Each pair's data is preprocessed from FLORES-200 into bidirectional pairs.
-        
-        The preprocessing:
-        1. Downloads full FLORES+ dataset
-        2. Matches documents by ID across languages
-        3. Creates bidirectional pairs (A->B and B->A)
-        4. Saves as JSONL per language pair
+        Ensures required dataset files exist (triggering preprocessing when missing) and aggregates all samples across the configured language pairs into a single list.
         
         Returns:
-            List of translation samples with:
-            - id, source_text, target_text
-            - source_language, target_language
-            - language_pair, direction, flores_id
+            all_samples (List[Dict]): List of translation samples. Each sample contains keys including
+            `id`, `source_text`, `target_text`, `source_language`, `target_language`, `language_pair`,
+            `direction`, and `flores_id`.
         """
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
@@ -146,13 +139,17 @@ class Flores(TranslationHandler):
         return all_samples
     
     def get_prompt(self, sample: Dict) -> Tuple[str, str]:
-        """Build translation prompt for a sample.
+        """
+        Constructs the system and user prompts for a translation sample.
         
-        Args:
-            sample: Sample dict with source_language, target_language, source_text
-            
+        Parameters:
+            sample (Dict): Sample containing translation fields. Expected keys:
+                - "source_language": source language name or code (defaults to "Unknown").
+                - "target_language": target language name or code (defaults to "Unknown").
+                - "source_text": text to be translated (defaults to empty string).
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            (system_prompt, user_prompt): A tuple where `system_prompt` is the fixed system instruction and `user_prompt` is the user-facing prompt formatted with the sample's source/target languages and source text.
         """
         source_lang = sample.get("source_language", "Unknown")
         target_lang = sample.get("target_language", "Unknown")
@@ -167,17 +164,17 @@ class Flores(TranslationHandler):
         return self.system_prompt, user_prompt
     
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
-        """Preprocess a sample for evaluation.
+        """
+        Normalize a FLORES raw sample to include the engine-required fields.
         
-        FLORES samples are already preprocessed by download.py, but we need to
-        ensure they have the 'text' and 'expected' fields for the engine.
+        Ensures the returned sample contains a "text" field (populated from "source_text" if missing)
+        and an "expected" field (populated from "target_text" if missing).
         
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
+        Parameters:
+            raw_sample (Dict[str, Any]): Raw sample dictionary from the FLORES dataset.
+        
         Returns:
-            Processed sample with required fields
+            Dict[str, Any]: The input sample copy with guaranteed "text" and "expected" fields.
         """
         # FLORES samples already have id, source_text, target_text, etc.
         # Map to engine-expected fields
@@ -192,4 +189,3 @@ class Flores(TranslationHandler):
             sample["expected"] = sample.get("target_text", "")
         
         return sample
-

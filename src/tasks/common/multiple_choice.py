@@ -156,7 +156,16 @@ class MultipleChoiceHandler(BaseHandler):
     labels: Dict[Any, str] = {}
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the multiple choice handler."""
+        """
+        Initialize the handler and prepare label-to-choice mappings.
+        
+        Builds internal mappings from `self.labels` (when present) into `self.label_to_index`,
+        `self.choice_texts`, and `self.choice_labels` so the handler can operate in task-level
+        labels mode. If no metrics are configured, assigns a default `[MultipleChoiceAccuracy()]`.
+        
+        Parameters:
+        	config (Optional[Dict[str, Any]]): Optional configuration passed to the base handler.
+        """
         super().__init__(config)
 
         # Build choice mapping from labels if provided
@@ -178,57 +187,30 @@ class MultipleChoiceHandler(BaseHandler):
     def preprocess_sample(
         self, raw_sample: Dict[str, Any], idx: int
     ) -> Optional[Dict[str, Any]]:
-        """Transform a raw dataset sample to eval format.
+        """
+        Preprocess a raw dataset sample into the evaluation format for multiple-choice tasks.
         
-        This method handles TWO MODES of operation:
+        Supports two modes:
+        - Task-level labels mode: when the handler has a `labels` mapping, extracts the sample text and label (using `text_field` and `label_field`), converts the label to the corresponding choice index, and attaches the task's `choices`, `choice_labels`, and `label_to_index`.
+        - Per-sample choices passthrough: if the sample already contains `choices` and `expected`, returns a copy (adds an `id` if missing).
         
-        MODE 1: Task-Level Labels (automatic preprocessing)
-        ---------------------------------------------------
-        When the task defines `labels` attribute, this method extracts text and label
-        from the sample and automatically adds choice information.
+        Parameters:
+            raw_sample (Dict[str, Any]): The original dataset sample.
+            idx (int): Index of the sample (used to build a default `id` when needed).
         
-        Expected sample format:
-            {
-                "text": "Is this positive?",  # Or whatever text_field is set to
-                "label": 1,                    # Or whatever label_field is set to
-            }
-        
-        Output format:
-            {
-                "id": "task_name_0",
-                "text": "Is this positive?",
-                "expected": 1,
-                "choices": ["Negative", "Positive"],
-                "choice_labels": ["0", "1"],
-                "label_to_index": {0: 0, 1: 1},
-            }
-        
-        MODE 2: Per-Sample Choices (passthrough)
-        -----------------------------------------
-        When samples already have `choices` and `expected`, this method assumes
-        they're already preprocessed and passes them through (only adding ID if missing).
-        
-        Expected sample format:
-            {
-                "text": "What is the capital of France?",
-                "choices": ["London", "Paris", "Berlin"],
-                "choice_labels": ["A", "B", "C"],
-                "expected": 1,  # Index of correct choice
-            }
-        
-        Output format: (mostly unchanged)
-            Same as input, with "id" added if missing
-        
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
         Returns:
-            Processed sample with choices, expected index, etc.
-            None if sample should be skipped
-            
+            Optional[Dict[str, Any]]: A processed sample containing at minimum:
+                - "id": sample identifier
+                - "text": prompt text
+                - "choices": list of choice texts
+                - "choice_labels": list of choice labels
+                - "expected": index of the correct choice
+                - "label_to_index": mapping from label values to indices (when produced)
+                - "label_value": original label value (when produced)
+            Returns None if the sample is missing required fields or its label is not in the handler's mapping.
+        
         Raises:
-            ValueError: If in MODE 1 but labels attribute not set
+            ValueError: If operating in task-level labels mode but the handler has no `labels` configured.
         """
         # MODE 2: If sample already has choices and expected, it's preprocessed
         if "choices" in raw_sample and "expected" in raw_sample:
@@ -277,13 +259,14 @@ class MultipleChoiceHandler(BaseHandler):
         }
 
     def _coerce_label(self, value: Any) -> Any:
-        """Coerce label to the correct type based on labels dict keys.
+        """
+        Convert a raw label value to the same type used by the handler's label keys.
         
-        Args:
-            value: Raw label value
-            
+        Parameters:
+            value (Any): Raw label value to coerce.
+        
         Returns:
-            Coerced label value matching labels dict key type
+            Any: The coerced label value with the same type as the keys in `self.labels`, or `None` if `value` is `None` or cannot be converted.
         """
         if value is None:
             return None
@@ -298,16 +281,16 @@ class MultipleChoiceHandler(BaseHandler):
         return str(value)
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
-        """Build prompts for multiple choice tasks.
+        """
+        Constructs system and user prompts for a multiple-choice sample.
         
-        Formats choices and constructs a prompt that works well for both
-        completion-based and logprobs-based scoring.
+        Formats the sample's choices and inserts them into a user prompt. If the handler defines a `user_prompt_template` containing "{choices}", that template is used with `text` and `choices` substitutions; otherwise a default prompt is created that includes the sample text, an "Options:" list, and the directive "Answer (label only):".
         
-        Args:
-            sample: Sample with text, choices, choice_labels
-            
+        Parameters:
+            sample (Dict[str, Any]): Sample containing at least `text`, and optionally `choices` and `choice_labels`.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple[str, str]: `(system_prompt, user_prompt)` strings to be used with the model.
         """
         choices_text = format_choices(
             sample.get("choices", []), sample.get("choice_labels")
@@ -329,16 +312,16 @@ class MultipleChoiceHandler(BaseHandler):
         return self.system_prompt, user_prompt
 
     def get_prompt_for_logprobs(self, sample: Dict[str, Any]) -> Tuple[str, str]:
-        """Build prompts optimized for logprobs scoring.
+        """
+        Produce system and user prompts tailored for logprobs-based scoring.
         
-        Ensures choices are clearly visible and answer format is constrained.
-        This method is called by interfaces that support logprobs.
+        If the user prompt does not already include an answer directive, appends "Answer (label only):" to constrain model output for logprobs evaluation.
         
-        Args:
-            sample: Sample dict
-            
+        Parameters:
+            sample (Dict[str, Any]): Preprocessed sample dictionary used to build the prompt.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            Tuple[str, str]: A tuple of (system_prompt, user_prompt).
         """
         # Get base prompt
         system_prompt, user_prompt = self.get_prompt(sample)
@@ -357,20 +340,24 @@ class MultipleChoiceHandler(BaseHandler):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for multiple choice prediction.
+        """
+        Evaluate a single multiple-choice prediction and return per-sample metrics.
         
-        Handles both logprobs-based predictions (already an index) and
-        text-based predictions (need parsing).
+        Parses the model's prediction into a choice index, compares it to the expected index, and computes correctness, accuracy, and any additional configured per-sample metrics. If `error` is provided, returns a standardized error metrics dict.
         
-        Args:
-            prediction: Model output (choice index or text)
-            expected: Expected choice index
-            sample: Full sample dict
-            error: Error message if any
-            error_type: Type of error
-            
+        Parameters:
+            prediction: Model output to evaluate; may be a choice index or text that can be parsed into a choice.
+            expected: The expected choice index for the sample.
+            sample: The sample dictionary (should contain `choices`, and optionally `choice_labels` and `label_to_index`) used for parsing and metric computation.
+            error: Optional error message; when present, triggers error metrics.
+            error_type: Optional classification of the error.
+        
         Returns:
-            Metrics dict with accuracy and correctness
+            A dict containing at minimum:
+              - `valid` (bool): whether the prediction was processed as valid,
+              - `correct` (bool): whether the parsed prediction matches `expected`,
+              - `accuracy` (float): 1.0 for correct, 0.0 for incorrect,
+            plus any additional metric outputs from configured metrics.
         """
         if error:
             return self.get_error_metrics(error, error_type)
@@ -410,14 +397,20 @@ class MultipleChoiceHandler(BaseHandler):
     def get_error_metrics(
         self, error: str, error_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Return error metrics for failed predictions.
+        """
+        Produce a standardized metrics dict for a prediction that failed due to an error.
         
-        Args:
-            error: Error message
-            error_type: Type of error
-            
+        Parameters:
+            error (str): Error message describing the failure.
+            error_type (Optional[str]): Optional classification of the error.
+        
         Returns:
-            Metrics dict matching structure of successful predictions
+            dict: Metrics with keys:
+                - valid: False
+                - error: the provided error message
+                - error_type: the provided error type or None
+                - correct: False
+                - accuracy: 0.0
         """
         return {
             "valid": False,
@@ -428,15 +421,19 @@ class MultipleChoiceHandler(BaseHandler):
         }
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate multiple choice metrics across all samples.
+        """
+        Aggregate per-sample multiple-choice metrics into overall statistics.
         
-        Computes overall accuracy and error rates.
+        Parameters:
+            all_metrics (List[Dict]): List of per-sample metric dictionaries; each dictionary may include the boolean keys `valid` and `correct`.
         
-        Args:
-            all_metrics: List of per-sample metrics
-            
         Returns:
-            Aggregated metrics dict
+            Dict[str, Any]: Aggregated metrics with keys:
+                - total_samples: total number of samples in `all_metrics`
+                - valid_samples: count of samples with `valid` == True (defaults to True if missing)
+                - error_count: number of samples considered invalid
+                - accuracy: fraction of `correct` samples among valid samples (0.0 if no valid samples)
+                - error_rate: fraction of invalid samples among all samples (0.0 if `all_metrics` is empty)
         """
         if not all_metrics:
             return {}
@@ -454,4 +451,3 @@ class MultipleChoiceHandler(BaseHandler):
         }
 
         return aggregated
-

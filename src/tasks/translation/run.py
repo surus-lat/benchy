@@ -24,14 +24,18 @@ CACHE_DIR = Path(__file__).parent / 'cache'
 
 
 def _prepare_translation_task(subtask_name: str, context: TaskGroupContext):
-    """Prepare a translation task instance with COMET model.
+    """
+    Prepare and return a translation handler (Opus or Flores) configured with the shared COMET model and any subtask-specific overrides.
     
-    Args:
-        subtask_name: Name of subtask ("opus" or "flores")
-        context: Task group context with shared COMET model
-        
+    Parameters:
+        subtask_name (str): Subtask identifier, expected "opus" or "flores".
+        context (TaskGroupContext): Task group context; `context.shared` may contain a "comet_model", and `context.task_config["task_configs"]` may provide subtask-specific config overrides.
+    
     Returns:
-        Task instance (Opus or Flores)
+        task: An instantiated Opus or Flores handler configured with the combined settings.
+    
+    Raises:
+        ValueError: If `subtask_name` is not "opus" or "flores".
     """
     from .opus import Opus
     from .flores import Flores
@@ -70,22 +74,21 @@ def run_translation(
     cuda_devices: Optional[str] = None,
     provider_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Run translation evaluation.
+    """
+    Run the translation benchmark for a given model.
     
-    This is a Prefect task that wraps the generic benchmark runner.
+    Parameters:
+        model_name (str): Model identifier to evaluate.
+        output_path (str): Base directory where results will be written.
+        server_info (Optional[Dict[str, Any]]): vLLM server connection info, or None for cloud providers.
+        api_test_result (Dict[str, Any]): API test result; accepted for interface compatibility and ignored by this task.
+        task_config (Dict[str, Any]): Task configuration (task.json) specifying subtask settings and overrides.
+        limit (Optional[int]): Maximum number of examples to evaluate (used for testing/debugging).
+        cuda_devices (Optional[str]): CUDA device specification; accepted for interface compatibility and unused by this task.
+        provider_config (Optional[Dict[str, Any]]): Cloud provider configuration passed through to the runner.
     
-    Args:
-        model_name: The model to evaluate
-        output_path: Base output path for results
-        server_info: Server info from vLLM (None for cloud providers)
-        api_test_result: API test result (unused, for interface compatibility)
-        task_config: Task configuration from src/tasks/translation/task.json
-        limit: Limit number of examples (for testing)
-        cuda_devices: CUDA devices (unused for this task)
-        provider_config: Provider configuration (for cloud providers)
-        
     Returns:
-        Dictionary with execution results and metrics
+        result (Dict[str, Any]): Execution results and aggregated metrics produced by the translation task group.
     """
     return run_task_group(
         spec=TRANSLATION_SPEC,
@@ -99,10 +102,11 @@ def run_translation(
 
 
 def _setup_translation(context: TaskGroupContext) -> Dict[str, Any]:
-    """Load COMET model once and share across all translation subtasks.
+    """
+    Load the COMET model and provide it for sharing across translation subtasks.
     
-    This is critical for performance - COMET takes 2-5 minutes to load.
-    Loading once and sharing saves hours of compute time.
+    Returns:
+        dict: Mapping with key `"comet_model"` containing the loaded COMET model when available; returns an empty dict if the model could not be loaded.
     """
     logger.info("Loading COMET model for translation evaluation...")
     comet_model = load_comet_model()
@@ -133,7 +137,32 @@ def _old_run_opus_subtask_DEPRECATED(
     comet_model: Optional[Any] = None,
     capability_requirements: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Run OPUS subtask for all language pairs."""
+    """
+    Run the deprecated OPUS translation subtask over the configured language pairs and return per-pair and aggregated evaluation results.
+    
+    This legacy helper downloads missing OPUS test data, executes the OPUS evaluation for each language pair using the provided model/provider, saves per-pair results, and computes aggregated metrics across pairs.
+    
+    Parameters:
+        subtask_config (Dict): Subtask-specific configuration; expects optional keys `language_pairs` (list of "src-tgt" pairs) and `dataset_name`.
+        model_name (str): Name or identifier of the model to evaluate.
+        connection_info (Dict): Provider connection details (credentials, endpoints).
+        provider_type (str): Identifier of the provider implementation to use.
+        task_output_path (Path): Base directory where per-pair results and logs are written.
+        limit (Optional[int]): Maximum number of samples to evaluate per pair; pass `None` for no limit.
+        defaults (Dict): Default runner settings (e.g., `batch_size`, `log_samples`).
+        prompts (Dict): Prompt templates or prompt configuration used to construct model inputs.
+        comet_model (Optional[Any]): Optional shared COMET scoring model used to compute COMET scores.
+        capability_requirements (Optional[Dict[str, Any]]): Optional capability constraints that the provider/model must satisfy.
+    
+    Returns:
+        Dict[str, Any]: A result dictionary containing:
+            - "subtask": the string "opus"
+            - "language_pairs": list of language pairs processed
+            - "per_pair_results": mapping from language pair to the saved per-pair result payload
+            - "aggregate_metrics": aggregated metrics across language pairs (fields include
+              "total_samples", "valid_samples", "bleu", "chrf", "comet", "error_rate")
+            - If skipped due to incompatibility, includes "skipped": True and "skip_reason".
+    """
     from .datasets.opus.task import OpusTask
     from .datasets.opus.download import download_and_preprocess_opus
     

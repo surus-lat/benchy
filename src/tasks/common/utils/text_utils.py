@@ -6,12 +6,25 @@ from typing import Optional
 
 
 def normalize_spaces(text: str) -> str:
-    """Collapse whitespace and trim."""
+    """
+    Collapse consecutive whitespace into single spaces and trim leading and trailing whitespace.
+    
+    Parameters:
+        text (str): Input string; if falsy, it is treated as an empty string.
+    
+    Returns:
+        str: The input with runs of whitespace replaced by a single space and surrounding whitespace removed.
+    """
     return re.sub(r"\s+", " ", text or "").strip()
 
 
 def remove_accents(text: str) -> str:
-    """Remove accents for simpler matching."""
+    """
+    Remove diacritical marks (accents) from text to simplify matching.
+    
+    Returns:
+        str: The input text with combining diacritical marks removed. Returns an empty string for falsy input.
+    """
     if not text:
         return ""
     normalized = unicodedata.normalize("NFKD", text)
@@ -29,24 +42,18 @@ def extract_float_score(
     max_value: Optional[float] = None,
     fallback: Optional[float] = None,
 ) -> Optional[float]:
-    """Extract a float score from text, optionally clipping to range.
+    """
+    Extracts a float value from the given text and optionally clips it to an inclusive range.
     
-    Args:
-        response: Text containing a numeric value
-        min_value: Minimum allowed value (clips if out of range)
-        max_value: Maximum allowed value (clips if out of range)
-        fallback: Value to return if no number found
+    Searches the text for numeric patterns (supports both '.' and ',' as decimal separators) and uses the last match. If no parseable number is found or parsing fails, returns `fallback`. Clipping is applied only when both `min_value` and `max_value` are provided.
+    
+    Parameters:
+        min_value (Optional[float]): Minimum allowed value; used for clipping when `max_value` is also provided.
+        max_value (Optional[float]): Maximum allowed value; used for clipping when `min_value` is also provided.
+        fallback (Optional[float]): Value to return if no numeric value can be extracted or parsed.
     
     Returns:
-        Extracted float or fallback value
-        
-    Examples:
-        >>> extract_float_score("Score: 4.5", min_value=1.0, max_value=5.0)
-        4.5
-        >>> extract_float_score("The answer is 3,7", min_value=1.0, max_value=5.0)
-        3.7
-        >>> extract_float_score("No number here", fallback=0.0)
-        0.0
+        Extracted float if a number is found and parsed successfully; `fallback` otherwise.
     """
     if not response:
         return fallback
@@ -72,20 +79,20 @@ def extract_float_score(
 
 
 def format_score_with_comma(value: float, decimals: int = 1) -> str:
-    """Format float with comma as decimal separator (for Portuguese/Spanish).
+    """
+    Format a float using a comma as the decimal separator.
     
-    Args:
-        value: Float value to format
-        decimals: Number of decimal places
-        
+    Parameters:
+        value: Float value to format.
+        decimals: Number of decimal places.
+    
     Returns:
-        Formatted string with comma separator
-        
-    Example:
+        Formatted string with a comma as the decimal separator.
+    
+    Examples:
         >>> format_score_with_comma(3.5)
         '3,5'
         >>> format_score_with_comma(4.123, decimals=2)
         '4,12'
     """
     return f"{value:.{decimals}f}".replace(".", ",")
-

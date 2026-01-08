@@ -9,7 +9,17 @@ from ..common import CachedDatasetMixin
 
 
 def _general_detokenize(text: str) -> str:
-    """Detokenize text by removing extra whitespace."""
+    """
+    Normalize spacing in text by collapsing consecutive spaces and trimming surrounding whitespace.
+    
+    Returns the input unchanged if it is falsy.
+    
+    Parameters:
+        text (str): Input string to normalize.
+    
+    Returns:
+        str: The input string with consecutive spaces replaced by a single space and leading/trailing whitespace removed.
+    """
     if not text:
         return text
     text = re.sub(r' +', ' ', text)
@@ -17,14 +27,33 @@ def _general_detokenize(text: str) -> str:
 
 
 def _lowercase_first_letter(text: str) -> str:
-    """Lowercase the first letter of text."""
+    """
+    Lowercases the first character of the given string.
+    
+    Returns:
+        The input string with its first character lowercased; if `text` is falsy or empty, returns it unchanged.
+    """
     if not text:
         return text
     return text[0].lower() + text[1:]
 
 
 def _process_paraphrase_doc(doc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Process paraphrase document for PAWS task."""
+    """
+    Validate and normalize a PAWS paraphrase sample into standardized fields.
+    
+    Processes the input mapping `doc` by ensuring `sentence1` and `sentence2` are present and non-empty; returns `None` if either is missing or empty. When valid, detokenizes and trims both sentences, removes a trailing period, comma, or semicolon from `sentence1`, and lowercases the first character of `sentence2`. Also preserves `label` (defaulting to 0 if absent) and `id` (defaulting to an empty string if absent).
+    
+    Parameters:
+        doc (Dict[str, Any]): Raw sample expected to contain `sentence1` and `sentence2`; may include optional `label` and `id`.
+    
+    Returns:
+        Optional[Dict[str, Any]]: A dictionary with keys:
+            - `sentence1` (str): Processed first sentence without trailing ., or ;.
+            - `sentence2` (str): Processed second sentence with its first character lowercased.
+            - `label` (int): Original label or 0 if missing.
+            - `id` (str): Original id or empty string if missing.
+    """
     if doc.get("sentence1") in [None, ""] or doc.get("sentence2") in [None, ""]:
         return None
     
@@ -63,7 +92,17 @@ class PawsEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform PAWS-es dataset to eval format."""
+        """
+        Download the PAWS-es split and write a transformed evaluation JSONL to output_path.
+        
+        Loads the Spanish PAWS-X test split, normalizes and filters examples with _process_paraphrase_doc, and writes a list of records with keys `id`, `text` (two sentences plus the Spanish paraphrase question), `choices` (`["No", "Sí"]`), and `expected` (label) to the given output path in JSONL format.
+        
+        Parameters:
+            output_path (Path): Filesystem path where the resulting JSONL will be written.
+        
+        Raises:
+            ImportError: If the `datasets` library is not available.
+        """
         try:
             from datasets import load_dataset
         except ImportError:

@@ -211,7 +211,29 @@ class OpenAIInterface:
         choice_labels: Optional[List[str]] = None,
         allow_logprobs_fallback: bool = False,
     ) -> Dict:
-        """Generate output for a single request."""
+        """
+        Generate a single model prediction for the given prompts and sample.
+        
+        This performs either a logprob-based multiple-choice scoring or a normal generation (completions/chat), handles multimodal input when an image is provided, and parses JSON when a schema is supplied (using structured output modes when enabled). On failure the returned dict contains error information.
+        
+        Parameters:
+            system_prompt (str): System-level prompt context (may be empty).
+            user_prompt (str): User-level prompt content or structured user content for multimodal requests.
+            schema (Optional[Dict]): JSON schema to extract/validate structured output; when provided the function will attempt to parse JSON from the model output and return the parsed object as `output`.
+            sample_id (str): Identifier for the sample being generated (used for logging/tracking).
+            image_path (Optional[str]): Path to an image file to include with the request; when present the call is sent as a multimodal/chat request.
+            use_logprobs (bool): If true, perform logprob-based multiple-choice scoring instead of normal generation.
+            choices (Optional[List[str]]): Candidate choices for logprob scoring; required when `use_logprobs` is true.
+            choice_labels (Optional[List[str]]): Optional labels corresponding to `choices`; used when scoring by logprobs.
+            allow_logprobs_fallback (bool): If true, fall back to a normal generation when logprob scoring fails.
+        
+        Returns:
+            Dict: A result dictionary with keys:
+                - `output`: The parsed structured output (dict) when `schema` is provided and parsing succeeds, otherwise a stripped text string; `None` on error.
+                - `raw`: Raw text content returned by the model, or `None`.
+                - `error`: Error message when the request or parsing failed, otherwise `None`.
+                - `error_type`: A short error classification (e.g., `"invalid_response"`) when an error occurred, otherwise `None`.
+        """
         result = {"output": None, "raw": None, "error": None, "error_type": None}
 
         if use_logprobs:
@@ -248,6 +270,18 @@ class OpenAIInterface:
             use_completions_api = False
 
         async def attempt_fn(_: int) -> Dict:
+            """
+            Attempt a single generation request to the configured provider using either the completions or chat API and return a normalized result.
+            
+            This attempt will send either a completions-style prompt or a chat-style request (optionally including an embedded image). If a schema is provided, the provider response is extracted for JSON and parsed; when structured outputs are enabled the schema is sanitized and sent using the provider-appropriate structured output parameters. On empty responses or JSON parse failures the returned result includes an error and error_type describing the problem.
+            
+            Returns:
+                result (Dict): A dictionary containing:
+                    - "raw": the raw text content returned by the provider (or None),
+                    - "output": the parsed JSON object when a schema was provided and parsing succeeded, or the stripped text output otherwise,
+                    - "error": an error message when the response was empty or JSON parsing failed,
+                    - "error_type": a short error classification such as "invalid_response".
+            """
             if use_completions_api:
                 combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
                 response = await self.client.completions.create(

@@ -25,7 +25,18 @@ class Escola(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform EsCoLA dataset to eval format."""
+        """
+        Download the EsCoLA HuggingFace split, convert samples into evaluation records, and save them as a JSONL file.
+        
+        Each output record contains:
+        - "id": sample idx (or "escola_{i}" if missing),
+        - "text": the original sentence followed by the Spanish prompt "Pregunta: ¿Tiene sentido esta frase?\nRespuesta:",
+        - "choices": ["no", "sí"],
+        - "expected": the sample's Label value (defaults to 0 if absent).
+        
+        Parameters:
+            output_path (Path): Filesystem path where the resulting JSONL will be written.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,

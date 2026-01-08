@@ -9,7 +9,14 @@ from ..common import CachedDatasetMixin
 
 
 def _preprocess_text(text: str) -> str:
-    """Preprocess teleia text by removing special markers."""
+    """
+    Clean and normalize a Cervantes AVE text string.
+    
+    Performs the following transformations: trims leading/trailing whitespace, replaces the marker " [title]" with ". ", removes any content enclosed in square brackets, and collapses consecutive double spaces into single spaces.
+    
+    Returns:
+        The cleaned text string.
+    """
     text = text.strip()
     text = text.replace(" [title]", ". ")
     text = re.sub(r"\[.*?\]", "", text)
@@ -18,7 +25,19 @@ def _preprocess_text(text: str) -> str:
 
 
 def _process_cervantes_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Process Cervantes AVE document."""
+    """
+    Convert a raw Cervantes AVE record into a standardized multiple-choice item.
+    
+    Parameters:
+        doc (Dict[str, Any]): Raw dataset record containing at least question and option fields
+            (e.g., "option_a" through "option_d") and an "answer" letter.
+    
+    Returns:
+        Dict[str, Any]: A mapping with:
+            - "query" (str): Prompt constructed from the preprocessed question.
+            - "choices" (List[str]): List of preprocessed, non-empty answer options.
+            - "target" (int): Index (0–3) of the correct choice corresponding to A–D; defaults to 0 if unspecified or invalid.
+    """
     question = _preprocess_text(doc.get("question", ""))
     query = f"Pregunta: {question}\nRespuesta:"
     
@@ -56,7 +75,17 @@ class TeleiaCervantesAve(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform Teleia Cervantes AVE dataset to eval format."""
+        """
+        Download the Cervantes AVE subset of the Teleia dataset, convert it to evaluation format, and write it to the given path.
+        
+        This fetches the remote dataset, transforms each sample into a standardized dict with keys "id", "text", "choices", and "expected", and saves the collection as a JSONL file at output_path.
+        
+        Parameters:
+            output_path (Path): Filesystem path where the resulting JSONL file will be written.
+        
+        Raises:
+            ImportError: If the `datasets` library is not installed.
+        """
         try:
             from datasets import load_dataset
         except ImportError:

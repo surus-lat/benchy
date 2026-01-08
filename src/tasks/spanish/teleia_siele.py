@@ -9,7 +9,17 @@ from ..common import CachedDatasetMixin
 
 
 def _preprocess_text(text: str) -> str:
-    """Preprocess teleia text by removing special markers."""
+    """
+    Normalize Teleia text by removing Teleia-specific markers and normalizing whitespace.
+    
+    Performs these transformations: trims leading/trailing whitespace, replaces the marker " [title]" with ". ", removes any substring enclosed in square brackets (pattern `\[.*?\]`), and collapses consecutive spaces into a single space.
+    
+    Parameters:
+        text (str): Input text that may contain Teleia markers and irregular spacing.
+    
+    Returns:
+        str: Cleaned text with bracketed markers removed and spacing normalized.
+    """
     text = text.strip()
     text = text.replace(" [title]", ". ")
     text = re.sub(r"\[.*?\]", "", text)
@@ -18,7 +28,20 @@ def _preprocess_text(text: str) -> str:
 
 
 def _process_siele_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Process SIELE document."""
+    """
+    Transform a raw SIELE question record into a standardized multiple-choice item.
+    
+    Parameters:
+        doc (Dict[str, Any]): Raw SIELE document containing at least the keys
+            "question", "option_a", "option_b", "option_c", and "answer".
+            Missing options may be omitted or None.
+    
+    Returns:
+        Dict[str, Any]: A mapping with:
+            - "query": Prompt string in Spanish ("Pregunta: {question}\nRespuesta:").
+            - "choices": List of preprocessed answer option strings (present options only).
+            - "target": Integer index of the correct choice (0 for "A", 1 for "B", 2 for "C"; defaults to 0).
+    """
     question = _preprocess_text(doc.get("question", ""))
     query = f"Pregunta: {question}\nRespuesta:"
     
@@ -51,7 +74,18 @@ class TeleiaSiele(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform Teleia SIELE dataset to eval format."""
+        """
+        Convert and save the Teleia SIELE dataset into the eval JSONL format.
+        
+        Loads the "migonsa/teleia" (siele) split, transforms each sample into objects with keys
+        "id", "text", "choices", and "expected", and writes the resulting list to `output_path` in JSONL format.
+        
+        Parameters:
+            output_path (Path): Destination file path where the JSONL output will be written.
+        
+        Raises:
+            ImportError: If the `datasets` library is not installed.
+        """
         try:
             from datasets import load_dataset
         except ImportError:

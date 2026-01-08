@@ -35,17 +35,23 @@ def download_and_preprocess_opus(
     cache_dir: str = "./cache",
     split: str = "test",
 ) -> Dict[str, int]:
-    """Download and preprocess OPUS-100 dataset.
+    """
+    Download and preprocess specified OPUS-100 language pairs into per-pair JSONL files.
     
-    Args:
-        dataset_name: HuggingFace dataset name (e.g., "Helsinki-NLP/opus-100")
-        language_pairs: List of language pairs to extract (e.g., ["en-es", "en-pt"])
-        output_dir: Directory to save JSONL files
-        cache_dir: Cache directory for datasets library
-        split: Dataset split to use (train, validation, test)
-        
+    Each input example that contains both source and target text produces two samples (A->B and B->A) with metadata fields such as id, source_text, target_text, source_lang, target_lang, source_language, target_language, language_pair, and direction.
+    
+    Parameters:
+        dataset_name (str): HuggingFace dataset identifier (e.g., "Helsinki-NLP/opus-100").
+        language_pairs (List[str]): Language pair strings in the form "src-tgt" (e.g., ["en-es", "en-pt"]).
+        output_dir (Path): Directory where per-pair JSONL files will be written; created if missing.
+        cache_dir (str): Cache directory passed to the datasets library (default "./cache").
+        split (str): Dataset split to use (e.g., "train", "validation", "test"; default "test").
+    
     Returns:
-        Dictionary with counts per language pair
+        Dict[str, int]: Mapping from each language pair (as provided) to the number of generated samples.
+    
+    Raises:
+        ImportError: If the HuggingFace datasets library is not available.
     """
     if not DATASETS_AVAILABLE:
         raise ImportError("datasets library not available. Install with: pip install datasets")
@@ -119,7 +125,6 @@ def download_and_preprocess_opus(
             counts[pair] = 0
     
     return counts
-
 
 
 

@@ -46,9 +46,17 @@ def _summarize_task_metrics(
     metrics: Dict[str, Any],
     metrics_manifest: Optional[list] = None,
 ) -> Dict[str, Any]:
-    """Filter aggregate metrics to numeric values excluding counts/metadata.
+    """
+    Summarize task metrics by extracting numeric values and preserving nested subtask structures.
     
-    For tasks with multiple subtasks, preserves the 'subtasks' structure.
+    When `metrics` contains a "subtasks" mapping, the function returns a dictionary with a "subtasks" key whose value is a mapping of subtask names to their numeric summaries. Otherwise, it returns a flat mapping of metric names to float values.
+    
+    Parameters:
+        metrics (Dict[str, Any]): Metric data for a task; may include a "subtasks" dict for nested results.
+        metrics_manifest (Optional[list]): Optional list of metric names to include when summarizing; if provided, only metrics listed (and numeric) are included.
+    
+    Returns:
+        Dict[str, Any]: Either a mapping of metric names to float values for a single task, or a dict containing a "subtasks" mapping where each subtask maps to its numeric metric summary.
     """
     # Check if this is a multi-subtask result
     if "subtasks" in metrics and isinstance(metrics["subtasks"], dict):
@@ -68,7 +76,16 @@ def _summarize_single_task_metrics(
     metrics: Dict[str, Any],
     metrics_manifest: Optional[list] = None,
 ) -> Dict[str, float]:
-    """Summarize metrics for a single task/subtask."""
+    """
+    Produce a numeric summary of a single task's metrics.
+    
+    Parameters:
+        metrics (Dict[str, Any]): Mapping of metric names to values for the task or subtask.
+        metrics_manifest (Optional[list]): An optional ordered list of metric keys to include; when provided, only those keys are considered.
+    
+    Returns:
+        Dict[str, float]: A mapping of metric names to float values including only numeric (int/float) metrics; boolean values and keys in SUMMARY_SKIP_KEYS are excluded.
+    """
     summarized: Dict[str, float] = {}
     if metrics_manifest:
         for key in metrics_manifest:
@@ -211,24 +228,25 @@ def benchmark_pipeline(
     vllm_config: Optional[VLLMServerConfig] = None,
 ) -> Dict[str, Any]:
     """
-    Complete benchmarking pipeline for vLLM and cloud providers.
+    Orchestrates a benchmarking run that evaluates the given tasks for a model using either a local vLLM server or a cloud provider and writes run outputs and summaries.
     
-    The pipeline:
-    - For vLLM: Starts server, tests API, runs tasks, stops server
-    - For cloud providers (OpenAI/Anthropic): Directly runs tasks using API
+    Parameters:
+        model_name (str): Model identifier to evaluate.
+        tasks (list): List of task names or task group identifiers to run.
+        output_path (str): Base directory where run outputs and summaries will be written.
+        limit (Optional[int]): Maximum number of examples to evaluate per task; if None, no limit is applied.
+        api_endpoint (str): API request mode to use for tasks (e.g., "completions" or "chat").
+        task_defaults_overrides (Optional[Dict[str, Any]]): Overrides for task default parameters applied when loading task configs.
+        log_setup (Optional[Any]): Optional logger/telemetry helper used to emit task-level configuration logs.
+        run_id (Optional[str]): Identifier used to scope run outputs; if None one may be generated externally.
+        provider_type (str): Execution provider: "vllm" to start/use a local vLLM server, or a cloud provider name (e.g., "openai", "anthropic").
+        provider_config (Optional[Dict[str, Any]]): Provider-specific configuration passed to cloud-provider task runners.
+        organization (Optional[str]): Optional model organization to include in written run config metadata.
+        url (Optional[str]): Optional model URL to include in written run config metadata.
+        vllm_config (Optional[VLLMServerConfig]): vLLM server configuration used when provider_type is "vllm"; CUDA devices are filled from central GPU config if not provided.
     
-    Args:
-        model_name: The model to evaluate
-        tasks: List of task names to run (e.g., ["spanish", "portuguese"])
-        output_path: Base output path for results
-        limit: Limit number of examples per task (useful for testing)
-        api_endpoint: API endpoint mode ("completions" or "chat")
-        task_defaults_overrides: Optional dict to override task default parameters
-        log_setup: Logging setup object
-        run_id: Optional run ID for organizing outputs
-        provider_type: Provider type ('vllm', 'openai', or 'anthropic')
-        provider_config: Provider configuration (for cloud providers)
-        vllm_config: vLLM server configuration (only used if provider_type == 'vllm')
+    Returns:
+        Dict[str, Any]: Final cleanup result for the run. For cloud providers this is the gathered per-task results; for vLLM this is the result returned by the vLLM server shutdown step (which includes uploaded/gathered task results). Individual task entries are available under keys named "<task_name>_results".
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
     logger.info(f"Provider type: {provider_type}")

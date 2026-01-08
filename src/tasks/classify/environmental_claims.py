@@ -29,13 +29,16 @@ class EnvironmentalClaims(MultipleChoiceHandler):
     system_prompt = "You are a helpful assistant for environmental claim detection."
 
     def get_prompt(self, sample):
-        """Build prompt for environmental claims detection.
+        """
+        Builds the system and user prompts for the environmental claim classification task.
         
-        Args:
-            sample: Sample dict with text and choices
-            
+        Parameters:
+            sample (dict): Input example containing at least the "text" field and optionally
+                "choices" (list) and "choice_labels" (mapping) used to render the label options.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            tuple: (system_prompt, user_prompt) where `system_prompt` is the task system message
+            and `user_prompt` is the formatted question including the sentence and label choices.
         """
         from ..common import format_choices
 
@@ -51,4 +54,3 @@ class EnvironmentalClaims(MultipleChoiceHandler):
         )
 
         return self.system_prompt, user_prompt
-

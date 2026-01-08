@@ -9,7 +9,12 @@ from ..common import CachedDatasetMixin
 
 
 def _preprocess_text(text: str) -> str:
-    """Preprocess teleia text by removing special markers."""
+    """
+    Normalize Teleia PCE text by removing editorial markers and collapsing extra whitespace.
+    
+    Returns:
+        str: The cleaned text with markers removed and redundant spaces collapsed.
+    """
     text = text.strip()
     text = text.replace(" [title]", ". ")
     text = re.sub(r"\[.*?\]", "", text)
@@ -18,7 +23,19 @@ def _preprocess_text(text: str) -> str:
 
 
 def _process_pce_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Process PCE document."""
+    """
+    Convert a raw Teleia PCE document into a standardized multiple-choice example.
+    
+    Parameters:
+        doc (Dict[str, Any]): Raw Teleia PCE document, expected to contain keys
+            "question", "option_a", "option_b", "option_c", and "answer".
+    
+    Returns:
+        Dict[str, Any]: Dictionary with keys:
+            - "query" (str): Prompt formed from the preprocessed question (e.g., "Pregunta: {question}\nRespuesta:").
+            - "choices" (List[str]): List of preprocessed, non-empty option strings in A/B/C order.
+            - "target" (int): Index of the correct choice (0 for A, 1 for B, 2 for C); defaults to 0 if the answer is missing or invalid.
+    """
     question = _preprocess_text(doc.get("question", ""))
     query = f"Pregunta: {question}\nRespuesta:"
     
@@ -51,7 +68,14 @@ class TeleiaPce(CachedDatasetMixin, MultipleChoiceHandler):
     user_prompt_template = "{text}\n\nOpciones:\n{choices}\n\nRespuesta:"
     
     def _download_and_cache(self, output_path: Path):
-        """Transform Teleia PCE dataset to eval format."""
+        """
+        Convert and cache the Teleia PCE dataset into the evaluation JSONL format.
+        
+        Loads the "migonsa/teleia" dataset (config "pce") using the Hugging Face datasets library, transforms each sample into a dictionary with keys `id`, `text`, `choices`, and `expected`, and writes the resulting list to `output_path` in JSONL format. Raises an ImportError with an installation hint if the `datasets` library is not available.
+        
+        Parameters:
+            output_path (Path): Filesystem path where the processed JSONL file will be written.
+        """
         try:
             from datasets import load_dataset
         except ImportError:

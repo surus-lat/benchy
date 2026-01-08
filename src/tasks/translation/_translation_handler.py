@@ -60,12 +60,13 @@ class TranslationHandler(FreeformHandler):
     answer_type = "freeform"
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize translation handler.
+        """
+        Create and configure a TranslationHandler instance with optional shared COMET model.
         
-        Args:
-            config: Configuration dict, should include:
-                - comet_model: Preloaded COMET model (from TaskGroupSpec setup)
-                - language_pairs: List of language pairs to evaluate
+        Parameters:
+            config (Optional[Dict[str, Any]]): Optional configuration dictionary. Recognized keys:
+                - "comet_model": a preloaded COMET model instance intended to be shared across subtasks.
+                - "language_pairs": list of language-pair identifiers to evaluate.
         """
         super().__init__(config)
         
@@ -77,7 +78,12 @@ class TranslationHandler(FreeformHandler):
     
     @property
     def metrics_calculator(self) -> TranslationMetricsCalculator:
-        """Lazy initialization of metrics calculator."""
+        """
+        Provide a cached TranslationMetricsCalculator configured with this handler's COMET model.
+        
+        Returns:
+            TranslationMetricsCalculator: The metrics calculator instance; created on first access and reused thereafter.
+        """
         if self._metrics_calc is None:
             self._metrics_calc = TranslationMetricsCalculator({
                 "comet_model": self.comet_model
@@ -92,23 +98,14 @@ class TranslationHandler(FreeformHandler):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate translation metrics for a single sample.
+        """
+        Compute translation evaluation metrics for a single sample and attach language metadata.
         
-        Uses TranslationMetricsCalculator which handles:
-        - BLEU score
-        - chrF score
-        - COMET score (if model available)
-        - Error tracking
+        Parameters:
+        	sample (Dict): Full sample dictionary; used to extract `language_pair`, `direction`, `source_language`, and `target_language`.
         
-        Args:
-            prediction: Model translation output
-            expected: Reference translation
-            sample: Full sample dict (includes language info)
-            error: Error message if generation failed
-            error_type: Type of error
-            
         Returns:
-            Metrics dict with bleu, chrf, comet, valid, etc.
+        	metrics (Dict[str, Any]): Evaluation results including metric scores (e.g., `bleu`, `chrf`, `comet` when available), status flags such as `valid`, and the metadata keys `language_pair`, `direction`, `source_language`, and `target_language`.
         """
         # Add language pair info to metrics for aggregation
         metrics = self.metrics_calculator.calculate(
@@ -131,14 +128,15 @@ class TranslationHandler(FreeformHandler):
         error: str,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Get error metrics for failed predictions.
+        """
+        Return metrics for a prediction that failed due to an error.
         
-        Args:
-            error: Error message
-            error_type: Type of error
-            
+        Parameters:
+            error (str): Error message describing the failure.
+            error_type (Optional[str]): Categorized error type, if available.
+        
         Returns:
-            Error metrics dict
+            dict: Metrics dictionary for the error case, including error details and metric fields populated for failed predictions.
         """
         return self.metrics_calculator.calculate(
             prediction=None,
@@ -148,22 +146,26 @@ class TranslationHandler(FreeformHandler):
         )
     
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate translation metrics across samples.
+        """
+        Aggregate translation metrics across a list of per-sample metric dictionaries.
         
-        This performs multi-level aggregation:
-        1. FIRST: Calculate batch COMET scores (via TranslationMetricsCalculator)
-        2. Group by language pair and direction
-        3. Average each direction separately
-        4. Average both directions for pair score
-        5. Average across pairs for overall score
-        6. Group by language for per-language scores
+        Parameters:
+            all_metrics (List[Dict]): Per-sample metric objects produced by calculate_metrics (or similarly shaped),
+                where each entry may include keys like `valid`, `language_pair`, `direction`, `comet`, `bleu`, and `chrf`.
         
         Returns:
-            Dict with:
-            - overall_comet, overall_bleu, overall_chrf
-            - per_pair: {pair: {comet, bleu, chrf}}
-            - per_language: {lang: {comet, bleu, chrf}}
-            - total_samples, valid_samples, error_count
+            Dict[str, Any]: Summary dictionary containing:
+                - total_samples (int): Number of input metric entries.
+                - valid_samples (int): Count of entries marked as valid.
+                - error_count (int): Count of entries not marked as valid.
+                - error_rate (float): error_count / total_samples (0.0 if total_samples is 0).
+                - overall_comet (float): Average COMET score across language pairs.
+                - overall_bleu (float): Average BLEU score across language pairs.
+                - overall_chrf (float): Average chrF score across language pairs.
+                - per_pair (Dict[str, Dict]): Mapping from language pair to aggregated metrics and sample_count;
+                    each value contains `comet`, `bleu`, `chrf`, and `sample_count`.
+                - per_language (Dict[str, Dict]): Mapping from language code to aggregated metrics;
+                    each value contains `comet`, `bleu`, and `chrf`.
         """
         if not all_metrics:
             return {
@@ -271,4 +273,3 @@ class TranslationHandler(FreeformHandler):
             "per_pair": per_pair,
             "per_language": per_language,
         }
-

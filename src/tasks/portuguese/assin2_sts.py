@@ -44,7 +44,17 @@ class Assin2Sts(CachedDatasetMixin, FreeformHandler):
     metrics = [MeanSquaredError(), PearsonCorrelation()]
 
     def _download_and_cache(self, output_path: Path):
-        """Download and preprocess ASSIN2 STS dataset."""
+        """
+        Download the ASSIN2 STS dataset from HuggingFace, preprocess each sample, and write the processed samples to the given JSONL output path.
+        
+        Each processed sample is a dict with:
+        - `id`: sample identifier (from `sentence_pair_id`, `id`, or the sample index).
+        - `text`: two-line Portuguese prompt "Frase 1: {premise}\nFrase 2: {hypothesis}".
+        - `expected`: relatedness score converted to `float` (from `relatedness_score`, `score`, or `0.0` if missing).
+        
+        Parameters:
+            output_path (Path): Destination file path where the JSONL-formatted processed samples will be saved.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,
@@ -70,7 +80,15 @@ class Assin2Sts(CachedDatasetMixin, FreeformHandler):
         logger.info(f"Cached {len(processed)} samples to {output_path}")
 
     def format_prompt(self, sample: Dict[str, Any]) -> str:
-        """Format the user prompt for a sample."""
+        """
+        Create the user prompt by concatenating the task description with the sample's text.
+        
+        Parameters:
+            sample (Dict[str, Any]): Sample dictionary expected to contain a 'text' field; if absent, an empty string is used.
+        
+        Returns:
+            str: Formatted prompt ready for the user, ending with "Pontuação:".
+        """
         return f"{self.description}{sample.get('text', '')}\n\nPontuação:"
 
     def calculate_metrics(
@@ -81,7 +99,25 @@ class Assin2Sts(CachedDatasetMixin, FreeformHandler):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for regression."""
+        """
+        Compute per-sample regression metrics by parsing a numeric score from the model prediction and comparing it to the expected score.
+        
+        Parameters:
+            prediction: Model output (any type) that should contain a numeric score; it will be parsed into a float within the task's score_range.
+            expected: The ground-truth score; should be convertible to float.
+            sample (Dict): The input sample (not used for computation but provided for context).
+            error (Optional[str]): Optional error message from the prediction pipeline; if present the metric is marked invalid.
+            error_type (Optional[str]): Optional error type label to include in invalid results.
+        
+        Returns:
+            dict: A dictionary with the following keys:
+                - valid (bool): `True` if a numeric prediction and expected value were successfully parsed, `False` otherwise.
+                - mse (float): Mean squared error between parsed prediction and expected value (0.0 for invalid results).
+                - prediction (Optional[float]): Parsed predicted score when valid, otherwise `None`.
+                - expected (Optional[float]): Parsed expected score when valid, otherwise `None`.
+                - error (Optional[str]): Present when `valid` is `False`, describes the failure reason.
+                - error_type (Optional[str]): Present when `valid` is `False`, classifies the failure.
+        """
         if error or prediction is None:
             return {
                 "valid": False,
@@ -131,7 +167,17 @@ class Assin2Sts(CachedDatasetMixin, FreeformHandler):
         }
 
     def aggregate_metrics(self, all_metrics: list) -> Dict[str, Any]:
-        """Aggregate metrics across all samples."""
+        """
+        Aggregate per-sample metric results into overall statistics.
+        
+        Returns:
+            aggregated (Dict[str, Any]): Dictionary containing:
+                - total_samples (int): total number of samples processed.
+                - valid_samples (int): number of samples with valid metric results.
+                - error_rate (float): fraction of samples that were invalid (0.0–1.0).
+                - mse (float): mean squared error across valid samples; 0.0 if there are no valid samples.
+                - pearson (float): Pearson correlation between predictions and expected values across valid samples; 0.0 if there is insufficient or degenerate data.
+        """
         if not all_metrics:
             return {"total_samples": 0, "valid_samples": 0, "mse": 0.0, "pearson": 0.0}
 
@@ -176,4 +222,3 @@ class Assin2Sts(CachedDatasetMixin, FreeformHandler):
             aggregated["pearson"] = 0.0
 
         return aggregated
-

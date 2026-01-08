@@ -11,13 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 def load_jsonl_dataset(file_path: Path) -> List[Dict[str, Any]]:
-    """Load dataset from JSONL file.
+    """
+    Load samples from a JSON Lines (JSONL) file into a list of dictionaries.
     
-    Args:
-        file_path: Path to JSONL file
-        
+    Parameters:
+        file_path (Path): Path to a JSONL file where each non-empty line is a JSON object.
+    
     Returns:
-        List of samples as dictionaries
+        List[Dict[str, Any]]: Parsed sample dictionaries, one per non-empty line in the file.
+    
+    Raises:
+        FileNotFoundError: If `file_path` does not exist.
     """
     if not file_path.exists():
         raise FileNotFoundError(f"Dataset file not found: {file_path}")
@@ -37,15 +41,16 @@ def download_huggingface_dataset(
     split: str = "train",
     cache_dir: str = "./cache"
 ) -> List[Dict[str, Any]]:
-    """Download dataset from HuggingFace.
+    """
+    Download a specific split of a HuggingFace dataset and return its samples.
     
-    Args:
-        dataset_name: HuggingFace dataset identifier
-        split: Dataset split to use
-        cache_dir: HuggingFace cache directory
-        
+    Parameters:
+        dataset_name (str): HuggingFace dataset identifier (e.g., "glue", "squad").
+        split (str): Dataset split to load (default "train").
+        cache_dir (str): Directory to use for the HuggingFace dataset cache.
+    
     Returns:
-        List of samples as dictionaries
+        List[Dict[str, Any]]: List of dataset samples, each represented as a dictionary.
     """
     logger.info(f"Downloading {dataset_name} dataset (split: {split})...")
     dataset = load_dataset(dataset_name, split=split, cache_dir=cache_dir)
@@ -78,14 +83,15 @@ def iterate_samples(
     dataset: List[Dict[str, Any]],
     limit: int = None
 ) -> Iterator[Dict[str, Any]]:
-    """Iterate over dataset samples with optional limit.
+    """
+    Yield sample dictionaries from a dataset with an optional cap.
     
-    Args:
-        dataset: List of samples
-        limit: Maximum number of samples to return
-        
-    Yields:
-        Sample dictionaries
+    Parameters:
+        dataset (List[Dict[str, Any]]): List of sample dictionaries to iterate.
+        limit (int, optional): Maximum number of samples to yield; if `None`, iterate all samples.
+    
+    Returns:
+        Iterator[Dict[str, Any]]: An iterator that yields sample dictionaries from the dataset.
     """
     dataset_to_use = dataset
     if limit is not None:
@@ -94,4 +100,3 @@ def iterate_samples(
     
     for sample in dataset_to_use:
         yield sample
-

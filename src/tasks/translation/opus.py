@@ -39,13 +39,14 @@ class Opus(TranslationHandler):
     user_prompt_template = "Translate this sentence from {source_language} to {target_language}: {source_text}\n\nTranslation:"
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize OPUS translation task.
+        """
+        Set up the OPUS-100 translation task and configure its data and cache directories.
         
-        Args:
-            config: Configuration dict with:
-                - comet_model: Preloaded COMET model
-                - language_pairs: List of pairs to evaluate (optional)
-                - dataset_name: HuggingFace dataset name (optional)
+        Parameters:
+            config: Optional configuration dictionary. Recognized keys:
+                - "comet_model": a preloaded COMET model instance used elsewhere by the task.
+                - "language_pairs": list of language-pair strings to override the default pairs.
+                - "dataset_name": HuggingFace dataset identifier to override the default dataset.
         """
         super().__init__(config)
         
@@ -59,16 +60,15 @@ class Opus(TranslationHandler):
         self.cache_dir = Path(__file__).parent / "cache"
     
     def load_dataset(self) -> List[Dict]:
-        """Load OPUS translation dataset.
+        """
+        Load and return OPUS-100 translation samples for all configured language pairs.
         
-        This loads all language pairs specified in self.language_pairs.
-        Each pair's data is preprocessed into bidirectional translation pairs.
+        This ensures the task data directory exists, triggers preprocessing/download for any missing language-pair files, and aggregates samples from each pair. Each returned sample is normalized and preprocessed to match the evaluation engine's expected fields.
         
         Returns:
-            List of translation samples with:
-            - id, source_text, target_text
-            - source_language, target_language
-            - language_pair, direction
+            List[Dict]: A list of translation sample dictionaries. Each sample includes fields such as
+                `id`, `text` (source text), `expected` (reference translation), `source_language`,
+                `target_language`, `language_pair`, and `direction`.
         """
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
@@ -124,13 +124,14 @@ class Opus(TranslationHandler):
         return all_samples
     
     def get_prompt(self, sample: Dict) -> Tuple[str, str]:
-        """Build translation prompt for a sample.
+        """
+        Constructs the system and user prompts for translating a single sample.
         
-        Args:
-            sample: Sample dict with source_language, target_language, source_text
-            
+        Parameters:
+            sample (dict): Sample containing `source_language`, `target_language`, and `source_text`. Missing fields default to `"Unknown"` for languages and `""` for text.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            tuple: (system_prompt, user_prompt) where `user_prompt` is formatted to request a translation from the sample's source language to its target language using the sample text.
         """
         source_lang = sample.get("source_language", "Unknown")
         target_lang = sample.get("target_language", "Unknown")
@@ -145,17 +146,15 @@ class Opus(TranslationHandler):
         return self.system_prompt, user_prompt
     
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
-        """Preprocess a sample for evaluation.
+        """
+        Normalize a raw OPUS sample into the structure expected by the evaluation engine.
         
-        OPUS samples are already preprocessed by download.py, but we need to
-        ensure they have the 'text' and 'expected' fields for the engine.
+        Parameters:
+            raw_sample (Dict[str, Any]): Original sample from the OPUS dataset; may contain fields like `id`, `source_text`, `target_text`, `source_language`, and `target_language`.
+            idx (int): Index of the sample in the source file or batch; provided for context but not modified.
         
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
         Returns:
-            Processed sample with required fields
+            Dict[str, Any]: The input sample copied and normalized so that `text` contains the source/input text (populated from `source_text` if missing) and `expected` contains the reference translation (populated from `target_text` if missing).
         """
         # OPUS samples already have id, source_text, target_text, etc.
         # Map to engine-expected fields
@@ -170,4 +169,3 @@ class Opus(TranslationHandler):
             sample["expected"] = sample.get("target_text", "")
         
         return sample
-

@@ -235,7 +235,11 @@ def _dedupe_tasks(tasks: list) -> list:
 
 
 def main():
-    """Run the vLLM benchmark pipeline with configuration from specified file."""
+    """
+    Orchestrates a benchmark run: parse CLI, load configuration, prepare logging and GPU, resolve provider and tasks, then run or register the benchmark/test pipeline.
+    
+    Performs CLI validation, merges command-line and config task defaults, expands task groups, configures Prefect registration if requested, starts the vLLM server test or the full benchmark pipeline, logs results and summaries, and handles graceful termination and error reporting.
+    """
     # Parse command line arguments
     args = parse_args()
     

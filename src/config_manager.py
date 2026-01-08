@@ -299,14 +299,16 @@ class ConfigManager:
 
     def get_task_config(self, task_name: str, task_defaults_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Load a task configuration file and apply any overrides.
+        Load a task configuration by name, perform lightweight validation, and apply any provided default overrides.
         
-        Args:
-            task_name: Name of the task config
-            task_defaults_overrides: Optional dictionary to override task defaults
-            
+        This searches for the task's task.json under the repository tasks tree, validates the loaded config for schema drift (may emit warnings), and then applies values from task_defaults_overrides into the task's "defaults" section (merging into an existing "defaults" map or creating one if missing).
+        
+        Parameters:
+            task_name (str): Name of the task to load.
+            task_defaults_overrides (Optional[Dict[str, Any]]): Mapping of default values to merge into the task's "defaults" section.
+        
         Returns:
-            Task configuration dictionary with overrides applied
+            Dict[str, Any]: The loaded task configuration with validation applied and defaults merged.
         """
         task_config = self._load_task_config_from_tasks_root(task_name)
         # Run lightweight validation to surface schema drift early.
@@ -324,9 +326,17 @@ class ConfigManager:
         return task_config
 
     def _validate_task_config(self, task_config: Dict[str, Any], task_name: str) -> None:
-        """Warn on missing/unknown fields for task configs.
-
-        This keeps config shape discoverable without hard failures during migration.
+        """
+        Warns about unknown, deprecated, or missing schema fields in a task configuration.
+        
+        Only validates configs that define an `entrypoint` or `runner_entrypoint`. Uses
+        the module-level `TASK_CONFIG_SCHEMA` to determine allowed fields, format-specific
+        allowed fields, deprecated fields, and format-specific required fields; logs
+        warnings for unknown fields, deprecated fields, and missing required fields.
+        
+        Parameters:
+            task_config (Dict[str, Any]): The task configuration to validate.
+            task_name (str): The task name used in warning messages.
         """
         format_name = task_config.get("task_format")
         # Keep warnings limited to configs that define entrypoints (i.e., runnable tasks).
@@ -368,7 +378,14 @@ class ConfigManager:
             )
     
     def list_available_tasks(self) -> list:
-        """List all available task configurations."""
+        """
+        Collects names of task configurations found under the project's tasks directory.
+        
+        Searches recursively for files named `task.json` under the tasks root, skips any files located in `_template` directories, ignores files with invalid JSON, and omits entries that lack a `"name"` field or whose name equals `"template_task"`. Duplicate names are removed and the result is sorted.
+        
+        Returns:
+            list: A sorted list of unique task names discovered.
+        """
         tasks_root = self._get_tasks_root()
 
         if not tasks_root.exists():

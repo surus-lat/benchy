@@ -48,7 +48,12 @@ class StructuredHandler(BaseHandler):
     metrics_config: Optional[Dict[str, Any]] = None
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the structured handler."""
+        """
+        Initialize the StructuredHandler and prepare lazy initialization for the metrics calculator.
+        
+        Parameters:
+            config (Optional[Dict[str, Any]]): Optional handler configuration used by the base handler.
+        """
         super().__init__(config)
 
         # Lazy initialization of metrics calculator
@@ -56,13 +61,13 @@ class StructuredHandler(BaseHandler):
 
     @property
     def metrics_calculator(self):
-        """Lazy initialization of structured extraction metrics calculator.
+        """
+        Lazily initialize and return the MetricsCalculator used for structured extraction evaluation.
         
-        The real MetricsCalculator from the original structured task,
-        preserving EQS calculation and comprehensive error classification.
+        Builds the metrics configuration from the handler's `metrics_config` or `config['metrics']`, reads the `strict` flag from that configuration, constructs a MetricsCalculator with the assembled settings, caches it on the instance, and returns it.
         
         Returns:
-            MetricsCalculator instance
+            MetricsCalculator: An instance configured for this handler.
         """
         if self._metrics_calc is None:
             from .utils.structured_metrics_calculator import MetricsCalculator
@@ -83,16 +88,22 @@ class StructuredHandler(BaseHandler):
     def preprocess_sample(
         self, raw_sample: Dict[str, Any], idx: int
     ) -> Optional[Dict[str, Any]]:
-        """Transform a raw dataset sample to eval format.
+        """
+        Convert a raw dataset sample into the handler's evaluation-ready sample dictionary.
         
-        Extracts text, schema, and expected output.
+        If any of the required fields (text, schema, or expected label) is missing, the sample is skipped and the function returns `None` (a warning is logged).
         
-        Args:
-            raw_sample: Raw sample from dataset
-            idx: Sample index
-            
+        Parameters:
+            raw_sample (Dict[str, Any]): Original dataset sample; expected to contain keys accessible via this handler's `text_field`, `schema_field`, and `label_field`.
+            idx (int): Sample index used to construct the returned sample `id`.
+        
         Returns:
-            Processed sample with schema and expected fields
+            Optional[Dict[str, Any]]: A processed sample with keys:
+                - `id` (str): "<task_name>_<idx>"
+                - `text` (str): Stringified text content
+                - `schema` (Any): Extracted schema object
+                - `expected` (Any): Expected output/label
+            Returns `None` if required fields are missing.
         """
         text = raw_sample.get(self.text_field)
         schema = raw_sample.get(self.schema_field)
@@ -112,15 +123,20 @@ class StructuredHandler(BaseHandler):
         }
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
-        """Build prompts for structured extraction tasks.
+        """
+        Constructs the system and user prompts for a structured-extraction sample.
         
-        Includes schema information in the prompt if available.
+        If the sample contains a schema, the schema is serialized and included in the user prompt.
+        If the handler defines a `user_prompt_template` that contains `{schema}`, that template is used
+        and formatted with `text` and the serialized `schema`; otherwise a default prompt embedding the
+        text and schema is produced.
         
-        Args:
-            sample: Sample with text and schema
-            
+        Parameters:
+            sample (Dict[str, Any]): A sample dictionary containing at least `text` and optionally `schema`.
+        
         Returns:
-            Tuple of (system_prompt, user_prompt)
+            A pair of strings: the system prompt and the user prompt. The user prompt contains the sample text
+            and the schema (if present) and instructs the model to return JSON matching the schema.
         """
         schema = sample.get("schema", {})
         schema_str = json.dumps(schema, indent=2) if schema else ""
@@ -149,20 +165,20 @@ class StructuredHandler(BaseHandler):
         error: Optional[str] = None,
         error_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Calculate metrics for structured extraction prediction.
+        """
+        Compute evaluation metrics for a structured extraction prediction.
         
-        Uses the structured extraction MetricsCalculator for comprehensive evaluation
-        including schema validation, field-level F1, hallucination detection, etc.
+        Uses the sample's schema (sample.get("schema", {})) when present to validate outputs and produce comprehensive metrics such as schema validity, field-level scores, hallucination rates, and aggregate extraction quality.
         
-        Args:
-            prediction: Model output (should be dict/JSON)
-            expected: Expected output dict
-            sample: Full sample dict with schema
-            error: Error message if any
-            error_type: Type of error
-            
+        Parameters:
+            prediction: Model output to evaluate (typically a dict or JSON-like structure).
+            expected: Ground-truth output for the sample.
+            sample: Full sample dictionary; the function will read the schema from sample.get("schema", {}).
+            error: Optional error message associated with the prediction.
+            error_type: Optional classification of the error.
+        
         Returns:
-            Comprehensive metrics dict
+            dict: Mapping of metric names to values (e.g., schema validity, exact match, field F1 scores, hallucination rate, extraction quality score).
         """
         return self.metrics_calculator.calculate_all(
             prediction=prediction,
@@ -175,14 +191,15 @@ class StructuredHandler(BaseHandler):
     def get_error_metrics(
         self, error: str, error_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Return error metrics for failed predictions.
+        """
+        Compute metrics for a failed prediction using the provided error information.
         
-        Args:
-            error: Error message
-            error_type: Type of error
-            
+        Parameters:
+            error (str): Error message describing the failure.
+            error_type (Optional[str]): Optional categorical label for the error.
+        
         Returns:
-            Metrics dict matching structure of successful predictions
+            Dict[str, Any]: Metrics dictionary consistent with successful prediction metrics.
         """
         return self.metrics_calculator.calculate_all(
             prediction=None,
@@ -193,15 +210,24 @@ class StructuredHandler(BaseHandler):
         )
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate structured extraction metrics across all samples.
+        """
+        Aggregate per-sample structured extraction metrics into overall counts, rates, and averaged numeric scores.
         
-        Computes rates for various structured metrics and averages for numeric scores.
+        Parameters:
+            all_metrics (List[Dict]): List of per-sample metric dictionaries produced by metric calculation.
         
-        Args:
-            all_metrics: List of per-sample metrics
-            
         Returns:
-            Aggregated metrics dict
+            Dict[str, Any]: Aggregated metrics including:
+                - total_samples: total number of samples processed.
+                - valid_samples: number of samples considered valid.
+                - error_count: total_samples minus valid_samples.
+                - If there is at least one valid sample, also includes:
+                    - schema_validity_rate: fraction of samples with schema_validity > 0.5.
+                    - exact_match_rate: fraction of samples with exact_match == True.
+                    - error_rate: fraction of samples that are errors.
+                    - Averages for numeric metrics (when present for valid samples): 
+                      "field_f1_strict", "field_f1_partial", "field_precision",
+                      "field_recall", "hallucination_rate", "extraction_quality_score".
         """
         if not all_metrics:
             return {}
@@ -242,4 +268,3 @@ class StructuredHandler(BaseHandler):
                 aggregated[metric_name] = sum(values) / len(values)
 
         return aggregated
-

@@ -60,7 +60,22 @@ class ChatExtract(CachedDatasetMixin, StructuredHandler):
     }
 
     def _download_and_cache(self, output_path: Path):
-        """Download and preprocess chat extraction dataset."""
+        """
+        Download a HuggingFace chat extraction dataset, normalize each sample, and save the processed records to output_path in JSONL format.
+        
+        The function:
+        - Loads raw samples from the configured HuggingFace dataset and split.
+        - Loads a schema from data_dir/schema_expected_lead_data.json when present; otherwise uses a built-in lead-data schema.
+        - For each raw sample, constructs a record with:
+          - id: raw_sample["id"] if present, otherwise a zero-padded index string.
+          - text: conversation text extracted from input.user_messages when available or from the input field; truncated to 20,000 characters.
+          - schema: the loaded or default schema.
+          - expected: extracted from output.expected_lead_data when present, otherwise from the output field or an empty dict.
+        - Writes the list of processed records to output_path using save_to_jsonl.
+        
+        Parameters:
+            output_path (Path): Destination file path where the processed JSONL will be written.
+        """
         raw_samples = download_huggingface_dataset(
             dataset_name=self.dataset_name,
             split=self.split,
@@ -124,11 +139,28 @@ class ChatExtract(CachedDatasetMixin, StructuredHandler):
         save_to_jsonl(processed, output_path)
 
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
-        """Samples are already preprocessed in _download_and_cache, return as-is."""
+        """
+        Return the input sample unchanged; preprocessing is performed earlier during dataset preparation.
+        
+        Returns:
+            The original sample dictionary passed in.
+        """
         return raw_sample
     
     def get_prompt(self, sample: Dict[str, Any]) -> tuple[str, str]:
-        """Build prompts for structured extraction."""
+        """
+        Construct the system and user prompts to drive JSON-structured extraction for a sample.
+        
+        Parameters:
+            sample (Dict[str, Any]): Input sample containing at minimum:
+                - "text": the conversation or text to analyze.
+                - "schema": a JSON-serializable schema that the extracted output must match.
+        
+        Returns:
+            tuple[str, str]: A pair (system_prompt, user_prompt) where:
+                - system_prompt: the persistent system instruction from the handler.
+                - user_prompt: a prompt that includes the sample text, the JSON schema, and a requirement that the output be valid JSON matching the schema exactly.
+        """
         schema = sample.get("schema", {})
         schema_str = json.dumps(schema, indent=2) if schema else ""
 
