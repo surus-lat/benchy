@@ -1,40 +1,31 @@
-"""Chat Structured Extraction subtask using handler system.
-
-This subtask evaluates models on extracting structured information from
-conversational chat data following JSON schemas.
-"""
+"""Chat Structured Extraction subtask using handler system."""
 
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Any
+from typing import Dict, Optional, Any, List
 
-from ..formats import StructuredHandler
+from ..common import StructuredHandler, CachedDatasetMixin, download_huggingface_dataset, save_to_jsonl
 
 logger = logging.getLogger(__name__)
 
-# Data and cache directories relative to this module
-DATA_DIR = Path(__file__).parent.parent / 'structured' / '.data'
-CACHE_DIR = Path(__file__).parent.parent / 'structured' / 'cache'
 
-
-class ChatExtract(StructuredHandler):
-    """Chat structured extraction task.
-    
-    This task uses preprocessed JSONL data from the mauroibz/chat_structured_extraction
-    dataset. The data includes chat conversations with associated JSON schemas for
-    extracting key information.
-    """
+class ChatExtract(CachedDatasetMixin, StructuredHandler):
+    """Chat structured extraction task."""
 
     # Task configuration
     name = "chat_extract"
-    dataset = None  # Use local JSONL file
-    default_data_file = "chat_extract_data.jsonl"
+    display_name = "Chat Structured Extraction"
+    description = "Extract structured data from chat conversations"
+    
+    dataset_name = "mauroibz/chat_structured_extraction"
+    split = "train"
+    dataset_file = "chat_extract_data.jsonl"
     
     # Prompts
     system_prompt = "You are a precise data extraction assistant. Extract information from the provided text according to the given JSON schema. Only extract information explicitly stated in the text. If information for a field is not present, use null as appropriate."
     
-    # Metrics configuration (same as paraloq)
+    # Metrics configuration
     metrics_config = {
         "extraction_quality_score": {
             "enabled": True,
@@ -68,80 +59,76 @@ class ChatExtract(StructuredHandler):
         },
     }
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the ChatExtract handler."""
-        super().__init__(config)
-        
-        # Override data dir and file to use existing structured task data
-        self.data_dir = DATA_DIR
-        self.data_file = DATA_DIR / "chat_extract_data.jsonl"
-        self.schema_file = DATA_DIR / "schema_expected_lead_data.json"
-        self.cache_dir = CACHE_DIR
-
-    def load_dataset(self):
-        """Load dataset from preprocessed JSONL file.
-        
-        Auto-downloads if not present using the existing download utilities.
-        
-        Returns:
-            List of preprocessed samples
-        """
-        # Check if data file exists
-        if not self.data_file.exists():
-            logger.info(f"Dataset not found. Downloading to {self.data_file}")
-            self._download_dataset()
-        
-        # Load from JSONL
-        logger.info(f"Loading dataset from {self.data_file}")
-        samples = []
-        
-        with open(self.data_file, "r", encoding="utf-8") as f:
-            for line in f:
-                samples.append(json.loads(line))
-        
-        logger.info(f"Loaded {len(samples)} samples")
-        return samples
-
-    def _download_dataset(self):
-        """Download and preprocess the dataset using existing utilities."""
-        from ..structured.utils.dataset_download import download_and_preprocess_chat_extraction
-        
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        download_and_preprocess_chat_extraction(
-            dataset_name="mauroibz/chat_structured_extraction",
-            output_file=self.data_file,
-            schema_file=self.schema_file,
-            cache_dir=str(self.cache_dir),
-            split="train",
-            max_input_chars=20000,
+    def _download_and_cache(self, output_path: Path):
+        """Download and preprocess chat extraction dataset."""
+        raw_samples = download_huggingface_dataset(
+            dataset_name=self.dataset_name,
+            split=self.split,
+            cache_dir=str(self.data_dir / "cache"),
         )
+        
+        # Load or define schema
+        schema_path = self.data_dir / "schema_expected_lead_data.json"
+        if schema_path.exists():
+            with open(schema_path, "r") as f:
+                schema = json.load(f)
+        else:
+            # Define the lead data schema if file doesn't exist
+            schema = {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string"},
+                    "tiene_negocio": {"type": "boolean"},
+                    "negocio": {
+                        "type": "object",
+                        "properties": {
+                            "descripcion_negocio": {"type": "string"},
+                            "meses_en_negocio": {"type": "integer"},
+                            "cantidad_empleados": {"type": "integer"}
+                        },
+                        "additionalProperties": False
+                    }
+                },
+                "additionalProperties": False
+            }
+        
+        processed = []
+        for idx, raw_sample in enumerate(raw_samples):
+            # Extract user messages from input field
+            input_data = raw_sample.get("input", {})
+            if isinstance(input_data, dict):
+                user_messages = input_data.get("user_messages", [])
+                # Join user messages into a conversation
+                text = "\n".join(user_messages) if isinstance(user_messages, list) else str(input_data)
+            else:
+                text = str(input_data)
+            
+            # Extract expected output from output field
+            output_data = raw_sample.get("output", {})
+            if isinstance(output_data, dict):
+                expected = output_data.get("expected_lead_data", output_data)
+            else:
+                expected = {}
+            
+            # Truncate if too long
+            if len(text) > 20000:
+                text = text[:20000]
+            
+            processed.append({
+                "id": raw_sample.get("id", f"{idx:06d}"),
+                "text": text,
+                "schema": schema,
+                "expected": expected,
+            })
+        
+        save_to_jsonl(processed, output_path)
 
     def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
-        """Transform a raw sample to eval format.
-        
-        The chat_extract data is already preprocessed, so we just pass it through.
-        
-        Args:
-            raw_sample: Raw sample from JSONL (already preprocessed)
-            idx: Sample index
-            
-        Returns:
-            Sample dict ready for evaluation
-        """
-        # Data is already preprocessed with id, text, schema, expected
+        """Samples are already preprocessed in _download_and_cache, return as-is."""
         return raw_sample
-
+    
     def get_prompt(self, sample: Dict[str, Any]) -> tuple[str, str]:
-        """Build prompts for structured extraction.
-        
-        Args:
-            sample: Sample dict with text and schema
-            
-        Returns:
-            Tuple of (system_prompt, user_prompt)
-        """
+        """Build prompts for structured extraction."""
         schema = sample.get("schema", {})
         schema_str = json.dumps(schema, indent=2) if schema else ""
 
@@ -153,4 +140,3 @@ class ChatExtract(StructuredHandler):
         )
 
         return self.system_prompt, user_prompt
-
