@@ -59,8 +59,8 @@ class TeleiaCervantesAve(CachedDatasetMixin, MultipleChoiceHandler):
         """Transform Teleia Cervantes AVE dataset to eval format."""
         try:
             from datasets import load_dataset
-        except ImportError:
-            raise ImportError("datasets library required. Install with: pip install datasets")
+        except ImportError as e:
+            raise ImportError("datasets library required. Install with: pip install datasets") from e
         
         from ..common import save_to_jsonl
         

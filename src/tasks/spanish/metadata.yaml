@@ -62,6 +62,8 @@ subtasks:
     
   xnli_es_spanish_bench:
     description: Spanish XNLI (Cross-lingual Natural Language Inference)
-    long_description: Spanish subset of XNLI, a cross-lingual NLI benchmark. Given a premise and hypothesis, the model determines their relationship: entailment (implicación), neutral, or contradiction (contradicción).
+    long_description: |
+      Spanish subset of XNLI, a cross-lingual NLI benchmark. Given a premise and hypothesis,
+      the model determines their relationship: entailment (implicación), neutral, or contradiction
+      (contradicción).
     url: https://huggingface.co/datasets/facebook/xnli
-

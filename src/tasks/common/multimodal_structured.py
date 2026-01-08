@@ -92,8 +92,8 @@ class MultimodalStructuredHandler(BaseHandler):
                 merged_config = self._get_merged_config()
                 strict = merged_config.get("strict", False)
                 self._metrics_calc = MetricsCalculator({"metrics": merged_config}, strict=strict)
-            except ImportError as e:
-                logger.error(f"Could not import MetricsCalculator: {e}")
+            except ImportError:
+                logger.exception("Could not import MetricsCalculator")
                 raise
 
         return self._metrics_calc
@@ -370,4 +370,3 @@ class MultimodalStructuredHandler(BaseHandler):
                 aggregated[metric_name] = sum(values) / len(values)
 
         return aggregated
-
