@@ -1,0 +1,14 @@
+title: "Portuguese Language Benchmarks"
+description: "Comprehensive Portuguese NLP evaluation suite covering classification, regression, and multiple-choice tasks"
+
+subtasks:
+  - assin2_rte
+  - assin2_sts
+  - bluex
+  - enem_challenge
+  - oab_exams
+
+# Aggregation: sample-weighted average across all subtasks
+aggregation:
+  method: "sample_weighted"
+  primary_metric: "auto"  # Sample-weighted across subtasks using each subtask's primary metric

@@ -35,6 +35,10 @@ task_defaults:
 
 # Task-specific configuration
 image_extraction:
+  # Only run facturas subtask
+  tasks:
+    - "facturas"
+  
   defaults:
     batch_size: 5  # Conservative for image uploads
     log_samples: true

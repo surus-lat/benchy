@@ -49,7 +49,7 @@ Also add defaults to `PROVIDER_CAPABILITY_DEFAULTS` in `src/engine/connection.py
 compatibility checks have sensible fallbacks even when a provider config omits fields.
 
 If the provider should be selectable via `eval.py`, add it to `PROVIDER_SPECS` and
-update `TASK_REGISTRY` provider lists in `src/pipeline.py`.
+update `provider_types` in each task's `task.json` as needed.
 
 ### 5. Declare Capabilities
 

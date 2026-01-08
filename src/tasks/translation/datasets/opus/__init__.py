@@ -1,10 +1,9 @@
-"""OPUS-100 translation dataset."""
+"""OPUS dataset utilities.
 
-from .task import OpusTask
+This module contains preprocessing logic for OPUS-100 translation data.
+The task implementation is in src/tasks/translation/opus.py (handler-based).
+"""
 
-__all__ = ["OpusTask"]
+from .download import download_and_preprocess_opus
 
-
-
-
-
+__all__ = ["download_and_preprocess_opus"]

@@ -8,6 +8,52 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Centralized task config schema for light validation and discoverability.
+TASK_CONFIG_SCHEMA = {
+    "field_descriptions": {
+        "name": "Unique task identifier used in configs and output paths.",
+        "display_name": "Human-readable task name used in logs and summaries.",
+        "description": "Short description of the task's purpose.",
+        "entrypoint": "SimpleTask class entrypoint (module:ClassName).",
+        "runner_entrypoint": "Runner entrypoint (module:run_fn) for grouped/custom tasks.",
+        "provider_types": "List of supported provider types for this task.",
+        "pipeline_overrides": "Optional pipeline flags (set_api_endpoint, set_generation_config).",
+        "task_format": "Task format: multiple_choice, freeform, structured, grouped.",
+        "defaults": "Task-level defaults (batch_size, timeout, max_tokens, etc.).",
+        "output": "Output directory settings (subdirectory).",
+        "metrics_manifest": "Aggregate metric keys to surface in run summaries.",
+        "capability_requirements": "Required/preferred interface capabilities.",
+        "prompts": "Prompt templates for LLM-style interfaces.",
+        "dataset": "Dataset config (data_file or dataset_path + split).",
+        "metrics": "Metric configuration (task-specific).",
+        "tasks": "Subtask name list for grouped tasks.",
+        "task_configs": "Per-subtask configuration overrides.",
+        "group": "Group identifier for leaderboards/collections.",
+        "group_metadata": "Group descriptions and metadata.",
+        "task_metadata": "Per-subtask metadata used in reporting.",
+        "source_dir": "Source data path for local datasets (e.g., images).",
+    },
+    "format_fields": {
+        # Additional allowed fields per task_format (currently none).
+        "multiple_choice": set(),
+        "freeform": set(),
+        "structured": set(),
+        "grouped": set(),
+    },
+    "required_fields": {
+        # Minimal requirements per format; the validator only warns.
+        "multiple_choice": {"dataset", "prompts"},
+        "freeform": {"dataset", "prompts"},
+        "structured": {"prompts"},
+        "grouped": {"tasks"},
+    },
+    "deprecated_fields": {
+        "task_name": "Deprecated top-level field. Use 'name' instead.",
+        "dataset_file": "Deprecated top-level field. Move under dataset.data_file.",
+        "dataset_name": "Deprecated top-level field. Move under dataset.dataset_name.",
+    },
+}
+
 
 class ConfigManager:
     """Simple config manager that merges model configs with provider configs."""
@@ -263,6 +309,8 @@ class ConfigManager:
             Task configuration dictionary with overrides applied
         """
         task_config = self._load_task_config_from_tasks_root(task_name)
+        # Run lightweight validation to surface schema drift early.
+        self._validate_task_config(task_config, task_name)
         
         # Apply task defaults overrides if provided
         if task_defaults_overrides:
@@ -274,6 +322,50 @@ class ConfigManager:
                 task_config['defaults'] = task_defaults_overrides
         
         return task_config
+
+    def _validate_task_config(self, task_config: Dict[str, Any], task_name: str) -> None:
+        """Warn on missing/unknown fields for task configs.
+
+        This keeps config shape discoverable without hard failures during migration.
+        """
+        format_name = task_config.get("task_format")
+        # Keep warnings limited to configs that define entrypoints (i.e., runnable tasks).
+        if not task_config.get("entrypoint") and not task_config.get("runner_entrypoint"):
+            return
+        if not format_name:
+            logger.warning("Task config '%s' missing task_format.", task_name)
+
+        # Build the allowed field set from the centralized schema.
+        allowed_fields = set(TASK_CONFIG_SCHEMA["field_descriptions"].keys())
+        # Extend allowed fields for the declared task_format (if any).
+        format_fields = TASK_CONFIG_SCHEMA["format_fields"].get(format_name)
+        if format_fields:
+            allowed_fields |= set(format_fields)
+
+        # Report unknown keys once at load time.
+        unknown_fields = sorted(set(task_config.keys()) - allowed_fields)
+        if unknown_fields:
+            logger.warning(
+                "Task config '%s' has unknown fields: %s",
+                task_name,
+                ", ".join(unknown_fields),
+            )
+
+        # Report deprecated keys so they can be cleaned up.
+        for key, message in TASK_CONFIG_SCHEMA["deprecated_fields"].items():
+            if key in task_config:
+                logger.warning("Task config '%s' uses '%s': %s", task_name, key, message)
+
+        # Report missing format-required keys.
+        required_fields = TASK_CONFIG_SCHEMA["required_fields"].get(format_name, set())
+        missing_fields = [field for field in required_fields if field not in task_config]
+        if missing_fields:
+            logger.warning(
+                "Task config '%s' missing required fields for format '%s': %s",
+                task_name,
+                format_name,
+                ", ".join(missing_fields),
+            )
     
     def list_available_tasks(self) -> list:
         """List all available task configurations."""
