@@ -54,8 +54,8 @@ class TeleiaPce(CachedDatasetMixin, MultipleChoiceHandler):
         """Transform Teleia PCE dataset to eval format."""
         try:
             from datasets import load_dataset
-        except ImportError:
-            raise ImportError("datasets library required. Install with: pip install datasets")
+        except ImportError as e:
+            raise ImportError("datasets library required. Install with: pip install datasets") from e
         
         from ..common import save_to_jsonl
         

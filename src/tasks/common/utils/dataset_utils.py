@@ -49,8 +49,9 @@ def download_huggingface_dataset(
     """
     logger.info(f"Downloading {dataset_name} dataset (split: {split})...")
     dataset = load_dataset(dataset_name, split=split, cache_dir=cache_dir)
-    logger.info(f"Downloaded {len(dataset)} samples")
-    return list(dataset)
+    dataset_list = list(dataset)
+    logger.info(f"Downloaded {len(dataset_list)} samples")
+    return dataset_list
 
 
 def save_to_jsonl(

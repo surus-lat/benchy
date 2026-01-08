@@ -95,6 +95,7 @@ class Paraloq(CachedDatasetMixin, StructuredHandler):
             
             # Truncate if too long
             if len(text) > 20000:
+                logger.warning(f"Sample {idx}: Truncating text from {len(text)} to 20000 characters")
                 text = text[:20000]
             
             processed.append({

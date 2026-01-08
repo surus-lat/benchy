@@ -45,7 +45,7 @@ class XnliEsSpanishBench(CachedDatasetMixin, MultipleChoiceHandler):
             hypothesis = raw_sample.get("hypothesis", "")
             label = raw_sample.get("label", 0)
             
-            text = f"{premise}\nPregunta: {hypothesis} ¿Verdadero, Falso o Ni idea?\nRespuesta:"
+            text = f"Premisa: {premise}\nHipótesis: {hypothesis}\n¿Cuál es la relación entre la premisa y la hipótesis?"
             
             processed.append({
                 "id": f"xnli_es_{idx}",

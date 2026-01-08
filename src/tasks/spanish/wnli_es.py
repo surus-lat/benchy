@@ -57,7 +57,10 @@ class WnliEs(CachedCSVMixin, MultipleChoiceHandler):
             for row in reader:
                 sentence1 = row.get("sentence1", "").strip()
                 sentence2 = row.get("sentence2", "").strip()
-                label = int(row.get("label", 0))
+                try:
+                    label = int(row.get("label", 0))
+                except ValueError:
+                    continue  # Skip malformed rows
                 index = row.get("index", "")
                 
                 if not sentence1 or not sentence2:
