@@ -1,16 +1,17 @@
 model:
   name: Qwen/Qwen3-VL-4B-Instruct
 vllm:
-  provider_config: vllm_single_card
+  provider_config: vllm_single_card_mm
   overrides:
     kv_cache_memory: 0
     gpu_memory_utilization: 0.95
     port: 20502
     trust_remote_code: true
-    limit_mm_per_prompt: '{"images": 0, "audios": 0}'
+    timeout: 240
 task_defaults:
   log_samples: true
   cuda_devices: '2'
+  batch_size: 10
 tasks:
 - latam_board
 metadata:

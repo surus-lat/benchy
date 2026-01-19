@@ -25,6 +25,40 @@ from .partial_matching import PartialMatcher
 
 logger = logging.getLogger(__name__)
 
+def _field_pattern_to_regex(pattern: str) -> str:
+    """Convert a field path pattern to a regex.
+
+    Supported:
+    - Exact keys like `emisor.cuit`
+    - Array wildcard `[]` matching any index, e.g. `items[].codigo` matches `items[0].codigo`
+    - `*` wildcard matching any substring (including across separators)
+    """
+    import re
+
+    escaped = re.escape(pattern)
+    escaped = escaped.replace(r"\[\]", r"\[\d+\]")
+    escaped = escaped.replace(r"\*", r".*")
+    return f"^{escaped}$"
+
+
+def _matches_any_pattern(key: str, patterns: List[str]) -> bool:
+    import re
+
+    for pattern in patterns:
+        try:
+            if re.match(_field_pattern_to_regex(pattern), key):
+                return True
+        except re.error:
+            continue
+    return False
+
+
+def _digits_only(value: Any) -> str:
+    if value is None:
+        return ""
+    s = str(value)
+    return "".join(ch for ch in s if ch.isdigit())
+
 
 class MetricsCalculator:
     """Calculate comprehensive metrics for structured data extraction."""
@@ -93,6 +127,7 @@ class MetricsCalculator:
             "field_precision_strict": 0.0,
             "field_recall_strict": 0.0,
             "type_accuracy": 0.0,
+            "document_extraction_score": 0.0,
             # Tier 3: Diagnostic
             "match_distribution": {
                 "exact": 0,
@@ -166,6 +201,13 @@ class MetricsCalculator:
             except Exception as e:
                 logger.error(f"Error calculating EQS: {e}")
                 metrics["extraction_quality_score"] = 0.0
+
+            # Calculate Document Extraction Score (DES) - numeric-critical scoring.
+            try:
+                metrics["document_extraction_score"] = self._calculate_document_extraction_score(metrics)
+            except Exception as e:
+                logger.error(f"Error calculating document_extraction_score: {e}")
+                metrics["document_extraction_score"] = 0.0
 
         except Exception as e:
             logger.error(f"Unexpected error in calculate_all: {e}", exc_info=True)
@@ -262,17 +304,54 @@ class MetricsCalculator:
         Returns:
             Dictionary mapping field keys to comparison results
         """
+        ignored_fields = self.config.get("metrics", {}).get("ignored_fields", []) or []
+        if isinstance(ignored_fields, str):
+            ignored_fields = [ignored_fields]
+        ignored_fields = [str(p) for p in ignored_fields if p]
+
+        if ignored_fields:
+            pred_fields = {k: v for k, v in pred_fields.items() if not _matches_any_pattern(k, ignored_fields)}
+            exp_fields = {k: v for k, v in exp_fields.items() if not _matches_any_pattern(k, ignored_fields)}
+
+        numeric_string_fields = self.config.get("metrics", {}).get("numeric_string_fields", []) or []
+        if isinstance(numeric_string_fields, str):
+            numeric_string_fields = [numeric_string_fields]
+        numeric_string_fields = [str(p) for p in numeric_string_fields if p]
+
+        critical_string_fields = self.config.get("metrics", {}).get("critical_string_fields", []) or []
+        if isinstance(critical_string_fields, str):
+            critical_string_fields = [critical_string_fields]
+        critical_string_fields = [str(p) for p in critical_string_fields if p]
+
         results = {}
 
         # Compare expected fields
         for key, exp_value in exp_fields.items():
             if key in pred_fields:
                 pred_value = pred_fields[key]
-                match_type, score, severity = self.partial_matcher.compare_values_with_severity(pred_value, exp_value)
+                if numeric_string_fields and _matches_any_pattern(key, numeric_string_fields):
+                    pred_digits = _digits_only(pred_value)
+                    exp_digits = _digits_only(exp_value)
+                    if pred_digits and exp_digits and pred_digits == exp_digits:
+                        match_type, score, severity = ("exact", 1.0, "none")
+                    else:
+                        match_type, score, severity = ("incorrect", 0.0, "critical")
+                else:
+                    match_type, score, severity = self.partial_matcher.compare_values_with_severity(pred_value, exp_value)
+                    if (
+                        critical_string_fields
+                        and isinstance(exp_value, str)
+                        and isinstance(pred_value, str)
+                        and match_type != "exact"
+                        and _matches_any_pattern(key, critical_string_fields)
+                    ):
+                        severity = "critical"
                 type_match = type(pred_value) == type(exp_value)
 
                 # Check if it's a numeric field
                 is_numeric = isinstance(exp_value, (int, float)) and not isinstance(exp_value, bool)
+                if numeric_string_fields and _matches_any_pattern(key, numeric_string_fields):
+                    is_numeric = True
 
                 results[key] = {
                     "status": "matched",
@@ -295,6 +374,8 @@ class MetricsCalculator:
                     "predicted": None,
                     "expected": exp_value,
                 }
+                if numeric_string_fields and _matches_any_pattern(key, numeric_string_fields):
+                    results[key]["is_numeric"] = True
 
         # Find spurious fields (in prediction but not expected)
         for key, pred_value in pred_fields.items():
@@ -457,6 +538,38 @@ class MetricsCalculator:
 
         return eqs
 
+    def _calculate_document_extraction_score(self, metrics: Dict) -> float:
+        """Calculate a numeric-critical document extraction score.
+
+        This score is configurable and intended to emphasize numeric correctness
+        (IDs, totals, tax amounts) while being tolerant of small string variations.
+
+        Default:
+          0.50 * numeric_precision_rate +
+          0.35 * field_f1_partial +
+          0.15 * schema_validity
+        """
+        weights = self.config.get("metrics", {}).get("document_extraction_score", {}).get("weights", {}) or {}
+
+        numeric_weight = float(weights.get("numeric_precision_rate", weights.get("numeric_precision", 0.50)))
+        f1_weight = float(weights.get("field_f1_partial", 0.35))
+        validity_weight = float(weights.get("schema_validity", 0.15))
+        anti_halluc_weight = float(weights.get("inverted_hallucination", 0.0))
+        anti_critical_weight = float(weights.get("inverted_critical_error_rate", 0.0))
+
+        score = (
+            numeric_weight * float(metrics.get("numeric_precision_rate", 1.0))
+            + f1_weight * float(metrics.get("field_f1_partial", 0.0))
+            + validity_weight * float(metrics.get("schema_validity", 0.0))
+        )
+
+        if anti_halluc_weight:
+            score += anti_halluc_weight * (1.0 - float(metrics.get("hallucination_rate", 0.0)))
+        if anti_critical_weight:
+            score += anti_critical_weight * (1.0 - float(metrics.get("critical_error_rate", 0.0)))
+
+        return max(0.0, min(1.0, score))
+
     def _calculate_schema_complexity(self, schema: Dict) -> Dict:
         """Calculate complexity metrics for a schema."""
         def count_fields(obj, depth=0):
@@ -578,6 +691,7 @@ class MetricsCalculator:
                 "field_precision_strict": 0.0,
                 "field_recall_strict": 0.0,
                 "type_accuracy": 0.0,
+                "document_extraction_score": 0.0,
                 "match_distribution": {},
                 "match_distribution_counts": {},
                 "composite_score_stats": {"mean": 0.0, "median": 0.0, "stdev": 0.0, "min": 0.0, "max": 0.0},
@@ -606,6 +720,7 @@ class MetricsCalculator:
             avg_recall_strict = sum(m["field_recall_strict"] for m in valid_metrics) / len(valid_metrics)
             avg_type_accuracy = sum(m["type_accuracy"] for m in valid_metrics) / len(valid_metrics)
             avg_eqs = sum(m["extraction_quality_score"] for m in valid_metrics) / len(valid_metrics)
+            avg_des = sum(m.get("document_extraction_score", 0.0) for m in valid_metrics) / len(valid_metrics)
 
             # New metrics
             avg_critical_error_rate = sum(m.get("critical_error_rate", 0.0) for m in valid_metrics) / len(valid_metrics)
@@ -626,6 +741,7 @@ class MetricsCalculator:
             avg_precision_partial = avg_recall_partial = 0.0
             avg_precision_strict = avg_recall_strict = 0.0
             avg_type_accuracy = avg_eqs = 0.0
+            avg_des = 0.0
             avg_critical_error_rate = 0.0
             avg_field_accuracy_score = 0.0
             avg_numeric_precision = 0.0
@@ -732,6 +848,7 @@ class MetricsCalculator:
             # Tier 1: Overall Assessment
             "extraction_quality_score": avg_eqs,
             "overall_extraction_quality_score": overall_eqs,
+            "document_extraction_score": avg_des,
             "schema_validity_rate": validity_rate,
             "hallucination_rate": avg_hallucination,
 

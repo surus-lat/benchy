@@ -39,10 +39,12 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         request_modes=["chat"],
     ),
     "together": InterfaceCapabilities(
-        supports_multimodal=False,
+        # Together's API is OpenAI-compatible; vision support is model-dependent.
+        # Treat the provider as capable and restrict per-model via model_capabilities.
+        supports_multimodal=True,
         supports_logprobs=False,
         supports_schema=True,
-        supports_files=False,
+        supports_files=True,
         supports_streaming=False,
         request_modes=["chat", "completions"],
     ),

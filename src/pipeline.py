@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional, Dict, Any
-from .prefect_compat import flow
+from .prefect_compat import flow, task, NO_CACHE
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .inference.vllm_config import VLLMServerConfig
 from .config_loader import load_config
@@ -39,6 +39,77 @@ SUMMARY_SKIP_KEYS = {
     "match_distribution_counts",
     "subtasks",
 }
+
+
+@task(cache_policy=NO_CACHE)
+def _run_logged_task(
+    *,
+    task_name: str,
+    model_name: str,
+    model_output_path: str,
+    server_info: Optional[Dict[str, Any]],
+    api_test_result: Optional[Dict[str, Any]],
+    task_config: Dict[str, Any],
+    limit: Optional[int],
+    cuda_devices: Optional[str],
+    provider_type: str,
+    provider_config: Optional[Dict[str, Any]],
+    api_endpoint: str,
+    generation_config: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Wrapper so each benchy task shows up as a Prefect task run."""
+    if is_handler_based_task(task_name):
+        return discover_and_run_handler_task(
+            task_ref=task_name,
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            task_config=task_config,
+            limit=limit,
+            provider_config=provider_config,
+        )
+
+    pipeline_overrides = task_config.get("pipeline_overrides", {}) or {}
+    if pipeline_overrides.get("set_api_endpoint"):
+        task_config = dict(task_config)
+        task_config["api_endpoint"] = api_endpoint
+    if pipeline_overrides.get("set_generation_config"):
+        task_config = dict(task_config)
+        task_config["generation_config"] = generation_config
+
+    runner_entrypoint = task_config.get("runner_entrypoint")
+    if runner_entrypoint:
+        run_fn = resolve_entrypoint(runner_entrypoint)
+        return run_fn(
+            model_name=model_name,
+            output_path=model_output_path,
+            server_info=server_info,
+            api_test_result=api_test_result,
+            task_config=task_config,
+            limit=limit,
+            cuda_devices=cuda_devices if provider_type == "vllm" else None,
+            provider_config=provider_config,
+        )
+
+    if not is_simple_task_config(task_config):
+        return {
+            "model_name": model_name,
+            "task": task_name,
+            "output_path": f"{model_output_path}/{task_name}",
+            "metrics": {},
+            "error": f"Unknown task '{task_name}' without entrypoint",
+        }
+
+    return run_simple_task(
+        model_name=model_name,
+        output_path=model_output_path,
+        server_info=server_info,
+        api_test_result=api_test_result,
+        task_config=task_config,
+        limit=limit,
+        cuda_devices=cuda_devices if provider_type == "vllm" else None,
+        provider_config=provider_config,
+    )
 
 
 
@@ -357,149 +428,143 @@ def benchmark_pipeline(
             "message": f"Task {task} was completed in a previous run"
         }
     
-    for task_name in pending_tasks:
-        # Check if this is a handler-based task first (new system)
-        if is_handler_based_task(task_name):
-            logger.info(f"Running {task_name} using convention-based handler system")
-            
-            # For handler-based tasks, construct minimal config from metadata
-            from .tasks.registry import discover_task_group
-            parts = task_name.split('.')
-            group_name = parts[0]
-            specific_subtask = parts[1] if len(parts) > 1 else None
-            
-            group_info = discover_task_group(group_name)
-            
-            if group_info:
-                # Determine which subtasks to run
-                if specific_subtask:
-                    # Specific subtask requested: only run that one
-                    subtasks_to_run = [specific_subtask]
-                else:
-                    # No specific subtask: run all subtasks in the group
-                    subtasks_to_run = [s.name for s in group_info.subtasks]
+    gather_result: Dict[str, Any] = {}
+    try:
+        for task_name in pending_tasks:
+            # Check if this is a handler-based task first (new system)
+            if is_handler_based_task(task_name):
+                logger.info(f"Running {task_name} using convention-based handler system")
                 
-                # Build minimal task config from metadata
-                task_config = {
-                    "name": group_info.name,
-                    "display_name": group_info.display_name,
-                    "description": group_info.description,
-                    "tasks": subtasks_to_run,
-                    "defaults": task_defaults_overrides or {},
-                    "prompts": {},
-                    "task_configs": {},
-                }
+                # For handler-based tasks, construct minimal config from metadata
+                from .tasks.registry import discover_task_group
+                parts = task_name.split('.')
+                group_name = parts[0]
+                specific_subtask = parts[1] if len(parts) > 1 else None
                 
-                # Merge metadata capability requirements
-                if "capability_requirements" in group_info.metadata:
-                    task_config["capability_requirements"] = group_info.metadata["capability_requirements"]
+                group_info = discover_task_group(group_name)
                 
-                task_configs_by_name[task_name] = task_config
-                display_name = group_info.display_name
-                logger.info(f"Running {display_name} evaluation...")
-                
-                # Build cloud provider config if needed
-                cloud_provider_config = None
-                if provider_config:
-                    cloud_provider_config = {
-                        **provider_config,
-                        "provider_type": provider_type,
+                if group_info:
+                    # Determine which subtasks to run
+                    if specific_subtask:
+                        # Specific subtask requested: only run that one
+                        subtasks_to_run = [specific_subtask]
+                    else:
+                        # No specific subtask: run all subtasks in the group
+                        subtasks_to_run = [s.name for s in group_info.subtasks]
+                    
+                    # Build minimal task config from metadata
+                    task_config = {
+                        "name": group_info.name,
+                        "display_name": group_info.display_name,
+                        "description": group_info.description,
+                        "tasks": subtasks_to_run,
+                        "defaults": task_defaults_overrides or {},
+                        "prompts": {},
+                        "task_configs": {},
                     }
-                
-                try:
-                    task_results[task_name] = discover_and_run_handler_task(
-                        task_ref=task_name,
+                    
+                    # Merge metadata capability requirements
+                    if "capability_requirements" in group_info.metadata:
+                        task_config["capability_requirements"] = group_info.metadata["capability_requirements"]
+                    
+                    task_configs_by_name[task_name] = task_config
+                    display_name = group_info.display_name
+                    logger.info(f"Running {display_name} evaluation...")
+                    
+                    # Build cloud provider config if needed
+                    cloud_provider_config = None
+                    if provider_config:
+                        cloud_provider_config = {
+                            **provider_config,
+                            "provider_type": provider_type,
+                        }
+                    
+                    run_task_fn = _run_logged_task
+                    if hasattr(run_task_fn, "with_options"):
+                        run_task_fn = run_task_fn.with_options(name=f"task:{task_name}")
+                    task_results[task_name] = run_task_fn(
+                        task_name=task_name,
                         model_name=model_name,
-                        output_path=model_output_path,
+                        model_output_path=model_output_path,
                         server_info=server_info,
+                        api_test_result=api_test_result,
                         task_config=task_config,
                         limit=limit,
+                        cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+                        provider_type=provider_type,
                         provider_config=cloud_provider_config,
+                        api_endpoint=api_endpoint,
+                        generation_config=generation_config,
                     )
                     continue
-                except Exception as e:
-                    logger.error(f"Failed to run handler-based task {task_name}: {e}")
-                    raise
-        
-        # Fall back to legacy systems - load task.json config
-        try:
-            task_config = config_manager.get_task_config(task_name, task_defaults_overrides)
-        except FileNotFoundError:
-            logger.warning(f"No task config found for '{task_name}', skipping")
-            continue
-
-        task_configs_by_name[task_name] = task_config
-
-        # Prefer display_name from task.json for logging.
-        display_name = task_config.get("display_name", task_name)
-        logger.info(f"Running {display_name} evaluation...")
-
-        pipeline_overrides = task_config.get("pipeline_overrides", {})
-        # Optional pipeline-level overrides for request mode and generation config.
-        if pipeline_overrides.get("set_api_endpoint"):
-            task_config["api_endpoint"] = api_endpoint
-        if pipeline_overrides.get("set_generation_config"):
-            task_config["generation_config"] = generation_config
-
-        if log_setup:
-            log_setup.log_task_config(task_name, task_config)
-
-        cloud_provider_config = None
-        # If provider_types is not set, default to the current provider.
-        provider_types = task_config.get("provider_types")
-        if not provider_types:
-            provider_types = [provider_type]
-        if provider_type in provider_types and provider_config:
-            cloud_provider_config = {
-                **provider_config,
-                "provider_type": provider_type,
-            }
-
-        # Legacy systems
-        # Prefer explicit runner entrypoints; otherwise fall back to SimpleTask entrypoints.
-        runner_entrypoint = task_config.get("runner_entrypoint")
-        if runner_entrypoint:
-            run_fn = resolve_entrypoint(runner_entrypoint)
-            task_results[task_name] = run_fn(
-                model_name=model_name,
-                output_path=model_output_path,
-                server_info=server_info,
-                api_test_result=api_test_result,
-                task_config=task_config,
-                limit=limit,
-                cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
-                provider_config=cloud_provider_config,
-            )
-        else:
-            if not is_simple_task_config(task_config):
-                logger.warning(f"Unknown task '{task_name}' without entrypoint, skipping")
-                continue
-            task_results[task_name] = run_simple_task(
-                model_name=model_name,
-                output_path=model_output_path,
-                server_info=server_info,
-                api_test_result=api_test_result,
-                task_config=task_config,
-                limit=limit,
-                cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
-                provider_config=cloud_provider_config,
-            )
             
-    # Step 4: Gather results
-    gather_result = {
-        f"{task_name}_results": result for task_name, result in task_results.items()
-    }
-    
-    # Step 5: Stop vLLM server (cleanup) - only for vLLM
-    if provider_type == 'vllm' and server_info:
-        cleanup_result = stop_vllm_server(server_info=server_info, upload_result=gather_result)
-        
-        # Clear global server info
-        import eval
-        eval._active_server_info = None
-    else:
-        # For cloud providers, just return the gather result
-        cleanup_result = gather_result
+            # Fall back to legacy systems - load task.json config
+            try:
+                task_config = config_manager.get_task_config(task_name, task_defaults_overrides)
+            except FileNotFoundError:
+                logger.warning(f"No task config found for '{task_name}', skipping")
+                continue
+
+            task_configs_by_name[task_name] = task_config
+
+            # Prefer display_name from task.json for logging.
+            display_name = task_config.get("display_name", task_name)
+            logger.info(f"Running {display_name} evaluation...")
+
+            pipeline_overrides = task_config.get("pipeline_overrides", {})
+            # Optional pipeline-level overrides for request mode and generation config.
+            if pipeline_overrides.get("set_api_endpoint"):
+                task_config["api_endpoint"] = api_endpoint
+            if pipeline_overrides.get("set_generation_config"):
+                task_config["generation_config"] = generation_config
+
+            if log_setup:
+                log_setup.log_task_config(task_name, task_config)
+
+            cloud_provider_config = None
+            # If provider_types is not set, default to the current provider.
+            provider_types = task_config.get("provider_types")
+            if not provider_types:
+                provider_types = [provider_type]
+            if provider_type in provider_types and provider_config:
+                cloud_provider_config = {
+                    **provider_config,
+                    "provider_type": provider_type,
+                }
+
+            run_task_fn = _run_logged_task
+            if hasattr(run_task_fn, "with_options"):
+                run_task_fn = run_task_fn.with_options(name=f"task:{task_name}")
+            task_results[task_name] = run_task_fn(
+                task_name=task_name,
+                model_name=model_name,
+                model_output_path=model_output_path,
+                server_info=server_info,
+                api_test_result=api_test_result,
+                task_config=task_config,
+                limit=limit,
+                cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
+                provider_type=provider_type,
+                provider_config=cloud_provider_config,
+                api_endpoint=api_endpoint,
+                generation_config=generation_config,
+            )
+
+        # Step 4: Gather results
+        gather_result = {
+            f"{task_name}_results": result for task_name, result in task_results.items()
+        }
+    finally:
+        # Step 5: Stop vLLM server (cleanup) - only for vLLM, even if a task fails.
+        if provider_type == 'vllm' and server_info:
+            try:
+                stop_vllm_server(server_info=server_info, upload_result=gather_result)
+            finally:
+                # Clear global server info for signal handler.
+                import eval
+                eval._active_server_info = None
+
+    cleanup_result = gather_result
     
     # Log final completion summary
     newly_completed = [task for task in pending_tasks if task in task_results]

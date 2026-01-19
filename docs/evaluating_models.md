@@ -27,7 +27,7 @@ python eval.py --config configs/tests/spanish-gptoss.yaml --limit 10
 Cloud example:
 
 ```bash
-python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 10
+python eval.py --config openai_gpt-4o-mini.yaml --limit 10
 ```
 
 If you are using cloud providers, create a `.env` file from `env.example` and set the

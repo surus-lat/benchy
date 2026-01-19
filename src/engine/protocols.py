@@ -303,13 +303,14 @@ def get_task_requirements(task: BaseTask) -> TaskCapabilityRequirements:
 
     requires_multimodal = getattr(task, "requires_multimodal", False)
     requires_schema = getattr(task, "requires_schema", False)
+    requires_files = getattr(task, "requires_files", False)
     answer_type = getattr(task, "answer_type", None)
     requires_logprobs = getattr(task, "requires_logprobs", answer_type == "multiple_choice")
 
     requirements = TaskCapabilityRequirements(
         requires_multimodal=RequirementLevel.REQUIRED if requires_multimodal else requirements.requires_multimodal,
         requires_schema=RequirementLevel.REQUIRED if requires_schema else requirements.requires_schema,
-        requires_files=requirements.requires_files,
+        requires_files=RequirementLevel.REQUIRED if requires_files else requirements.requires_files,
         requires_logprobs=RequirementLevel.REQUIRED if requires_logprobs else requirements.requires_logprobs,
         requires_streaming=requirements.requires_streaming,
     )
