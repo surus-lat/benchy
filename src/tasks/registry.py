@@ -462,12 +462,26 @@ def build_handler_task_spec(
         if not subtask_info:
             return None
 
-        # Build config for handler
+        # Build config for handler.
+        # Note: group-level metadata capability_requirements are applied here so new tasks
+        # can declare requirements in metadata.yaml without needing boilerplate in each class.
+        capability_requirements: Dict[str, Any] = {}
+        group_reqs = (group_info.metadata or {}).get("capability_requirements")
+        if isinstance(group_reqs, dict):
+            capability_requirements.update(group_reqs)
+        task_reqs = context.task_config.get("capability_requirements")
+        if isinstance(task_reqs, dict):
+            capability_requirements.update(task_reqs)
+        subtask_reqs = context.subtask_config.get("capability_requirements")
+        if isinstance(subtask_reqs, dict):
+            capability_requirements.update(subtask_reqs)
+
         handler_config = {
             "subtask_name": context.subtask_name,
             "dataset": context.subtask_config.get("dataset", {}),
             "prompts": context.subtask_config.get("prompts", context.prompts),
             "metrics": context.subtask_config.get("metrics", {}),
+            "capability_requirements": capability_requirements,
         }
 
         # Load and instantiate the handler

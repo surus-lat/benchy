@@ -114,12 +114,20 @@ cp env.example .env
 
 ### Prefect UI (Optional)
 
-Prefect is disabled by default; enable it with `BENCHY_ENABLE_PREFECT=1` (or `--register`)
-and install the extra dependency.
+Prefect is disabled by default; enable it with `BENCHY_ENABLE_PREFECT=1` to automatically track
+runs in the Prefect UI. Install the extra dependency first.
 
 ```bash
+# Start Prefect server (if not already running)
 docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0
+
+# Enable Prefect tracking (runs will automatically appear in UI)
+export BENCHY_ENABLE_PREFECT=1
+python eval.py configs/models/your_model.yaml --tasks document_extraction --limit 10
 ```
+
+**Note:** The `--register` flag is for deploying flows as long-running workers (different use case).
+When `BENCHY_ENABLE_PREFECT=1` is set, runs are automatically tracked in the UI without needing `--register`.
 
 ### Run a First Benchmark
 
@@ -127,8 +135,8 @@ docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server st
 # Local vLLM example (limited samples)
 python eval.py --config configs/tests/spanish-gptoss.yaml --limit 10
 
-# Cloud example
-python eval.py --config configs/models/openai_gpt-4o-mini.yaml --limit 10
+# Cloud example (config name lookup searches under configs/models, configs/systems, etc.)
+python eval.py --config openai_gpt-4o-mini.yaml --limit 10
 ```
 
 If you want to run the same task list across multiple models, you can override tasks

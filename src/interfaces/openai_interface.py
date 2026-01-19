@@ -12,11 +12,7 @@ from typing import Dict, List, Optional, Any
 from openai import AsyncOpenAI
 
 from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
-from ..engine.retry import (
-    RetryDecision,
-    classify_http_exception,
-    run_with_retries,
-)
+from ..engine.retry import RetryDecision, classify_http_exception, extract_status_code, run_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +75,8 @@ class OpenAIInterface:
             logger.info("Initialized Anthropic client")
         else:
             api_key = self._get_api_key(connection_info, "OPENAI_API_KEY", allow_empty=True)
-            self.client = AsyncOpenAI(base_url=self.base_url, api_key=api_key)
+            # Disable OpenAI SDK internal retries; Benchy handles retries consistently in run_with_retries.
+            self.client = AsyncOpenAI(base_url=self.base_url, api_key=api_key, max_retries=0)
             self.anthropic_client = None
             logger.info(f"Initialized OpenAI-compatible client for {self.provider_type}")
 
@@ -190,7 +187,26 @@ class OpenAIInterface:
     def _classify_api_error(self, exc: Exception, attempt: int) -> RetryDecision:
         if isinstance(exc, ValueError):
             return RetryDecision(False, 0.0, "invalid_response")
+        status_code = extract_status_code(exc)
+        # vLLM 5xx errors are typically not transient; don't spin retries when the engine is dead/OOM.
+        if self.provider_type == "vllm" and isinstance(status_code, int) and status_code >= 500:
+            return RetryDecision(False, 0.0, "connectivity_error")
         return classify_http_exception(exc, attempt)
+
+    def _strip_schema_from_prompt_for_structured_outputs(self, user_prompt: str) -> str:
+        # vLLM structured_outputs already enforces the schema. Keeping a full JSON schema inside
+        # the prompt can massively inflate prompt length (and memory) for vision models.
+        if not user_prompt:
+            return user_prompt
+        lowered = user_prompt.lower()
+        marker = "\nschema:"
+        idx = lowered.find(marker)
+        if idx == -1:
+            marker = "\nschema\n"
+            idx = lowered.find(marker)
+        if idx == -1:
+            return user_prompt
+        return user_prompt[:idx].rstrip() + "\n"
 
     def _max_tokens_key(self) -> str:
         if self.provider_type == "openai":
@@ -277,12 +293,17 @@ class OpenAIInterface:
             if image_path:
                 base64_image = self._encode_image(image_path)
                 media_type = self._get_image_media_type(image_path)
+                effective_prompt = user_prompt
+                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                    effective_prompt = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
                 user_content = [
-                    {"type": "text", "text": user_prompt},
+                    {"type": "text", "text": effective_prompt},
                     {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{base64_image}"}},
                 ]
             else:
                 user_content = user_prompt
+                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                    user_content = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
 
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -305,8 +326,8 @@ class OpenAIInterface:
                 from ..common.schema_sanitizer import sanitize_schema_for_vllm
                 sanitized_schema = sanitize_schema_for_vllm(schema)
                 params["extra_body"] = {"structured_outputs": {"json": sanitized_schema}}
-            elif schema:
-                # OpenAI strict mode structured outputs
+            elif schema and self.provider_type == "openai":
+                # OpenAI strict mode structured outputs (chat.completions response_format)
                 from ..common.schema_sanitizer import sanitize_schema_for_openai_strict
                 sanitized_schema = sanitize_schema_for_openai_strict(schema)
                 params["response_format"] = {
@@ -579,6 +600,25 @@ class OpenAIInterface:
                     successful += 1
                 elif result.get("error"):
                     errors += 1
+
+        # Fail fast for local vLLM if the server starts returning 5xx (often means EngineDeadError/OOM).
+        if self.provider_type == "vllm":
+            fatal = []
+            for entry in processed:
+                err = entry.get("error")
+                if not err:
+                    continue
+                msg = str(err)
+                if "Error code: 500" in msg or " 500 " in msg or "Internal Server Error" in msg:
+                    fatal.append(msg)
+                if "EngineDeadError" in msg or "EngineCore encountered an issue" in msg or "Worker failed" in msg:
+                    fatal.append(msg)
+            if fatal:
+                sample_err = fatal[0]
+                raise RuntimeError(
+                    "vLLM server returned 5xx during a batch; the engine is likely dead (often CUDA OOM). "
+                    f"First error: {sample_err}"
+                )
 
         logger.info(f"Batch: {successful}/{len(requests)} successful, {errors} errors")
         return processed

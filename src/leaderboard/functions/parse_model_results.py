@@ -717,12 +717,13 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
             },
         }
 
+        category_key = task_config.get("category_score_key", task_name)
         category_scores = {
-            "structured_extraction": {
+            category_key: {
                 "score": float(eqs) if isinstance(eqs, (int, float)) else 0.0,
                 "stderr": 0.0,
                 "metric": "eqs",
-                "alias": "structured_extraction",
+                "alias": category_key,
             }
         }
 

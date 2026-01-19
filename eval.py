@@ -112,8 +112,10 @@ def parse_args():
         epilog="""
 Examples:
   python eval.py                                    # Use default config.yaml
-  python eval.py --config configs/my-model.yaml    # Use specific config
-  python eval.py -c configs/gemma-e4b.yaml         # Short form
+  python eval.py openai_gpt-4o-mini.yaml           # Config name (searched under configs/)
+  python eval.py --config openai_gpt-4o-mini.yaml  # Same, explicit flag
+  python eval.py --config configs/models/my.yaml   # Explicit path
+  python eval.py -c configs/models/my.yaml         # Short form
   python eval.py --test                             # Test vLLM server only
   python eval.py -t -c configs/test-model.yaml     # Test with specific config
   python eval.py --log-samples                     # Enable sample logging for all tasks
@@ -123,12 +125,22 @@ Examples:
   python eval.py --prefect-url http://localhost:4200/api  # Use custom Prefect server
         """
     )
+
+    parser.add_argument(
+        'config_ref',
+        nargs='?',
+        default=None,
+        help=(
+            "Optional config name/path (same as --config). If it's just a name, benchy searches "
+            "configs/models, configs/systems, configs/tests, and configs/."
+        ),
+    )
     
     parser.add_argument(
         '--config', '-c',
         type=str,
         default=None,
-        help='Path to configuration YAML file (default: config.yaml or BENCHY_CONFIG env var)'
+        help='Config name or path to YAML file (default: configs/config.yaml or BENCHY_CONFIG env var)'
     )
     
     parser.add_argument(
@@ -287,18 +299,22 @@ def main():
     # Load configuration
     try:
         # Use command line config if provided, otherwise fall back to env var or default
-        config_path = args.config or os.environ.get('BENCHY_CONFIG', 'config.yaml')
+        config_path = args.config or args.config_ref or os.environ.get('BENCHY_CONFIG', 'configs/config.yaml')
+
+        # Resolve short names like "openai_gpt-4o-mini.yaml" to configs/* paths.
+        from src.config_loader import resolve_config_path
+        resolved_config_path = str(resolve_config_path(config_path))
         
         # Use ConfigManager for new format, fallback to old load_config for backward compatibility
         config_manager = ConfigManager()
         try:
-            config = config_manager.load_model_config(config_path)
-            logger.info(f"Loaded configuration from {config_path} using ConfigManager")
+            config = config_manager.load_model_config(resolved_config_path)
+            logger.info(f"Loaded configuration from {resolved_config_path} using ConfigManager")
         except (FileNotFoundError, KeyError) as e:
             # Fallback to old config loading for backward compatibility
             logger.info(f"Falling back to legacy config loading: {e}")
-            config = load_config(config_path)
-            logger.info(f"Loaded legacy configuration from {config_path}")
+            config = load_config(resolved_config_path)
+            logger.info(f"Loaded legacy configuration from {resolved_config_path}")
             
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -440,7 +456,13 @@ def main():
     logger.info(f"Output path: {run_paths['output_path']}")
     logger.info(f"Log path: {run_paths['log_path']}")
     
-    # Handle flow registration if requested
+    # Set flow names when Prefect is enabled (for UI tracking)
+    if prefect_enabled and PREFECT_AVAILABLE:
+        benchmark_pipeline.name = get_prefect_flow_name("benchmark_pipeline", run_id)
+        test_vllm_server.name = get_prefect_flow_name("test_vllm_server", run_id)
+        logger.info(f"Prefect tracking enabled - flows will appear in UI as: {benchmark_pipeline.name}, {test_vllm_server.name}")
+    
+    # Handle flow registration if requested (for long-running workers)
     if args.register:
         if not PREFECT_AVAILABLE:
             logger.error(
@@ -449,13 +471,10 @@ def main():
             )
             return
         logger.info("Registering flows with Prefect server for dashboard visibility...")
-        # Set flow names with run_id prefix
-        benchmark_pipeline.name = get_prefect_flow_name("benchmark_pipeline", run_id)
-        test_vllm_server.name = get_prefect_flow_name("test_vllm_server", run_id)
         
         serve(
-            benchmark_pipeline.to_deployment(),
-            test_vllm_server.to_deployment(),
+            benchmark_pipeline.to_deployment(name=benchmark_pipeline.name),
+            test_vllm_server.to_deployment(name=test_vllm_server.name),
             limit=1,  # Only run one instance at a time
             print_starting_message=True
         )

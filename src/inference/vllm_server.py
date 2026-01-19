@@ -167,15 +167,30 @@ def start_vllm_server(
         "--uvicorn-log-level", "warning"
     ]
     
-    # Handle version-specific multimodal arguments (only for multimodal models)
-    if multimodal:
+    # Handle version-specific multimodal arguments (only when explicitly configured).
+    # If limit_mm_per_prompt is unset, do not pass --limit-mm-per-prompt at all.
+    if multimodal and limit_mm_per_prompt:
         if vllm_version and vllm_version.startswith(("0.6", "0.7")):
-            # Older versions uses key=value format
-            cmd_parts.extend(["--limit-mm-per-prompt", "images=0", "--limit-mm-per-prompt", "audios=0"])
+            # Older versions use repeated key=value format.
+            # Accept either a JSON dict string or a simple "images=N,audios=M" style.
+            try:
+                import json as _json
+
+                parsed = _json.loads(limit_mm_per_prompt) if isinstance(limit_mm_per_prompt, str) else {}
+                images = parsed.get("images")
+                audios = parsed.get("audios")
+                if images is not None:
+                    cmd_parts.extend(["--limit-mm-per-prompt", f"images={images}"])
+                if audios is not None:
+                    cmd_parts.extend(["--limit-mm-per-prompt", f"audios={audios}"])
+                if images is None and audios is None:
+                    # Fall back to raw string if we couldn't parse anything useful.
+                    cmd_parts.extend(["--limit-mm-per-prompt", str(limit_mm_per_prompt)])
+            except Exception:
+                cmd_parts.extend(["--limit-mm-per-prompt", str(limit_mm_per_prompt)])
         else:
-            # vLLM latest uses JSON format
+            # vLLM recent versions accept JSON form.
             cmd_parts.extend(["--limit-mm-per-prompt", f"'{limit_mm_per_prompt}'"])
-    # Skip multimodal limits for text-only models to avoid errors
     
     if enforce_eager:
         cmd_parts.append("--enforce-eager")
