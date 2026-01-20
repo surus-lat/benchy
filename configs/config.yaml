@@ -25,7 +25,7 @@ logging:
 gpu_config:
   # vLLM server GPU allocation
   vllm:
-    devices: "0,1"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
+    devices: "1,2"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
     # Alternative configurations:
     # devices: "3"      # Use single GPU 3 for vLLM
     # devices: "1,2,3,4" # Use all 4 GPUs for vLLM

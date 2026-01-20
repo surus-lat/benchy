@@ -21,13 +21,31 @@ and adapt for your own models or systems.
 ## Run an Evaluation
 
 ```bash
-python eval.py --config configs/tests/spanish-gptoss.yaml --limit 10
+benchy eval --config configs/tests/spanish-gptoss.yaml --limit 10
 ```
 
 Cloud example:
 
 ```bash
-python eval.py --config openai_gpt-4o-mini.yaml --limit 10
+benchy eval --config openai_gpt-4o-mini.yaml --limit 10
+```
+
+Local model (vLLM) example:
+
+```bash
+benchy eval --model-path /path/to/local-model --model-name my-sft --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10
+```
+
+Local model (vLLM) with outputs next to the model:
+
+```bash
+benchy eval --model-path /path/to/local-model --output-path model --tasks latam_board --limit 10
+```
+
+Hugging Face model via vLLM (no model config file) example:
+
+```bash
+benchy eval --model-name unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10
 ```
 
 If you are using cloud providers, create a `.env` file from `env.example` and set the

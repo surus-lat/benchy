@@ -48,7 +48,8 @@ config with overrides. This is how `provider_config` names map to files under
 Also add defaults to `PROVIDER_CAPABILITY_DEFAULTS` in `src/engine/connection.py` so
 compatibility checks have sensible fallbacks even when a provider config omits fields.
 
-If the provider should be selectable via `eval.py`, add it to `PROVIDER_SPECS` and
+If the provider should be selectable via `benchy eval`, add it to `PROVIDER_SPECS` in
+`src/benchy_cli_eval.py` and
 update `provider_types` in each task's `task.json` as needed.
 
 ### 5. Declare Capabilities
@@ -72,7 +73,7 @@ provider quickly. If the provider is system-only, add a system config example un
 Run a small task with a low limit and verify connection checks:
 
 ```bash
-python eval.py --config configs/tests/spanish-gptoss.yaml --limit 2
+benchy eval --config configs/tests/spanish-gptoss.yaml --limit 2
 ```
 
 For custom endpoints, use `configs/templates/system_http.yaml` as a starting point.

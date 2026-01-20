@@ -40,5 +40,5 @@ Optional: `bash setup.sh` to prefetch structured extraction data (or `BENCHY_SKI
 ## Quick Validation
 
 ```bash
-python eval.py --config configs/tests/spanish-gptoss.yaml --limit 2
+benchy eval --config configs/tests/spanish-gptoss.yaml --limit 2
 ```

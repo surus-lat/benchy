@@ -6,6 +6,7 @@ import logging
 import time
 import requests
 import psutil
+import shlex
 from typing import Dict, Any, Optional
 from ..prefect_compat import task, NO_CACHE
 
@@ -82,18 +83,25 @@ def kill_existing_vllm_processes(model_name: str, port: int = 8000) -> None:
 def start_vllm_server(
     model_name: str,
     vllm_config: Optional[VLLMServerConfig] = None,
+    *,
+    model_path: Optional[str] = None,
+    served_model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Start vLLM server with configurable parameters.
     
     Args:
-        model_name: The model to serve
+        model_name: The model name used for client requests and outputs.
         vllm_config: vLLM server configuration
+        model_path: Optional local path / HF ID for the model weights to load in vLLM.
+        served_model_name: Optional name exposed by the OpenAI API server (defaults to model_name).
         
     Returns:
         Dictionary with server info: {"pid": int, "url": str, "port": int}
     """
-    logger.info(f"Starting vLLM server for model: {model_name}")
+    model_to_load = model_path or model_name
+    served_name = served_model_name or model_name
+    logger.info("Starting vLLM server for model: %s (load=%s)", served_name, model_to_load)
     vllm_config = vllm_config or VLLMServerConfig()
 
     host = vllm_config.host
@@ -139,13 +147,14 @@ def start_vllm_server(
         print(f"✅ Using vLLM {vllm_version} from: {actual_venv_path}")
     
     # Kill any existing vLLM processes for the same model or port
-    kill_existing_vllm_processes(model_name, port)
+    kill_existing_vllm_processes(model_to_load, port)
     
     # Get Python logger for detailed file logging with safe error handling
     file_logger = logging.getLogger('benchy.vllm_server')
     try:
         file_logger.info(f"=== Starting vLLM Server ===")
-        file_logger.info(f"Model: {model_name}")
+        file_logger.info(f"Model: {served_name}")
+        file_logger.info(f"Model load ref: {model_to_load}")
         file_logger.info(f"Host: {host}, Port: {port}")
         file_logger.info(f"Tensor parallel size: {tensor_parallel_size}")
         file_logger.info(f"Max model length: {max_model_len}")
@@ -153,19 +162,32 @@ def start_vllm_server(
         # Continue if file logging fails
         pass
     
-    # Build command parts
+    venv_python = os.path.join(actual_venv_path, "bin", "python")
+    if not os.path.exists(venv_python):
+        raise FileNotFoundError(f"vLLM Python executable not found: {venv_python}")
     cuda_visible_devices = cuda_devices if cuda_devices is not None else "2,3"
     cmd_parts = [
-        f"CUDA_VISIBLE_DEVICES={cuda_visible_devices}",
-        "python", "-m", "vllm.entrypoints.openai.api_server",
-        "--host", host,
-        "--model", model_name,
-        "--port", str(port),
-        "-tp", str(tensor_parallel_size),
-        "--max-model-len", str(max_model_len),
-        "--gpu-memory-utilization", str(gpu_memory_utilization),
-        "--uvicorn-log-level", "warning"
+        venv_python,
+        "-m",
+        "vllm.entrypoints.openai.api_server",
+        "--host",
+        host,
+        "--model",
+        model_to_load,
+        "--port",
+        str(port),
+        "-tp",
+        str(tensor_parallel_size),
+        "--max-model-len",
+        str(max_model_len),
+        "--gpu-memory-utilization",
+        str(gpu_memory_utilization),
+        "--uvicorn-log-level",
+        "warning",
     ]
+
+    if served_name != model_to_load:
+        cmd_parts.extend(["--served-model-name", served_name])
     
     # Handle version-specific multimodal arguments (only when explicitly configured).
     # If limit_mm_per_prompt is unset, do not pass --limit-mm-per-prompt at all.
@@ -190,7 +212,7 @@ def start_vllm_server(
                 cmd_parts.extend(["--limit-mm-per-prompt", str(limit_mm_per_prompt)])
         else:
             # vLLM recent versions accept JSON form.
-            cmd_parts.extend(["--limit-mm-per-prompt", f"'{limit_mm_per_prompt}'"])
+            cmd_parts.extend(["--limit-mm-per-prompt", str(limit_mm_per_prompt)])
     
     if enforce_eager:
         cmd_parts.append("--enforce-eager")
@@ -242,6 +264,7 @@ def start_vllm_server(
     
     # Set up environment
     env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = str(cuda_visible_devices)
     if hf_cache:
         env["HF_CACHE"] = hf_cache
     if hf_token:  # Only set if not empty string
@@ -260,22 +283,17 @@ def start_vllm_server(
     env["PYTHONUNBUFFERED"] = "1"  # Ensure clean output
     env["CUDA_LAUNCH_BLOCKING"] = "0"  # Disable CUDA blocking for cleaner shutdown
     
-    cmd_str = " ".join(cmd_parts)
-    logger.info(f"Executing command: {cmd_str}")
+    cmd_str = shlex.join(cmd_parts)
+    logger.info("Executing command: %s", cmd_str)
     try:
-        file_logger.info(f"Command: {cmd_str}")
+        file_logger.info("Command: %s", cmd_str)
     except (RuntimeError, OSError):
         pass
     
-    # Activate the vLLM venv and start the server
-    venv_cmd = f"source {actual_venv_path}/bin/activate && {cmd_str}"
-    
     # Start the server using the vLLM virtual environment
     process = subprocess.Popen(
-        venv_cmd,
-        shell=True,
+        cmd_parts,
         env=env,
-        executable="/bin/bash"
     )
     
     # Wait for server to be ready
