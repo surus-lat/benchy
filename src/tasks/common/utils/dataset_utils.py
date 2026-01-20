@@ -5,6 +5,26 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Iterator
 
+def _ensure_pyarrow_compat_for_datasets() -> None:
+    """Make newer pyarrow versions compatible with older datasets releases.
+
+    Some older `datasets` versions import `pyarrow.PyExtensionType`, which was removed
+    in newer `pyarrow` releases. `datasets` only needs an ExtensionType base class for
+    defining its custom Arrow extension types, so aliasing is sufficient.
+    """
+    try:
+        import pyarrow as pa
+
+        if not hasattr(pa, "PyExtensionType") and hasattr(pa, "ExtensionType"):
+            setattr(pa, "PyExtensionType", pa.ExtensionType)
+    except Exception:
+        # If pyarrow isn't installed or changes again, let datasets raise a
+        # clearer error when imported.
+        return
+
+
+_ensure_pyarrow_compat_for_datasets()
+
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -95,4 +115,3 @@ def iterate_samples(
     
     for sample in dataset_to_use:
         yield sample
-

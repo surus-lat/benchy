@@ -26,7 +26,7 @@ Benchy does not automatically apply generation parameters to every task. Instead
 No config changes are required. Benchy fetches and saves the config automatically when running:
 
 ```bash
-python eval.py -c configs/models/Hunyuan-MT-7B.yaml
+benchy eval -c configs/models/Hunyuan-MT-7B.yaml
 ```
 
 ## Output Files

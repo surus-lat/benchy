@@ -9,6 +9,7 @@ from .config_loader import load_config
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
+from .signal_utils import clear_active_server_info, set_active_server_info
 from .task_completion_checker import TaskCompletionChecker
 from .tasks.registry import (
     is_simple_task_config,
@@ -191,6 +192,7 @@ def _write_run_summary(
 
 def write_run_config(
     model_name: str,
+    model_path: Optional[str],
     run_id: str,
     output_path: str,
     tasks: list,
@@ -205,7 +207,8 @@ def write_run_config(
     Write complete run configuration to a YAML file.
     
     Args:
-        model_name: The model being evaluated
+        model_name: The model being evaluated (request / display name).
+        model_path: Optional local path / HF ID used to load the model in vLLM.
         run_id: Run ID for this execution
         output_path: Base output path
         tasks: List of tasks to run
@@ -222,6 +225,7 @@ def write_run_config(
     # Create the complete configuration dictionary
     model_config = {
         'name': model_name,
+        'path': model_path,
         'api_endpoint': api_endpoint
     }
     
@@ -235,6 +239,7 @@ def write_run_config(
         'run_metadata': {
             'run_id': run_id,
             'model_name': model_name,
+            'model_path': model_path,
             'timestamp': datetime.now().isoformat(),
             'output_structure': f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
         },
@@ -270,6 +275,8 @@ def benchmark_pipeline(
     model_name: str,
     tasks: list,
     output_path: str,
+    *,
+    model_path: Optional[str] = None,
     limit: Optional[int] = None,
     api_endpoint: str = "completions",
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
@@ -289,7 +296,8 @@ def benchmark_pipeline(
     - For cloud providers (OpenAI/Anthropic): Directly runs tasks using API
     
     Args:
-        model_name: The model to evaluate
+        model_name: Model name used for requests and outputs.
+        model_path: Optional local path / HF ID to load in vLLM (defaults to model_name).
         tasks: List of task names to run (e.g., ["spanish", "portuguese"])
         output_path: Base output path for results
         limit: Limit number of examples per task (useful for testing)
@@ -360,7 +368,7 @@ def benchmark_pipeline(
     generation_config = None
     if provider_type == 'vllm':
         generation_config = fetch_generation_config(
-            model_name=model_name,
+            model_name=model_path or model_name,
             hf_cache=vllm_config.hf_cache,
             hf_token=vllm_config.hf_token,
         )
@@ -368,6 +376,7 @@ def benchmark_pipeline(
     # Write complete run configuration
     write_run_config(
         model_name=model_name,
+        model_path=model_path,
         run_id=run_id,
         output_path=output_path,
         tasks=tasks,
@@ -388,12 +397,13 @@ def benchmark_pipeline(
         logger.info(f"Starting vLLM server with CUDA devices: {vllm_config.cuda_devices}")
         server_info = start_vllm_server(
             model_name=model_name,
+            model_path=model_path,
+            served_model_name=model_name,
             vllm_config=vllm_config,
         )
         
         # Store server info globally for signal handler
-        import eval
-        eval._active_server_info = server_info
+        set_active_server_info(server_info)
             
         # Step 2: Test vLLM API
         api_test_result = test_vllm_api(
@@ -560,9 +570,7 @@ def benchmark_pipeline(
             try:
                 stop_vllm_server(server_info=server_info, upload_result=gather_result)
             finally:
-                # Clear global server info for signal handler.
-                import eval
-                eval._active_server_info = None
+                clear_active_server_info()
 
     cleanup_result = gather_result
     
@@ -594,6 +602,7 @@ def benchmark_pipeline(
 @flow()
 def test_vllm_server(
     model_name: str,
+    model_path: Optional[str] = None,
     run_id: Optional[str] = None,
     vllm_config: Optional[VLLMServerConfig] = None,
 ) -> Dict[str, Any]:
@@ -601,7 +610,8 @@ def test_vllm_server(
     Test vLLM server functionality without running full evaluation.
     
     Args:
-        model_name: The model to test
+        model_name: Model name used for requests and outputs.
+        model_path: Optional local path / HF ID to load in vLLM (defaults to model_name).
         run_id: Optional run ID for organizing outputs. If not provided, auto-generated.
         vllm_config: vLLM server configuration
     """
@@ -631,7 +641,8 @@ def test_vllm_server(
             'run_type': 'test'
         },
         'model': {
-            'name': model_name
+            'name': model_name,
+            'path': model_path,
         },
         'vllm_server': vllm_config.to_dict(),
         'environment': {
@@ -651,12 +662,13 @@ def test_vllm_server(
     
     server_info = start_vllm_server(
         model_name=model_name,
+        model_path=model_path,
+        served_model_name=model_name,
         vllm_config=vllm_config,
     )
     
     # Store server info globally for signal handler
-    import eval
-    eval._active_server_info = server_info
+    set_active_server_info(server_info)
         
     # Step 2: Test vLLM API
     api_test_result = test_vllm_api(
@@ -668,8 +680,7 @@ def test_vllm_server(
     cleanup_result = stop_vllm_server(server_info=server_info, upload_result=api_test_result)
     
     # Clear global server info
-    import eval
-    eval._active_server_info = None
+    clear_active_server_info()
     
     logger.info("Test model config completed successfully")
     return cleanup_result

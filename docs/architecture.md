@@ -9,10 +9,10 @@ hunting through the codebase.
 ## High-Level Flow
 
 ```
-eval.py → ConfigManager → pipeline.py → TaskGroupRunner → BenchmarkRunner → Interface → Provider
+benchy eval → ConfigManager → pipeline.py → TaskGroupRunner → BenchmarkRunner → Interface → Provider
 ```
 
-1. `eval.py` loads the model/system config, sets up logging and run IDs, and starts the
+1. `benchy eval` (`src/benchy_cli_eval.py`) loads the model/system config, sets up logging and run IDs, and starts the
    Prefect flow (`benchmark_pipeline`).
 2. `ConfigManager` merges provider configs with model overrides and applies metadata-based
    capability restrictions (`metadata.supports_*`).
@@ -83,4 +83,4 @@ required capability is missing, the run is blocked early with a clear log messag
 - Task system: `src/tasks/`, `src/tasks/group_runner.py`, `src/tasks/TASK_TEMPLATE.md`
 - Interfaces: `src/interfaces/`, `src/interfaces/README.md`
 - Engine: `src/engine/benchmark_runner.py`, `src/engine/connection.py`, `src/engine/protocols.py`
-- Pipeline: `src/pipeline.py`, `eval.py`
+- Pipeline: `src/pipeline.py`, `src/benchy_cli_eval.py`

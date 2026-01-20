@@ -4,7 +4,7 @@ vllm:
   provider_config: vllm_single_card_mm
   overrides:
     kv_cache_memory: 0
-    gpu_memory_utilization: 0.95
+    gpu_memory_utilization: 0.90
     port: 20502
     trust_remote_code: true
     timeout: 240

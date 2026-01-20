@@ -5,7 +5,7 @@ host: "0.0.0.0"
 port: 20502
 tensor_parallel_size: 2
 max_model_len: 15696
-gpu_memory_utilization: 0.95
+gpu_memory_utilization: 0.90
 enforce_eager: true
 kv_cache_memory: 0
 max_num_seqs: 256

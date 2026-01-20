@@ -123,7 +123,7 @@ docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server st
 
 # Enable Prefect tracking (runs will automatically appear in UI)
 export BENCHY_ENABLE_PREFECT=1
-python eval.py configs/models/your_model.yaml --tasks document_extraction --limit 10
+benchy eval configs/models/your_model.yaml --tasks document_extraction --limit 10
 ```
 
 **Note:** The `--register` flag is for deploying flows as long-running workers (different use case).
@@ -132,12 +132,24 @@ When `BENCHY_ENABLE_PREFECT=1` is set, runs are automatically tracked in the UI 
 ### Run a First Benchmark
 
 ```bash
-# Local vLLM example (limited samples)
-python eval.py --config configs/tests/spanish-gptoss.yaml --limit 10
+# Local model via vLLM (merged safetensors + tokenizer assets)
+benchy eval --model-path /path/to/local-model --model-name my-sft --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10
+
+# Local model via vLLM, writing outputs next to the model
+benchy eval --model-path /path/to/local-model --output-path model --tasks latam_board --limit 10
+
+# Hugging Face model via vLLM (no config file needed)
+benchy eval --model-name unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10
+
+# Config-based smoke test (limited samples)
+benchy eval --config configs/tests/spanish-gptoss.yaml --limit 10
 
 # Cloud example (config name lookup searches under configs/models, configs/systems, etc.)
-python eval.py --config openai_gpt-4o-mini.yaml --limit 10
+benchy eval --config openai_gpt-4o-mini.yaml --limit 10
 ```
+
+If `benchy` is not on your PATH (for example when running directly from the repo), use:
+`python -m src.benchy_cli ...`
 
 If you want to run the same task list across multiple models, you can override tasks
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
@@ -157,6 +169,7 @@ benchy/
 │   ├── templates/           # Fully documented config templates
 │   └── tests/               # Small configs for smoke tests
 ├── src/
+│   ├── benchy_cli.py         # Benchy CLI entrypoint (`benchy ...`)
 │   ├── pipeline.py          # Main Prefect pipeline
 │   ├── interfaces/          # Provider interfaces
 │   ├── tasks/
@@ -167,7 +180,7 @@ benchy/
 │   │   ├── image_extraction/       # Vision-language tasks
 │   │   └── _template_handler/      # Task templates
 │   └── leaderboard/         # Results processing
-└── eval.py                  # CLI entry point
+└── eval.py                  # Legacy CLI wrapper (deprecated)
 ```
 
 ### Model and System Configs
