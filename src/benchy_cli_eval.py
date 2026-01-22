@@ -345,6 +345,12 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="Prefect API URL (default: http://localhost:4200/api)",
     )
     parser.add_argument("--limit", type=int, default=None, help="Limit examples per task")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Batch size for task runners (default: task default, usually 20).",
+    )
     parser.add_argument("--log-samples", action="store_true", help="Enable sample logging for all tasks")
     parser.add_argument("--no-log-samples", action="store_true", help="Disable sample logging for all tasks")
     parser.add_argument("--run-id", type=str, default=None, help="Run ID for organizing outputs")
@@ -664,10 +670,18 @@ def run_eval(args: argparse.Namespace) -> int:
         task_defaults_overrides["log_samples"] = True
     elif args.no_log_samples:
         task_defaults_overrides["log_samples"] = False
+    if args.batch_size is not None:
+        task_defaults_overrides["batch_size"] = args.batch_size
+
+    provider_task_defaults = {}
+    if isinstance(provider_config, dict):
+        provider_task_defaults = provider_config.get("task_defaults", {}) or {}
 
     config_task_defaults = config.get("task_defaults", {}) or {}
     if config_task_defaults:
-        task_defaults_overrides = {**config_task_defaults, **task_defaults_overrides}
+        task_defaults_overrides = {**provider_task_defaults, **config_task_defaults, **task_defaults_overrides}
+    elif provider_task_defaults:
+        task_defaults_overrides = {**provider_task_defaults, **task_defaults_overrides}
 
     config_tasks = config.get("tasks", ["spanish", "portuguese"])
     tasks_override = []
