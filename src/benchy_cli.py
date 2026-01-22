@@ -86,9 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
+            "  benchy eval --model-name gpt-4o-mini --tasks spanish --limit 2\n"
+            "  benchy eval --provider together --model-name meta-llama/Llama-3.1-8B-Instruct --tasks spanish --limit 2\n"
+            "  benchy eval --base-url http://host:8000/v1 --model-name mymodel --tasks spanish --limit 2\n"
             "  benchy eval --config openai_gpt-4o-mini.yaml --limit 10\n"
             "  benchy eval --config configs/tests/spanish-gptoss.yaml --limit 2\n"
-            "  benchy eval --model-name unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10\n"
+            "  benchy eval --provider vllm --model-name unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10\n"
             "  benchy eval --model-path /models/my-sft --model-name my-sft --vllm-config vllm_two_cards_mm --tasks latam_board\n"
             "  benchy eval --model-path /models/my-sft --output-path model --tasks latam_board\n"
             "  benchy eval --model-path /models/my-sft --limit 5 --tasks spanish,portuguese\n"

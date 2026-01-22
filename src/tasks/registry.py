@@ -132,6 +132,7 @@ def run_simple_task(
     limit: Optional[int] = None,
     cuda_devices: Optional[str] = None,
     provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
 ) -> Dict[str, Any]:
     """Run a SimpleTask using the generic task group runner.
 
@@ -146,6 +147,7 @@ def run_simple_task(
         task_config=task_config,
         limit=limit,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
     )
 
 
@@ -530,6 +532,7 @@ def discover_and_run_handler_task(
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
     provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
 ) -> Dict[str, Any]:
     """Discover and run a convention-based handler task.
     
@@ -575,6 +578,7 @@ def discover_and_run_handler_task(
         task_config=task_config,
         limit=limit,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
     )
 
 

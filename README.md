@@ -155,6 +155,66 @@ If you want to run the same task list across multiple models, you can override t
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `docs/evaluating_models.md` for full examples and behavior.
 
+## Providerless CLI (OpenAI-compatible)
+
+When no config file is provided, Benchy infers the provider from CLI flags:
+
+- `--model-path` or `--vllm-config` -> local vLLM (Benchy starts the server)
+- `--base-url` -> OpenAI-compatible remote endpoint (defaults to OpenAI behavior unless `--provider` is set)
+- no provider hints -> OpenAI defaults (`https://api.openai.com/v1`, `OPENAI_API_KEY`)
+
+This means the model name alone does not determine the provider. The provider comes from
+flags like `--provider` and `--base-url`. The model name is just the string sent in requests.
+
+### Common use cases
+
+```bash
+# OpenAI default (model name + OPENAI_API_KEY)
+benchy eval --model-name gpt-4o-mini --tasks spanish --limit 2
+
+# Together AI defaults (TOGETHER_API_KEY + together base URL)
+benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider together  --tasks spanish --limit 2
+
+# Custom OpenAI-compatible endpoint
+benchy eval --model-name mymodel --base-url http://host:8000/v1 --tasks spanish --limit 2
+
+# Local vLLM from Hugging Face (server started by Benchy)
+benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
+
+# Local vLLM from a model directory
+benchy eval --model-name my-sft --model-path /models/my-sft --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
+```
+
+### Same model name on multiple providers
+
+If a model is available on multiple providers (or a local vLLM server), you choose where it runs:
+
+```bash
+# Together-hosted model
+benchy eval --model-name mymodel --provider together  --tasks spanish --limit 2
+
+# OpenAI-hosted model
+benchy eval --model-name mymodel --provider openai  --tasks spanish --limit 2
+
+# Local vLLM for the same model name
+benchy eval --model-name mymodel --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
+```
+
+### Benchmarking a new OpenAI model (example: "gpt-5.2")
+
+```bash
+benchy eval --provider openai --model-name gpt-5.2 --tasks spanish --limit 2
+```
+
+If the model requires a nonstandard max-tokens parameter or API key name, set:
+
+```bash
+benchy eval --provider openai --model-name gpt-5.2 \
+  --max-tokens-param-name max_completion_tokens \
+  --api-key-env OPENAI_API_KEY \
+  --tasks spanish --limit 2
+```
+
 ## Configuration Overview
 
 ### Project Structure

@@ -68,7 +68,8 @@ def run_translation(
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
     cuda_devices: Optional[str] = None,
-    provider_config: Optional[Dict[str, Any]] = None
+    provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
 ) -> Dict[str, Any]:
     """Run translation evaluation.
     
@@ -95,6 +96,7 @@ def run_translation(
         task_config=task_config,
         limit=limit,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
     )
 
 
