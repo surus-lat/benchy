@@ -34,6 +34,12 @@ class OpenAIInterface:
         self.api_endpoint = connection_info.get("api_endpoint") or "auto"
 
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
+        # Image artifact generation via images endpoints (OpenAI-compatible).
+        self.image_response_format = connection_info.get("image_response_format", "b64_json")
+        self.image_size = connection_info.get("image_size")
+        self.image_artifact_fallback_to_chat = connection_info.get(
+            "image_artifact_fallback_to_chat", True
+        )
         base_capabilities = InterfaceCapabilities(
             supports_multimodal=True,
             supports_logprobs=False,
@@ -102,6 +108,7 @@ class OpenAIInterface:
         """Prepare request by getting prompts from task."""
         answer_type = getattr(task, "answer_type", None)
         use_logprobs = answer_type == "multiple_choice"
+        expects_image_artifact = answer_type == "image_artifact"
         requires_logprobs = getattr(task, "requires_logprobs", use_logprobs)
         prefers_logprobs = getattr(task, "prefers_logprobs", False)
         # Capability: only enable logprobs if required or preferred and supported.
@@ -132,6 +139,7 @@ class OpenAIInterface:
             "choices": sample.get("choices") if use_logprobs else None,
             "choice_labels": sample.get("choice_labels") if use_logprobs else None,
             "allow_logprobs_fallback": allow_logprobs_fallback,
+            "expects_image_artifact": expects_image_artifact,
         }
 
         # Capability: fail fast if multimodal inputs aren't supported.
@@ -215,6 +223,138 @@ class OpenAIInterface:
                     return "max_completion_tokens"
         return self.max_tokens_param_name
 
+    def _extract_text_from_content(self, content: Any) -> Optional[str]:
+        """Extract text from OpenAI-style content payloads (string or list of parts)."""
+        if content is None:
+            return None
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+                if isinstance(item, dict):
+                    if item.get("type") == "text" and isinstance(item.get("text"), str):
+                        parts.append(item["text"])
+            return "\n".join(parts).strip()
+        return str(content)
+
+    def _extract_image_payload_from_content(self, content: Any) -> Optional[str]:
+        """Extract a data URL or base64 payload from content parts if present."""
+        if content is None:
+            return None
+        if isinstance(content, str):
+            # Some providers embed the base64/data URL directly as text content.
+            return content.strip()
+        if isinstance(content, list):
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                t = item.get("type")
+                if t == "image_url" and isinstance(item.get("image_url"), dict):
+                    url = item["image_url"].get("url")
+                    if isinstance(url, str) and url.strip():
+                        return url.strip()
+                if t == "image" and isinstance(item.get("image"), dict):
+                    data = item["image"].get("data")
+                    if isinstance(data, str) and data.strip():
+                        return data.strip()
+        return None
+
+    async def _generate_image_artifact(
+        self,
+        *,
+        prompt: str,
+        image_path: Optional[str],
+        sample_id: str,
+    ) -> Dict:
+        """Generate an image artifact via OpenAI-compatible images endpoints."""
+        result = {"output": None, "raw": None, "error": None, "error_type": None}
+
+        response_format = self.image_response_format or "b64_json"
+        extra_params: Dict[str, Any] = {}
+        if isinstance(self.image_size, str) and self.image_size:
+            extra_params["size"] = self.image_size
+
+        async def attempt_fn(_: int) -> Dict:
+            images_api = getattr(self.client, "images", None)
+            if images_api is None:
+                raise ValueError("OpenAI SDK client has no images API")
+
+            if image_path:
+                # Prefer edits for image-to-image tasks.
+                edit_fn = getattr(images_api, "edit", None) or getattr(images_api, "edits", None)
+                if edit_fn is None:
+                    raise ValueError("Provider does not support images edits endpoint")
+                with open(image_path, "rb") as handle:
+                    try:
+                        response = await edit_fn(
+                            model=self.model_name,
+                            image=handle,
+                            prompt=prompt,
+                            response_format=response_format,
+                            timeout=self.timeout,
+                            **extra_params,
+                        )
+                    except TypeError:
+                        # Some providers/SDK versions expect image as a list.
+                        response = await edit_fn(
+                            model=self.model_name,
+                            image=[handle],
+                            prompt=prompt,
+                            response_format=response_format,
+                            timeout=self.timeout,
+                            **extra_params,
+                        )
+            else:
+                gen_fn = getattr(images_api, "generate", None) or getattr(images_api, "create", None)
+                if gen_fn is None:
+                    raise ValueError("Provider does not support images generation endpoint")
+                response = await gen_fn(
+                    model=self.model_name,
+                    prompt=prompt,
+                    response_format=response_format,
+                    timeout=self.timeout,
+                    **extra_params,
+                )
+
+            data = getattr(response, "data", None) or []
+            first = data[0] if isinstance(data, list) and data else None
+            b64 = getattr(first, "b64_json", None) if first is not None else None
+            url = getattr(first, "url", None) if first is not None else None
+
+            if isinstance(b64, str) and b64.strip():
+                return {
+                    "output": b64.strip(),
+                    "raw": f"images_api=b64_json len={len(b64)}",
+                    "error": None,
+                    "error_type": None,
+                }
+            if isinstance(url, str) and url.strip():
+                return {
+                    "output": url.strip(),
+                    "raw": "images_api=url",
+                    "error": None,
+                    "error_type": None,
+                }
+
+            raise ValueError("Images API returned no b64_json/url payload")
+
+        response, error, error_type = await run_with_retries(
+            attempt_fn,
+            max_retries=self.max_retries,
+            classify_error=self._classify_api_error,
+        )
+
+        if response is not None:
+            return response
+
+        result["error"] = error
+        result["error_type"] = error_type
+        return result
+
     async def _generate_single(
         self,
         system_prompt: str,
@@ -226,9 +366,29 @@ class OpenAIInterface:
         choices: Optional[List[str]] = None,
         choice_labels: Optional[List[str]] = None,
         allow_logprobs_fallback: bool = False,
+        expects_image_artifact: bool = False,
     ) -> Dict:
         """Generate output for a single request."""
         result = {"output": None, "raw": None, "error": None, "error_type": None}
+
+        # Image artifact tasks: prefer images endpoints (OpenAI-compatible) only when the
+        # interface explicitly declares support, with optional chat fallback.
+        if (
+            expects_image_artifact
+            and self.provider_type != "anthropic"
+            and isinstance(getattr(self._capabilities, "request_modes", None), list)
+            and "images" in (self._capabilities.request_modes or [])
+        ):
+            prompt = user_prompt if not system_prompt else f"{system_prompt}\n\n{user_prompt}"
+            image_result = await self._generate_image_artifact(
+                prompt=prompt,
+                image_path=image_path,
+                sample_id=sample_id,
+            )
+            if not image_result.get("error"):
+                return image_result
+            if not self.image_artifact_fallback_to_chat:
+                return image_result
 
         if use_logprobs:
             logprobs_result = await self._generate_with_logprobs(
@@ -250,6 +410,7 @@ class OpenAIInterface:
                     choices=None,
                     choice_labels=None,
                     allow_logprobs_fallback=False,
+                    expects_image_artifact=expects_image_artifact,
                 )
             return logprobs_result
 
@@ -336,22 +497,34 @@ class OpenAIInterface:
                 }
 
             response = await self.client.chat.completions.create(**params)
-            raw_output = response.choices[0].message.content
-            result["raw"] = raw_output
-            if raw_output is None:
+            content = response.choices[0].message.content
+            result["raw"] = content
+            if content is None:
                 result["error"] = "Empty response content"
                 result["error_type"] = "invalid_response"
                 return result
 
+            if expects_image_artifact:
+                payload = (
+                    self._extract_image_payload_from_content(content)
+                    or self._extract_text_from_content(content)
+                )
+                if not payload:
+                    result["error"] = "Empty image artifact content"
+                    result["error_type"] = "invalid_response"
+                    return result
+                result["output"] = payload.strip()
+                return result
+
             if schema:
-                cleaned = self._extract_json(raw_output)
+                cleaned = self._extract_json(self._extract_text_from_content(content) or "")
                 try:
                     result["output"] = json.loads(cleaned)
                 except json.JSONDecodeError as e:
                     result["error"] = f"JSON parse error: {e}"
                     result["error_type"] = "invalid_response"
             else:
-                result["output"] = raw_output.strip()
+                result["output"] = (self._extract_text_from_content(content) or "").strip()
 
             return result
 
@@ -579,6 +752,7 @@ class OpenAIInterface:
                 choices=req.get("choices"),
                 choice_labels=req.get("choice_labels"),
                 allow_logprobs_fallback=req.get("allow_logprobs_fallback", False),
+                expects_image_artifact=req.get("expects_image_artifact", False),
             )
 
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:

@@ -171,6 +171,13 @@ def build_connection_info(
         "api_endpoint": provider_config.get("api_endpoint", model_config.get("api_endpoint")),
         "logprobs_top_k": provider_config.get("logprobs_top_k", model_config.get("logprobs_top_k")),
         "problematic_models": provider_config.get("problematic_models", model_config.get("problematic_models")),
+        # Image artifact generation (OpenAI-compatible images endpoints).
+        "image_response_format": provider_config.get("image_response_format", model_config.get("image_response_format")),
+        "image_size": provider_config.get("image_size", model_config.get("image_size")),
+        "image_artifact_fallback_to_chat": provider_config.get(
+            "image_artifact_fallback_to_chat",
+            model_config.get("image_artifact_fallback_to_chat", True),
+        ),
     }
     base_capabilities = PROVIDER_CAPABILITY_DEFAULTS.get(provider_type, InterfaceCapabilities())
     provider_capabilities = parse_interface_capabilities(

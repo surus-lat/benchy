@@ -25,4 +25,4 @@ capabilities:
   supports_files: true
   supports_logprobs: false
   supports_streaming: false
-  request_modes: ["chat", "completions"]
+  request_modes: ["chat", "completions", "images"]
