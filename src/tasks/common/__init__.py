@@ -69,6 +69,7 @@ from .multiple_choice import MultipleChoiceHandler
 from .structured import StructuredHandler
 from .freeform import FreeformHandler
 from .multimodal_structured import MultimodalStructuredHandler
+from .multimodal_image_artifact import MultimodalImageArtifactHandler
 
 # Dataset loaders (second most used)
 from .dataset_loaders import (
@@ -88,6 +89,15 @@ from .metrics import (
     PearsonCorrelation,
 )
 
+# Image metric utilities
+from .image_metrics import (
+    decode_base64_image,
+    coerce_prediction_to_image_bytes,
+    load_mask_as_bool,
+    predicted_image_to_mask,
+    binary_mask_metrics,
+    BackgroundRemovalMetrics,
+)
 # Utilities (auxiliary but still important)
 from .utils.dataset_utils import (
     download_huggingface_dataset,
@@ -123,6 +133,7 @@ __all__ = [
     "StructuredHandler",
     "FreeformHandler",
     "MultimodalStructuredHandler",
+    "MultimodalImageArtifactHandler",
     # Dataset loaders
     "CachedDatasetMixin",
     "CachedTSVMixin",
@@ -135,6 +146,13 @@ __all__ = [
     "MultipleChoiceAccuracy",
     "MeanSquaredError",
     "PearsonCorrelation",
+    # Image metric utilities
+    "decode_base64_image",
+    "coerce_prediction_to_image_bytes",
+    "load_mask_as_bool",
+    "predicted_image_to_mask",
+    "binary_mask_metrics",
+    "BackgroundRemovalMetrics",
     # Dataset utilities
     "download_huggingface_dataset",
     "load_jsonl_dataset",

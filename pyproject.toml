@@ -36,6 +36,7 @@ dependencies = [
     "tqdm>=4.66.0",
     "transformers>=4.56.2",
     "prefect>=3.4.19",
+    "pillow>=12.1.0",
 ]
 
 [project.scripts]
