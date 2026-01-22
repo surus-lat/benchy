@@ -57,6 +57,7 @@ def _run_logged_task(
     provider_config: Optional[Dict[str, Any]],
     api_endpoint: str,
     generation_config: Optional[Dict[str, Any]],
+    compatibility_mode: str,
 ) -> Dict[str, Any]:
     """Wrapper so each benchy task shows up as a Prefect task run."""
     if is_handler_based_task(task_name):
@@ -68,6 +69,7 @@ def _run_logged_task(
             task_config=task_config,
             limit=limit,
             provider_config=provider_config,
+            compatibility_mode=compatibility_mode,
         )
 
     pipeline_overrides = task_config.get("pipeline_overrides", {}) or {}
@@ -110,6 +112,7 @@ def _run_logged_task(
         limit=limit,
         cuda_devices=cuda_devices if provider_type == "vllm" else None,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
     )
 
 
@@ -284,6 +287,7 @@ def benchmark_pipeline(
     run_id: Optional[str] = None,
     provider_type: str = "vllm",
     provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
     organization: Optional[str] = None,
     url: Optional[str] = None,
     vllm_config: Optional[VLLMServerConfig] = None,
@@ -307,6 +311,7 @@ def benchmark_pipeline(
         run_id: Optional run ID for organizing outputs
         provider_type: Provider type ('vllm', 'openai', or 'anthropic')
         provider_config: Provider configuration (for cloud providers)
+        compatibility_mode: Compatibility handling mode for incompatible tasks
         vllm_config: vLLM server configuration (only used if provider_type == 'vllm')
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
@@ -505,6 +510,7 @@ def benchmark_pipeline(
                         provider_config=cloud_provider_config,
                         api_endpoint=api_endpoint,
                         generation_config=generation_config,
+                        compatibility_mode=compatibility_mode,
                     )
                     continue
             
@@ -558,6 +564,7 @@ def benchmark_pipeline(
                 provider_config=cloud_provider_config,
                 api_endpoint=api_endpoint,
                 generation_config=generation_config,
+                compatibility_mode=compatibility_mode,
             )
 
         # Step 4: Gather results

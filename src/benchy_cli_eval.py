@@ -6,7 +6,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
@@ -52,6 +52,43 @@ PROVIDER_SPECS = {
     "together": {
         "config_key": "together",
         "log": "Using Together AI cloud provider for model: {model_name}",
+    },
+}
+
+MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together"}
+CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "timeout": 120,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 1.0,
+        "max_tokens": 2048,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "auto",
+    },
+    "together": {
+        "base_url": "https://api.together.xyz/v1",
+        "api_key_env": "TOGETHER_API_KEY",
+        "timeout": 120,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 0.0,
+        "max_tokens": 4096,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "auto",
+    },
+    "anthropic": {
+        "base_url": "https://api.anthropic.com/v1",
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "timeout": 120,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "chat",
     },
 }
 
@@ -116,6 +153,157 @@ def _normalize_provider_name(name: str) -> str:
     if raw.endswith((".yaml", ".yml")):
         raw = raw.rsplit(".", 1)[0]
     return raw
+
+
+def _redact_args(args: argparse.Namespace) -> Dict[str, Any]:
+    """Return a log-safe copy of CLI args."""
+    payload = dict(vars(args))
+    if payload.get("api_key"):
+        payload["api_key"] = "***"
+    return payload
+
+
+def _default_api_endpoint(provider_type: str) -> str:
+    if provider_type == "anthropic":
+        return "chat"
+    if provider_type in {"openai", "together"}:
+        return "auto"
+    return "completions"
+
+
+def _apply_cli_provider_overrides(
+    provider_config: Dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    allow_base_url: bool,
+    allow_api_key: bool,
+) -> Dict[str, Any]:
+    merged = dict(provider_config or {})
+
+    if args.base_url is not None:
+        if not allow_base_url:
+            raise ValueError("--base-url is only valid for OpenAI-compatible providers")
+        merged["base_url"] = args.base_url
+    if args.api_key_env is not None:
+        if not allow_api_key:
+            raise ValueError("--api-key-env is only valid for OpenAI-compatible providers")
+        merged["api_key_env"] = args.api_key_env
+    if args.api_key is not None:
+        if not allow_api_key:
+            raise ValueError("--api-key is only valid for OpenAI-compatible providers")
+        merged["api_key"] = args.api_key
+
+    if args.timeout is not None:
+        merged["timeout"] = args.timeout
+    if args.max_retries is not None:
+        merged["max_retries"] = args.max_retries
+    if args.max_concurrent is not None:
+        merged["max_concurrent"] = args.max_concurrent
+    if args.temperature is not None:
+        merged["temperature"] = args.temperature
+    if args.max_tokens is not None:
+        merged["max_tokens"] = args.max_tokens
+    if args.max_tokens_param_name is not None:
+        merged["max_tokens_param_name"] = args.max_tokens_param_name
+    if args.api_endpoint is not None:
+        merged["api_endpoint"] = args.api_endpoint
+
+    return merged
+
+
+def _build_cli_provider_config(provider_type: str, args: argparse.Namespace) -> Dict[str, Any]:
+    defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+    merged = _apply_cli_provider_overrides(
+        defaults,
+        args,
+        allow_base_url=True,
+        allow_api_key=True,
+    )
+    if "api_endpoint" not in merged:
+        merged["api_endpoint"] = _default_api_endpoint(provider_type)
+    return merged
+
+
+def _apply_model_metadata(config: Dict[str, Any], args: argparse.Namespace) -> None:
+    model_section = dict(config.get("model") or {})
+    if args.organization is not None:
+        model_section["organization"] = args.organization
+    if args.url is not None:
+        model_section["url"] = args.url
+    config["model"] = model_section
+
+
+def _build_cli_only_config(
+    args: argparse.Namespace,
+    *,
+    config_manager: ConfigManager,
+) -> tuple[Dict[str, Any], Optional[str]]:
+    if args.provider:
+        provider_type = args.provider
+    elif args.model_path or args.vllm_config:
+        provider_type = "vllm"
+    elif args.base_url:
+        provider_type = "openai"
+    else:
+        provider_type = "openai"
+
+    if args.model_path and provider_type != "vllm":
+        raise ValueError("--model-path can only be used with the vLLM provider")
+    if args.model_path and args.base_url:
+        raise ValueError("--model-path cannot be combined with --base-url")
+    if provider_type == "vllm" and args.base_url:
+        raise ValueError("--base-url is not valid when running a local vLLM server")
+    if provider_type != "vllm" and args.vllm_config:
+        raise ValueError("--vllm-config is only valid for vLLM runs")
+
+    model_path_override = None
+    config: Dict[str, Any] = {}
+
+    if provider_type == "vllm":
+        model_path_override = args.model_path
+        if model_path_override:
+            model_path = Path(model_path_override).expanduser()
+            if not model_path.exists():
+                raise FileNotFoundError(f"--model-path does not exist: {model_path}")
+            model_path_override = str(model_path)
+
+        model_name = args.model_name
+        if not model_name:
+            if model_path_override:
+                model_name = Path(model_path_override).name
+            else:
+                raise ValueError("Missing required --model-name for vLLM runs without --model-path")
+
+        config["model"] = {"name": model_name}
+        config["provider_type"] = "vllm"
+
+        vllm_provider_name = args.vllm_config
+        if not vllm_provider_name:
+            vllm_provider_name = os.environ.get("BENCHY_VLLM_CONFIG", "vllm_two_cards_mm")
+
+        provider_config: Dict[str, Any] = {}
+        if vllm_provider_name:
+            provider_config = config_manager.get_provider_config(
+                _normalize_provider_name(vllm_provider_name)
+            )
+        provider_config = _apply_cli_provider_overrides(
+            provider_config,
+            args,
+            allow_base_url=False,
+            allow_api_key=False,
+        )
+        if "api_endpoint" not in provider_config:
+            provider_config["api_endpoint"] = _default_api_endpoint("vllm")
+        config["vllm"] = provider_config
+    else:
+        if not args.model_name:
+            raise ValueError("Missing required --model-name for OpenAI-compatible runs")
+        config["model"] = {"name": args.model_name}
+        config["provider_type"] = provider_type
+        config[provider_type] = _build_cli_provider_config(provider_type, args)
+
+    _apply_model_metadata(config, args)
+    return config, model_path_override
 
 
 def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
@@ -190,16 +378,103 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         type=str,
         default=None,
         help=(
-            "Model identifier. With --model-path, this is the run alias used for outputs/requests; "
-            "without --model-path, this is treated as a Hugging Face model ID to load via vLLM "
-            "(e.g. unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit)."
+            "Model identifier used in requests and outputs. With --model-path or --provider vllm, "
+            "this is the served model name/alias. For OpenAI-compatible endpoints, this is the "
+            "model name sent in API requests (e.g. gpt-4o-mini)."
         ),
+    )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["vllm", "openai", "together", "anthropic"],
+        default=None,
+        help="Provider type to use when no model config is provided (default: inferred).",
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default=None,
+        help="OpenAI-compatible base URL (e.g. https://api.openai.com/v1 or http://host:8000/v1).",
+    )
+    parser.add_argument(
+        "--api-key-env",
+        type=str,
+        default=None,
+        help="Environment variable name to read API key from (e.g. OPENAI_API_KEY).",
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="API key value (discouraged; not written to run artifacts).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Request timeout in seconds for OpenAI-compatible providers.",
+    )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        help="Maximum retry attempts for API requests.",
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=None,
+        help="Maximum concurrent API requests.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="Generation temperature (overrides provider default).",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Maximum tokens to generate (overrides provider default).",
+    )
+    parser.add_argument(
+        "--max-tokens-param-name",
+        type=str,
+        default=None,
+        help="Parameter name for max tokens (e.g. max_tokens or max_completion_tokens).",
+    )
+    parser.add_argument(
+        "--api-endpoint",
+        type=str,
+        choices=["auto", "chat", "completions"],
+        default=None,
+        help="Request mode for OpenAI-compatible providers (default: auto).",
+    )
+    parser.add_argument(
+        "--organization",
+        type=str,
+        default=None,
+        help="Optional organization metadata for run artifacts.",
+    )
+    parser.add_argument(
+        "--url",
+        type=str,
+        default=None,
+        help="Optional URL metadata for run artifacts.",
     )
     parser.add_argument(
         "--vllm-config",
         type=str,
         default=None,
         help="Provider config name under configs/providers (e.g. vllm_two_cards_mm)",
+    )
+    parser.add_argument(
+        "--compatibility",
+        type=str,
+        choices=["warn", "skip", "error"],
+        default=None,
+        help="Compatibility handling for incompatible tasks (default: warn for CLI-only, skip for config).",
     )
     parser.add_argument(
         "--output-path",
@@ -212,12 +487,13 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]]:
-    """Return (merged_config, model_path_override)."""
+def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str], bool]:
+    """Return (merged_config, model_path_override, used_config_file)."""
     config_manager = ConfigManager()
 
     config_ref = args.config or args.config_ref or os.environ.get("BENCHY_CONFIG")
     config: Optional[dict] = None
+    used_config_file = False
     if config_ref:
         resolved_config_path = str(resolve_config_path(config_ref))
         try:
@@ -227,6 +503,11 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
             logger.info("Falling back to legacy config loading: %s", exc)
             config = load_config(resolved_config_path)
             logger.info("Loaded legacy configuration from %s", resolved_config_path)
+        used_config_file = True
+
+    if not config:
+        config, model_path_override = _build_cli_only_config(args, config_manager=config_manager)
+        return config, model_path_override, used_config_file
 
     model_path_override = args.model_path
     if model_path_override:
@@ -255,20 +536,11 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
         if vllm_provider_name:
             provider_config = config_manager.get_provider_config(_normalize_provider_name(vllm_provider_name))
             config["vllm"] = provider_config
-    elif args.model_name and not config_ref:
-        # Shortcut path: model id + provider config, without a model YAML.
-        config = dict(config or {})
-        config["model"] = {"name": args.model_name}
-        config["provider_type"] = "vllm"
-
-        vllm_provider_name = args.vllm_config or os.environ.get("BENCHY_VLLM_CONFIG", "vllm_two_cards_mm")
-        provider_config = config_manager.get_provider_config(_normalize_provider_name(vllm_provider_name))
-        config["vllm"] = provider_config
 
     if not config:
         raise ValueError(
-            "No model configuration provided. Pass `--config <model.yaml>` or "
-            "`--model-path <local_model_dir>`, or `--model-name <hf_model_id>`."
+            "No model configuration provided. Pass `--config <model.yaml>`, `--model-path <local_model_dir>`, "
+            "or `--model-name <model_id>` for OpenAI-compatible runs."
         )
 
     # Optional vLLM provider override even when using a model config.
@@ -280,11 +552,32 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
         config["vllm"] = provider_config
         config["provider_type"] = "vllm"
 
+    if args.provider:
+        existing_provider_type = config.get("provider_type")
+        if existing_provider_type and existing_provider_type != args.provider:
+            raise ValueError(
+                f"--provider {args.provider} conflicts with config provider_type {existing_provider_type}."
+            )
+        config["provider_type"] = args.provider
+
+    provider_type = config.get("provider_type", "vllm")
+    provider_section = dict(config.get(provider_type) or {})
+    allow_base_url = provider_type in {"openai", "together", "anthropic"}
+    allow_api_key = allow_base_url
+    config[provider_type] = _apply_cli_provider_overrides(
+        provider_section,
+        args,
+        allow_base_url=allow_base_url,
+        allow_api_key=allow_api_key,
+    )
+
+    _apply_model_metadata(config, args)
+
     model_name = (config.get("model") or {}).get("name")
     if not model_name:
         raise KeyError("Missing required config key: model.name")
 
-    return config, model_path_override
+    return config, model_path_override, used_config_file
 
 
 def run_eval(args: argparse.Namespace) -> int:
@@ -317,10 +610,10 @@ def run_eval(args: argparse.Namespace) -> int:
     logger.info("Starting benchy eval")
 
     if args.verbose:
-        logger.info("Command line arguments: %s", args)
+        logger.info("Command line arguments: %s", _redact_args(args))
         logger.info("Working directory: %s", os.getcwd())
 
-    config, model_path_override = _load_or_build_config(args)
+    config, model_path_override, used_config_file = _load_or_build_config(args)
     config_manager = ConfigManager()
 
     central_config = load_config("configs/config.yaml")
@@ -387,8 +680,7 @@ def run_eval(args: argparse.Namespace) -> int:
             tasks_override.extend(_parse_tasks_arg(group_entry))
     tasks_override = _dedupe_tasks(tasks_override)
 
-    model_provider_types = {"vllm", "openai", "anthropic", "together"}
-    is_system_provider = provider_type not in model_provider_types
+    is_system_provider = provider_type not in MODEL_PROVIDER_TYPES
 
     if tasks_override:
         if is_system_provider and config_tasks:
@@ -413,6 +705,10 @@ def run_eval(args: argparse.Namespace) -> int:
         raise SystemExit("No tasks to run after applying task overrides.")
 
     tasks_to_run = config_manager.expand_task_groups(tasks_to_run, central_config)
+
+    compatibility_mode = args.compatibility
+    if compatibility_mode is None:
+        compatibility_mode = "skip" if used_config_file else "warn"
 
     if args.register:
         if not PREFECT_AVAILABLE:
@@ -456,6 +752,7 @@ def run_eval(args: argparse.Namespace) -> int:
         run_id=run_id,
         provider_type=provider_type,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
         organization=organization,
         url=url,
         vllm_config=vllm_server_config,
