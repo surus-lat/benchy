@@ -202,7 +202,9 @@ def build_connection_info(
             connection_info["base_url"] = f"http://{host}:{port}/v1"
         
         connection_info["api_key"] = "EMPTY"  # vLLM doesn't need real key
-        connection_info["use_structured_outputs"] = True  # vLLM v0.12.0+ structured outputs
+        # vLLM v0.12.0+ supports schema-guided structured outputs, but allow opting out
+        # for debugging/perf (falls back to prompt-only schema enforcement + validation).
+        connection_info["use_structured_outputs"] = bool(provider_config.get("use_structured_outputs", True))
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
