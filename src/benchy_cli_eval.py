@@ -49,6 +49,10 @@ PROVIDER_SPECS = {
         "config_key": "surus_factura",
         "log": "Using SURUS AI Factura provider for image extraction tasks",
     },
+    "surus_classify": {
+        "config_key": "surus_classify",
+        "log": "Using SURUS AI classify provider for classification tasks",
+    },
     "together": {
         "config_key": "together",
         "log": "Using Together AI cloud provider for model: {model_name}",

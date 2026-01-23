@@ -1,5 +1,6 @@
 """Dataset utilities for downloading and preprocessing."""
 
+import csv
 import json
 import logging
 from pathlib import Path
@@ -68,10 +69,63 @@ def download_huggingface_dataset(
         List of samples as dictionaries
     """
     logger.info(f"Downloading {dataset_name} dataset (split: {split})...")
-    dataset = load_dataset(dataset_name, split=split, cache_dir=cache_dir)
-    dataset_list = list(dataset)
-    logger.info(f"Downloaded {len(dataset_list)} samples")
-    return dataset_list
+    try:
+        dataset = load_dataset(dataset_name, split=split, cache_dir=cache_dir)
+        dataset_list = list(dataset)
+        logger.info(f"Downloaded {len(dataset_list)} samples")
+        return dataset_list
+    except Exception as exc:
+        # Some datasets on the Hub are misconfigured such that `datasets.load_dataset()`
+        # fails while trying to build splits (often due to mismatched CSV headers across files).
+        # For the common simple case where a repo contains `{split}.csv` or `{split}.tsv`,
+        # fall back to downloading that single file and parsing it directly.
+        message = str(exc)
+        looks_like_schema_mismatch = (
+            "All the data files must have the same columns" in message
+            or "column names don't match" in message
+        )
+        if not looks_like_schema_mismatch:
+            raise
+
+        try:
+            from huggingface_hub import hf_hub_download
+        except Exception:
+            # No hub client available; re-raise the original error.
+            raise
+
+        def _read_delimited(path: str, *, delimiter: str) -> List[Dict[str, Any]]:
+            rows: List[Dict[str, Any]] = []
+            with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter=delimiter)
+                for row in reader:
+                    if not row:
+                        continue
+                    # Normalize keys only if the file actually contains whitespace-padded headers.
+                    if any(isinstance(k, str) and k != k.strip() for k in row.keys()):
+                        row = {k.strip(): v for k, v in row.items()}
+                    rows.append(dict(row))
+            return rows
+
+        for filename, delimiter in ((f"{split}.csv", ","), (f"{split}.tsv", "\t")):
+            try:
+                local_path = hf_hub_download(
+                    repo_id=dataset_name,
+                    repo_type="dataset",
+                    filename=filename,
+                    cache_dir=cache_dir,
+                )
+            except Exception:
+                continue
+
+            logger.warning(
+                f"Falling back to direct file parsing for {dataset_name} split '{split}' via {filename}"
+            )
+            rows = _read_delimited(local_path, delimiter=delimiter)
+            logger.info(f"Downloaded {len(rows)} samples via fallback")
+            return rows
+
+        # Fallback didn't find a matching split file; surface the original error.
+        raise
 
 
 def save_to_jsonl(

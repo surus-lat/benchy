@@ -548,10 +548,16 @@ def discover_and_run_handler_task(
     Returns:
         Task results dict
     """
+    def _normalize_subtask_ref(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        return value.replace("-", "_")
+
     # Parse task reference
     parts = task_ref.split(".")
     group_name = parts[0]
-    subtask_name = parts[1] if len(parts) > 1 else None
+    subtask_name_raw = parts[1] if len(parts) > 1 else None
+    subtask_name = _normalize_subtask_ref(subtask_name_raw)
 
     # Discover task group
     group_info = discover_task_group(group_name)

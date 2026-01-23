@@ -23,6 +23,7 @@ import sys
 import logging
 import yaml
 import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -172,22 +173,122 @@ def _write_run_summary(
     task_results: Dict[str, Any],
     task_configs_by_name: Dict[str, Any],
 ) -> None:
-    summary = {
-        "model": model_name,
-        "run_id": run_id,
-        "timestamp": datetime.now().isoformat(),
-        "tasks": {},
+    def _canonical_task_key(task_key: str) -> str:
+        """Canonicalize task keys so `classify.spanish-spam` == `classify.spanish_spam`."""
+        parts = (task_key or "").split(".", 1)
+        if len(parts) == 2:
+            return f"{parts[0]}.{parts[1].replace('-', '_')}"
+        return task_key or ""
+
+    def _discover_metrics_summaries(root: str) -> Dict[str, Dict[str, Any]]:
+        """Scan the run folder for persisted *_metrics.json files.
+
+        This supports the common case where a user reuses the same run-id across
+        multiple invocations: older task results exist on disk, but the in-memory
+        `task_results` only includes the tasks from the latest invocation.
+        """
+        summaries: Dict[str, Dict[str, Any]] = {}
+        best_rank: Dict[str, tuple] = {}
+
+        root_path = Path(root)
+        if not root_path.exists():
+            return summaries
+
+        for metrics_path in root_path.rglob("*_metrics.json"):
+            try:
+                rel_parts = metrics_path.relative_to(root_path).parts
+            except Exception:
+                continue
+
+            # Heuristic: if file is under <group>/<subtask>/... treat as group.subtask.
+            # Otherwise under <task>/... treat as task.
+            if len(rel_parts) >= 3:
+                key = f"{rel_parts[0]}.{rel_parts[1]}"
+            elif len(rel_parts) >= 2:
+                key = rel_parts[0]
+            else:
+                continue
+
+            try:
+                with open(metrics_path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle) or {}
+            except Exception:
+                continue
+
+            metrics = payload.get("metrics") if isinstance(payload, dict) else None
+            if not isinstance(metrics, dict):
+                continue
+
+            timestamp = payload.get("timestamp")
+            ts_rank = str(timestamp) if isinstance(timestamp, str) else ""
+            try:
+                mtime = metrics_path.stat().st_mtime
+            except Exception:
+                mtime = 0.0
+
+            rank = (ts_rank, mtime)
+            canonical = _canonical_task_key(key)
+            if canonical in best_rank and rank <= best_rank[canonical]:
+                continue
+
+            best_rank[canonical] = rank
+            summaries[key] = _summarize_task_metrics(metrics)
+
+        return summaries
+
+    summary_path = os.path.join(model_output_path, "run_summary.json")
+
+    existing_tasks: Dict[str, Any] = {}
+    if os.path.exists(summary_path):
+        try:
+            with open(summary_path, "r", encoding="utf-8") as handle:
+                existing_payload = json.load(handle) or {}
+            if isinstance(existing_payload, dict) and isinstance(existing_payload.get("tasks"), dict):
+                existing_tasks = dict(existing_payload.get("tasks") or {})
+        except Exception:
+            existing_tasks = {}
+
+    # Start from what's already on disk (if any), then fill gaps from a scan, then apply
+    # the current invocation's in-memory task results on top.
+    merged_tasks: Dict[str, Any] = dict(existing_tasks)
+    canonical_to_actual: Dict[str, str] = {
+        _canonical_task_key(k): k for k in merged_tasks.keys() if isinstance(k, str)
     }
 
+    # 1) Scan disk for any other task outputs under this run-id/model folder.
+    disk_tasks = _discover_metrics_summaries(model_output_path)
+    for key, value in disk_tasks.items():
+        if not isinstance(key, str):
+            continue
+        canonical = _canonical_task_key(key)
+        if canonical in canonical_to_actual:
+            # Preserve the existing key spelling, but refresh its metrics from disk.
+            merged_tasks[canonical_to_actual[canonical]] = value
+        else:
+            merged_tasks[key] = value
+            canonical_to_actual[canonical] = key
+
+    # 2) Apply current run's tasks (prefer the current CLI key spelling).
     for task_name in tasks:
         metrics = task_results.get(task_name, {}).get("metrics", {}) or {}
         task_config = task_configs_by_name.get(task_name, {})
         metrics_manifest = task_config.get("metrics_manifest") or None
-        summary["tasks"][task_name] = (
-            _summarize_task_metrics(metrics, metrics_manifest) if metrics else {}
-        )
+        summarized = _summarize_task_metrics(metrics, metrics_manifest) if metrics else {}
 
-    summary_path = os.path.join(model_output_path, "run_summary.json")
+        canonical = _canonical_task_key(task_name)
+        existing_key = canonical_to_actual.get(canonical)
+        if existing_key and existing_key != task_name:
+            # Rename to the current invocation spelling (e.g. prefer spanish-spam over spanish_spam).
+            merged_tasks.pop(existing_key, None)
+        merged_tasks[task_name] = summarized
+        canonical_to_actual[canonical] = task_name
+
+    summary = {
+        "model": model_name,
+        "run_id": run_id,
+        "timestamp": datetime.now().isoformat(),
+        "tasks": merged_tasks,
+    }
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
     logger.info(f"Wrote run summary to {summary_path}")

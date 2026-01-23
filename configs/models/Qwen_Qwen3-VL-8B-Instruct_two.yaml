@@ -11,7 +11,7 @@ vllm:
 task_defaults:
   log_samples: true
   cuda_devices: '1'
-  batch_size: 10
+  batch_size: 5
 tasks:
 - latam_board
 metadata:

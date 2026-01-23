@@ -141,6 +141,12 @@ def run_task_group(
         subtasks_to_run = task_config.get("tasks", None)
         if subtasks_to_run is None:
             subtasks_to_run = spec.default_subtasks or []
+        else:
+            # Allow CLI-friendly subtask names like "spanish-spam" to map to
+            # Python module stems like "spanish_spam".
+            subtasks_to_run = [
+                (s.replace("-", "_") if isinstance(s, str) else s) for s in subtasks_to_run
+            ]
     else:
         subtasks_to_run = [spec.name]
 

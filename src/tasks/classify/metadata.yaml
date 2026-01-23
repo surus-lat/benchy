@@ -20,3 +20,6 @@ subtasks:
     credits: somosnlp
     url: https://huggingface.co/datasets/somosnlp-hackathon-2023/DiagTrast
 
+  spanish_spam:
+    description: Spanish spam vs ham detection (binary classification)
+    url: https://huggingface.co/datasets/softecapps/spam_ham_spanish
