@@ -40,7 +40,9 @@ class VLLMServerConfig:
     max_model_len: int = 8192
     gpu_memory_utilization: float = 0.6
     enforce_eager: bool = True
-    limit_mm_per_prompt: str = '{"images": 0, "audios": 0}'
+    # Only set when you explicitly want to cap multimodal inputs (or disable them).
+    # If unset, vLLM defaults apply and no --limit-mm-per-prompt flag is passed.
+    limit_mm_per_prompt: Optional[str] = None
     hf_cache: str = field(default_factory=_default_hf_cache)
     hf_token: str = ""
     startup_timeout: int = 900

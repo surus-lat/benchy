@@ -11,6 +11,7 @@ tasks:
 - structured_extraction
 metadata:
   max_context_length: 128000
+  supports_multimodal: true
   model_type: trinity_mini
   provider: together
   description: "ArceeAI Trinity-Mini - Multimodal vision-language model"

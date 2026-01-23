@@ -67,18 +67,24 @@ class StructuredHandler(BaseHandler):
         if self._metrics_calc is None:
             from .utils.structured_metrics_calculator import MetricsCalculator
 
-            # Build metrics config
-            metrics_cfg = {}
-            if self.metrics_config:
-                metrics_cfg.update(self.metrics_config)
-            elif self.config and "metrics" in self.config:
-                metrics_cfg.update(self.config["metrics"])
+            # Build metrics config (defaults < config overrides).
+            import copy
+            metrics_cfg: Dict[str, Any] = copy.deepcopy(self.metrics_config) if self.metrics_config else {}
+            if self.config and "metrics" in self.config and isinstance(self.config["metrics"], dict):
+                self._deep_merge(metrics_cfg, self.config["metrics"])
 
             # Check if strict mode is enabled
             strict = metrics_cfg.get("strict", False)
             
             self._metrics_calc = MetricsCalculator({"metrics": metrics_cfg}, strict=strict)
         return self._metrics_calc
+
+    def _deep_merge(self, base: Dict, override: Dict) -> None:
+        for key, value in override.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                self._deep_merge(base[key], value)
+            else:
+                base[key] = value
 
     def preprocess_sample(
         self, raw_sample: Dict[str, Any], idx: int
@@ -193,53 +199,10 @@ class StructuredHandler(BaseHandler):
         )
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate structured extraction metrics across all samples.
-        
-        Computes rates for various structured metrics and averages for numeric scores.
-        
-        Args:
-            all_metrics: List of per-sample metrics
-            
-        Returns:
-            Aggregated metrics dict
-        """
-        if not all_metrics:
-            return {}
-
-        total_samples = len(all_metrics)
-        valid_samples = sum(1 for m in all_metrics if m.get("valid", False))
-
-        aggregated = {
-            "total_samples": total_samples,
-            "valid_samples": valid_samples,
-            "error_count": total_samples - valid_samples,
-        }
-
-        if valid_samples == 0:
-            return aggregated
-
-        # Compute rates for boolean metrics
-        schema_valid_count = sum(1 for m in all_metrics if m.get("schema_validity", 0) > 0.5)
-        exact_match_count = sum(1 for m in all_metrics if m.get("exact_match", False))
-
-        aggregated["schema_validity_rate"] = schema_valid_count / total_samples
-        aggregated["exact_match_rate"] = exact_match_count / total_samples
-        aggregated["error_rate"] = (total_samples - valid_samples) / total_samples
-
-        # Compute averages for numeric metrics
-        numeric_metrics = [
-            "field_f1_strict",
-            "field_f1_partial",
-            "field_precision",
-            "field_recall",
-            "hallucination_rate",
-            "extraction_quality_score",
-        ]
-
-        for metric_name in numeric_metrics:
-            values = [m.get(metric_name, 0) for m in all_metrics if m.get("valid", False)]
-            if values:
-                aggregated[metric_name] = sum(values) / len(values)
-
+        """Aggregate structured extraction metrics across all samples."""
+        aggregated = self.metrics_calculator.aggregate_metrics(all_metrics)
+        if "field_precision_partial" in aggregated and "field_precision" not in aggregated:
+            aggregated["field_precision"] = aggregated.get("field_precision_partial", 0.0)
+        if "field_recall_partial" in aggregated and "field_recall" not in aggregated:
+            aggregated["field_recall"] = aggregated.get("field_recall_partial", 0.0)
         return aggregated
-

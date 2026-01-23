@@ -91,7 +91,7 @@ Task-optimized model for JSON extraction with guided schemas. Significantly fast
 SURUS_API_KEY=your-key-here
 
 # Run benchmark
-python eval.py --config configs/systems/surus-extract.yaml --limit 10
+benchy eval --config configs/systems/surus-extract.yaml --limit 10
 ```
 
 ## Creating New System Configs
@@ -115,10 +115,10 @@ python eval.py --config configs/systems/surus-extract.yaml --limit 10
 
 ```bash
 # Test with small limit
-python eval.py --config configs/systems/my-system.yaml --limit 5
+benchy eval --config configs/systems/my-system.yaml --limit 5
 
 # Full evaluation
-python eval.py --config configs/systems/my-system.yaml
+benchy eval --config configs/systems/my-system.yaml
 ```
 
 ## Comparison with Models
@@ -138,6 +138,6 @@ To add a new provider type:
 1. Create interface in `src/interfaces/`
 2. Implement `prepare_request()` and `generate_batch()`
 3. Register it in `src/engine/connection.py` via `get_interface_for_provider`
-4. Add provider handling in `eval.py` and `src/config_manager.py` if models should use it
+4. Add provider handling in `src/benchy_cli_eval.py` and `src/config_manager.py` if models should use it
 5. Create or update a system config template
 6. Document in this README

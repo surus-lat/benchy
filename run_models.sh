@@ -6,7 +6,7 @@
 #
 # This script will:
 # 1. Find all .yaml files in configs/models/ (or use provided list/file)
-# 2. Run 'python eval.py -c <config>' for each model
+# 2. Run 'benchy eval -c <config>' for each model
 # 3. Provide detailed summary with lists of passed/failed models
 
 # Handle command line flags
@@ -17,6 +17,15 @@ TASKS_OVERRIDE=""
 TASKS_FILE=""
 TASK_GROUPS=()
 POSITIONAL_ARGS=()
+
+# Prefer installed `benchy`, fall back to running from the repo venv/module.
+if command -v benchy >/dev/null 2>&1; then
+    BENCHY_CMD=(benchy)
+elif [[ -x ".venv/bin/python" ]]; then
+    BENCHY_CMD=(.venv/bin/python -m src.benchy_cli)
+else
+    BENCHY_CMD=(python -m src.benchy_cli)
+fi
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -333,11 +342,11 @@ for i in "${!configs[@]}"; do
     # Run the evaluation with appropriate output handling
     if [[ "$QUIET_MODE" == "true" ]]; then
         # Quiet mode: suppress detailed output
-        python eval.py -c "$config" --run-id "$RUN_ID" "${eval_args[@]}" > /dev/null 2>&1
+        "${BENCHY_CMD[@]}" eval -c "$config" --run-id "$RUN_ID" "${eval_args[@]}" > /dev/null 2>&1
         eval_result=$?
     else
         # Normal mode: show full output
-        python eval.py -c "$config" --run-id "$RUN_ID" "${eval_args[@]}"
+        "${BENCHY_CMD[@]}" eval -c "$config" --run-id "$RUN_ID" "${eval_args[@]}"
         eval_result=$?
     fi
     

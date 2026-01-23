@@ -30,7 +30,10 @@ class MultimodalStructuredHandler(BaseHandler):
         requires_files: File inputs required (default: True)
         requires_schema: Schema required (default: True)
         answer_type: Set to "structured"
-        source_dir: Source directory path for files (required)
+        source_dir: Optional source directory path for files.
+            If provided, missing datasets can be populated by copying from source_dir.
+            If not provided, tasks may ship a pre-populated `.data/` folder or override
+            `_copy_source_data()` to download/populate data on demand.
         schema_field: Field name for schema (default: "schema")
         image_field: Field name for image path (default: "image_path")
         metrics_config: Configuration for metrics calculator (optional)
@@ -54,24 +57,27 @@ class MultimodalStructuredHandler(BaseHandler):
     answer_type: str = "structured"
     schema_field: str = "schema"
     image_field: str = "image_path"
-    source_dir: Optional[str] = None
+    source_dir: Optional[Any] = None
     metrics_config: Optional[Dict[str, Any]] = None
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the multimodal structured handler."""
         super().__init__(config)
 
-        # Override source_dir from config if provided
-        if config and "source_dir" in config:
-            self.source_dir = config["source_dir"]
+        # Optional override source_dir from config if provided.
+        # Handler runner passes dataset config under config["dataset"].
+        source_dir = None
+        if config:
+            if "source_dir" in config:
+                source_dir = config["source_dir"]
+            else:
+                dataset_cfg = config.get("dataset")
+                if isinstance(dataset_cfg, dict) and dataset_cfg.get("source_dir"):
+                    source_dir = dataset_cfg.get("source_dir")
+        if source_dir is not None:
+            self.source_dir = source_dir
 
-        if not self.source_dir:
-            raise ValueError(
-                f"{self.__class__.__name__} requires 'source_dir' attribute "
-                "pointing to directory with images/files"
-            )
-
-        self.source_path = Path(self.source_dir)
+        self.source_path: Optional[Path] = Path(str(self.source_dir)) if self.source_dir else None
         self.schema: Optional[Dict] = None
         self.dataset_metrics_config: Optional[Dict] = None
 
@@ -89,9 +95,10 @@ class MultimodalStructuredHandler(BaseHandler):
             # Use the common MetricsCalculator from utils
             try:
                 from .utils.structured_metrics_calculator import MetricsCalculator
-                merged_config = self._get_merged_config()
-                strict = merged_config.get("strict", False)
-                self._metrics_calc = MetricsCalculator({"metrics": merged_config}, strict=strict)
+                merged = self._get_merged_config()
+                metrics_cfg = merged.get("metrics", {}) if isinstance(merged, dict) else {}
+                strict = bool(metrics_cfg.get("strict", False))
+                self._metrics_calc = MetricsCalculator({"metrics": metrics_cfg}, strict=strict)
             except ImportError:
                 logger.exception("Could not import MetricsCalculator")
                 raise
@@ -108,11 +115,15 @@ class MultimodalStructuredHandler(BaseHandler):
 
         merged = copy.deepcopy(self.config) if self.config else {}
 
-        # Add class-level metrics config
+        # Merge metrics with correct precedence:
+        # defaults (class-level) < handler config < dataset-specific metrics config
+        if "metrics" not in merged or not isinstance(merged.get("metrics"), dict):
+            merged["metrics"] = {}
+
         if self.metrics_config:
-            if "metrics" not in merged:
-                merged["metrics"] = {}
-            self._deep_merge(merged["metrics"], self.metrics_config)
+            class_defaults = copy.deepcopy(self.metrics_config)
+            self._deep_merge(class_defaults, merged["metrics"])
+            merged["metrics"] = class_defaults
 
         # Merge dataset metrics config if available
         if self.dataset_metrics_config:
@@ -139,13 +150,21 @@ class MultimodalStructuredHandler(BaseHandler):
         """Load dataset, copying from source if needed."""
         # Check if data exists, otherwise copy from source
         if not (self.data_dir / "schema.json").exists():
-            if not self.source_path.exists():
-                raise FileNotFoundError(
-                    f"Source directory not found: {self.source_path}\n"
-                    f"Please provide a valid source_dir"
-                )
-            logger.info(f"Copying data from {self.source_path} to {self.data_dir}")
-            self._copy_source_data()
+            try:
+                if self.source_path and self.source_path.exists():
+                    logger.info(f"Copying data from {self.source_path} to {self.data_dir}")
+                else:
+                    logger.info(f"Populating dataset in {self.data_dir}")
+                self._copy_source_data()
+            except Exception as exc:
+                if not self.source_path:
+                    raise FileNotFoundError(
+                        f"Dataset not found in {self.data_dir}.\n"
+                        "Provide a valid dataset source via config['dataset']['source_dir'] "
+                        "(or config['source_dir']), ship a pre-populated `.data/`, "
+                        "or override _copy_source_data() to download/populate data."
+                    ) from exc
+                raise
 
         # Load schema
         schema_file = self.data_dir / "schema.json"
@@ -171,6 +190,11 @@ class MultimodalStructuredHandler(BaseHandler):
 
     def _copy_source_data(self) -> None:
         """Copy data from source directory to task data directory."""
+        if not self.source_path:
+            raise ValueError(
+                f"{self.__class__.__name__} has no source_dir configured. "
+                "Set config['dataset']['source_dir'] (or config['source_dir']) or override _copy_source_data()."
+            )
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy all files from source to data directory
@@ -321,52 +345,13 @@ class MultimodalStructuredHandler(BaseHandler):
         )
 
     def aggregate_metrics(self, all_metrics: List[Dict]) -> Dict[str, Any]:
-        """Aggregate structured extraction metrics across all samples.
-        
-        Args:
-            all_metrics: List of per-sample metrics
-            
-        Returns:
-            Aggregated metrics dict
-        """
-        if not all_metrics:
-            return {}
-
-        total_samples = len(all_metrics)
-        valid_samples = sum(1 for m in all_metrics if m.get("valid", False))
-
-        aggregated = {
-            "total_samples": total_samples,
-            "valid_samples": valid_samples,
-            "error_count": total_samples - valid_samples,
-        }
-
-        if valid_samples == 0:
-            return aggregated
-
-        # Compute rates for boolean metrics
-        schema_valid_count = sum(1 for m in all_metrics if m.get("schema_validity", 0) > 0.5)
-        exact_match_count = sum(1 for m in all_metrics if m.get("exact_match", False))
-
-        aggregated["schema_validity_rate"] = schema_valid_count / total_samples
-        aggregated["exact_match_rate"] = exact_match_count / total_samples
-        aggregated["error_rate"] = (total_samples - valid_samples) / total_samples
-
-        # Compute averages for numeric metrics
-        numeric_metrics = [
-            "field_f1_strict",
-            "field_f1_partial",
-            "field_precision",
-            "field_recall",
-            "hallucination_rate",
-            "document_extraction_score",
-            "extraction_quality_score",
-            "strict_type_compliance_rate",
-        ]
-
-        for metric_name in numeric_metrics:
-            values = [m.get(metric_name, 0) for m in all_metrics if m.get("valid", False)]
-            if values:
-                aggregated[metric_name] = sum(values) / len(values)
-
+        """Aggregate structured extraction metrics across all samples."""
+        aggregated = self.metrics_calculator.aggregate_metrics(all_metrics)
+        # Backwards-compatible aliases for older summary/log consumers.
+        if "field_precision_partial" in aggregated and "field_precision" not in aggregated:
+            aggregated["field_precision"] = aggregated.get("field_precision_partial", 0.0)
+        if "field_recall_partial" in aggregated and "field_recall" not in aggregated:
+            aggregated["field_recall"] = aggregated.get("field_recall_partial", 0.0)
+        if "type_accuracy" in aggregated and "strict_type_compliance_rate" not in aggregated:
+            aggregated["strict_type_compliance_rate"] = aggregated.get("type_accuracy", 0.0)
         return aggregated

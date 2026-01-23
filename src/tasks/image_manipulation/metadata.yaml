@@ -1,0 +1,13 @@
+name: image_manipulation
+display_name: Image Manipulation
+description: Tasks where models edit/manipulate an input image and return an image artifact.
+
+capability_requirements:
+  requires_multimodal: required
+  requires_files: required
+
+subtasks:
+  remove_background:
+    description: Background removal (image cutout) evaluated against ground-truth masks.
+    url: https://www.kaggle.com/datasets/fineyouthpe/icm57-dataset
+

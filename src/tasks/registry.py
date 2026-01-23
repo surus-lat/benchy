@@ -132,6 +132,7 @@ def run_simple_task(
     limit: Optional[int] = None,
     cuda_devices: Optional[str] = None,
     provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
 ) -> Dict[str, Any]:
     """Run a SimpleTask using the generic task group runner.
 
@@ -146,6 +147,7 @@ def run_simple_task(
         task_config=task_config,
         limit=limit,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
     )
 
 
@@ -462,12 +464,26 @@ def build_handler_task_spec(
         if not subtask_info:
             return None
 
-        # Build config for handler
+        # Build config for handler.
+        # Note: group-level metadata capability_requirements are applied here so new tasks
+        # can declare requirements in metadata.yaml without needing boilerplate in each class.
+        capability_requirements: Dict[str, Any] = {}
+        group_reqs = (group_info.metadata or {}).get("capability_requirements")
+        if isinstance(group_reqs, dict):
+            capability_requirements.update(group_reqs)
+        task_reqs = context.task_config.get("capability_requirements")
+        if isinstance(task_reqs, dict):
+            capability_requirements.update(task_reqs)
+        subtask_reqs = context.subtask_config.get("capability_requirements")
+        if isinstance(subtask_reqs, dict):
+            capability_requirements.update(subtask_reqs)
+
         handler_config = {
             "subtask_name": context.subtask_name,
             "dataset": context.subtask_config.get("dataset", {}),
             "prompts": context.subtask_config.get("prompts", context.prompts),
             "metrics": context.subtask_config.get("metrics", {}),
+            "capability_requirements": capability_requirements,
         }
 
         # Load and instantiate the handler
@@ -516,6 +532,7 @@ def discover_and_run_handler_task(
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
     provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
 ) -> Dict[str, Any]:
     """Discover and run a convention-based handler task.
     
@@ -531,10 +548,16 @@ def discover_and_run_handler_task(
     Returns:
         Task results dict
     """
+    def _normalize_subtask_ref(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+        return value.replace("-", "_")
+
     # Parse task reference
     parts = task_ref.split(".")
     group_name = parts[0]
-    subtask_name = parts[1] if len(parts) > 1 else None
+    subtask_name_raw = parts[1] if len(parts) > 1 else None
+    subtask_name = _normalize_subtask_ref(subtask_name_raw)
 
     # Discover task group
     group_info = discover_task_group(group_name)
@@ -561,6 +584,7 @@ def discover_and_run_handler_task(
         task_config=task_config,
         limit=limit,
         provider_config=provider_config,
+        compatibility_mode=compatibility_mode,
     )
 
 

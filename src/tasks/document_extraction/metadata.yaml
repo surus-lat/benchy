@@ -1,0 +1,15 @@
+name: document_extraction
+display_name: Document Extraction
+description: Structured data extraction from document images using guided JSON schema
+
+capability_requirements:
+  requires_multimodal: required
+  requires_files: required
+  requires_schema: required
+
+subtasks:
+  facturas_argentinas:
+    description: Extract structured invoice data from Argentinian factura images
+    dataset_url: https://huggingface.co/datasets/mauroibz/facturas-argentinas
+    long_description: "Facturas Argentinas evaluates vision-language models on extracting structured data from Argentinian invoice images. The model must return JSON that strictly matches the provided invoice schema (schema.json). Ground truth targets are provided in facturas.json and images in jpg/."
+

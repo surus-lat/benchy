@@ -12,11 +12,7 @@ from typing import Dict, List, Optional, Any
 from openai import AsyncOpenAI
 
 from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
-from ..engine.retry import (
-    RetryDecision,
-    classify_http_exception,
-    run_with_retries,
-)
+from ..engine.retry import RetryDecision, classify_http_exception, extract_status_code, run_with_retries
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +34,12 @@ class OpenAIInterface:
         self.api_endpoint = connection_info.get("api_endpoint") or "auto"
 
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
+        # Image artifact generation via images endpoints (OpenAI-compatible).
+        self.image_response_format = connection_info.get("image_response_format", "b64_json")
+        self.image_size = connection_info.get("image_size")
+        self.image_artifact_fallback_to_chat = connection_info.get(
+            "image_artifact_fallback_to_chat", True
+        )
         base_capabilities = InterfaceCapabilities(
             supports_multimodal=True,
             supports_logprobs=False,
@@ -79,7 +81,8 @@ class OpenAIInterface:
             logger.info("Initialized Anthropic client")
         else:
             api_key = self._get_api_key(connection_info, "OPENAI_API_KEY", allow_empty=True)
-            self.client = AsyncOpenAI(base_url=self.base_url, api_key=api_key)
+            # Disable OpenAI SDK internal retries; Benchy handles retries consistently in run_with_retries.
+            self.client = AsyncOpenAI(base_url=self.base_url, api_key=api_key, max_retries=0)
             self.anthropic_client = None
             logger.info(f"Initialized OpenAI-compatible client for {self.provider_type}")
 
@@ -105,6 +108,7 @@ class OpenAIInterface:
         """Prepare request by getting prompts from task."""
         answer_type = getattr(task, "answer_type", None)
         use_logprobs = answer_type == "multiple_choice"
+        expects_image_artifact = answer_type == "image_artifact"
         requires_logprobs = getattr(task, "requires_logprobs", use_logprobs)
         prefers_logprobs = getattr(task, "prefers_logprobs", False)
         # Capability: only enable logprobs if required or preferred and supported.
@@ -135,6 +139,7 @@ class OpenAIInterface:
             "choices": sample.get("choices") if use_logprobs else None,
             "choice_labels": sample.get("choice_labels") if use_logprobs else None,
             "allow_logprobs_fallback": allow_logprobs_fallback,
+            "expects_image_artifact": expects_image_artifact,
         }
 
         # Capability: fail fast if multimodal inputs aren't supported.
@@ -190,7 +195,26 @@ class OpenAIInterface:
     def _classify_api_error(self, exc: Exception, attempt: int) -> RetryDecision:
         if isinstance(exc, ValueError):
             return RetryDecision(False, 0.0, "invalid_response")
+        status_code = extract_status_code(exc)
+        # vLLM 5xx errors are typically not transient; don't spin retries when the engine is dead/OOM.
+        if self.provider_type == "vllm" and isinstance(status_code, int) and status_code >= 500:
+            return RetryDecision(False, 0.0, "connectivity_error")
         return classify_http_exception(exc, attempt)
+
+    def _strip_schema_from_prompt_for_structured_outputs(self, user_prompt: str) -> str:
+        # vLLM structured_outputs already enforces the schema. Keeping a full JSON schema inside
+        # the prompt can massively inflate prompt length (and memory) for vision models.
+        if not user_prompt:
+            return user_prompt
+        lowered = user_prompt.lower()
+        marker = "\nschema:"
+        idx = lowered.find(marker)
+        if idx == -1:
+            marker = "\nschema\n"
+            idx = lowered.find(marker)
+        if idx == -1:
+            return user_prompt
+        return user_prompt[:idx].rstrip() + "\n"
 
     def _max_tokens_key(self) -> str:
         if self.provider_type == "openai":
@@ -198,6 +222,138 @@ class OpenAIInterface:
                 if marker in self.model_name.lower() and self.max_tokens_param_name == "max_tokens":
                     return "max_completion_tokens"
         return self.max_tokens_param_name
+
+    def _extract_text_from_content(self, content: Any) -> Optional[str]:
+        """Extract text from OpenAI-style content payloads (string or list of parts)."""
+        if content is None:
+            return None
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+                if isinstance(item, dict):
+                    if item.get("type") == "text" and isinstance(item.get("text"), str):
+                        parts.append(item["text"])
+            return "\n".join(parts).strip()
+        return str(content)
+
+    def _extract_image_payload_from_content(self, content: Any) -> Optional[str]:
+        """Extract a data URL or base64 payload from content parts if present."""
+        if content is None:
+            return None
+        if isinstance(content, str):
+            # Some providers embed the base64/data URL directly as text content.
+            return content.strip()
+        if isinstance(content, list):
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                t = item.get("type")
+                if t == "image_url" and isinstance(item.get("image_url"), dict):
+                    url = item["image_url"].get("url")
+                    if isinstance(url, str) and url.strip():
+                        return url.strip()
+                if t == "image" and isinstance(item.get("image"), dict):
+                    data = item["image"].get("data")
+                    if isinstance(data, str) and data.strip():
+                        return data.strip()
+        return None
+
+    async def _generate_image_artifact(
+        self,
+        *,
+        prompt: str,
+        image_path: Optional[str],
+        sample_id: str,
+    ) -> Dict:
+        """Generate an image artifact via OpenAI-compatible images endpoints."""
+        result = {"output": None, "raw": None, "error": None, "error_type": None}
+
+        response_format = self.image_response_format or "b64_json"
+        extra_params: Dict[str, Any] = {}
+        if isinstance(self.image_size, str) and self.image_size:
+            extra_params["size"] = self.image_size
+
+        async def attempt_fn(_: int) -> Dict:
+            images_api = getattr(self.client, "images", None)
+            if images_api is None:
+                raise ValueError("OpenAI SDK client has no images API")
+
+            if image_path:
+                # Prefer edits for image-to-image tasks.
+                edit_fn = getattr(images_api, "edit", None) or getattr(images_api, "edits", None)
+                if edit_fn is None:
+                    raise ValueError("Provider does not support images edits endpoint")
+                with open(image_path, "rb") as handle:
+                    try:
+                        response = await edit_fn(
+                            model=self.model_name,
+                            image=handle,
+                            prompt=prompt,
+                            response_format=response_format,
+                            timeout=self.timeout,
+                            **extra_params,
+                        )
+                    except TypeError:
+                        # Some providers/SDK versions expect image as a list.
+                        response = await edit_fn(
+                            model=self.model_name,
+                            image=[handle],
+                            prompt=prompt,
+                            response_format=response_format,
+                            timeout=self.timeout,
+                            **extra_params,
+                        )
+            else:
+                gen_fn = getattr(images_api, "generate", None) or getattr(images_api, "create", None)
+                if gen_fn is None:
+                    raise ValueError("Provider does not support images generation endpoint")
+                response = await gen_fn(
+                    model=self.model_name,
+                    prompt=prompt,
+                    response_format=response_format,
+                    timeout=self.timeout,
+                    **extra_params,
+                )
+
+            data = getattr(response, "data", None) or []
+            first = data[0] if isinstance(data, list) and data else None
+            b64 = getattr(first, "b64_json", None) if first is not None else None
+            url = getattr(first, "url", None) if first is not None else None
+
+            if isinstance(b64, str) and b64.strip():
+                return {
+                    "output": b64.strip(),
+                    "raw": f"images_api=b64_json len={len(b64)}",
+                    "error": None,
+                    "error_type": None,
+                }
+            if isinstance(url, str) and url.strip():
+                return {
+                    "output": url.strip(),
+                    "raw": "images_api=url",
+                    "error": None,
+                    "error_type": None,
+                }
+
+            raise ValueError("Images API returned no b64_json/url payload")
+
+        response, error, error_type = await run_with_retries(
+            attempt_fn,
+            max_retries=self.max_retries,
+            classify_error=self._classify_api_error,
+        )
+
+        if response is not None:
+            return response
+
+        result["error"] = error
+        result["error_type"] = error_type
+        return result
 
     async def _generate_single(
         self,
@@ -210,9 +366,29 @@ class OpenAIInterface:
         choices: Optional[List[str]] = None,
         choice_labels: Optional[List[str]] = None,
         allow_logprobs_fallback: bool = False,
+        expects_image_artifact: bool = False,
     ) -> Dict:
         """Generate output for a single request."""
         result = {"output": None, "raw": None, "error": None, "error_type": None}
+
+        # Image artifact tasks: prefer images endpoints (OpenAI-compatible) only when the
+        # interface explicitly declares support, with optional chat fallback.
+        if (
+            expects_image_artifact
+            and self.provider_type != "anthropic"
+            and isinstance(getattr(self._capabilities, "request_modes", None), list)
+            and "images" in (self._capabilities.request_modes or [])
+        ):
+            prompt = user_prompt if not system_prompt else f"{system_prompt}\n\n{user_prompt}"
+            image_result = await self._generate_image_artifact(
+                prompt=prompt,
+                image_path=image_path,
+                sample_id=sample_id,
+            )
+            if not image_result.get("error"):
+                return image_result
+            if not self.image_artifact_fallback_to_chat:
+                return image_result
 
         if use_logprobs:
             logprobs_result = await self._generate_with_logprobs(
@@ -234,6 +410,7 @@ class OpenAIInterface:
                     choices=None,
                     choice_labels=None,
                     allow_logprobs_fallback=False,
+                    expects_image_artifact=expects_image_artifact,
                 )
             return logprobs_result
 
@@ -277,12 +454,17 @@ class OpenAIInterface:
             if image_path:
                 base64_image = self._encode_image(image_path)
                 media_type = self._get_image_media_type(image_path)
+                effective_prompt = user_prompt
+                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                    effective_prompt = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
                 user_content = [
-                    {"type": "text", "text": user_prompt},
+                    {"type": "text", "text": effective_prompt},
                     {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{base64_image}"}},
                 ]
             else:
                 user_content = user_prompt
+                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                    user_content = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
 
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -305,8 +487,8 @@ class OpenAIInterface:
                 from ..common.schema_sanitizer import sanitize_schema_for_vllm
                 sanitized_schema = sanitize_schema_for_vllm(schema)
                 params["extra_body"] = {"structured_outputs": {"json": sanitized_schema}}
-            elif schema:
-                # OpenAI strict mode structured outputs
+            elif schema and self.provider_type == "openai":
+                # OpenAI strict mode structured outputs (chat.completions response_format)
                 from ..common.schema_sanitizer import sanitize_schema_for_openai_strict
                 sanitized_schema = sanitize_schema_for_openai_strict(schema)
                 params["response_format"] = {
@@ -315,22 +497,34 @@ class OpenAIInterface:
                 }
 
             response = await self.client.chat.completions.create(**params)
-            raw_output = response.choices[0].message.content
-            result["raw"] = raw_output
-            if raw_output is None:
+            content = response.choices[0].message.content
+            result["raw"] = content
+            if content is None:
                 result["error"] = "Empty response content"
                 result["error_type"] = "invalid_response"
                 return result
 
+            if expects_image_artifact:
+                payload = (
+                    self._extract_image_payload_from_content(content)
+                    or self._extract_text_from_content(content)
+                )
+                if not payload:
+                    result["error"] = "Empty image artifact content"
+                    result["error_type"] = "invalid_response"
+                    return result
+                result["output"] = payload.strip()
+                return result
+
             if schema:
-                cleaned = self._extract_json(raw_output)
+                cleaned = self._extract_json(self._extract_text_from_content(content) or "")
                 try:
                     result["output"] = json.loads(cleaned)
                 except json.JSONDecodeError as e:
                     result["error"] = f"JSON parse error: {e}"
                     result["error_type"] = "invalid_response"
             else:
-                result["output"] = raw_output.strip()
+                result["output"] = (self._extract_text_from_content(content) or "").strip()
 
             return result
 
@@ -558,6 +752,7 @@ class OpenAIInterface:
                 choices=req.get("choices"),
                 choice_labels=req.get("choice_labels"),
                 allow_logprobs_fallback=req.get("allow_logprobs_fallback", False),
+                expects_image_artifact=req.get("expects_image_artifact", False),
             )
 
     async def generate_batch(self, requests: List[Dict]) -> List[Dict]:
@@ -579,6 +774,25 @@ class OpenAIInterface:
                     successful += 1
                 elif result.get("error"):
                     errors += 1
+
+        # Fail fast for local vLLM if the server starts returning 5xx (often means EngineDeadError/OOM).
+        if self.provider_type == "vllm":
+            fatal = []
+            for entry in processed:
+                err = entry.get("error")
+                if not err:
+                    continue
+                msg = str(err)
+                if "Error code: 500" in msg or " 500 " in msg or "Internal Server Error" in msg:
+                    fatal.append(msg)
+                if "EngineDeadError" in msg or "EngineCore encountered an issue" in msg or "Worker failed" in msg:
+                    fatal.append(msg)
+            if fatal:
+                sample_err = fatal[0]
+                raise RuntimeError(
+                    "vLLM server returned 5xx during a batch; the engine is likely dead (often CUDA OOM). "
+                    f"First error: {sample_err}"
+                )
 
         logger.info(f"Batch: {successful}/{len(requests)} successful, {errors} errors")
         return processed

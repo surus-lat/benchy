@@ -39,10 +39,12 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         request_modes=["chat"],
     ),
     "together": InterfaceCapabilities(
-        supports_multimodal=False,
+        # Together's API is OpenAI-compatible; vision support is model-dependent.
+        # Treat the provider as capable and restrict per-model via model_capabilities.
+        supports_multimodal=True,
         supports_logprobs=False,
         supports_schema=True,
-        supports_files=False,
+        supports_files=True,
         supports_streaming=False,
         request_modes=["chat", "completions"],
     ),
@@ -67,6 +69,14 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_logprobs=False,
         supports_schema=False,
         supports_files=True,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
+    "surus_classify": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=False,
         supports_streaming=False,
         request_modes=["raw_payload"],
     ),
@@ -169,6 +179,13 @@ def build_connection_info(
         "api_endpoint": provider_config.get("api_endpoint", model_config.get("api_endpoint")),
         "logprobs_top_k": provider_config.get("logprobs_top_k", model_config.get("logprobs_top_k")),
         "problematic_models": provider_config.get("problematic_models", model_config.get("problematic_models")),
+        # Image artifact generation (OpenAI-compatible images endpoints).
+        "image_response_format": provider_config.get("image_response_format", model_config.get("image_response_format")),
+        "image_size": provider_config.get("image_size", model_config.get("image_size")),
+        "image_artifact_fallback_to_chat": provider_config.get(
+            "image_artifact_fallback_to_chat",
+            model_config.get("image_artifact_fallback_to_chat", True),
+        ),
     }
     base_capabilities = PROVIDER_CAPABILITY_DEFAULTS.get(provider_type, InterfaceCapabilities())
     provider_capabilities = parse_interface_capabilities(
@@ -193,7 +210,9 @@ def build_connection_info(
             connection_info["base_url"] = f"http://{host}:{port}/v1"
         
         connection_info["api_key"] = "EMPTY"  # vLLM doesn't need real key
-        connection_info["use_structured_outputs"] = True  # vLLM v0.12.0+ structured outputs
+        # vLLM v0.12.0+ supports schema-guided structured outputs, but allow opting out
+        # for debugging/perf (falls back to prompt-only schema enforcement + validation).
+        connection_info["use_structured_outputs"] = bool(provider_config.get("use_structured_outputs", True))
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
@@ -220,6 +239,11 @@ def build_connection_info(
         connection_info["use_structured_outputs"] = False
         
     elif provider_type == "surus_factura":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
+        connection_info["use_structured_outputs"] = False
+
+    elif provider_type == "surus_classify":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
@@ -294,6 +318,19 @@ def get_interface_for_provider(
             }
         }
         return SurusFacturaInterface(surus_factura_config, model_name, "surus_factura")
+
+    elif provider_type == "surus_classify":
+        from ..interfaces.surus.surus_classify_interface import SurusClassifyInterface
+        surus_classify_config = {
+            "surus_classify": {
+                "endpoint": connection_info["base_url"],
+                "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
+                "timeout": connection_info.get("timeout", 30),
+                "max_retries": connection_info.get("max_retries", 3),
+                "capabilities": connection_info.get("capabilities"),
+            }
+        }
+        return SurusClassifyInterface(surus_classify_config, model_name, "surus_classify")
     
     else:
         # Use OpenAIInterface for vllm, openai, anthropic, together

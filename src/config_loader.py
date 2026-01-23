@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Iterable, List
 
 import yaml
 
@@ -19,14 +19,70 @@ def _find_project_root(start: Path) -> Path:
 
 
 def _resolve_config_path(config_path: Union[str, Path]) -> Path:
-    path = Path(config_path)
-    if path.is_absolute() and path.exists():
-        return path
-    if path.exists():
-        return path
+    # Backward-compatible wrapper.
+    return resolve_config_path(config_path)
+
+
+def _iter_config_search_dirs(project_root: Path) -> Iterable[Path]:
+    # Precedence order for short names.
+    configs_root = project_root / "configs"
+    return (
+        configs_root / "models",
+        configs_root / "systems",
+        configs_root / "tests",
+        configs_root / "templates",
+        configs_root,
+    )
+
+
+def resolve_config_path(config_path: Union[str, Path]) -> Path:
+    """Resolve a config reference to an on-disk YAML path.
+
+    Supports:
+    - Absolute or relative file paths
+    - Short names that are searched under `configs/models`, `configs/systems`, etc.
+      e.g. `openai_gpt-4o-mini.yaml` or `openai_gpt-4o-mini`
+    """
     project_root = _find_project_root(Path(__file__).resolve())
-    candidate = project_root / path
-    return candidate
+
+    raw = str(config_path)
+    path = Path(raw)
+
+    # Explicit paths (absolute or with separators) keep existing behavior.
+    if path.is_absolute():
+        return path
+    if any(sep in raw for sep in ("/", "\\")) or raw.startswith("."):
+        candidate = project_root / path
+        return candidate if candidate.exists() else path
+
+    # Short name lookup under configs/*.
+    variants: List[str] = [raw]
+    if not raw.endswith((".yaml", ".yml")):
+        variants.extend([f"{raw}.yaml", f"{raw}.yml"])
+
+    matches: List[Path] = []
+    for directory in _iter_config_search_dirs(project_root):
+        for variant in variants:
+            candidate = directory / variant
+            if candidate.exists():
+                matches.append(candidate)
+
+    if not matches:
+        # Fall back to configs/<name> for improved error messages.
+        return project_root / "configs" / (variants[1] if len(variants) > 1 else variants[0])
+
+    # If there are multiple matches, require disambiguation via path.
+    unique_matches = list(dict.fromkeys(matches))
+    if len(unique_matches) > 1:
+        rendered = "\n".join(f"  - {m}" for m in unique_matches[:10])
+        suffix = "" if len(unique_matches) <= 10 else f"\n  ... and {len(unique_matches) - 10} more"
+        raise FileNotFoundError(
+            "Config name is ambiguous. Specify a more explicit path, e.g. "
+            "`--config configs/models/<name>.yaml`.\n\nMatches:\n"
+            f"{rendered}{suffix}"
+        )
+
+    return unique_matches[0]
 
 
 def _resolve_paths_section(config: Dict[str, Any], project_root: Path) -> None:
@@ -58,10 +114,15 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any
     if not config_path.exists():
         available_configs = []
         configs_dir = _resolve_config_path("configs")
+        project_root = _find_project_root(Path(__file__).resolve())
         if configs_dir.exists():
-            available_configs = [
-                str(path) for path in configs_dir.glob("*.yaml")
-            ]
+            # Show a sample of configs across common subdirectories.
+            available = []
+            for directory in _iter_config_search_dirs(project_root):
+                if directory.exists():
+                    available.extend([str(path) for path in directory.glob("*.yaml")])
+                    available.extend([str(path) for path in directory.glob("*.yml")])
+            available_configs = sorted(set(available))
 
         error_msg = f"Configuration file '{config_path}' not found."
         if available_configs:
@@ -70,7 +131,7 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> Dict[str, Any
             )
             if len(available_configs) > 5:
                 error_msg += f"\n  ... and {len(available_configs) - 5} more in configs/"
-        error_msg += "\n\nTry: python eval.py --config <path-to-config.yaml>"
+        error_msg += "\n\nTip: you can pass a config name, e.g. `--config openai_gpt-4o-mini.yaml`."
 
         raise FileNotFoundError(error_msg)
 

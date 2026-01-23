@@ -7,6 +7,29 @@ from typing import Any, Dict
 logger = logging.getLogger(__name__)
 
 
+def _is_valid_required_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def unwrap_openai_response_format_schema(schema: Dict) -> Dict:
+    """Unwrap an OpenAI-style response_format json_schema wrapper into a plain JSON Schema.
+
+    Some datasets store schemas in the OpenAI `response_format` shape:
+      {"type":"json_schema","json_schema":{"name":...,"strict":...,"schema":{...}}}
+
+    The benchmark tasks/interfaces expect a plain JSON Schema (the inner `schema`).
+    """
+    if not isinstance(schema, dict):
+        return schema
+    if schema.get("type") != "json_schema":
+        return schema
+    inner = schema.get("json_schema")
+    if not isinstance(inner, dict):
+        return schema
+    inner_schema = inner.get("schema")
+    return inner_schema if isinstance(inner_schema, dict) else schema
+
+
 def sanitize_schema_for_openai_strict(schema: Dict) -> Dict:
     """Sanitize a JSON schema to be compatible with OpenAI's strict mode.
     
@@ -24,7 +47,7 @@ def sanitize_schema_for_openai_strict(schema: Dict) -> Dict:
     Returns:
         Sanitized schema compatible with OpenAI strict mode
     """
-    schema = copy.deepcopy(schema)
+    schema = unwrap_openai_response_format_schema(copy.deepcopy(schema))
     
     # Remove unsupported top-level keys
     unsupported_keys = ["$schema", "$id", "description", "title"]
@@ -91,8 +114,10 @@ def _sanitize_recursive_strict(obj: Any) -> None:
     if "properties" in obj and isinstance(obj["properties"], dict):
         for prop_name, prop_value in obj["properties"].items():
             if isinstance(prop_value, dict):
-                # Remove invalid "required": true/false from property
-                prop_value.pop("required", None)
+                # Some schemas incorrectly place `required: true/false` inside a property schema.
+                # Keep legitimate object-level `required: [..]` lists for nested objects.
+                if "required" in prop_value and not _is_valid_required_list(prop_value["required"]):
+                    prop_value.pop("required", None)
                 # Recursively sanitize nested properties
                 _sanitize_recursive_strict(prop_value)
     
@@ -133,7 +158,7 @@ def sanitize_schema_for_vllm(schema: Dict) -> Dict:
     Returns:
         Sanitized schema compatible with vLLM
     """
-    schema = copy.deepcopy(schema)
+    schema = unwrap_openai_response_format_schema(copy.deepcopy(schema))
     
     # Remove unsupported top-level keys
     unsupported_keys = ["$schema", "$id", "description", "title"]
@@ -186,7 +211,8 @@ def _sanitize_recursive_vllm(obj: Any) -> None:
     if "properties" in obj and isinstance(obj["properties"], dict):
         for prop_name, prop_value in obj["properties"].items():
             if isinstance(prop_value, dict):
-                prop_value.pop("required", None)
+                if "required" in prop_value and not _is_valid_required_list(prop_value["required"]):
+                    prop_value.pop("required", None)
                 _sanitize_recursive_vllm(prop_value)
     
     # Recursively sanitize $defs
@@ -212,4 +238,3 @@ def _sanitize_recursive_vllm(obj: Any) -> None:
         if combiner in obj:
             logger.debug(f"Removing {combiner} for vLLM compatibility")
             obj.pop(combiner, None)
-
