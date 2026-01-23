@@ -25,7 +25,7 @@ logging:
 gpu_config:
   # vLLM server GPU allocation
   vllm:
-    devices: "2,3"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
+    devices: "1,2"  # GPU devices for vLLM server (e.g., "3" or "2,3" or "1,2,3,4")
     # Alternative configurations:
     # devices: "3"      # Use single GPU 3 for vLLM
     # devices: "1,2,3,4" # Use all 4 GPUs for vLLM
@@ -40,7 +40,7 @@ gpu_config:
   # Validation settings
   validation:
     check_gpu_availability: true  # Check if specified GPUs are available
-    allow_overlap: false          # Prevent vLLM and tasks from using same GPUs
+    allow_overlap: true          # Prevent vLLM and tasks from using same GPUs
 
 # Task Groups Configuration
 # Define groups of tasks that can be used as shortcuts in model configs
@@ -125,6 +125,14 @@ leaderboard:
       processor: "structured_extraction_results_processor"
       category_score_key: "image_extraction"
       output_prefix: "image_extraction"
+      metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
+      primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
+
+    document_extraction:
+      # document_extraction uses structured_extraction processor but remains a separate task
+      processor: "structured_extraction_results_processor"
+      category_score_key: "document_extraction"
+      output_prefix: "document_extraction"
       metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
       primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
     

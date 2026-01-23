@@ -237,7 +237,7 @@ __all__ = ["Sentiment", "Toxicity"]
 Run with a small sample limit:
 
 ```bash
-python eval.py --config configs/models/openai_gpt-4o-mini.yaml \
+benchy eval --config configs/models/openai_gpt-4o-mini.yaml \
     --tasks my_benchmark.sentiment --limit 5
 ```
 

@@ -69,7 +69,7 @@ tasks:
 
 ```bash
 # The system automatically creates the vLLM 0.8.0 environment if needed
-python eval.py --config configs/models/Hunyuan-MT-7B.yaml --test
+benchy eval --config configs/models/Hunyuan-MT-7B.yaml --test
 ```
 
 ## Virtual Environment Structure
@@ -159,7 +159,7 @@ To use this configuration:
 
 ```bash
 # The system automatically creates the vLLM 0.8.0 environment if needed
-python eval.py --config configs/models/Hunyuan-MT-7B.yaml --test
+benchy eval --config configs/models/Hunyuan-MT-7B.yaml --test
 ```
 
 ## Benefits

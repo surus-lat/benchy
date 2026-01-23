@@ -58,6 +58,7 @@ class TaskGroupContext:
     connection_info: Dict[str, Any]
     output_dir: Path
     limit: Optional[int]
+    compatibility_mode: str
     shared: Any
 
 
@@ -75,6 +76,7 @@ class SubtaskContext:
     output_dir: Path
     subtask_output_dir: Path
     limit: Optional[int]
+    compatibility_mode: str
     shared: Any = None
 
 
@@ -95,6 +97,7 @@ def run_task_group(
     task_config: Dict[str, Any],
     limit: Optional[int] = None,
     provider_config: Optional[Dict[str, Any]] = None,
+    compatibility_mode: str = "skip",
 ) -> Dict[str, Any]:
     """Run a task group using a shared execution flow.
 
@@ -138,6 +141,12 @@ def run_task_group(
         subtasks_to_run = task_config.get("tasks", None)
         if subtasks_to_run is None:
             subtasks_to_run = spec.default_subtasks or []
+        else:
+            # Allow CLI-friendly subtask names like "spanish-spam" to map to
+            # Python module stems like "spanish_spam".
+            subtasks_to_run = [
+                (s.replace("-", "_") if isinstance(s, str) else s) for s in subtasks_to_run
+            ]
     else:
         subtasks_to_run = [spec.name]
 
@@ -156,6 +165,7 @@ def run_task_group(
         connection_info=connection_info,
         output_dir=task_output_path,
         limit=limit,
+        compatibility_mode=compatibility_mode,
         shared=shared_state,
     )
     if probe_report:
@@ -196,6 +206,7 @@ def run_task_group(
                 output_dir=task_output_path,
                 subtask_output_dir=subtask_output_dir,
                 limit=limit,
+                compatibility_mode=compatibility_mode,
                 shared=shared_state,
             )
 
@@ -236,6 +247,7 @@ def run_task_group(
                     output_dir=task_output_path,
                     subtask_output_dir=subtask_output_dir,
                     limit=limit,
+                    compatibility_mode=compatibility_mode,
                     shared=shared_state,
                 )
 
@@ -313,16 +325,30 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
     report = ensure_task_interface_compatibility(task_instance, interface)
     if not report.compatible:
         reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
-        logger.warning(
-            f"Skipping {task_instance.get_task_name()} due to incompatibility: {reason}"
-        )
-        return {
-            "skipped": True,
-            "skip_reason": reason,
-            "aggregate_metrics": {},
-            "per_sample_metrics": [],
-            "samples": [],
-        }
+        compatibility_mode = (context.compatibility_mode or "skip").lower()
+        if compatibility_mode == "warn":
+            logger.warning(
+                f"Continuing despite incompatibility for {task_instance.get_task_name()}: {reason}"
+            )
+        elif compatibility_mode == "error":
+            raise ValueError(
+                f"Incompatible task {task_instance.get_task_name()}: {reason}"
+            )
+        else:
+            if compatibility_mode not in {"skip", "warn", "error"}:
+                logger.warning(
+                    "Unknown compatibility_mode '%s'; defaulting to skip", compatibility_mode
+                )
+            logger.warning(
+                f"Skipping {task_instance.get_task_name()} due to incompatibility: {reason}"
+            )
+            return {
+                "skipped": True,
+                "skip_reason": reason,
+                "aggregate_metrics": {},
+                "per_sample_metrics": [],
+                "samples": [],
+            }
 
     runner_config = {
         "model_name": context.model_name,

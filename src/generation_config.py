@@ -26,8 +26,19 @@ def fetch_generation_config(
         Dictionary containing generation config, or None if not found
     """
     try:
+        model_path = Path(model_name)
+        if model_path.exists():
+            local_config = model_path / "generation_config.json"
+            if not local_config.exists():
+                logger.info("No generation_config.json found at %s", local_config)
+                return None
+            logger.info("Loading generation_config.json from local model path: %s", model_path)
+            with open(local_config, "r") as f:
+                generation_config = json.load(f)
+            return generation_config
+
         logger.info(f"Fetching generation_config.json for {model_name}")
-        
+
         # Download generation_config.json from HF Hub
         config_path = hf_hub_download(
             repo_id=model_name,
@@ -35,16 +46,16 @@ def fetch_generation_config(
             cache_dir=hf_cache,
             token=hf_token if hf_token else None
         )
-        
+
         # Load and return the config
         with open(config_path, 'r') as f:
             generation_config = json.load(f)
-        
+
         logger.info(f"Successfully loaded generation_config.json for {model_name}")
         logger.debug(f"Generation config: {generation_config}")
-        
+
         return generation_config
-        
+
     except Exception as e:
         logger.info(f"No generation_config.json found for {model_name}: {e}")
         return None
@@ -78,5 +89,4 @@ def save_generation_config(
         
     except Exception as e:
         logger.warning(f"Failed to save generation_config.json: {e}")
-
 
