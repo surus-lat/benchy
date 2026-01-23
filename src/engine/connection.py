@@ -72,6 +72,14 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["raw_payload"],
     ),
+    "surus_classify": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=False,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
     "http": InterfaceCapabilities(
         supports_multimodal=False,
         supports_logprobs=False,
@@ -234,6 +242,11 @@ def build_connection_info(
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
+
+    elif provider_type == "surus_classify":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
+        connection_info["use_structured_outputs"] = False
         
     else:
         # Generic HTTP provider
@@ -305,6 +318,19 @@ def get_interface_for_provider(
             }
         }
         return SurusFacturaInterface(surus_factura_config, model_name, "surus_factura")
+
+    elif provider_type == "surus_classify":
+        from ..interfaces.surus.surus_classify_interface import SurusClassifyInterface
+        surus_classify_config = {
+            "surus_classify": {
+                "endpoint": connection_info["base_url"],
+                "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
+                "timeout": connection_info.get("timeout", 30),
+                "max_retries": connection_info.get("max_retries", 3),
+                "capabilities": connection_info.get("capabilities"),
+            }
+        }
+        return SurusClassifyInterface(surus_classify_config, model_name, "surus_classify")
     
     else:
         # Use OpenAIInterface for vllm, openai, anthropic, together

@@ -7,9 +7,9 @@ together:
     max_tokens: 4096
 task_defaults:
   log_samples: true
+  batch_size: 10
 tasks:
-- image_extraction
-- structured_extraction
+- document_extraction
 metadata:
   max_context_length: 128000
   supports_multimodal: true
