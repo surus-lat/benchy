@@ -200,6 +200,16 @@ benchy eval --model-name mymodel --provider openai  --tasks spanish --limit 2
 benchy eval --model-name mymodel --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
 ```
 
+### Benchmarking SURUS AI nodes
+Surus AI nodes are preconfigured with their relevant tasks. Remember to add the necesary SURUS_API_KEY in your .env
+
+```bash
+# surus extraction endpoint
+benchy eval --config surus-extract --limit 5
+
+# Surus classification endpoint
+benchy eval --config surus-classify --limit 5
+```
 ### Benchmarking a new OpenAI model (example: "gpt-5.2")
 
 ```bash
