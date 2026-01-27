@@ -53,6 +53,10 @@ PROVIDER_SPECS = {
         "config_key": "surus_classify",
         "log": "Using SURUS AI classify provider for classification tasks",
     },
+    "surus_remove_background": {
+        "config_key": "surus_remove_background",
+        "log": "Using SURUS AI remove-background provider for image manipulation tasks",
+    },
     "together": {
         "config_key": "together",
         "log": "Using Together AI cloud provider for model: {model_name}",

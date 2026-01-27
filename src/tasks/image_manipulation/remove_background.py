@@ -43,18 +43,9 @@ class RemoveBackground(MultimodalImageArtifactHandler):
     dataset_extract_subdir: str = "ICM57"
     jsonl_name: str = "data.jsonl"
 
-    # Prompting
-    system_prompt = (
-        "You are an image editing model. Follow instructions exactly."
-    )
-    user_prompt_template = (
-        "Task: Remove the background from the attached image.\n"
-        "Output: Return ONLY a base64-encoded PNG image.\n"
-        "Requirements:\n"
-        "- Keep the foreground subject intact.\n"
-        "- Make the background fully transparent (alpha=0).\n"
-        "- Do not include markdown, code fences, or extra text.\n"
-    )
+    # Prompting (keep it short - API has prompt length limits)
+    system_prompt = ""
+    user_prompt_template = "Remove the background"
 
     # Dataset layout defaults (can be overridden in config via config['dataset']).
     images_dirname: str = "image"
@@ -263,3 +254,22 @@ class RemoveBackground(MultimodalImageArtifactHandler):
             "mask_mae": 1.0,
             "pred_resized": 0.0,
         }
+
+    def aggregate_metrics(self, all_metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Aggregate background removal metrics with an overall score.
+        
+        The score is based on F1 (harmonic mean of precision and recall),
+        which is the standard metric for segmentation tasks.
+        """
+        aggregated = super().aggregate_metrics(all_metrics)
+        
+        # Add overall score (use F1 as it balances precision and recall)
+        if "mask_f1" in aggregated:
+            aggregated["score"] = aggregated["mask_f1"]
+        elif "mask_iou" in aggregated:
+            # Fallback to IoU if F1 not available
+            aggregated["score"] = aggregated["mask_iou"]
+        else:
+            aggregated["score"] = 0.0
+        
+        return aggregated

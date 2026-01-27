@@ -5,6 +5,7 @@ any task implementing BaseTask and any interface implementing BaseInterface.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -359,6 +360,57 @@ async def run_benchmark(
     return await runner.run(limit=limit, no_resume=no_resume)
 
 
+def _save_image_artifacts(samples: List[Dict], output_dir: Path, timestamp: str) -> List[Dict]:
+    """Extract and save image artifacts from samples, replacing base64 with file references.
+    
+    Args:
+        samples: List of sample dictionaries
+        output_dir: Output directory for images
+        timestamp: Timestamp for file naming
+        
+    Returns:
+        Modified samples with image file references instead of base64
+    """
+    images_dir = output_dir / f"images_{timestamp}"
+    images_dir.mkdir(exist_ok=True)
+    
+    modified_samples = []
+    for sample in samples:
+        modified_sample = sample.copy()
+        
+        # Check if prediction contains base64 image data
+        prediction = sample.get("prediction")
+        if prediction and isinstance(prediction, str):
+            # Try to decode as base64
+            try:
+                # Strip data URI prefix if present
+                b64_data = prediction
+                if b64_data.startswith("data:"):
+                    b64_data = b64_data.split(",", 1)[1] if "," in b64_data else b64_data
+                
+                # Decode and save
+                image_data = base64.b64decode(b64_data)
+                sample_id = sample.get("id", "unknown")
+                image_filename = f"{sample_id}.png"
+                image_path = images_dir / image_filename
+                
+                with open(image_path, "wb") as f:
+                    f.write(image_data)
+                
+                # Replace prediction with file reference
+                modified_sample["prediction"] = str(image_path.relative_to(output_dir))
+                modified_sample["prediction_saved_as"] = image_filename
+                
+                logger.debug(f"Saved image artifact for {sample_id} to {image_filename}")
+            except Exception as e:
+                # If decoding fails, keep original (might not be an image)
+                logger.debug(f"Could not save image for {sample.get('id')}: {e}")
+        
+        modified_samples.append(modified_sample)
+    
+    return modified_samples
+
+
 def save_results(
     results: Dict[str, Any],
     output_dir: Path,
@@ -366,6 +418,7 @@ def save_results(
     task_name: str,
     log_samples: bool = False,
     mark_complete: bool = True,
+    task_answer_type: Optional[str] = None,
 ) -> None:
     """Save benchmark results to files.
     
@@ -376,6 +429,7 @@ def save_results(
         task_name: Task name for filename
         log_samples: Whether to save sample details
         mark_complete: Whether to write .done file (default: True)
+        task_answer_type: Task answer type (e.g., "image_artifact") for special handling
     """
     from datetime import datetime
     
@@ -398,16 +452,23 @@ def save_results(
     
     # Save samples if requested
     if log_samples and results.get("samples"):
+        samples = results["samples"]
+        
+        # For image artifact tasks, save actual images and replace base64 with file references
+        if task_answer_type == "image_artifact":
+            logger.info(f"Processing image artifacts for {len(samples)} samples")
+            samples = _save_image_artifacts(samples, output_dir, timestamp)
+        
         samples_file = output_dir / f"{safe_name}_{timestamp}_samples.json"
         with open(samples_file, "w") as f:
             json.dump({
                 "model": model_name,
                 "task": task_name,
                 "timestamp": timestamp,
-                "total_samples": len(results["samples"]),
-                "samples": results["samples"],
+                "total_samples": len(samples),
+                "samples": samples,
             }, f, indent=2)
-        logger.info(f"Saved {len(results['samples'])} samples to {samples_file}")
+        logger.info(f"Saved {len(samples)} samples to {samples_file}")
     
     # Save text report
     report_file = output_dir / f"{safe_name}_{timestamp}_report.txt"
