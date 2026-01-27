@@ -360,10 +360,14 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
     runner = BenchmarkRunner(task_instance, interface, runner_config)
     results = await runner.run(limit=context.limit, no_resume=False)
 
+    # Get task answer type for special handling (e.g., image artifacts)
+    task_answer_type = getattr(task_instance, "answer_type", None)
+
     save_results(
         results=results,
         output_dir=context.subtask_output_dir,
         model_name=context.model_name,
+        task_answer_type=task_answer_type,
         task_name=task_instance.get_task_name(),
         log_samples=context.defaults.get("log_samples", False),
         mark_complete=False,

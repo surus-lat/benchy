@@ -4,10 +4,12 @@ from .surus_interface import SurusInterface
 from .surus_ocr_interface import SurusOCRInterface
 from .surus_factura_interface import SurusFacturaInterface
 from .surus_classify_interface import SurusClassifyInterface
+from .surus_remove_background_interface import SurusRemoveBackgroundInterface
 
 __all__ = [
     "SurusInterface",
     "SurusOCRInterface",
     "SurusFacturaInterface",
     "SurusClassifyInterface",
+    "SurusRemoveBackgroundInterface",
 ]
