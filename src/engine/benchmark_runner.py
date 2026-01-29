@@ -363,6 +363,8 @@ async def run_benchmark(
 def _save_image_artifacts(samples: List[Dict], output_dir: Path, timestamp: str) -> List[Dict]:
     """Extract and save image artifacts from samples, replacing base64 with file references.
     
+    Also generates comparison visualizations for mask-based tasks if ground truth is available.
+    
     Args:
         samples: List of sample dictionaries
         output_dir: Output directory for images
@@ -371,10 +373,15 @@ def _save_image_artifacts(samples: List[Dict], output_dir: Path, timestamp: str)
     Returns:
         Modified samples with image file references instead of base64
     """
+    from ..tasks.common.visualization import save_mask_comparison_for_sample
+    
     images_dir = output_dir / f"images_{timestamp}"
+    comparisons_dir = output_dir / f"comparisons_{timestamp}"
     images_dir.mkdir(exist_ok=True)
     
     modified_samples = []
+    comparison_count = 0
+    
     for sample in samples:
         modified_sample = sample.copy()
         
@@ -402,11 +409,34 @@ def _save_image_artifacts(samples: List[Dict], output_dir: Path, timestamp: str)
                 modified_sample["prediction_saved_as"] = image_filename
                 
                 logger.debug(f"Saved image artifact for {sample_id} to {image_filename}")
+                
+                # Generate comparison visualization if ground truth available
+                ground_truth = sample.get("mask_path") or sample.get("expected")
+                if ground_truth and Path(str(ground_truth)).exists():
+                    # Check if this is a valid sample (not an error)
+                    metrics = sample.get("metrics", {})
+                    if metrics.get("valid", True):
+                        source_image = sample.get("image_path")
+                        comparison_path = comparisons_dir / f"{sample_id}_comparison.png"
+                        
+                        if save_mask_comparison_for_sample(
+                            prediction_bytes=image_data,
+                            ground_truth_path=str(ground_truth),
+                            source_image_path=source_image,
+                            output_path=comparison_path,
+                            metrics=metrics,
+                        ):
+                            modified_sample["comparison"] = str(comparison_path.relative_to(output_dir))
+                            comparison_count += 1
+                
             except Exception as e:
                 # If decoding fails, keep original (might not be an image)
                 logger.debug(f"Could not save image for {sample.get('id')}: {e}")
         
         modified_samples.append(modified_sample)
+    
+    if comparison_count > 0:
+        logger.info(f"Generated {comparison_count} comparison visualizations in {comparisons_dir.name}")
     
     return modified_samples
 

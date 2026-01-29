@@ -88,6 +88,14 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["raw_payload"],
     ),
+    "google": InterfaceCapabilities(
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
 }
 
 _CAPABILITY_FIELDS = [
@@ -252,6 +260,11 @@ def build_connection_info(
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
+    
+    elif provider_type == "google":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url", "https://generativelanguage.googleapis.com/v1"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "GOOGLE_API_KEY")
+        connection_info["use_structured_outputs"] = False
         
     else:
         # Generic HTTP provider
@@ -349,6 +362,11 @@ def get_interface_for_provider(
             }
         }
         return SurusRemoveBackgroundInterface(surus_remove_background_config, model_name, "surus_remove_background")
+    
+    elif provider_type == "google":
+        # Use generic GoogleInterface (similar to OpenAIInterface pattern)
+        from ..interfaces.google.google_interface import GoogleInterface
+        return GoogleInterface(connection_info, model_name)
     
     else:
         # Use OpenAIInterface for vllm, openai, anthropic, together
