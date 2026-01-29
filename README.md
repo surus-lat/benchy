@@ -155,6 +155,16 @@ If you want to run the same task list across multiple models, you can override t
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `docs/evaluating_models.md` for full examples and behavior.
 
+**Dataset selection**: Some tasks support multiple datasets. Use `--dataset <name>` to specify:
+
+```bash
+# Use custom dataset for background removal
+benchy eval --config surus-remove-background --dataset your-dataset --limit 10
+
+# Use ICM57 dataset (default)
+benchy eval --config surus-remove-background --dataset ICM57 --limit 10
+```
+
 ## Providerless CLI (OpenAI-compatible)
 
 When no config file is provided, Benchy infers the provider from CLI flags:
@@ -210,6 +220,31 @@ benchy eval --config surus-extract --limit 5
 # Surus classification endpoint
 benchy eval --config surus-classify --limit 5
 ```
+
+### Benchmarking Google Gemini models
+
+Google Gemini models work across text, multimodal, and image manipulation tasks. Add your `GOOGLE_API_KEY` to `.env`:
+
+```bash
+# Text generation
+benchy eval --model-name gemini-2.5-flash --provider google \
+  --tasks spanish --limit 10
+
+# Multimodal tasks (text + images)
+benchy eval --model-name gemini-2.5-flash --provider google \
+  --tasks image_manipulation.remove_background --limit 10
+
+# Image manipulation with gemini-2.5-flash-image
+benchy eval --model-name gemini-2.5-flash-image --provider google \
+  --tasks image_manipulation.remove_background --dataset your-dataset
+
+# Use different dataset with --dataset parameter
+benchy eval --model-name gemini-2.5-flash-image --provider google \
+  --tasks image_manipulation.remove_background --dataset ICM57
+```
+
+The `--dataset` parameter allows you to select different datasets for tasks that support it. For example, the `remove_background` task supports multiple datasets (`ICM57`, `your-dataset`, or any custom dataset you drop in `.data/`).
+
 ### Benchmarking a new OpenAI model (example: "gpt-5.2")
 
 ```bash
