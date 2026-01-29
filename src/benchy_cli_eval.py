@@ -61,9 +61,13 @@ PROVIDER_SPECS = {
         "config_key": "together",
         "log": "Using Together AI cloud provider for model: {model_name}",
     },
+    "google": {
+        "config_key": "google",
+        "log": "Using Google cloud provider for model: {model_name}",
+    },
 }
 
-MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together"}
+MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "google"}
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -97,6 +101,17 @@ CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "max_tokens": 2048,
         "max_tokens_param_name": "max_tokens",
         "api_endpoint": "chat",
+    },
+    "google": {
+        "base_url": "https://generativelanguage.googleapis.com/v1",
+        "api_key_env": "GOOGLE_API_KEY",
+        "timeout": 60,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "auto",
     },
 }
 
@@ -400,7 +415,7 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["vllm", "openai", "together", "anthropic"],
+        choices=["vllm", "openai", "together", "anthropic", "google"],
         default=None,
         help="Provider type to use when no model config is provided (default: inferred).",
     )
@@ -499,6 +514,12 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
             "If set to 'model' and --model-path is provided, outputs go under <model-path>/benchy_outputs."
         ),
     )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Dataset name to use for tasks (e.g., ICM57, kapaxia). Task must support dataset configuration.",
+    )
 
 
 def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str], bool]:
@@ -576,7 +597,7 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
 
     provider_type = config.get("provider_type", "vllm")
     provider_section = dict(config.get(provider_type) or {})
-    allow_base_url = provider_type in {"openai", "together", "anthropic"}
+    allow_base_url = provider_type in {"openai", "together", "anthropic", "google"}
     allow_api_key = allow_base_url
     config[provider_type] = _apply_cli_provider_overrides(
         provider_section,
@@ -674,12 +695,27 @@ def run_eval(args: argparse.Namespace) -> int:
     api_endpoint = provider_config.get("api_endpoint", config.get("api_endpoint", "completions"))
 
     task_defaults_overrides = {}
+    # Handle log_samples flag
     if args.log_samples:
+        # Explicitly enabled via CLI
         task_defaults_overrides["log_samples"] = True
     elif args.no_log_samples:
+        # Explicitly disabled via CLI
         task_defaults_overrides["log_samples"] = False
+    elif not used_config_file:
+        # Default to False when running from CLI without a config file
+        # (configs can still override this in their task_defaults)
+        task_defaults_overrides["log_samples"] = False
+    # If used_config_file and no explicit CLI flag, let config decide
+    
     if args.batch_size is not None:
         task_defaults_overrides["batch_size"] = args.batch_size
+    
+    # Handle dataset override
+    if args.dataset is not None:
+        if "dataset" not in task_defaults_overrides:
+            task_defaults_overrides["dataset"] = {}
+        task_defaults_overrides["dataset"]["name"] = args.dataset
 
     provider_task_defaults = {}
     if isinstance(provider_config, dict):

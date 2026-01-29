@@ -98,6 +98,12 @@ from .image_metrics import (
     binary_mask_metrics,
     BackgroundRemovalMetrics,
 )
+
+# Visualization utilities
+from .visualization import (
+    create_mask_comparison,
+    save_mask_comparison_for_sample,
+)
 # Utilities (auxiliary but still important)
 from .utils.dataset_utils import (
     download_huggingface_dataset,
@@ -153,6 +159,9 @@ __all__ = [
     "predicted_image_to_mask",
     "binary_mask_metrics",
     "BackgroundRemovalMetrics",
+    # Visualization
+    "create_mask_comparison",
+    "save_mask_comparison_for_sample",
     # Dataset utilities
     "download_huggingface_dataset",
     "load_jsonl_dataset",

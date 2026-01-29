@@ -8,6 +8,6 @@ capability_requirements:
 
 subtasks:
   remove_background:
-    description: Background removal (image cutout) evaluated against ground-truth masks.
+    description: Background removal (image cutout) evaluated against ground-truth masks. Supports multiple datasets via configuration (ICM57, kapaxia, etc.).
     url: https://www.kaggle.com/datasets/fineyouthpe/icm57-dataset
 

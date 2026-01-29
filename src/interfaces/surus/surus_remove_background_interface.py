@@ -19,8 +19,10 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
     """Interface for SURUS AI /remove-background endpoint.
 
     The SURUS remove-background endpoint accepts:
-      - image_base64: data URI string (e.g., "data:image/png;base64,...")
-      - prompt: optional string
+      - image_url: URL string (e.g., "https://example.com/image.jpg")
+      - prompt: optional string for text-based segmentation
+      - focus: optional "foreground" or "background" (for simple/deep processing)
+      - process: optional "simple" or "deep" (requires focus parameter)
 
     And returns a response like:
       {
@@ -30,7 +32,7 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
         ...
       }
 
-    This interface prioritizes mask over image if both are present.
+    This interface prioritizes image over mask if both are present.
     """
 
     capabilities = InterfaceCapabilities(
@@ -65,7 +67,8 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
         # Get prompt from task
         system_prompt, user_prompt = task.get_prompt(sample)
         prompt = user_prompt if not system_prompt else f"{system_prompt}\n\n{user_prompt}"
-
+        # Temporary: Use empty prompt.
+        prompt = ""
         # Read and encode image as base64 data URI
         with open(image_path, "rb") as image_file:
             image_data = image_file.read()
@@ -83,11 +86,21 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
             
             image_base64_uri = f"data:{media_type};base64,{image_base64}"
 
-        return {
+        request = {
             "image_base64": image_base64_uri,
-            "prompt": prompt,
             "sample_id": sample["id"],
         }
+        
+        # Add prompt if provided (for text-based segmentation)
+        # Otherwise use focus/process for automatic foreground extraction
+        if prompt and prompt.strip():
+            request["prompt"] = prompt
+        else:
+            # Default to foreground removal with simple processing
+            request["focus"] = "background"
+            request["process"] = "deep"
+        
+        return request
 
     def build_test_request(self) -> Dict:
         """Build a minimal request payload for connection tests."""
@@ -100,7 +113,8 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
         
         return {
             "image_base64": f"data:image/png;base64,{minimal_png}",
-            "prompt": "Remove the background from this image.",
+            "focus": "foreground",
+            "process": "simple",
             "sample_id": "connection_test",
         }
 
@@ -113,7 +127,7 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
 
         Args:
             client: HTTP client
-            request: Request dict with image_base64 and prompt
+            request: Request dict with image_base64 and optional prompt/focus/process
 
         Returns:
             Response dictionary or None on error
@@ -123,10 +137,18 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
             "Content-Type": "application/json",
         }
 
+        # Build payload with image_base64 and optional parameters
         data = {
-            "image_base64": request["image_base64"],
-            "prompt": request["prompt"],
+            "image_base64": request["image_base64"]
         }
+        
+        # Add optional parameters if present
+        if "prompt" in request and request["prompt"]:
+            data["prompt"] = request["prompt"]
+        if "focus" in request:
+            data["focus"] = request["focus"]
+        if "process" in request:
+            data["process"] = request["process"]
 
         response = await client.post(
             self.endpoint,
@@ -178,26 +200,27 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
             if not isinstance(first_result, dict):
                 raise TypeError("First result is not a dictionary")
 
-            # Try mask first (preferred for background removal evaluation)
+            # Prefer image (full RGBA cutout) for storage/visualization
+            # Fallback to mask (grayscale) if image not available
             base64_data = None
             source = None
 
-            mask_data = first_result.get("mask")
-            if isinstance(mask_data, dict):
-                base64_data = mask_data.get("base64")
+            image_data = first_result.get("image")
+            if isinstance(image_data, dict):
+                base64_data = image_data.get("base64")
                 if base64_data and isinstance(base64_data, str):
-                    source = "mask"
+                    source = "image"
 
-            # Fallback to image if mask not available
+            # Fallback to mask if image not available
             if not base64_data:
-                image_data = first_result.get("image")
-                if isinstance(image_data, dict):
-                    base64_data = image_data.get("base64")
+                mask_data = first_result.get("mask")
+                if isinstance(mask_data, dict):
+                    base64_data = mask_data.get("base64")
                     if base64_data and isinstance(base64_data, str):
-                        source = "image"
+                        source = "mask"
 
             if not base64_data:
-                raise KeyError("No valid 'mask.base64' or 'image.base64' found in response")
+                raise KeyError("No valid 'image.base64' or 'mask.base64' found in response")
 
             # Strip any data URI prefix if present (normalize to raw base64)
             if base64_data.startswith("data:"):
@@ -236,10 +259,22 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
         async def attempt_fn(_: int) -> bool:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await self._make_request_with_client(client, test_request)
-                parsed = self._parse_response(response or {})
-                if parsed.get("output") is not None:
-                    return True
-            raise ValueError("Empty/invalid response")
+                
+                # Log raw response for debugging
+                logger.debug(f"Connection test response: {response}")
+                
+                # For connection test, we just need to verify the API responds with valid structure
+                # Empty results are acceptable for the minimal test image
+                if isinstance(response, dict):
+                    # Check if response has the expected structure (results array + model field)
+                    if "results" in response and "model" in response:
+                        logger.info(f"Test connection successful - API responded with valid structure")
+                        return True
+                    # If there's a detail field with an error message, that's a real error
+                    if "detail" in response:
+                        raise ValueError(f"API error: {response.get('detail')}")
+                
+                raise ValueError(f"Invalid response structure: {response}")
 
         result, error, _ = await run_with_retries(
             attempt_fn,

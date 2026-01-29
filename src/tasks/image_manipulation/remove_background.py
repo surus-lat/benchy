@@ -7,7 +7,8 @@ Dataset (expected local layout):
 
 Configure via task config:
   dataset:
-    source_dir: /path/to/icm57-dataset
+    name: ICM57  # or kapaxia, or any custom dataset
+    source_dir: /path/to/custom-dataset  # optional, overrides default location
 
 The model is expected to return an image artifact (ideally a PNG with alpha)
 encoded as base64. The evaluation derives a predicted mask from the alpha
@@ -28,6 +29,22 @@ from ..common import BackgroundRemovalMetrics, MultimodalImageArtifactHandler
 
 logger = logging.getLogger(__name__)
 
+# Dataset configurations
+DATASET_CONFIGS = {
+    "ICM57": {
+        "download_url": "https://www.kaggle.com/api/v1/datasets/download/fineyouthpe/icm57-dataset",
+        "zip_name": "icm57-dataset.zip",
+        "extract_subdir": "ICM57",
+        "allow_download": True,
+    },
+    "kapaxia": {
+        "download_url": "",  # No download for local datasets
+        "zip_name": "",
+        "extract_subdir": "kapaxia",
+        "allow_download": False,
+    },
+}
+
 
 class RemoveBackground(MultimodalImageArtifactHandler):
     """Remove the background from an input image."""
@@ -36,15 +53,14 @@ class RemoveBackground(MultimodalImageArtifactHandler):
 
     # Dataset bootstrap: download/unzip if needed.
     allow_missing_dataset = False
-    dataset_download_url: str = (
-        "https://www.kaggle.com/api/v1/datasets/download/fineyouthpe/icm57-dataset"
-    )
-    dataset_zip_name: str = "icm57-dataset.zip"
-    dataset_extract_subdir: str = "ICM57"
+    dataset_name: str = "ICM57"  # Default dataset
+    dataset_download_url: str = ""
+    dataset_zip_name: str = ""
+    dataset_extract_subdir: str = ""
     jsonl_name: str = "data.jsonl"
 
     # Prompting (keep it short - API has prompt length limits)
-    system_prompt = ""
+    system_prompt = "Remove the background from this image"
     user_prompt_template = "Remove the background"
 
     # Dataset layout defaults (can be overridden in config via config['dataset']).
@@ -56,14 +72,49 @@ class RemoveBackground(MultimodalImageArtifactHandler):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
+        
+        # Process dataset configuration
         if config and isinstance(config.get("dataset"), dict):
             ds = config["dataset"]
+            
+            # Get dataset name (can be overridden)
+            self.dataset_name = ds.get("name", self.dataset_name)
+            
+            # Load dataset-specific configuration
+            # If dataset not in DATASET_CONFIGS, use smart defaults (local dataset with same name as folder)
+            if self.dataset_name in DATASET_CONFIGS:
+                dataset_config = DATASET_CONFIGS[self.dataset_name]
+            else:
+                # Auto-detect: assume it's a local dataset in .data/<dataset_name>
+                logger.info(
+                    f"Dataset '{self.dataset_name}' not in DATASET_CONFIGS, "
+                    f"assuming local dataset at .data/{self.dataset_name}"
+                )
+                dataset_config = {
+                    "download_url": "",
+                    "zip_name": "",
+                    "extract_subdir": self.dataset_name,
+                    "allow_download": False,
+                }
+            
+            self.dataset_download_url = ds.get("download_url", dataset_config["download_url"])
+            self.dataset_zip_name = ds.get("zip_name", dataset_config["zip_name"])
+            self.dataset_extract_subdir = ds.get("extract_subdir", dataset_config["extract_subdir"])
+            
+            # Allow customizing directory names
             self.images_dirname = ds.get("images_dirname", self.images_dirname)
             self.masks_dirname = ds.get("masks_dirname", self.masks_dirname)
-            self.dataset_download_url = ds.get("download_url", self.dataset_download_url)
-            self.dataset_zip_name = ds.get("zip_name", self.dataset_zip_name)
-            self.dataset_extract_subdir = ds.get("extract_subdir", self.dataset_extract_subdir)
             self.jsonl_name = ds.get("jsonl_name", self.jsonl_name)
+            
+            # If source_dir is specified, override the default location
+            if "source_dir" in ds:
+                self.source_path = Path(ds["source_dir"])
+        else:
+            # Use default dataset config
+            dataset_config = DATASET_CONFIGS.get(self.dataset_name, DATASET_CONFIGS["ICM57"])
+            self.dataset_download_url = dataset_config["download_url"]
+            self.dataset_zip_name = dataset_config["zip_name"]
+            self.dataset_extract_subdir = dataset_config["extract_subdir"]
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
         # This task uses a fixed prompt; sample-specific prompts can be added later.
@@ -138,8 +189,27 @@ class RemoveBackground(MultimodalImageArtifactHandler):
             root = self._find_dataset_root(self.source_path)
             if root is not None:
                 return root
+            # If source_dir was specified but not found, raise error
+            raise FileNotFoundError(
+                f"{self.dataset_name} dataset not found at {self.source_path}. "
+                f"Expected structure: {self.dataset_extract_subdir}/image/ and "
+                f"{self.dataset_extract_subdir}/masks/ (or at the root level)"
+            )
 
-        # Otherwise use the task-local `.data/` folder and bootstrap if needed.
+        # For local datasets without download support, check .data/ directory
+        dataset_local_path = self.data_dir / self.dataset_extract_subdir
+        if not self.dataset_download_url:
+            # Local-only dataset (e.g., kapaxia)
+            root = self._find_dataset_root(self.data_dir)
+            if root is not None:
+                return root
+            raise FileNotFoundError(
+                f"{self.dataset_name} dataset not found at {dataset_local_path}. "
+                f"Expected structure: {self.dataset_extract_subdir}/image/ and "
+                f"{self.dataset_extract_subdir}/masks/"
+            )
+
+        # For downloadable datasets, use the task-local `.data/` folder and bootstrap if needed.
         self.data_dir.mkdir(parents=True, exist_ok=True)
         root = self._find_dataset_root(self.data_dir)
         if root is not None:
@@ -147,7 +217,7 @@ class RemoveBackground(MultimodalImageArtifactHandler):
 
         zip_path = self.data_dir / self.dataset_zip_name
         if not zip_path.exists():
-            logger.info("Downloading dataset zip to %s", zip_path)
+            logger.info("Downloading %s dataset zip to %s", self.dataset_name, zip_path)
             self._download_zip(zip_path)
 
         logger.info("Extracting dataset zip %s into %s", zip_path, self.data_dir)
@@ -271,5 +341,19 @@ class RemoveBackground(MultimodalImageArtifactHandler):
             aggregated["score"] = aggregated["mask_iou"]
         else:
             aggregated["score"] = 0.0
+        
+        # Add "acceptable" threshold metric (90% IoU)
+        # Counts samples meeting quality threshold
+        acceptable_threshold = 0.80
+        valid_samples = [m for m in all_metrics if m.get("valid", True)]
+        acceptable_count = sum(
+            1 for m in valid_samples 
+            if m.get("mask_iou", 0) >= acceptable_threshold
+        )
+        total_valid = len(valid_samples)
+        
+        aggregated["acceptable_samples"] = acceptable_count
+        aggregated["acceptable_threshold"] = acceptable_threshold
+        aggregated["acceptable_rate"] = acceptable_count / total_valid if total_valid > 0 else 0.0
         
         return aggregated

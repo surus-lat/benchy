@@ -478,11 +478,32 @@ def build_handler_task_spec(
         if isinstance(subtask_reqs, dict):
             capability_requirements.update(subtask_reqs)
 
+        # Merge defaults with subtask_config for dataset, prompts, and metrics
+        # Priority: subtask_config > defaults
+        def _merge_dict(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+            """Deep merge two dicts, with override taking precedence."""
+            result = dict(default)
+            for key, value in override.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    result[key] = _merge_dict(result[key], value)
+                else:
+                    result[key] = value
+            return result
+
+        dataset_config = _merge_dict(
+            context.defaults.get("dataset", {}),
+            context.subtask_config.get("dataset", {})
+        )
+        metrics_config = _merge_dict(
+            context.defaults.get("metrics", {}),
+            context.subtask_config.get("metrics", {})
+        )
+
         handler_config = {
             "subtask_name": context.subtask_name,
-            "dataset": context.subtask_config.get("dataset", {}),
+            "dataset": dataset_config,
             "prompts": context.subtask_config.get("prompts", context.prompts),
-            "metrics": context.subtask_config.get("metrics", {}),
+            "metrics": metrics_config,
             "capability_requirements": capability_requirements,
         }
 
