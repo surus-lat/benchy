@@ -7,6 +7,8 @@ from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+_LEGACY_TASK_CONFIG_WARNING_EMITTED = False
+_LEGACY_TASK_CONFIG_WARNED_TASKS = set()
 
 # Centralized task config schema for light validation and discoverability.
 TASK_CONFIG_SCHEMA = {
@@ -274,7 +276,7 @@ class ConfigManager:
         return [f.stem for f in models_dir.glob("*.yaml")]
 
     def _get_tasks_root(self) -> Path:
-        """Return the root directory that contains task.json configs."""
+        """Return the root directory that contains task definitions."""
         return Path(__file__).resolve().parent / "tasks"
 
     def _load_task_config_from_tasks_root(self, task_name: str) -> Dict[str, Any]:
@@ -293,7 +295,45 @@ class ConfigManager:
                 raise ValueError(f"Invalid JSON in task config: {task_path}") from exc
 
             if task_config.get("name") == task_name:
+                if task_name not in _LEGACY_TASK_CONFIG_WARNED_TASKS:
+                    logger.warning(
+                        "Task '%s' uses deprecated task.json registration. "
+                        "Migrate to handler-based metadata.yaml + Python subtasks.",
+                        task_name,
+                    )
+                    _LEGACY_TASK_CONFIG_WARNED_TASKS.add(task_name)
                 return task_config
+
+        # Handler-based fallback: synthesize task config from metadata.yaml.
+        metadata_path = tasks_root / task_name / "metadata.yaml"
+        if metadata_path.exists():
+            with open(metadata_path, "r") as f:
+                metadata = yaml.safe_load(f) or {}
+            if isinstance(metadata, dict):
+                subtasks = metadata.get("subtasks") or {}
+                if isinstance(subtasks, dict):
+                    task_list = list(subtasks.keys())
+                elif isinstance(subtasks, list):
+                    task_list = [task for task in subtasks if isinstance(task, str)]
+                else:
+                    task_list = []
+
+                output_cfg = metadata.get("output")
+                if not isinstance(output_cfg, dict):
+                    output_cfg = {"subdirectory": task_name}
+
+                return {
+                    "name": metadata.get("name", task_name),
+                    "display_name": metadata.get("display_name", task_name.replace("_", " ").title()),
+                    "description": metadata.get("description", ""),
+                    "tasks": task_list,
+                    "defaults": {},
+                    "prompts": {},
+                    "task_configs": {},
+                    "output": output_cfg,
+                    "capability_requirements": metadata.get("capability_requirements", {}),
+                    "metrics_manifest": metadata.get("metrics_manifest", []),
+                }
 
         raise FileNotFoundError(f"Task config not found for: {task_name}")
 
@@ -374,7 +414,15 @@ class ConfigManager:
         if not tasks_root.exists():
             return []
 
-        task_names = []
+        task_names = set()
+        legacy_task_names = set()
+
+        # New handler-based discovery.
+        from .tasks.registry import list_handler_task_groups
+
+        task_names.update(list_handler_task_groups())
+
+        # Legacy task.json discovery (deprecated but still supported).
         for task_path in tasks_root.rglob("task.json"):
             if task_path.parent.name == "_template":
                 continue
@@ -385,9 +433,19 @@ class ConfigManager:
                 continue
             name = task_config.get("name")
             if name and name != "template_task":
-                task_names.append(name)
+                task_names.add(name)
+                legacy_task_names.add(name)
 
-        return sorted(set(task_names))
+        global _LEGACY_TASK_CONFIG_WARNING_EMITTED
+        if legacy_task_names and not _LEGACY_TASK_CONFIG_WARNING_EMITTED:
+            logger.warning(
+                "Legacy task.json registration is deprecated. "
+                "Migrate tasks to handler-based metadata.yaml discovery. Legacy tasks: %s",
+                ", ".join(sorted(legacy_task_names)),
+            )
+            _LEGACY_TASK_CONFIG_WARNING_EMITTED = True
+
+        return sorted(task_names)
     
     def expand_task_groups(self, tasks: list, central_config: Dict[str, Any]) -> list:
         """

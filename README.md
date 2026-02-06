@@ -171,6 +171,7 @@ When no config file is provided, Benchy infers the provider from CLI flags:
 
 - `--model-path` or `--vllm-config` -> local vLLM (Benchy starts the server)
 - `--base-url` -> OpenAI-compatible remote endpoint (defaults to OpenAI behavior unless `--provider` is set)
+- `--api-key` -> explicit API key value for OpenAI-compatible providers (overrides env lookup)
 - no provider hints -> OpenAI defaults (`https://api.openai.com/v1`, `OPENAI_API_KEY`)
 
 This means the model name alone does not determine the provider. The provider comes from
@@ -187,6 +188,9 @@ benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider together  -
 
 # Custom OpenAI-compatible endpoint
 benchy eval --model-name mymodel --base-url http://host:8000/v1 --tasks spanish --limit 2
+
+# Custom OpenAI-compatible endpoint + explicit API key (no .env needed)
+benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key --tasks spanish --limit 2
 
 # Local vLLM from Hugging Face (server started by Benchy)
 benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
@@ -257,6 +261,14 @@ If the model requires a nonstandard max-tokens parameter or API key name, set:
 benchy eval --provider openai --model-name gpt-5.2 \
   --max-tokens-param-name max_completion_tokens \
   --api-key-env OPENAI_API_KEY \
+  --tasks spanish --limit 2
+```
+
+Or pass the key directly at runtime:
+
+```bash
+benchy eval --provider openai --model-name gpt-5.2 \
+  --api-key your-api-key \
   --tasks spanish --limit 2
 ```
 
