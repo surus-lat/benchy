@@ -94,6 +94,7 @@ class OpenAIInterface:
 
         logger.info(f"Initialized OpenAIInterface for {model_name}")
         logger.info(f"  Base URL: {self.base_url}")
+        logger.info(f"  Max tokens parameter: {self.max_tokens_param_name}")
         if isinstance(self.image_max_edge, int) and self.image_max_edge > 0:
             logger.info(f"  Image scaling enabled: max edge={self.image_max_edge}px")
         if is_cloud:
@@ -222,10 +223,21 @@ class OpenAIInterface:
         return user_prompt[:idx].rstrip() + "\n"
 
     def _max_tokens_key(self) -> str:
+        """Determine which max_tokens parameter name to use.
+        
+        Returns the configured max_tokens_param_name, with auto-detection fallback
+        for known model families that require max_completion_tokens.
+        """
         if self.provider_type == "openai":
             for marker in ["gpt-5", "o1", "o3", "o4"]:
                 if marker in self.model_name.lower() and self.max_tokens_param_name == "max_tokens":
+                    logger.debug(
+                        f"Auto-detecting max_completion_tokens for {marker} model "
+                        f"(configured: {self.max_tokens_param_name})"
+                    )
                     return "max_completion_tokens"
+        
+        # Use configured parameter (may have been set by probe)
         return self.max_tokens_param_name
 
     def _log_request_strategy_once(self, *, api_endpoint: str, schema_transport: str) -> None:

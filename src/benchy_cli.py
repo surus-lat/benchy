@@ -109,6 +109,23 @@ def build_parser() -> argparse.ArgumentParser:
     add_eval_arguments(eval_parser)
     eval_parser.set_defaults(_handler=run_eval)
 
+    # probe
+    from .benchy_cli_probe import add_probe_arguments, run_probe
+
+    probe_parser = subparsers.add_parser(
+        "probe",
+        help="Probe model capabilities and compatibility",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  benchy probe --provider vllm --base-url http://localhost:8000/v1 --model-name mymodel\n"
+            "  benchy probe --provider openai --model-name gpt-4o-mini\n"
+            "  benchy probe --base-url http://localhost:8000/v1 --model-name meta-llama/Llama-3.1-8B-Instruct\n"
+        ),
+    )
+    add_probe_arguments(probe_parser)
+    probe_parser.set_defaults(_handler=run_probe)
+
     # tasks
     tasks_parser = subparsers.add_parser(
         "tasks",

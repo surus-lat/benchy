@@ -325,6 +325,127 @@ benchy eval --provider openai --model-name gpt-5.2 \
   --tasks spanish --limit 2
 ```
 
+## Probe System
+
+Benchy includes a capability detection system that identifies model features and compatibility issues before running evaluations.
+
+### Standalone Probe Command
+
+Test model capabilities without running a full evaluation:
+
+```bash
+# Probe OpenAI model
+benchy probe --provider openai --model-name gpt-4o-mini
+
+# Probe local vLLM endpoint
+benchy probe --base-url http://localhost:8001/v1 --model-name mymodel
+
+# Probe with custom settings
+benchy probe --provider openai --model-name gpt-5-mini \
+  --profile full --global-timeout 120
+```
+
+### What the Probe Detects
+
+The probe system checks:
+
+1. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
+2. **Schema Transports**: Structured output support (structured_outputs vs response_format)
+3. **Multimodal Support**: Whether the model accepts image inputs
+4. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
+5. **Parameter Support**: Which max_tokens parameter variant is required (max_tokens vs max_completion_tokens)
+6. **Provider Fingerprint**: Model server metadata and version information
+
+### Probe Profiles
+
+- `quick` (default): Fast capability check (30-60 seconds)
+- `full`: Comprehensive testing with extended timeouts
+
+### Probe Outputs
+
+Probe results are written to `outputs/probe_outputs/<run_id>/<model>/`:
+
+- `probe_report.json`: Machine-readable capability report
+- `probe_summary.txt`: Human-readable summary
+
+### Integration with Eval
+
+The probe system runs automatically during `benchy eval` to detect capabilities and configure requests appropriately. It ensures:
+
+- Tasks requiring multimodal support skip if images aren't supported
+- Structured output requests use the correct parameter format
+- Logprobs are only requested when supported
+- The correct max_tokens parameter name is used (critical for gpt-5, o1, o3, o4 models)
+
+### How Decisions Are Made During Eval
+
+When you run `benchy eval`, here's how the system decides which parameters to use:
+
+1. **Initial Configuration**: `connection_info` is built from provider config and CLI arguments
+2. **Probe Detection**: The probe tests actual API behavior:
+   - Tests `max_tokens` explicitly (disabling auto-detection)
+   - Tests `max_completion_tokens` if `max_tokens` fails
+   - Tests which structured output format works
+   - Tests logprobs support
+3. **Apply Probe Results**: Detected capabilities update `connection_info`:
+   - `api_endpoint` → from probe's selected endpoint
+   - `supports_logprobs` → from probe's logprobs test
+   - `use_structured_outputs` → from probe's schema transport test
+   - `max_tokens_param_name` → from probe's parameter test
+4. **Interface Initialization**: `OpenAIInterface` reads the configured values
+5. **Request Building**: Each request uses the probed/configured parameters
+
+You'll see clear logging at each step:
+```
+INFO - Using max_completion_tokens (detected by probe)
+INFO - Initialized OpenAIInterface for gpt-5-mini
+INFO -   Max tokens parameter: max_completion_tokens
+```
+
+### Example: gpt-5-mini Configuration
+
+OpenAI's gpt-5 models require `max_completion_tokens` instead of `max_tokens`. The probe detects this automatically:
+
+```bash
+# Probe will detect max_completion_tokens is required
+benchy probe --provider openai --model-name gpt-5-mini
+
+# Eval will use the probed parameter automatically
+benchy eval --provider openai --model-name gpt-5-mini \
+  --tasks spanish --limit 10
+```
+
+You can also configure it explicitly in a model config:
+
+```yaml
+# configs/models/openai_gpt-5-mini.yaml
+model:
+  name: gpt-5-mini
+openai:
+  provider_config: openai
+  overrides:
+    max_tokens_param_name: "max_completion_tokens"
+```
+
+Or via CLI:
+
+```bash
+benchy eval --provider openai --model-name gpt-5-mini \
+  --max-tokens-param-name max_completion_tokens \
+  --tasks spanish --limit 10
+```
+
+### Risk Flags
+
+The probe generates risk flags for common issues:
+
+- **truncation_risk**: Model produces repetition patterns when hitting token limits
+- **repetition_risk**: Model shows degenerate repetition behavior
+- **schema_unreliable**: Structured output may not work correctly
+- **multimodal_unreliable**: Image inputs may not be supported
+
+These flags help diagnose evaluation failures and guide configuration adjustments.
+
 ## Configuration Overview
 
 ### Project Structure
