@@ -440,11 +440,22 @@ async def _probe_openai_interface(
     request_modes: List[str],
 ) -> Dict[str, Any]:
     """Probe OpenAI-style endpoints (chat/completions/logprobs)."""
+    schema_forced = bool(connection_info.get("use_structured_outputs_explicit"))
+    schema_requested = (
+        "structured_outputs" if connection_info.get("use_structured_outputs") else "response_format"
+    )
+    if not schema_forced:
+        schema_requested = "auto"
+
     report: Dict[str, Any] = {
         "model_name": model_name,
         "provider_type": connection_info.get("provider_type"),
         "base_url": connection_info.get("base_url"),
         "api_endpoint_requested": connection_info.get("api_endpoint") or "auto",
+        "schema_transport_requested": schema_requested,
+        "schema_transport_forced": schema_forced,
+        "schema_transports": {},
+        "selected_schema_transport": None,
         "modes": {},
         "selected_api_endpoint": None,
     }
@@ -474,6 +485,28 @@ async def _probe_openai_interface(
             use_logprobs=True,
         )
 
+    supports_schema = bool((connection_info.get("capabilities") or {}).get("supports_schema"))
+    if supports_schema and "chat" in request_modes:
+        report["schema_transports"]["structured_outputs"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="chat",
+            use_logprobs=False,
+            schema_transport="structured_outputs",
+        )
+        report["schema_transports"]["response_format"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="chat",
+            use_logprobs=False,
+            schema_transport="response_format",
+        )
+
+    report["selected_schema_transport"] = _select_schema_transport(
+        report.get("schema_transport_requested") or "auto",
+        report.get("schema_transports") or {},
+    )
+
     report["selected_api_endpoint"] = _select_api_endpoint(
         report["api_endpoint_requested"],
         report["modes"],
@@ -487,6 +520,7 @@ async def _probe_openai_mode(
     *,
     api_endpoint: str,
     use_logprobs: bool,
+    schema_transport: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a single probe call for a request mode."""
     from ..interfaces.openai_interface import OpenAIInterface
@@ -494,9 +528,13 @@ async def _probe_openai_mode(
     probe_info = deepcopy(connection_info)
     probe_info["api_endpoint"] = api_endpoint
     probe_info["max_tokens"] = min(int(probe_info.get("max_tokens", 16)), 16)
+    if schema_transport == "structured_outputs":
+        probe_info["use_structured_outputs"] = True
+    elif schema_transport == "response_format":
+        probe_info["use_structured_outputs"] = False
 
     interface = OpenAIInterface(probe_info, model_name)
-    request = _build_probe_request(use_logprobs=use_logprobs)
+    request = _build_probe_request(use_logprobs=use_logprobs, schema_transport=schema_transport)
     try:
         results = await interface.generate_batch([request])
     finally:
@@ -505,15 +543,16 @@ async def _probe_openai_mode(
             await close_fn()
 
     result = results[0] if results else {}
-    ok = _probe_success(result)
+    ok = _probe_schema_transport_success(result) if schema_transport else _probe_success(result)
     return {
         "ok": ok,
         "error": result.get("error"),
         "error_type": result.get("error_type"),
+        "schema_transport": schema_transport,
     }
 
 
-def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
+def _build_probe_request(*, use_logprobs: bool, schema_transport: Optional[str] = None) -> Dict[str, Any]:
     """Build a minimal probe request for mode detection."""
     if use_logprobs:
         return {
@@ -523,6 +562,20 @@ def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
             "sample_id": "probe_logprobs",
             "use_logprobs": True,
             "choices": ["A", "B"],
+        }
+    if schema_transport:
+        return {
+            "system_prompt": "",
+            "user_prompt": "Return JSON with field `ok` and value `yes`.",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"ok": {"type": "string"}},
+                "required": ["ok"],
+            },
+            "sample_id": f"probe_schema_{schema_transport}",
+            "use_logprobs": False,
+            "choices": None,
         }
     return {
         "system_prompt": "",
@@ -546,6 +599,16 @@ def _probe_success(result: Dict[str, Any]) -> bool:
     return True
 
 
+def _probe_schema_transport_success(result: Dict[str, Any]) -> bool:
+    """Return True when schema transport appears accepted by the endpoint."""
+    if result.get("output") is not None:
+        return True
+    raw = result.get("raw")
+    if isinstance(raw, str) and raw.strip():
+        return True
+    return False
+
+
 def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Optional[str]:
     """Select the best available endpoint based on probe results."""
     preferred = requested or "auto"
@@ -564,6 +627,28 @@ def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Op
     return None
 
 
+def _select_schema_transport(
+    requested: str,
+    schema_transports: Dict[str, Dict[str, Any]],
+) -> Optional[str]:
+    """Select best schema transport based on probe results."""
+    preferred = requested or "auto"
+    if preferred in ("structured_outputs", "response_format"):
+        if schema_transports.get(preferred, {}).get("ok"):
+            return preferred
+        fallback = "response_format" if preferred == "structured_outputs" else "structured_outputs"
+        if schema_transports.get(fallback, {}).get("ok"):
+            return fallback
+        return preferred
+
+    # Auto mode preference: guided decoding first, then response_format.
+    if schema_transports.get("structured_outputs", {}).get("ok"):
+        return "structured_outputs"
+    if schema_transports.get("response_format", {}).get("ok"):
+        return "response_format"
+    return None
+
+
 def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]) -> None:
     """Apply probe-derived endpoint/logprobs support to connection_info."""
     selected = report.get("selected_api_endpoint")
@@ -577,6 +662,20 @@ def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]
         capabilities = connection_info.get("capabilities") or {}
         capabilities["supports_logprobs"] = supports_logprobs
         connection_info["capabilities"] = capabilities
+
+    selected_schema_transport = report.get("selected_schema_transport")
+    schema_forced = bool(report.get("schema_transport_forced"))
+    requested_schema_transport = report.get("schema_transport_requested")
+    if selected_schema_transport:
+        if schema_forced:
+            if requested_schema_transport != selected_schema_transport:
+                logger.warning(
+                    "Schema transport forced to %s but probe prefers %s; keeping forced setting.",
+                    requested_schema_transport,
+                    selected_schema_transport,
+                )
+        else:
+            connection_info["use_structured_outputs"] = selected_schema_transport == "structured_outputs"
 
 
 def _write_probe_report(output_dir: Path, report: Dict[str, Any]) -> None:
@@ -596,3 +695,17 @@ def _log_probe_report(report: Dict[str, Any]) -> None:
         error = result.get("error")
         suffix = f" ({error})" if error else ""
         logger.info(f"Probe {mode}: {status}{suffix}")
+    schema_requested = report.get("schema_transport_requested")
+    schema_selected = report.get("selected_schema_transport")
+    schema_forced = bool(report.get("schema_transport_forced"))
+    logger.info(
+        "Schema transport probe selected method=%s (requested=%s, forced=%s)",
+        schema_selected,
+        schema_requested,
+        schema_forced,
+    )
+    for method, result in (report.get("schema_transports") or {}).items():
+        status = "ok" if result.get("ok") else "failed"
+        error = result.get("error")
+        suffix = f" ({error})" if error else ""
+        logger.info(f"Probe schema.{method}: {status}{suffix}")

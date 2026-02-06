@@ -62,6 +62,7 @@ class OpenAIInterface:
             )
         self._supports_logprobs = self._capabilities.supports_logprobs
         self.logprobs_top_k = connection_info.get("logprobs_top_k") or 20
+        self._logged_schema_enforcement_mode = False
 
         problematic_models = connection_info.get("problematic_models") or [
             "ByteDance-Seed/Seed-X-Instruct-7B",
@@ -429,6 +430,13 @@ class OpenAIInterface:
 
         async def attempt_fn(_: int) -> Dict:
             if use_completions_api:
+                schema_transport = "prompt_only" if schema else "none"
+                logger.info(
+                    "Request sample_id=%s api_endpoint=%s schema_transport=%s",
+                    sample_id,
+                    "completions",
+                    schema_transport,
+                )
                 combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
                 response = await self.client.completions.create(
                     model=self.model_name,
@@ -457,7 +465,7 @@ class OpenAIInterface:
             if image_path:
                 base64_image, media_type = self._encode_image_payload(image_path)
                 effective_prompt = user_prompt
-                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                if schema and self.use_structured_outputs:
                     effective_prompt = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
                 user_content = [
                     {"type": "text", "text": effective_prompt},
@@ -465,7 +473,7 @@ class OpenAIInterface:
                 ]
             else:
                 user_content = user_prompt
-                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                if schema and self.use_structured_outputs:
                     user_content = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
 
             messages = [
@@ -484,8 +492,33 @@ class OpenAIInterface:
 
             params[self._max_tokens_key()] = self.max_tokens
 
+            schema_transport = "none"
+            if schema:
+                if self.use_structured_outputs:
+                    schema_transport = "structured_outputs"
+                elif self.provider_type == "openai":
+                    schema_transport = "response_format"
+                else:
+                    schema_transport = "prompt_only"
+            logger.info(
+                "Request sample_id=%s api_endpoint=%s schema_transport=%s",
+                sample_id,
+                "chat",
+                schema_transport,
+            )
+
+            if schema and not self._logged_schema_enforcement_mode:
+                if self.use_structured_outputs:
+                    mode = "guided_json (extra_body.structured_outputs)"
+                elif self.provider_type == "openai":
+                    mode = "response_format json_schema strict"
+                else:
+                    mode = "prompt_only (no API-level schema parameter)"
+                logger.info(f"Schema enforcement mode: {mode}")
+                self._logged_schema_enforcement_mode = True
+
             if schema and self.use_structured_outputs:
-                # vLLM structured outputs
+                # OpenAI-compatible guided JSON (vLLM structured outputs extension).
                 from ..common.schema_sanitizer import sanitize_schema_for_vllm
                 sanitized_schema = sanitize_schema_for_vllm(schema)
                 params["extra_body"] = {"structured_outputs": {"json": sanitized_schema}}

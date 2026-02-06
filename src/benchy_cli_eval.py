@@ -290,6 +290,8 @@ def _apply_cli_provider_overrides(
         merged["max_tokens_param_name"] = args.max_tokens_param_name
     if args.api_endpoint is not None:
         merged["api_endpoint"] = args.api_endpoint
+    if args.use_structured_outputs is not None:
+        merged["use_structured_outputs"] = args.use_structured_outputs
     if args.image_max_edge is not None:
         if args.image_max_edge <= 0:
             raise ValueError("--image-max-edge must be a positive integer")
@@ -546,6 +548,15 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["auto", "chat", "completions"],
         default=None,
         help="Request mode for OpenAI-compatible providers (default: auto).",
+    )
+    parser.add_argument(
+        "--use-structured-outputs",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Enable guided JSON schema enforcement via OpenAI-compatible "
+            "`extra_body.structured_outputs` (recommended for local vLLM servers)."
+        ),
     )
     parser.add_argument(
         "--image-max-edge",

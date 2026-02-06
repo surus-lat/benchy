@@ -195,6 +195,9 @@ def build_connection_info(
             "image_artifact_fallback_to_chat",
             model_config.get("image_artifact_fallback_to_chat", True),
         ),
+        # Tracks whether this was explicitly set by config/CLI (vs inferred defaults),
+        # so probes can auto-select when unspecified.
+        "use_structured_outputs_explicit": "use_structured_outputs" in provider_config,
     }
     # Preserve explicit API keys (e.g. --api-key on CLI). Interfaces will
     # still fall back to api_key_env if this is missing/empty.
@@ -230,7 +233,7 @@ def build_connection_info(
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
-        connection_info["use_structured_outputs"] = False
+        connection_info["use_structured_outputs"] = bool(provider_config.get("use_structured_outputs", False))
         
     elif provider_type == "anthropic":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.anthropic.com/v1")
