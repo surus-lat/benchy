@@ -154,6 +154,8 @@ If `benchy` is not on your PATH (for example when running directly from the repo
 If you want to run the same task list across multiple models, you can override tasks
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `docs/evaluating_models.md` for full examples and behavior.
+`--tasks` accepts either space-separated values (e.g. `--tasks spanish portuguese`)
+or comma-separated values (e.g. `--tasks spanish,portuguese`).
 
 **Dataset selection**: Some tasks support multiple datasets. Use `--dataset <name>` to specify:
 

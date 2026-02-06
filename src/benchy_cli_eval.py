@@ -116,10 +116,21 @@ CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _parse_tasks_arg(value: Optional[str]) -> list:
+def _parse_tasks_arg(value: Optional[Any]) -> list:
     if not value:
         return []
-    return [entry.strip() for entry in value.split(",") if entry.strip()]
+
+    if isinstance(value, str):
+        tokens = [value]
+    elif isinstance(value, list):
+        tokens = [str(token) for token in value if token is not None]
+    else:
+        tokens = [str(value)]
+
+    parsed = []
+    for token in tokens:
+        parsed.extend(entry.strip() for entry in token.split(",") if entry.strip())
+    return parsed
 
 
 def _load_tasks_file(path: str) -> list:
@@ -379,9 +390,12 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", type=str, default=None, help="Run ID for organizing outputs")
     parser.add_argument(
         "--tasks",
-        type=str,
+        nargs="+",
         default=None,
-        help="Comma-separated list of tasks or task groups (overrides config tasks)",
+        help=(
+            "Task/task-group overrides (space-separated and/or comma-separated). "
+            "Examples: --tasks spanish portuguese OR --tasks spanish,portuguese"
+        ),
     )
     parser.add_argument(
         "--tasks-file",
