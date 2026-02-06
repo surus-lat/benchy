@@ -174,6 +174,7 @@ When no config file is provided, Benchy infers the provider from CLI flags:
 - `--model-path` or `--vllm-config` -> local vLLM (Benchy starts the server)
 - `--base-url` -> OpenAI-compatible remote endpoint (defaults to OpenAI behavior unless `--provider` is set)
 - `--api-key` -> explicit API key value for OpenAI-compatible providers (overrides env lookup)
+- `--image-max-edge` -> optional in-memory image downscaling before request (preserves aspect ratio; originals unchanged). Also works with multimodal system/provider configs (e.g. Google, SURUS).
 - no provider hints -> OpenAI defaults (`https://api.openai.com/v1`, `OPENAI_API_KEY`)
 
 This means the model name alone does not determine the provider. The provider comes from
@@ -193,6 +194,10 @@ benchy eval --model-name mymodel --base-url http://host:8000/v1 --tasks spanish 
 
 # Custom OpenAI-compatible endpoint + explicit API key (no .env needed)
 benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key --tasks spanish --limit 2
+
+# Same endpoint with optional image downscaling to reduce multimodal token load
+benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key \
+  --tasks document_extraction image_extraction --image-max-edge 1536 --limit 2
 
 # Local vLLM from Hugging Face (server started by Benchy)
 benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
