@@ -287,7 +287,15 @@ class OpenAIInterface:
         sample_id: str,
     ) -> Dict:
         """Generate an image artifact via OpenAI-compatible images endpoints."""
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         response_format = self.image_response_format or "b64_json"
         extra_params: Dict[str, Any] = {}
@@ -347,6 +355,9 @@ class OpenAIInterface:
                     "raw": f"images_api=b64_json len={len(b64)}",
                     "error": None,
                     "error_type": None,
+                    "finish_reason": None,
+                    "completion_tokens": None,
+                    "prompt_tokens": None,
                 }
             if isinstance(url, str) and url.strip():
                 return {
@@ -354,6 +365,9 @@ class OpenAIInterface:
                     "raw": "images_api=url",
                     "error": None,
                     "error_type": None,
+                    "finish_reason": None,
+                    "completion_tokens": None,
+                    "prompt_tokens": None,
                 }
 
             raise ValueError("Images API returned no b64_json/url payload")
@@ -385,7 +399,15 @@ class OpenAIInterface:
         expects_image_artifact: bool = False,
     ) -> Dict:
         """Generate output for a single request."""
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         # Image artifact tasks: prefer images endpoints (OpenAI-compatible) only when the
         # interface explicitly declares support, with optional chat fallback.
@@ -456,6 +478,10 @@ class OpenAIInterface:
                     timeout=self.timeout,
                 )
                 raw_output = response.choices[0].text
+                usage = getattr(response, "usage", None)
+                result["completion_tokens"] = getattr(usage, "completion_tokens", None) if usage else None
+                result["prompt_tokens"] = getattr(usage, "prompt_tokens", None) if usage else None
+                result["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
                 result["raw"] = raw_output
                 if raw_output is None:
                     result["error"] = "Empty response content"
@@ -541,6 +567,10 @@ class OpenAIInterface:
 
             response = await self.client.chat.completions.create(**params)
             content = response.choices[0].message.content
+            usage = getattr(response, "usage", None)
+            result["completion_tokens"] = getattr(usage, "completion_tokens", None) if usage else None
+            result["prompt_tokens"] = getattr(usage, "prompt_tokens", None) if usage else None
+            result["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
             result["raw"] = content
             if content is None:
                 result["error"] = "Empty response content"
@@ -593,7 +623,15 @@ class OpenAIInterface:
         sample_id: str,
     ) -> Dict:
         """Generate prediction using log probabilities for multiple choice."""
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         # Capability: enforce logprobs support before issuing the request.
         if not self.supports_logprobs:
@@ -618,6 +656,10 @@ class OpenAIInterface:
                 logprobs=self.logprobs_top_k,
                 timeout=self.timeout,
             )
+            usage = getattr(response, "usage", None)
+            result["completion_tokens"] = getattr(usage, "completion_tokens", None) if usage else None
+            result["prompt_tokens"] = getattr(usage, "prompt_tokens", None) if usage else None
+            result["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
 
             logprobs = getattr(response.choices[0], "logprobs", None)
             if not logprobs or not getattr(logprobs, "top_logprobs", None):
@@ -732,7 +774,15 @@ class OpenAIInterface:
         schema: Optional[Dict],
         sample_id: str,
     ) -> Dict:
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         if schema:
             schema_str = json.dumps(schema, indent=2)
@@ -752,6 +802,7 @@ class OpenAIInterface:
             )
 
             raw_output = response.content[0].text
+            result["finish_reason"] = getattr(response, "stop_reason", None)
             result["raw"] = raw_output
             if raw_output is None:
                 result["error"] = "Empty response content"

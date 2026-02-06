@@ -19,6 +19,7 @@ from .checkpoint import (
     load_checkpoint,
 )
 from .protocols import BaseTask, BaseInterface, check_compatibility
+from .output_diagnostics import analyze_output, aggregate_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,7 @@ class BenchmarkRunner:
             "samples": [],
             "per_sample_metrics": list(metrics_by_id.values()),
         }
+        diagnostics_entries: List[Dict[str, Any]] = []
         start_time = time.time()
         
         # Log example for first sample
@@ -234,6 +236,24 @@ class BenchmarkRunner:
                 
                 results["per_sample_metrics"].append(metrics)
                 metrics_by_id[sample["id"]] = metrics
+
+                diagnostics = analyze_output(sample=sample, output=output, task=self.task)
+                diagnostics_entries.append(diagnostics)
+
+                if output.get("error") or metrics.get("error_type") == "invalid_response":
+                    logger.warning(
+                        "Sample %s invalid output: error=%s error_type=%s finish_reason=%s completion_tokens=%s prompt_tokens=%s diagnostic_class=%s whitespace_run=%s repetition=%s raw_len=%s",
+                        sample["id"],
+                        output.get("error"),
+                        output.get("error_type"),
+                        diagnostics.get("finish_reason"),
+                        diagnostics.get("completion_tokens"),
+                        diagnostics.get("prompt_tokens"),
+                        diagnostics.get("diagnostic_class"),
+                        diagnostics.get("max_whitespace_run"),
+                        diagnostics.get("repetition_detected"),
+                        diagnostics.get("raw_length"),
+                    )
                 
                 # Log sample details if requested
                 if self.log_samples:
@@ -244,7 +264,11 @@ class BenchmarkRunner:
                         "expected": sample.get("expected"),
                         "metrics": metrics,
                         "error": output.get("error"),
+                        "finish_reason": diagnostics.get("finish_reason"),
+                        "completion_tokens": diagnostics.get("completion_tokens"),
+                        "prompt_tokens": diagnostics.get("prompt_tokens"),
                     }
+                    sample_data["diagnostics"] = diagnostics
                     # Add task-specific fields
                     for key in ["title", "topic", "text"]:
                         if key in sample:
@@ -271,6 +295,9 @@ class BenchmarkRunner:
         run_samples = len(samples)
         aggregate["throughput"] = run_samples / aggregate["total_duration"] if aggregate["total_duration"] > 0 else 0
         aggregate["run_samples"] = run_samples
+        counts, rates = aggregate_diagnostics(diagnostics_entries, run_samples=run_samples)
+        aggregate["diagnostic_counts"] = counts
+        aggregate["diagnostic_rates"] = rates
         results["aggregate_metrics"] = aggregate
         
         self._log_summary(aggregate)
@@ -333,6 +360,21 @@ class BenchmarkRunner:
                     logger.info(f"{key}: {value:.4f}")
                 elif isinstance(value, (int, str)):
                     logger.info(f"{key}: {value}")
+
+        # Print compact diagnostic summary (dict metrics are skipped above).
+        diagnostic_counts = metrics.get("diagnostic_counts")
+        diagnostic_rates = metrics.get("diagnostic_rates")
+        if isinstance(diagnostic_counts, dict) and diagnostic_counts:
+            parts = []
+            for cls, count in sorted(diagnostic_counts.items(), key=lambda kv: kv[1], reverse=True):
+                rate = None
+                if isinstance(diagnostic_rates, dict):
+                    rate = diagnostic_rates.get(cls)
+                if isinstance(rate, (float, int)):
+                    parts.append(f"{cls}={count} ({float(rate):.3f})")
+                else:
+                    parts.append(f"{cls}={count}")
+            logger.info("diagnostic_summary: %s", ", ".join(parts))
         
         logger.info("=" * 60)
 
