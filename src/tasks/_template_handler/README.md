@@ -21,7 +21,7 @@ This template demonstrates how to create new benchmark tasks using the handler s
 
 5. **Test your task**:
    ```bash
-   benchy eval my_task --limit 10
+   benchy eval --model-name gpt-4o-mini --tasks my_task --limit 10
    ```
 
 ## What's Included
@@ -80,13 +80,13 @@ Choose the appropriate handler for your task format:
 
 ```bash
 # Run all subtasks
-benchy eval my_task
+benchy eval --model-name gpt-4o-mini --tasks my_task
 
 # Run specific subtask
-benchy eval my_task.subtask_one
+benchy eval --model-name gpt-4o-mini --tasks my_task.subtask_one
 
 # Test with limited samples
-benchy eval my_task --limit 10
+benchy eval --model-name gpt-4o-mini --tasks my_task --limit 10
 ```
 
 ## Tips
@@ -108,4 +108,3 @@ If converting from the old system:
 5. Remove `task.json`, `run.py`, old `task.py`
 
 See the [migration guide](../../../../docs/HANDLER_SYSTEM_GUIDE.md#migration-from-old-system) for details.
-

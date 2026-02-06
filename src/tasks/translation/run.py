@@ -80,7 +80,7 @@ def run_translation(
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
         api_test_result: API test result (unused, for interface compatibility)
-        task_config: Task configuration from src/tasks/translation/task.json
+        task_config: Task configuration payload (built from handler metadata)
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused for this task)
         provider_config: Provider configuration (for cloud providers)

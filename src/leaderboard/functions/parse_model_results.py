@@ -10,7 +10,7 @@ MODULAR STRUCTURE:
 - New tasks can be easily added by:
   1. Creating a process_<task>_results function
   2. Adding it to get_available_task_processors()
-  3. Adding task metadata under src/tasks/<task>/metadata.yaml (legacy task.json also supported)
+  3. Adding task metadata under src/tasks/<task>/metadata.yaml
 """
 
 import os
@@ -21,25 +21,13 @@ import yaml
 from config_loader import load_config
 
 def load_task_config(task_name: str) -> Dict:
-    """Load task config from legacy task.json or handler metadata.yaml."""
+    """Load task config from handler metadata.yaml."""
     project_root = Path(__file__).resolve().parents[3]
     task_dir = project_root / "src" / "tasks" / task_name
 
     if not task_dir.exists():
         return {}
 
-    # Preferred: legacy task.json when present.
-    config_path = task_dir / "task.json"
-    if config_path.exists():
-        try:
-            with open(config_path, "r") as f:
-                task_config = json.load(f)
-            if task_config.get("name") == task_name:
-                return task_config
-        except json.JSONDecodeError:
-            pass
-
-    # Fallback: handler metadata.yaml.
     metadata_path = task_dir / "metadata.yaml"
     if metadata_path.exists():
         try:

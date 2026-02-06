@@ -50,7 +50,8 @@ compatibility checks have sensible fallbacks even when a provider config omits f
 
 If the provider should be selectable via `benchy eval`, add it to `PROVIDER_SPECS` in
 `src/benchy_cli_eval.py` and
-update `provider_types` in each task's `task.json` as needed.
+ensure task `capability_requirements` in `metadata.yaml` reflect the provider's
+supported request modes and features.
 
 ### 5. Declare Capabilities
 

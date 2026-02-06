@@ -559,9 +559,10 @@ outputs/benchmark_outputs/<run_id>/<model>/
     └── .done  # Completion marker
 ```
 
-## Legacy Tasks
+## Task System
 
-Old `SimpleTask`-based tasks still work but are considered legacy. They use `task.json` and explicit `entrypoint`/`runner_entrypoint` declarations. For new tasks, use the handler system described here.
+Benchy now supports only the handler-based task system. Tasks are discovered from
+`src/tasks/<group>/metadata.yaml` plus subtask modules in the same directory.
 
 ## Best Practices
 

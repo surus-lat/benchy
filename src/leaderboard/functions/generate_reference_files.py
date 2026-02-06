@@ -18,16 +18,6 @@ DEFAULT_GROUP_ORDER = [
 
 
 def _iter_task_configs(tasks_root: Path) -> Iterable[Tuple[Path, Dict[str, Any]]]:
-    # Legacy format: src/tasks/<task>/task.json
-    for config_path in sorted(tasks_root.rglob("task.json")):
-        if config_path.parent.name == "_template":
-            continue
-        try:
-            config = json.loads(config_path.read_text())
-        except json.JSONDecodeError:
-            continue
-        yield config_path, config
-
     # Handler format: src/tasks/<task>/metadata.yaml
     for metadata_path in sorted(tasks_root.rglob("metadata.yaml")):
         group_name = metadata_path.parent.name
