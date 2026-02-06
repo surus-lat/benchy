@@ -10,7 +10,7 @@ MODULAR STRUCTURE:
 - New tasks can be easily added by:
   1. Creating a process_<task>_results function
   2. Adding it to get_available_task_processors()
-  3. Creating a task config file in src/tasks/<task>/task.json
+  3. Adding task metadata under src/tasks/<task>/metadata.yaml (legacy task.json also supported)
 """
 
 import os
@@ -21,23 +21,40 @@ import yaml
 from config_loader import load_config
 
 def load_task_config(task_name: str) -> Dict:
-    """Load task-specific configuration from src/tasks/<task>/task.json."""
+    """Load task config from legacy task.json or handler metadata.yaml."""
     project_root = Path(__file__).resolve().parents[3]
-    tasks_root = project_root / "src" / "tasks"
+    task_dir = project_root / "src" / "tasks" / task_name
 
-    if not tasks_root.exists():
+    if not task_dir.exists():
         return {}
 
-    for config_path in tasks_root.rglob("task.json"):
-        if config_path.parent.name == "_template":
-            continue
+    # Preferred: legacy task.json when present.
+    config_path = task_dir / "task.json"
+    if config_path.exists():
         try:
             with open(config_path, "r") as f:
                 task_config = json.load(f)
+            if task_config.get("name") == task_name:
+                return task_config
         except json.JSONDecodeError:
-            continue
-        if task_config.get("name") == task_name:
-            return task_config
+            pass
+
+    # Fallback: handler metadata.yaml.
+    metadata_path = task_dir / "metadata.yaml"
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, "r") as f:
+                metadata = yaml.safe_load(f) or {}
+            if isinstance(metadata, dict):
+                output = metadata.get("output") if isinstance(metadata.get("output"), dict) else {}
+                return {
+                    "name": metadata.get("name", task_name),
+                    "output": {
+                        "subdirectory": output.get("subdirectory", task_name),
+                    },
+                }
+        except Exception:
+            pass
 
     return {}
 

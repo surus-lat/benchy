@@ -1,6 +1,16 @@
 name: spanish
 display_name: Spanish Language
 description: Spanish language evaluation benchmark
+group: latam_es
+output:
+  subdirectory: spanish
+
+group_metadata:
+  name: Spanish LATAM
+  description: Spanish language tasks for Latin America
+  description_en: Spanish language tasks for Latin America
+  description_es: Tareas en espanol para America Latina
+  description_pt: Tarefas em espanhol para a America Latina
 
 capability_requirements:
   requires_logprobs: preferred

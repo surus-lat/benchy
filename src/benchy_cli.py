@@ -43,8 +43,17 @@ def _cmd_tasks(args: argparse.Namespace) -> int:
         print("")
 
     print("Tasks:")
+    discover_task_group = None
+    if args.verbose:
+        from .tasks.registry import discover_task_group
+
     for task in tasks:
         print(f"  - {task}")
+        if args.verbose and discover_task_group:
+            group_info = discover_task_group(task)
+            if group_info:
+                for subtask in group_info.subtasks:
+                    print(f"      - {task}.{subtask.name}")
     return 0
 
 

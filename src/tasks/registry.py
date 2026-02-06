@@ -21,6 +21,8 @@ from .group_runner import SubtaskContext, TaskGroupSpec, run_task_group
 
 logger = logging.getLogger(__name__)
 
+_INTERNAL_TASK_GROUPS = {"common"}
+
 
 @dataclass(frozen=True)
 class RegisteredTask:
@@ -348,6 +350,10 @@ def _is_subtask_file(file_path: Path) -> bool:
     return True
 
 
+def _is_internal_task_group(group_name: str) -> bool:
+    return group_name.startswith("_") or group_name in _INTERNAL_TASK_GROUPS
+
+
 def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
     """Discover a task group using convention-based file scanning.
     
@@ -361,6 +367,9 @@ def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
     Returns:
         TaskGroupInfo if found and using new convention, None otherwise
     """
+    if _is_internal_task_group(group_name):
+        return None
+
     tasks_root = _tasks_root()
     group_dir = tasks_root / group_name
 
@@ -368,7 +377,10 @@ def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
         return None
 
     # Check if this is a convention-based task group (has subtask .py files)
-    subtask_files = [f for f in group_dir.glob("*.py") if _is_subtask_file(f)]
+    subtask_files = sorted(
+        (f for f in group_dir.glob("*.py") if _is_subtask_file(f)),
+        key=lambda p: p.name,
+    )
     if not subtask_files:
         return None
 
@@ -410,6 +422,24 @@ def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
         metadata=metadata,
         metadata_file=metadata_file if metadata_file.exists() else None,
     )
+
+
+def list_handler_task_groups() -> List[str]:
+    """List discoverable handler-based task groups."""
+    tasks_root = _tasks_root()
+    if not tasks_root.exists():
+        return []
+
+    groups: List[str] = []
+    for group_dir in sorted(tasks_root.iterdir(), key=lambda p: p.name):
+        if not group_dir.is_dir():
+            continue
+        group_name = group_dir.name
+        if _is_internal_task_group(group_name):
+            continue
+        if discover_task_group(group_name):
+            groups.append(group_name)
+    return groups
 
 
 def load_subtask_handler(subtask_info: SubtaskInfo, config: Optional[Dict[str, Any]] = None):
