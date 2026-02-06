@@ -143,7 +143,8 @@ The metrics system applies smart normalization before comparison:
 
 ### Task Configuration
 
-Task-level configuration (typically in `src/tasks/image_extraction/task.json`):
+Task-level configuration lives in `src/tasks/image_extraction/metadata.yaml`.
+Runtime overrides are passed via `task_config` in the pipeline:
 
 ```json
 {

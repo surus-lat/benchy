@@ -1,8 +1,8 @@
-"""Lightweight metric helpers for SimpleTask.
+"""Lightweight metric helpers for handler-based tasks.
 
 These metrics are intentionally small, dependency-free building blocks for
 common evaluation patterns (exact match, token F1, etc.). They are meant to be
-combined in SimpleTask.metrics for low-boilerplate task definitions.
+combined in task handlers for low-boilerplate task definitions.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from .utils.choice_utils import parse_choice_prediction
 
 
 class Metric(Protocol):
-    """Protocol for SimpleTask metrics.
+    """Protocol for task metrics.
 
     Implementations should return per-sample values and provide an
     aggregation step (typically a mean over valid samples).

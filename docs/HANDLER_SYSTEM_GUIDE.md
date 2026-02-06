@@ -57,10 +57,10 @@ subtasks:
 
 ```bash
 # Run all subtasks in the group
-benchy eval my_task
+benchy eval --model-name gpt-4o-mini --tasks my_task
 
 # Run specific subtask
-benchy eval my_task.my_subtask
+benchy eval --model-name gpt-4o-mini --tasks my_task.my_subtask
 ```
 
 ## Available Format Handlers
@@ -350,12 +350,13 @@ tasks/my_task/
 
 1. **Create metadata.yaml** from task.json
 2. **Create handler classes** for each subtask
-3. **Test** using `benchy eval my_task`
+3. **Test** using `benchy eval --model-name gpt-4o-mini --tasks my_task`
 4. **Remove** old task.json, run.py, task.py
 
-### Backward Compatibility
+### Migration Status
 
-The system supports both old and new tasks simultaneously. Old tasks continue working while you migrate incrementally.
+The handler system is now the only supported task registration method. Legacy
+`task.json` task registration has been removed.
 
 ## Best Practices
 
@@ -372,7 +373,7 @@ Choose the handler that matches your task format:
 Only override what you need. Most handlers work with just dataset config:
 
 ```python
-class SimpleTask(MultipleChoiceHandler):
+class MyTask(MultipleChoiceHandler):
     dataset = "org/dataset"
     labels = {0: "No", 1: "Yes"}
     # That's enough for many tasks!
@@ -408,17 +409,17 @@ Test your handler before adding complexity:
 
 ```bash
 # Test with small limit first
-benchy eval my_task --limit 10
+benchy eval --model-name gpt-4o-mini --tasks my_task --limit 10
 
 # Then full evaluation
-benchy eval my_task
+benchy eval --model-name gpt-4o-mini --tasks my_task
 ```
 
 ## Troubleshooting
 
 ### Handler Not Discovered
 
-**Problem**: Task not found when running `benchy eval my_task`
+**Problem**: Task not found when running `benchy eval --tasks my_task ...`
 
 **Solutions**:
 1. Check file is named correctly (snake_case)
@@ -571,4 +572,3 @@ The handler system makes task creation:
 - **Composable**: Mix and match capabilities
 
 Start with a handler, add minimal config, and you're done!
-
