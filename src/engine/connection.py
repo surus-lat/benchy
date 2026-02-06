@@ -195,6 +195,11 @@ def build_connection_info(
             model_config.get("image_artifact_fallback_to_chat", True),
         ),
     }
+    # Preserve explicit API keys (e.g. --api-key on CLI). Interfaces will
+    # still fall back to api_key_env if this is missing/empty.
+    if provider_config.get("api_key") is not None:
+        connection_info["api_key"] = provider_config.get("api_key")
+
     base_capabilities = PROVIDER_CAPABILITY_DEFAULTS.get(provider_type, InterfaceCapabilities())
     provider_capabilities = parse_interface_capabilities(
         provider_config.get("capabilities"),
