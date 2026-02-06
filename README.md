@@ -157,6 +157,51 @@ on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `--tasks` accepts either space-separated values (e.g. `--tasks spanish portuguese`)
 or comma-separated values (e.g. `--tasks spanish,portuguese`).
 
+For automation/agents, use `--exit-policy` and parse run artifacts under
+`outputs/benchmark_outputs/<run_id>/<model>/`.
+`run_outcome.json` is the status source of truth. `run_summary.json` is metric-focused.
+For a strict machine-facing contract, see `AGENTS.md`.
+
+Canonical automation recipes:
+
+```bash
+# Smoke run (fast validation)
+benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
+  --limit 5 --run-id smoke_20260206 --exit-policy smoke
+
+# Full run (after smoke passes)
+benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
+  --run-id full_20260206 --exit-policy strict
+```
+
+Automation artifact contract:
+- `run_outcome.json`: run status, exit recommendation, counts, per-task statuses, invocation metadata, artifact pointers, structured errors.
+- `run_summary.json`: compact per-task metric summaries.
+- `<task>/task_status.json`: per-task status used by resume logic when reusing a run-id.
+
+Benchy writes `run_outcome.json` on successful runs, already-completed runs, and fatal
+pipeline failures that happen after run directory initialization.
+
+`run_outcome.json` includes:
+- `schema_version`, `benchy_version`
+- `status`, `exit_policy`, `exit_code`
+- `started_at`, `ended_at`, `duration_s`
+- `git` (`repo`, `commit`, `dirty`) when available
+- `counts`, `tasks`
+- `invocation`, `artifacts`, `errors`
+
+Task status semantics used by `run_outcome`/`task_status`:
+- `passed`: no connectivity/invalid-response/error-rate signal.
+- `degraded`: partial issues (any `error_rate > 0`, `invalid_response_rate > 0`, or `connectivity_error_rate > 0`) but not total failure.
+- `failed`: no valid samples for a non-empty task, all samples failed, or any subtask failed.
+- `skipped`: at least one subtask was skipped due to compatibility/requirements.
+- `no_samples`: task/subtask had zero samples or no metrics.
+
+Structured-output concessions (shared across structured handlers):
+- Date values on date-like schema fields accept `YYYY-MM-DD` and `DD-MM-YYYY` (also `DD/MM/YYYY`) and are normalized to `YYYY-MM-DD` for validation/scoring.
+- The literal string `"null"` is coerced to JSON `null` before validation/scoring, with a bounded score penalty (`normalization_penalty`, default `0.02` per coercion, capped at `0.20`) so quality is still penalized.
+  Configure via `metrics.normalization_penalty.null_string_to_null` and `metrics.normalization_penalty.max`.
+
 **Dataset selection**: Some tasks support multiple datasets. Use `--dataset <name>` to specify:
 
 ```bash
@@ -174,6 +219,7 @@ When no config file is provided, Benchy infers the provider from CLI flags:
 - `--model-path` or `--vllm-config` -> local vLLM (Benchy starts the server)
 - `--base-url` -> OpenAI-compatible remote endpoint (defaults to OpenAI behavior unless `--provider` is set)
 - `--api-key` -> explicit API key value for OpenAI-compatible providers (overrides env lookup)
+- `--exit-policy` -> automation-friendly process exit behavior (`relaxed`, `smoke`, `strict`)
 - `--image-max-edge` -> optional in-memory image downscaling before request (preserves aspect ratio; originals unchanged). Also works with multimodal system/provider configs (e.g. Google, SURUS).
 - no provider hints -> OpenAI defaults (`https://api.openai.com/v1`, `OPENAI_API_KEY`)
 

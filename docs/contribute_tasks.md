@@ -550,13 +550,14 @@ Handler-based tasks produce:
 ```
 outputs/benchmark_outputs/<run_id>/<model>/
 └── my_benchmark/
+    ├── task_status.json
     ├── sentiment/
     │   ├── model_timestamp_metrics.json
     │   ├── model_timestamp_samples.json
     │   └── model_timestamp_report.txt
     ├── toxicity/
     │   └── ...
-    └── .done  # Completion marker
+    └── ...
 ```
 
 ## Task System

@@ -134,10 +134,13 @@ Shows how field matches break down:
 The metrics system applies smart normalization before comparison:
 
 1. **DateTime fields** (schema `format: "date"` or `"date-time"`): Compared as dates only. `2025-01-15T00:00:00` equals `2025-01-15`.
+   Date-like schema fields also accept `DD-MM-YYYY` and `DD/MM/YYYY` and are canonicalized to `YYYY-MM-DD`.
 
 2. **Numeric string fields** (configurable): Converted to integers. `"0001"` equals `"1"`.
 
-3. **String fields**: Lenient matching tolerates minor variations in casing, spacing, and typos.
+3. **Null string concession**: Literal `"null"` values are coerced to JSON `null` before validation/comparison, with a bounded `normalization_penalty` applied to extraction scores (default `0.02` per coercion, capped at `0.20`).
+
+4. **String fields**: Lenient matching tolerates minor variations in casing, spacing, and typos.
 
 ## Configuration
 

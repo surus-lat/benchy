@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional, Dict, Any
+from importlib.metadata import version as package_version, PackageNotFoundError
 from .prefect_compat import flow, task, NO_CACHE
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .inference.vllm_config import VLLMServerConfig
@@ -9,6 +10,10 @@ from .config_loader import load_config
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
+from .outcome import (
+    resolve_exit_code,
+    resolve_run_status,
+)
 from .signal_utils import clear_active_server_info, set_active_server_info
 from .task_completion_checker import TaskCompletionChecker
 from .tasks.registry import (
@@ -21,6 +26,8 @@ import sys
 import logging
 import yaml
 import json
+import traceback
+import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -39,6 +46,74 @@ SUMMARY_SKIP_KEYS = {
     "match_distribution_counts",
     "subtasks",
 }
+RUN_OUTCOME_SCHEMA_VERSION = "1.0"
+
+
+def _get_benchy_version() -> str:
+    """Best-effort package version lookup."""
+    try:
+        return package_version("benchy")
+    except PackageNotFoundError:
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _artifact_ref(path: Optional[str]) -> Dict[str, Any]:
+    """Build normalized artifact reference payload."""
+    if not path:
+        return {"path": None, "exists": False}
+    candidate = Path(path)
+    return {"path": str(candidate), "exists": candidate.exists()}
+
+
+def _build_artifacts(
+    *,
+    model_output_path: str,
+    run_config_path: Optional[str],
+    log_file_path: Optional[str],
+) -> Dict[str, Any]:
+    """Build run artifact index for automation clients."""
+    model_root = Path(model_output_path)
+    return {
+        "model_output_dir": _artifact_ref(str(model_root)),
+        "run_outcome": _artifact_ref(str(model_root / "run_outcome.json")),
+        "run_summary": _artifact_ref(str(model_root / "run_summary.json")),
+        "run_config": _artifact_ref(run_config_path),
+        "log_file": _artifact_ref(log_file_path),
+        "task_status_glob": str(model_root / "*/task_status.json"),
+    }
+
+
+def _get_git_metadata() -> Dict[str, Any]:
+    """Best-effort git metadata for reproducibility."""
+    try:
+        repo = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        dirty_status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return {
+            "available": True,
+            "repo": repo,
+            "commit": commit,
+            "dirty": bool(dirty_status),
+        }
+    except Exception:
+        return {"available": False}
 
 
 @task(cache_policy=NO_CACHE)
@@ -251,6 +326,109 @@ def _write_run_summary(
     logger.info(f"Wrote run summary to {summary_path}")
 
 
+def _write_run_outcome(
+    *,
+    model_output_path: str,
+    model_name: str,
+    run_id: Optional[str],
+    exit_policy: str,
+    task_records: Dict[str, Dict[str, Any]],
+    started_at: datetime,
+    invocation_metadata: Optional[Dict[str, Any]] = None,
+    artifacts: Optional[Dict[str, Any]] = None,
+    errors: Optional[list] = None,
+    force_status: Optional[str] = None,
+    force_exit_code: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Write concise machine-readable run outcome for agents and automation."""
+    finished_at = datetime.now()
+    duration_s = round(max((finished_at - started_at).total_seconds(), 0.0), 6)
+    task_statuses = [str(record.get("status")) for record in task_records.values()]
+    exit_code = resolve_exit_code(task_statuses, policy=exit_policy)
+    run_status = resolve_run_status(task_statuses)
+    if force_status:
+        run_status = force_status
+    if force_exit_code is not None:
+        exit_code = int(force_exit_code)
+
+    counts = {
+        "requested_tasks": len(task_records),
+        "completed_tasks": sum(1 for record in task_records.values() if record.get("completed")),
+        "passed_tasks": sum(1 for record in task_records.values() if record.get("status") == "passed"),
+        "degraded_tasks": sum(1 for record in task_records.values() if record.get("status") == "degraded"),
+        "skipped_tasks": sum(1 for record in task_records.values() if record.get("status") == "skipped"),
+        "no_samples_tasks": sum(1 for record in task_records.values() if record.get("status") == "no_samples"),
+        "pending_tasks": sum(1 for record in task_records.values() if record.get("status") == "pending"),
+        "error_tasks": sum(1 for record in task_records.values() if record.get("status") == "error"),
+        "failed_tasks": sum(1 for record in task_records.values() if record.get("status") == "failed"),
+        "non_passing_tasks": sum(
+            1
+            for record in task_records.values()
+            if record.get("status") in {"failed", "error", "pending", "skipped", "no_samples"}
+        ),
+    }
+
+    outcome = {
+        "schema_version": RUN_OUTCOME_SCHEMA_VERSION,
+        "benchy_version": _get_benchy_version(),
+        "model": model_name,
+        "run_id": run_id,
+        "timestamp": finished_at.isoformat(),
+        "started_at": started_at.isoformat(),
+        "ended_at": finished_at.isoformat(),
+        "duration_s": duration_s,
+        "status": run_status,
+        "exit_policy": exit_policy,
+        "exit_code": exit_code,
+        "counts": counts,
+        "invocation": invocation_metadata or {},
+        "git": _get_git_metadata(),
+        "artifacts": artifacts or {},
+        "errors": errors or [],
+        "tasks": task_records,
+    }
+
+    outcome_path = Path(model_output_path) / "run_outcome.json"
+    with outcome_path.open("w", encoding="utf-8") as f:
+        json.dump(outcome, f, indent=2, default=str)
+    logger.info(f"Wrote run outcome to {outcome_path}")
+    return outcome
+
+
+def _log_run_outcome_summary(outcome: Dict[str, Any]) -> None:
+    """Log a compact end-of-run status summary."""
+    logger.info("=" * 60)
+    logger.info("RUN OUTCOME SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Run status: {outcome.get('status')}")
+    logger.info(f"Exit policy: {outcome.get('exit_policy')}")
+    logger.info(f"Suggested exit code: {outcome.get('exit_code')}")
+    logger.info(f"Duration (s): {outcome.get('duration_s')}")
+
+    counts = outcome.get("counts", {}) or {}
+    logger.info(f"Requested tasks: {counts.get('requested_tasks', 0)}")
+    logger.info(f"Completed tasks: {counts.get('completed_tasks', 0)}")
+    logger.info(f"Passed tasks: {counts.get('passed_tasks', 0)}")
+    logger.info(f"Degraded tasks: {counts.get('degraded_tasks', 0)}")
+    logger.info(f"Skipped tasks: {counts.get('skipped_tasks', 0)}")
+    logger.info(f"No-samples tasks: {counts.get('no_samples_tasks', 0)}")
+    logger.info(f"Failed tasks: {counts.get('failed_tasks', 0)}")
+    logger.info(f"Error tasks: {counts.get('error_tasks', 0)}")
+    logger.info(f"Pending tasks: {counts.get('pending_tasks', 0)}")
+    logger.info(f"Non-passing tasks: {counts.get('non_passing_tasks', 0)}")
+    logger.info(f"Errors: {len(outcome.get('errors') or [])}")
+    logger.info("")
+    logger.info("Per-task statuses:")
+    tasks = outcome.get("tasks", {}) or {}
+    for task_name in sorted(tasks):
+        record = tasks[task_name] or {}
+        status = record.get("status", "pending")
+        reason = record.get("reason")
+        suffix = f" ({reason})" if reason else ""
+        logger.info(f"  - {task_name}: {status}{suffix}")
+    logger.info("=" * 60)
+
+
 def write_run_config(
     model_name: str,
     model_path: Optional[str],
@@ -346,6 +524,9 @@ def benchmark_pipeline(
     provider_type: str = "vllm",
     provider_config: Optional[Dict[str, Any]] = None,
     compatibility_mode: str = "skip",
+    exit_policy: str = "relaxed",
+    invocation_metadata: Optional[Dict[str, Any]] = None,
+    log_file_path: Optional[str] = None,
     organization: Optional[str] = None,
     url: Optional[str] = None,
     vllm_config: Optional[VLLMServerConfig] = None,
@@ -370,12 +551,17 @@ def benchmark_pipeline(
         provider_type: Provider type ('vllm', 'openai', or 'anthropic')
         provider_config: Provider configuration (for cloud providers)
         compatibility_mode: Compatibility handling mode for incompatible tasks
+        exit_policy: Exit behavior policy ('relaxed', 'smoke', 'strict')
+        invocation_metadata: Redacted CLI invocation context (argv, cwd, args)
+        log_file_path: Absolute path to the run log file, if available
         vllm_config: vLLM server configuration (only used if provider_type == 'vllm')
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
     logger.info(f"Provider type: {provider_type}")
     logger.info(f"Tasks to run: {tasks}")
     logger.info(f"Using run_id: {run_id}")
+    logger.info(f"Exit policy: {exit_policy}")
+    run_started_at = datetime.now()
     
     # Initialize config manager
     config_manager = ConfigManager()
@@ -400,7 +586,11 @@ def benchmark_pipeline(
     # Update tasks with expanded list
     tasks = expanded_tasks
     
-    # Check for completed tasks to enable resuming failed runs
+    # Create run-specific output directory structure: {output_path}/{run_id}/{model_name}
+    model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
+    os.makedirs(model_output_path, exist_ok=True)
+
+    # Check for completed tasks to enable resuming runs
     completion_checker = TaskCompletionChecker(
         output_path=output_path,
         run_id=run_id,
@@ -408,88 +598,142 @@ def benchmark_pipeline(
     )
     
     # Check completion status for all requested tasks
-    completion_status = completion_checker.get_completed_tasks(tasks)
-    completion_checker.log_completion_summary(completion_status)
+    completion_records = completion_checker.get_task_records(tasks)
+    completion_checker.log_completion_summary(completion_records)
     
     # Filter out completed tasks
-    pending_tasks = [task for task, completed in completion_status.items() if not completed]
+    pending_tasks = [task for task, record in completion_records.items() if not record.get("completed")]
+    run_config_path: Optional[str] = None
     
     if not pending_tasks:
         logger.info("All tasks are already completed! Nothing to run.")
-        # Return early with a success result
+        run_outcome = _write_run_outcome(
+            model_output_path=model_output_path,
+            model_name=model_name,
+            run_id=run_id,
+            exit_policy=exit_policy,
+            task_records=completion_records,
+            started_at=run_started_at,
+            invocation_metadata=invocation_metadata,
+            artifacts=_build_artifacts(
+                model_output_path=model_output_path,
+                run_config_path=run_config_path,
+                log_file_path=log_file_path,
+            ),
+        )
+        _log_run_outcome_summary(run_outcome)
         return {
             "model_name": model_name,
             "run_id": run_id,
             "status": "all_tasks_completed",
-            "completed_tasks": tasks,
-            "message": "All tasks were already completed in previous run"
+            "completed_tasks": [task for task, record in completion_records.items() if record.get("completed")],
+            "message": "All tasks were already completed in previous run",
+            "run_outcome": run_outcome,
+            "exit_code": run_outcome.get("exit_code", 0),
         }
     
     logger.info(f"Running {len(pending_tasks)} pending tasks: {pending_tasks}")
     
-    # Step 0: Fetch generation config from model repository (only for vLLM)
+    # Initialize runtime state
     generation_config = None
-    if provider_type == 'vllm':
-        generation_config = fetch_generation_config(
-            model_name=model_path or model_name,
-            hf_cache=vllm_config.hf_cache,
-            hf_token=vllm_config.hf_token,
-        )
-    
-    # Write complete run configuration
-    write_run_config(
-        model_name=model_name,
-        model_path=model_path,
-        run_id=run_id,
-        output_path=output_path,
-        tasks=tasks,
-        limit=limit,
-        api_endpoint=api_endpoint,
-        task_defaults_overrides=task_defaults_overrides,
-        vllm_config=vllm_config,
-        organization=organization,
-        url=url
-    )
-    
-    # Initialize server_info and api_test_result
     server_info = None
     api_test_result = {"status": "skipped"}
-    
-    # Step 1 & 2: Start and test server (only for vLLM)
-    if provider_type == 'vllm':
-        logger.info(f"Starting vLLM server with CUDA devices: {vllm_config.cuda_devices}")
-        server_info = start_vllm_server(
+    preflight_error: Optional[Exception] = None
+    preflight_errors: list[Dict[str, Any]] = []
+
+    try:
+        # Step 0: Fetch generation config from model repository (only for vLLM)
+        if provider_type == 'vllm':
+            generation_config = fetch_generation_config(
+                model_name=model_path or model_name,
+                hf_cache=vllm_config.hf_cache,
+                hf_token=vllm_config.hf_token,
+            )
+
+        # Write complete run configuration
+        run_config_path = write_run_config(
             model_name=model_name,
             model_path=model_path,
-            served_model_name=model_name,
+            run_id=run_id,
+            output_path=output_path,
+            tasks=tasks,
+            limit=limit,
+            api_endpoint=api_endpoint,
+            task_defaults_overrides=task_defaults_overrides,
             vllm_config=vllm_config,
+            organization=organization,
+            url=url
         )
-        
-        # Store server info globally for signal handler
-        set_active_server_info(server_info)
-            
-        # Step 2: Test vLLM API
-        api_test_result = test_vllm_api(
-            server_info=server_info,
-            model_name=model_name
+
+        # Step 1 & 2: Start and test server (only for vLLM)
+        if provider_type == 'vllm':
+            logger.info(f"Starting vLLM server with CUDA devices: {vllm_config.cuda_devices}")
+            server_info = start_vllm_server(
+                model_name=model_name,
+                model_path=model_path,
+                served_model_name=model_name,
+                vllm_config=vllm_config,
+            )
+
+            # Store server info globally for signal handler
+            set_active_server_info(server_info)
+
+            # Step 2: Test vLLM API
+            api_test_result = test_vllm_api(
+                server_info=server_info,
+                model_name=model_name
+            )
+        else:
+            logger.info(f"Using cloud provider {provider_type}, skipping vLLM server startup")
+
+        # Save generation config to output directory
+        if generation_config:
+            save_generation_config(generation_config, model_output_path, model_name)
+    except Exception as exc:
+        preflight_error = exc
+        preflight_errors.append(
+            {
+                "stage": "pipeline_preflight",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
         )
-    else:
-        logger.info(f"Using cloud provider {provider_type}, skipping vLLM server startup")
-    
-    # Create run-specific output directory structure: {output_path}/{run_id}/{model_name}
-    model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
-    os.makedirs(model_output_path, exist_ok=True)
-    
-    # Save generation config to output directory
-    if generation_config:
-        save_generation_config(generation_config, model_output_path, model_name)
+        logger.exception("Benchmark pipeline failed before task execution: %s", exc)
+    if preflight_error is not None:
+        if provider_type == 'vllm' and server_info:
+            try:
+                stop_vllm_server(server_info=server_info, upload_result={})
+            finally:
+                clear_active_server_info()
+
+        final_records = completion_checker.get_task_records(tasks)
+        run_outcome = _write_run_outcome(
+            model_output_path=model_output_path,
+            model_name=model_name,
+            run_id=run_id,
+            exit_policy=exit_policy,
+            task_records=final_records,
+            started_at=run_started_at,
+            invocation_metadata=invocation_metadata,
+            artifacts=_build_artifacts(
+                model_output_path=model_output_path,
+                run_config_path=run_config_path,
+                log_file_path=log_file_path,
+            ),
+            errors=preflight_errors,
+            force_status="failed",
+            force_exit_code=1,
+        )
+        _log_run_outcome_summary(run_outcome)
+        raise preflight_error
     
     # Step 3: Run evaluation tasks (only pending ones)
     task_results = {}
     task_configs_by_name: Dict[str, Any] = {}
     
     # Load results from already completed tasks
-    completed_tasks = [task for task, completed in completion_status.items() if completed]
+    completed_tasks = [task for task, record in completion_records.items() if record.get("completed")]
     for task in completed_tasks:
         logger.info(f"Loading results from previously completed task: {task}")
         # Create a placeholder result for completed tasks
@@ -497,11 +741,13 @@ def benchmark_pipeline(
             "model_name": model_name,
             "task": task,
             "status": "previously_completed",
-            "output_path": f"{model_output_path}/{task}",
+            "output_path": f"{model_output_path}/{task.split('.', 1)[0]}",
             "message": f"Task {task} was completed in a previous run"
         }
     
     gather_result: Dict[str, Any] = {}
+    execution_error: Optional[Exception] = None
+    execution_errors: list[Dict[str, Any]] = []
     try:
         for task_name in pending_tasks:
             if not is_handler_based_task(task_name):
@@ -550,6 +796,17 @@ def benchmark_pipeline(
         gather_result = {
             f"{task_name}_results": result for task_name, result in task_results.items()
         }
+    except Exception as exc:
+        execution_error = exc
+        execution_errors.append(
+            {
+                "stage": "task_execution",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        )
+        logger.exception("Benchmark pipeline failed during task execution: %s", exc)
     finally:
         # Step 5: Stop vLLM server (cleanup) - only for vLLM, even if a task fails.
         if provider_type == 'vllm' and server_info:
@@ -559,9 +816,47 @@ def benchmark_pipeline(
                 clear_active_server_info()
 
     cleanup_result = gather_result
-    
-    # Log final completion summary
-    newly_completed = [task for task in pending_tasks if task in task_results]
+
+    if execution_error is not None:
+        final_records = completion_checker.get_task_records(tasks)
+        try:
+            _write_run_summary(
+                model_output_path=model_output_path,
+                model_name=model_name,
+                run_id=run_id,
+                tasks=tasks,
+                task_results=task_results,
+                task_configs_by_name=task_configs_by_name,
+            )
+        except Exception as summary_exc:
+            logger.warning("Failed to write run_summary after execution error: %s", summary_exc)
+
+        run_outcome = _write_run_outcome(
+            model_output_path=model_output_path,
+            model_name=model_name,
+            run_id=run_id,
+            exit_policy=exit_policy,
+            task_records=final_records,
+            started_at=run_started_at,
+            invocation_metadata=invocation_metadata,
+            artifacts=_build_artifacts(
+                model_output_path=model_output_path,
+                run_config_path=run_config_path,
+                log_file_path=log_file_path,
+            ),
+            errors=execution_errors,
+            force_status="failed",
+            force_exit_code=1,
+        )
+        _log_run_outcome_summary(run_outcome)
+
+        cleanup_result["run_outcome"] = run_outcome
+        cleanup_result["exit_code"] = 1
+        raise execution_error
+
+    final_records = completion_checker.get_task_records(tasks)
+    newly_completed = [task for task in pending_tasks if final_records.get(task, {}).get("completed")]
+    newly_not_completed = [task for task in pending_tasks if not final_records.get(task, {}).get("completed")]
     total_completed = len(completed_tasks) + len(newly_completed)
     
     logger.info("=" * 60)
@@ -570,6 +865,7 @@ def benchmark_pipeline(
     logger.info(f"Total tasks requested: {len(tasks)}")
     logger.info(f"Previously completed: {len(completed_tasks)}")
     logger.info(f"Newly completed: {len(newly_completed)}")
+    logger.info(f"Still pending/failed: {len(newly_not_completed)}")
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
 
@@ -581,8 +877,27 @@ def benchmark_pipeline(
         task_results=task_results,
         task_configs_by_name=task_configs_by_name,
     )
-    
-    logger.info("Benchmark pipeline completed successfully")
+
+    run_outcome = _write_run_outcome(
+        model_output_path=model_output_path,
+        model_name=model_name,
+        run_id=run_id,
+        exit_policy=exit_policy,
+        task_records=final_records,
+        started_at=run_started_at,
+        invocation_metadata=invocation_metadata,
+        artifacts=_build_artifacts(
+            model_output_path=model_output_path,
+            run_config_path=run_config_path,
+            log_file_path=log_file_path,
+        ),
+    )
+    _log_run_outcome_summary(run_outcome)
+
+    cleanup_result["run_outcome"] = run_outcome
+    cleanup_result["exit_code"] = run_outcome.get("exit_code", 0)
+
+    logger.info("Benchmark pipeline finished")
     return cleanup_result
 
 @flow()
