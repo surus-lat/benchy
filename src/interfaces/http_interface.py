@@ -9,6 +9,7 @@ import httpx
 
 from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
 from ..engine.retry import RetryableError, classify_http_exception, run_with_retries
+from .common.image_preprocessing import coerce_positive_int
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,11 @@ class HTTPInterface:
         self.max_retries = self.config.get("max_retries", 3)
         self.retry_invalid_response = self.config.get("retry_invalid_response", True)
         self.retry_on_4xx = self.config.get("retry_on_4xx", False)
+        self.image_max_edge = coerce_positive_int(
+            self.config.get("image_max_edge"),
+            option_name="image_max_edge",
+            logger=logger,
+        )
         
         # Get API key
         api_key_env = self.config.get("api_key_env", f"{provider_type.upper()}_API_KEY")
@@ -51,6 +57,8 @@ class HTTPInterface:
             )
         
         logger.info(f"Initialized {provider_type} HTTP interface for {model_name}")
+        if isinstance(self.image_max_edge, int):
+            logger.info(f"  Image scaling enabled: max edge={self.image_max_edge}px")
 
     def prepare_request(self, sample: Dict, task) -> Dict:
         """Prepare request for HTTP endpoint.

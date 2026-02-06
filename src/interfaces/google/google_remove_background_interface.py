@@ -5,17 +5,16 @@ import json
 import logging
 import os
 import tempfile
-from pathlib import Path
 from typing import Dict, Optional, Any, List
 import asyncio
 
 from google import genai
 from PIL import Image
-import io
 
 from ..http_interface import HTTPInterface
 from ...engine.protocols import InterfaceCapabilities
 from ...engine.retry import classify_http_exception, run_with_retries, RetryableError
+from ..common.image_preprocessing import coerce_positive_int, load_pil_image
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +80,18 @@ class GoogleRemoveBackgroundInterface(HTTPInterface):
         self.max_retries = self.config.get("max_retries", 3)
         self.retry_invalid_response = self.config.get("retry_invalid_response", True)
         self.retry_on_4xx = self.config.get("retry_on_4xx", False)
+        self.image_max_edge = coerce_positive_int(
+            self.config.get("image_max_edge"),
+            option_name="image_max_edge",
+            logger=logger,
+        )
         
         # Initialize the Gemini client
         self.client = genai.Client(api_key=self.api_key)
         
         logger.info(f"Initialized Google Gemini interface for {model_name}")
+        if isinstance(self.image_max_edge, int):
+            logger.info(f"  Image scaling enabled: max edge={self.image_max_edge}px")
     
     def prepare_request(self, sample: Dict, task) -> Dict:
         """Prepare request for Google Gemini.
@@ -182,11 +188,16 @@ class GoogleRemoveBackgroundInterface(HTTPInterface):
         try:
             # Load the image
             image_path = request.get("image_path")
+            input_image = None
             if image_path:
-                image = Image.open(image_path)
+                input_image = load_pil_image(
+                    image_path,
+                    max_edge=self.image_max_edge,
+                    logger=logger,
+                )
             else:
                 # Create a minimal test image
-                image = Image.new('RGB', (1, 1), color='white')
+                input_image = Image.new('RGB', (1, 1), color='white')
             
             prompt = request.get("prompt", "Remove the background from this image.")
             
@@ -197,7 +208,7 @@ class GoogleRemoveBackgroundInterface(HTTPInterface):
                 None,
                 lambda: self.client.models.generate_content(
                     model=self.model_name,
-                    contents=[prompt, image],
+                    contents=[prompt, input_image],
                 )
             )
             
@@ -257,6 +268,12 @@ class GoogleRemoveBackgroundInterface(HTTPInterface):
             result["error_type"] = "api_error"
             result["raw"] = str(e)
             logger.error(f"Error calling Google Gemini API: {e}")
+        finally:
+            if "input_image" in locals() and input_image is not None:
+                try:
+                    input_image.close()
+                except Exception:
+                    pass
         
         return result
     

@@ -3,12 +3,12 @@
 import base64
 import json
 import logging
-from pathlib import Path
 from typing import Dict, Optional
 
 import httpx
 
 from ..http_interface import HTTPInterface
+from ..common.image_preprocessing import encode_image_data_url
 from ...engine.protocols import InterfaceCapabilities
 from ...engine.retry import classify_http_exception, run_with_retries
 
@@ -69,22 +69,11 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
         prompt = user_prompt if not system_prompt else f"{system_prompt}\n\n{user_prompt}"
         # Temporary: Use empty prompt.
         prompt = ""
-        # Read and encode image as base64 data URI
-        with open(image_path, "rb") as image_file:
-            image_data = image_file.read()
-            image_base64 = base64.b64encode(image_data).decode("utf-8")
-            
-            # Detect media type from file extension
-            ext = Path(image_path).suffix.lower()
-            media_type = {
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-                ".webp": "image/webp",
-                ".gif": "image/gif",
-            }.get(ext, "image/png")
-            
-            image_base64_uri = f"data:{media_type};base64,{image_base64}"
+        image_base64_uri = encode_image_data_url(
+            image_path,
+            max_edge=self.image_max_edge,
+            logger=logger,
+        )
 
         request = {
             "image_base64": image_base64_uri,

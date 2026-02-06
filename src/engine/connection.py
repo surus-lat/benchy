@@ -190,6 +190,7 @@ def build_connection_info(
         # Image artifact generation (OpenAI-compatible images endpoints).
         "image_response_format": provider_config.get("image_response_format", model_config.get("image_response_format")),
         "image_size": provider_config.get("image_size", model_config.get("image_size")),
+        "image_max_edge": provider_config.get("image_max_edge", model_config.get("image_max_edge")),
         "image_artifact_fallback_to_chat": provider_config.get(
             "image_artifact_fallback_to_chat",
             model_config.get("image_artifact_fallback_to_chat", True),
@@ -309,6 +310,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 30),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -323,6 +325,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -337,6 +340,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -350,6 +354,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 30),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -363,6 +368,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }

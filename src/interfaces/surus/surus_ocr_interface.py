@@ -1,14 +1,13 @@
 """SURUS AI interface for /ocr endpoint (image extraction)."""
 
-import base64
 import json
 import logging
-from pathlib import Path
 from typing import Dict, Optional
 
 import httpx
 
 from ..http_interface import HTTPInterface
+from ..common.image_preprocessing import encode_image_data_url
 from ...engine.protocols import InterfaceCapabilities
 from ...engine.retry import classify_http_exception, run_with_retries
 
@@ -60,23 +59,11 @@ class SurusOCRInterface(HTTPInterface):
 
     def _image_to_data_url(self, image_path: str) -> str:
         """Convert local image file to base64 data URL."""
-        path = Path(image_path)
-
-        suffix = path.suffix.lower()
-        mime_types = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-        }
-        mime_type = mime_types.get(suffix, "image/jpeg")
-
-        with open(path, "rb") as f:
-            image_data = f.read()
-
-        b64_data = base64.b64encode(image_data).decode("utf-8")
-        return f"data:{mime_type};base64,{b64_data}"
+        return encode_image_data_url(
+            image_path,
+            max_edge=self.image_max_edge,
+            logger=logger,
+        )
 
     async def _make_request_with_client(
         self,

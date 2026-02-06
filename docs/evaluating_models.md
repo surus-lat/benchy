@@ -59,6 +59,7 @@ Useful flags:
 - `--tasks a b c` or `--tasks a,b,c` overrides the task list from the config.
 - `--tasks-file path.txt` loads tasks from a file (one per line, comments allowed).
 - `--task-group name` injects task groups from `configs/config.yaml` (repeatable).
+- `--image-max-edge N` optionally downscales input images in memory before request (keeps originals intact) for multimodal interfaces (OpenAI-compatible, Google, SURUS).
 
 ## Model Config Structure
 
