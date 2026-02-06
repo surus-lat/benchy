@@ -447,7 +447,6 @@ def save_results(
     model_name: str,
     task_name: str,
     log_samples: bool = False,
-    mark_complete: bool = True,
     task_answer_type: Optional[str] = None,
 ) -> None:
     """Save benchmark results to files.
@@ -458,7 +457,6 @@ def save_results(
         model_name: Model name for filename
         task_name: Task name for filename
         log_samples: Whether to save sample details
-        mark_complete: Whether to write .done file (default: True)
         task_answer_type: Task answer type (e.g., "image_artifact") for special handling
     """
     from datetime import datetime
@@ -520,22 +518,3 @@ def save_results(
         f.write("=" * 60 + "\n")
     logger.info(f"Saved report to {report_file}")
     
-    # Mark task as complete (for pipeline resumption)
-    if mark_complete:
-        mark_task_complete(output_dir)
-
-
-def mark_task_complete(output_dir: Path) -> None:
-    """Write a .done file to mark task completion.
-    
-    This is used by the pipeline's TaskCompletionChecker to skip
-    already-completed tasks when resuming a failed run.
-    
-    Args:
-        output_dir: Task output directory
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    done_file = output_dir / ".done"
-    done_file.touch()
-    logger.info(f"Task marked complete: {done_file}")

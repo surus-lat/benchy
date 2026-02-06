@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -191,10 +192,58 @@ def _normalize_provider_name(name: str) -> str:
 
 def _redact_args(args: argparse.Namespace) -> Dict[str, Any]:
     """Return a log-safe copy of CLI args."""
-    payload = dict(vars(args))
+    def _json_safe(value: Any) -> Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            safe_dict: Dict[str, Any] = {}
+            for key, item in value.items():
+                if callable(item):
+                    continue
+                safe_dict[str(key)] = _json_safe(item)
+            return safe_dict
+        if isinstance(value, (list, tuple, set)):
+            return [_json_safe(item) for item in value if not callable(item)]
+        return str(value)
+
+    payload: Dict[str, Any] = {}
+    for key, value in vars(args).items():
+        # Skip argparse internals and callables (e.g., `_handler`).
+        if key.startswith("_") or callable(value):
+            continue
+        payload[key] = _json_safe(value)
+
     if payload.get("api_key"):
         payload["api_key"] = "***"
     return payload
+
+
+def _redact_argv(argv: list[str]) -> list[str]:
+    """Return argv with sensitive values redacted."""
+    if not argv:
+        return []
+
+    redacted: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = str(argv[i])
+        if token == "--api-key":
+            redacted.append(token)
+            if i + 1 < len(argv):
+                redacted.append("***")
+                i += 2
+                continue
+            i += 1
+            continue
+        if token.startswith("--api-key="):
+            redacted.append("--api-key=***")
+            i += 1
+            continue
+        redacted.append(token)
+        i += 1
+    return redacted
 
 
 def _default_api_endpoint(provider_type: str) -> str:
@@ -533,6 +582,18 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="Compatibility handling for incompatible tasks (default: warn for CLI-only, skip for config).",
     )
     parser.add_argument(
+        "--exit-policy",
+        type=str,
+        choices=["relaxed", "smoke", "strict"],
+        default="relaxed",
+        help=(
+            "Exit code policy for automation. "
+            "'relaxed'=always 0 unless fatal exception, "
+            "'smoke'=fail on failed/skipped/no-samples tasks, "
+            "'strict'=fail unless all requested tasks pass."
+        ),
+    )
+    parser.add_argument(
         "--output-path",
         type=str,
         default=None,
@@ -558,13 +619,8 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
     used_config_file = False
     if config_ref:
         resolved_config_path = str(resolve_config_path(config_ref))
-        try:
-            config = config_manager.load_model_config(resolved_config_path)
-            logger.info("Loaded configuration from %s using ConfigManager", resolved_config_path)
-        except (FileNotFoundError, KeyError) as exc:
-            logger.info("Falling back to legacy config loading: %s", exc)
-            config = load_config(resolved_config_path)
-            logger.info("Loaded legacy configuration from %s", resolved_config_path)
+        config = config_manager.load_model_config(resolved_config_path)
+        logger.info("Loaded configuration from %s using ConfigManager", resolved_config_path)
         used_config_file = True
 
     if not config:
@@ -825,7 +881,14 @@ def run_eval(args: argparse.Namespace) -> int:
         )
         return 0
 
-    benchmark_pipeline(
+    invocation_metadata = {
+        "argv": _redact_argv(sys.argv),
+        "cli_args": _redact_args(args),
+        "cwd": os.getcwd(),
+    }
+    log_file_path = str(log_setup.get_log_filepath())
+
+    pipeline_result = benchmark_pipeline(
         model_name=model_name,
         model_path=model_path_override,
         tasks=tasks_to_run,
@@ -838,8 +901,13 @@ def run_eval(args: argparse.Namespace) -> int:
         provider_type=provider_type,
         provider_config=provider_config,
         compatibility_mode=compatibility_mode,
+        exit_policy=args.exit_policy,
+        invocation_metadata=invocation_metadata,
+        log_file_path=log_file_path,
         organization=organization,
         url=url,
         vllm_config=vllm_server_config,
     )
+    if isinstance(pipeline_result, dict):
+        return int(pipeline_result.get("exit_code", 0) or 0)
     return 0

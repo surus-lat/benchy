@@ -16,7 +16,9 @@ The Extraction Quality Score (EQS) is the primary metric, combining:
 
 import json
 import logging
+import re
 from collections import defaultdict
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 from jsonschema import validate, ValidationError
@@ -24,6 +26,10 @@ from jsonschema import validate, ValidationError
 from .partial_matching import PartialMatcher
 
 logger = logging.getLogger(__name__)
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DMY_DASH_DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")
+_DMY_SLASH_DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 
 def _field_pattern_to_regex(pattern: str) -> str:
     """Convert a field path pattern to a regex.
@@ -90,6 +96,156 @@ class MetricsCalculator:
         self.config = config
         self.partial_matcher = PartialMatcher(config, strict=strict)
 
+    def _resolve_schema_node(self, schema_node: Any, root_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve local $ref pointers and merge local overrides."""
+        if not isinstance(schema_node, dict):
+            return {}
+
+        resolved = dict(schema_node)
+        seen_refs = set()
+
+        while isinstance(resolved, dict) and "$ref" in resolved:
+            ref = resolved.get("$ref")
+            if not isinstance(ref, str) or not ref.startswith("#/") or ref in seen_refs:
+                break
+            seen_refs.add(ref)
+
+            target: Any = root_schema
+            for part in ref[2:].split("/"):
+                part = part.replace("~1", "/").replace("~0", "~")
+                if not isinstance(target, dict) or part not in target:
+                    target = None
+                    break
+                target = target[part]
+
+            if not isinstance(target, dict):
+                break
+
+            merged = dict(target)
+            for key, value in resolved.items():
+                if key != "$ref":
+                    merged[key] = value
+            resolved = merged
+
+        return resolved if isinstance(resolved, dict) else {}
+
+    def _schema_expects_date(self, schema_node: Dict[str, Any]) -> bool:
+        """Return True when schema indicates a date-like string field."""
+        node = schema_node if isinstance(schema_node, dict) else {}
+        if node.get("format") in {"date", "date-time"}:
+            return True
+
+        pattern = node.get("pattern")
+        if isinstance(pattern, str):
+            # Conservative heuristic: treat canonical yyyy-mm-dd style patterns as date fields.
+            if "\\d{4}" in pattern and "\\d{2}" in pattern and "-" in pattern:
+                return True
+
+        for keyword in ("anyOf", "oneOf", "allOf"):
+            variants = node.get(keyword)
+            if isinstance(variants, list):
+                for variant in variants:
+                    if self._schema_expects_date(variant if isinstance(variant, dict) else {}):
+                        return True
+        return False
+
+    def _canonicalize_date_string(self, value: str) -> str:
+        """Canonicalize accepted date formats to YYYY-MM-DD."""
+        candidate = value.strip()
+
+        if _ISO_DATE_RE.match(candidate):
+            try:
+                datetime.strptime(candidate, "%Y-%m-%d")
+                return candidate
+            except ValueError:
+                return value
+
+        if _DMY_DASH_DATE_RE.match(candidate):
+            try:
+                dt = datetime.strptime(candidate, "%d-%m-%Y")
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                return value
+
+        if _DMY_SLASH_DATE_RE.match(candidate):
+            try:
+                dt = datetime.strptime(candidate, "%d/%m/%Y")
+                return dt.strftime("%Y-%m-%d")
+            except ValueError:
+                return value
+
+        return value
+
+    def _normalize_structured_value(
+        self,
+        value: Any,
+        schema_node: Any,
+        root_schema: Dict[str, Any],
+        stats: Dict[str, int],
+        *,
+        convert_null_strings: bool,
+    ) -> Any:
+        """Normalize values using schema hints (dates) and policy (null-string coercion)."""
+        resolved_schema = self._resolve_schema_node(schema_node, root_schema)
+
+        if isinstance(value, dict):
+            properties = resolved_schema.get("properties", {}) if isinstance(resolved_schema, dict) else {}
+            additional_properties = (
+                resolved_schema.get("additionalProperties") if isinstance(resolved_schema, dict) else None
+            )
+            normalized = {}
+            for key, item in value.items():
+                child_schema = properties.get(key, {})
+                if not child_schema and isinstance(additional_properties, dict):
+                    child_schema = additional_properties
+                normalized[key] = self._normalize_structured_value(
+                    item,
+                    child_schema,
+                    root_schema,
+                    stats,
+                    convert_null_strings=convert_null_strings,
+                )
+            return normalized
+
+        if isinstance(value, list):
+            items_schema = resolved_schema.get("items", {}) if isinstance(resolved_schema, dict) else {}
+            return [
+                self._normalize_structured_value(
+                    item,
+                    items_schema,
+                    root_schema,
+                    stats,
+                    convert_null_strings=convert_null_strings,
+                )
+                for item in value
+            ]
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if convert_null_strings and stripped.lower() == "null":
+                stats["null_string_conversions"] += 1
+                return None
+
+            if self._schema_expects_date(resolved_schema):
+                canonical = self._canonicalize_date_string(stripped)
+                if canonical != value:
+                    stats["date_format_conversions"] += 1
+                return canonical
+
+        return value
+
+    def _compute_normalization_penalty(self, null_string_conversions: int) -> float:
+        """Compute bounded score penalty for null-string coercions."""
+        metrics_cfg = self.config.get("metrics", {}) if isinstance(self.config, dict) else {}
+        penalty_cfg = metrics_cfg.get("normalization_penalty", {})
+        if not isinstance(penalty_cfg, dict):
+            penalty_cfg = {}
+
+        per_conversion = float(penalty_cfg.get("null_string_to_null", 0.02))
+        max_penalty = float(penalty_cfg.get("max", 0.20))
+        penalty = max(0.0, null_string_conversions * max(0.0, per_conversion))
+        return min(penalty, max(0.0, max_penalty))
+
     def calculate_all(
         self,
         prediction: Dict,
@@ -139,6 +295,10 @@ class MetricsCalculator:
             "composite_scores": [],  # List of all composite scores for diagnostics
             # Schema complexity (for this sample)
             "schema_complexity": {},
+            # Normalization diagnostics
+            "normalization_penalty": 0.0,
+            "null_string_conversions": 0,
+            "date_format_conversions": 0,
         }
 
         # If connectivity error, mark differently and return early
@@ -152,8 +312,30 @@ class MetricsCalculator:
             return metrics
 
         try:
+            normalization_stats = {"null_string_conversions": 0, "date_format_conversions": 0}
+            normalized_prediction = self._normalize_structured_value(
+                prediction,
+                schema,
+                schema if isinstance(schema, dict) else {},
+                normalization_stats,
+                convert_null_strings=True,
+            )
+            normalized_expected = self._normalize_structured_value(
+                expected,
+                schema,
+                schema if isinstance(schema, dict) else {},
+                {"null_string_conversions": 0, "date_format_conversions": 0},
+                convert_null_strings=False,
+            )
+
+            metrics["null_string_conversions"] = normalization_stats["null_string_conversions"]
+            metrics["date_format_conversions"] = normalization_stats["date_format_conversions"]
+            metrics["normalization_penalty"] = self._compute_normalization_penalty(
+                normalization_stats["null_string_conversions"]
+            )
+
             # Check schema validity
-            metrics["valid"] = self._validate_schema(prediction, schema)
+            metrics["valid"] = self._validate_schema(normalized_prediction, schema)
             metrics["schema_validity"] = 1.0 if metrics["valid"] else 0.0
 
             if not metrics["valid"]:
@@ -165,8 +347,8 @@ class MetricsCalculator:
 
             # Flatten structures for field-level comparison
             try:
-                pred_fields = self._flatten_dict(prediction)
-                exp_fields = self._flatten_dict(expected)
+                pred_fields = self._flatten_dict(normalized_prediction)
+                exp_fields = self._flatten_dict(normalized_expected)
             except Exception as e:
                 logger.error(f"Error flattening dicts - prediction type: {type(prediction).__name__}, expected type: {type(expected).__name__}: {e}")
                 metrics["error"] = f"Flattening error: {str(e)}"
@@ -190,7 +372,7 @@ class MetricsCalculator:
 
             # Check exact match
             try:
-                metrics["exact_match"] = self._exact_match(prediction, expected)
+                metrics["exact_match"] = self._exact_match(normalized_prediction, normalized_expected)
             except Exception as e:
                 logger.warning(f"Error checking exact match: {e}")
                 metrics["exact_match"] = False
@@ -208,6 +390,15 @@ class MetricsCalculator:
             except Exception as e:
                 logger.error(f"Error calculating document_extraction_score: {e}")
                 metrics["document_extraction_score"] = 0.0
+
+            penalty = metrics.get("normalization_penalty", 0.0)
+            if penalty > 0:
+                metrics["extraction_quality_score"] = max(
+                    0.0, float(metrics.get("extraction_quality_score", 0.0)) - penalty
+                )
+                metrics["document_extraction_score"] = max(
+                    0.0, float(metrics.get("document_extraction_score", 0.0)) - penalty
+                )
 
         except Exception as e:
             logger.error(f"Unexpected error in calculate_all: {e}", exc_info=True)
@@ -699,6 +890,9 @@ class MetricsCalculator:
                     "eqs_mean": 0.0, "eqs_stdev": 0.0, "eqs_min": 0.0, "eqs_max": 0.0,
                     "f1_mean": 0.0, "f1_stdev": 0.0, "f1_min": 0.0, "f1_max": 0.0,
                 },
+                "normalization_penalty": 0.0,
+                "null_string_conversions": 0,
+                "date_format_conversions": 0,
             }
 
         total_samples = len(all_metrics)
@@ -747,6 +941,13 @@ class MetricsCalculator:
             avg_numeric_precision = 0.0
             total_numeric_fields = 0
             total_numeric_correct = 0
+
+        avg_normalization_penalty = (
+            sum(float(m.get("normalization_penalty", 0.0)) for m in valid_metrics) / len(valid_metrics)
+            if valid_metrics else 0.0
+        )
+        total_null_string_conversions = sum(int(m.get("null_string_conversions", 0)) for m in all_metrics)
+        total_date_format_conversions = sum(int(m.get("date_format_conversions", 0)) for m in all_metrics)
 
         # Tier 3: Match Distribution (aggregate counts)
         total_dist = defaultdict(int)
@@ -879,4 +1080,8 @@ class MetricsCalculator:
             "imperfect_sample_quality": imperfect_sample_quality,
             "imperfect_sample_quality_f1": imperfect_sample_quality_f1,
             "imperfect_sample_count": imperfect_count,
+            # Normalization diagnostics
+            "normalization_penalty": avg_normalization_penalty,
+            "null_string_conversions": total_null_string_conversions,
+            "date_format_conversions": total_date_format_conversions,
         }

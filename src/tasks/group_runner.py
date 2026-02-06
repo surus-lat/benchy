@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import traceback
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from ..engine import BenchmarkRunner, build_connection_info, get_interface_for_provider, mark_task_complete, save_results
+from ..engine import BenchmarkRunner, build_connection_info, get_interface_for_provider, save_results
 from ..engine.protocols import BaseTask, check_compatibility
+from ..outcome import TASK_STATUS_ERROR, build_task_outcome
+from ..task_completion_checker import write_task_status
 
 logger = logging.getLogger(__name__)
 
@@ -284,23 +287,56 @@ def run_task_group(
                 subtasks_to_run,
             )
 
-        mark_task_complete(task_output_path)
+        task_outcome = build_task_outcome(
+            task_name=spec.name,
+            aggregated_metrics=aggregated if isinstance(aggregated, dict) else {},
+            subtask_metrics=all_metrics,
+            skipped_subtasks=skipped_subtasks,
+        )
+        write_task_status(
+            task_output_path,
+            task_name=spec.name,
+            status=task_outcome["status"],
+            reason=task_outcome.get("reason"),
+            summary=task_outcome.get("summary"),
+            subtasks=task_outcome.get("subtasks"),
+        )
 
-        logger.info(f"{spec.display_name} evaluation completed successfully")
+        logger.info(f"{spec.display_name} evaluation completed with status={task_outcome['status']}")
 
         return {
             "model_name": model_name,
             "task": spec.name,
+            "status": task_outcome["status"],
+            "reason": task_outcome.get("reason"),
             "output_path": str(task_output_path),
             "metrics": aggregated,
             "subtask_metrics": all_metrics,
             "skipped_subtasks": skipped_subtasks,
+            "outcome": task_outcome,
         }
 
     except ConnectionError as exc:
+        write_task_status(
+            task_output_path,
+            task_name=spec.name,
+            status=TASK_STATUS_ERROR,
+            reason=str(exc),
+            details={"error_type": type(exc).__name__},
+        )
         logger.error(f"Connection failed: {exc}")
         raise
     except Exception as exc:
+        write_task_status(
+            task_output_path,
+            task_name=spec.name,
+            status=TASK_STATUS_ERROR,
+            reason=str(exc),
+            details={
+                "error_type": type(exc).__name__,
+                "traceback": traceback.format_exc(),
+            },
+        )
         logger.error(f"Error running {spec.name}: {type(exc).__name__}: {exc}")
         raise
     finally:
@@ -370,7 +406,6 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
         task_answer_type=task_answer_type,
         task_name=task_instance.get_task_name(),
         log_samples=context.defaults.get("log_samples", False),
-        mark_complete=False,
     )
 
     return results
