@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Set
 
 from openai import AsyncOpenAI
 
@@ -63,6 +63,7 @@ class OpenAIInterface:
         self._supports_logprobs = self._capabilities.supports_logprobs
         self.logprobs_top_k = connection_info.get("logprobs_top_k") or 20
         self._logged_schema_enforcement_mode = False
+        self._logged_request_strategies: Set[Tuple[str, str]] = set()
 
         problematic_models = connection_info.get("problematic_models") or [
             "ByteDance-Seed/Seed-X-Instruct-7B",
@@ -226,6 +227,17 @@ class OpenAIInterface:
                 if marker in self.model_name.lower() and self.max_tokens_param_name == "max_tokens":
                     return "max_completion_tokens"
         return self.max_tokens_param_name
+
+    def _log_request_strategy_once(self, *, api_endpoint: str, schema_transport: str) -> None:
+        key = (api_endpoint, schema_transport)
+        if key in self._logged_request_strategies:
+            return
+        logger.info(
+            "Request strategy api_endpoint=%s schema_transport=%s",
+            api_endpoint,
+            schema_transport,
+        )
+        self._logged_request_strategies.add(key)
 
     def _extract_text_from_content(self, content: Any) -> Optional[str]:
         """Extract text from OpenAI-style content payloads (string or list of parts)."""
@@ -431,11 +443,9 @@ class OpenAIInterface:
         async def attempt_fn(_: int) -> Dict:
             if use_completions_api:
                 schema_transport = "prompt_only" if schema else "none"
-                logger.info(
-                    "Request sample_id=%s api_endpoint=%s schema_transport=%s",
-                    sample_id,
-                    "completions",
-                    schema_transport,
+                self._log_request_strategy_once(
+                    api_endpoint="completions",
+                    schema_transport=schema_transport,
                 )
                 combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
                 response = await self.client.completions.create(
@@ -500,11 +510,9 @@ class OpenAIInterface:
                     schema_transport = "response_format"
                 else:
                     schema_transport = "prompt_only"
-            logger.info(
-                "Request sample_id=%s api_endpoint=%s schema_transport=%s",
-                sample_id,
-                "chat",
-                schema_transport,
+            self._log_request_strategy_once(
+                api_endpoint="chat",
+                schema_transport=schema_transport,
             )
 
             if schema and not self._logged_schema_enforcement_mode:
