@@ -342,7 +342,7 @@ benchy probe --base-url http://localhost:8001/v1 --model-name mymodel
 
 # Probe with custom settings
 benchy probe --provider openai --model-name gpt-5-mini \
-  --profile full --global-timeout 120
+  --profile quick --global-timeout 120
 ```
 
 ### What the Probe Detects
@@ -353,13 +353,23 @@ The probe system checks:
 2. **Schema Transports**: Structured output support (structured_outputs vs response_format)
 3. **Multimodal Support**: Whether the model accepts image inputs
 4. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
-5. **Parameter Support**: Which max_tokens parameter variant is required (max_tokens vs max_completion_tokens)
+5. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
 6. **Provider Fingerprint**: Model server metadata and version information
 
 ### Probe Profiles
 
 - `quick` (default): Fast capability check (30-60 seconds)
-- `full`: Comprehensive testing with extended timeouts
+
+Probe check definitions, pass criteria, and blindspots are documented in:
+- `docs/benchy_probe_contract.md`
+
+For schema transports, probe reports two levels:
+- `accepted_by_api`: parameter accepted by provider API
+- `reliable_for_eval`: output quality is reliable enough for structured extraction
+
+Probe summaries also include `Schema transport options` so `Schema transport: none`
+is immediately contextualized with alternatives (`usable`, `accepted_but_unreliable`,
+`unsupported_or_failed`, `not_tested`) and error reasons.
 
 ### Probe Outputs
 
