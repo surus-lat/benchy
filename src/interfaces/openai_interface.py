@@ -1,18 +1,17 @@
 """OpenAI-compatible interface (vLLM, OpenAI, Anthropic, Together)."""
 
 import asyncio
-import base64
 import json
 import logging
 import os
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 
 from openai import AsyncOpenAI
 
 from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
 from ..engine.retry import RetryDecision, classify_http_exception, extract_status_code, run_with_retries
+from .common.image_preprocessing import coerce_positive_int, encode_image_base64
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +36,11 @@ class OpenAIInterface:
         # Image artifact generation via images endpoints (OpenAI-compatible).
         self.image_response_format = connection_info.get("image_response_format", "b64_json")
         self.image_size = connection_info.get("image_size")
+        self.image_max_edge = coerce_positive_int(
+            connection_info.get("image_max_edge"),
+            option_name="image_max_edge",
+            logger=logger,
+        )
         self.image_artifact_fallback_to_chat = connection_info.get(
             "image_artifact_fallback_to_chat", True
         )
@@ -88,6 +92,8 @@ class OpenAIInterface:
 
         logger.info(f"Initialized OpenAIInterface for {model_name}")
         logger.info(f"  Base URL: {self.base_url}")
+        if isinstance(self.image_max_edge, int) and self.image_max_edge > 0:
+            logger.info(f"  Image scaling enabled: max edge={self.image_max_edge}px")
         if is_cloud:
             logger.info(f"  Rate limit: max {max_concurrent} concurrent requests")
 
@@ -150,20 +156,17 @@ class OpenAIInterface:
 
         return request
 
-    def _encode_image(self, image_path: str) -> str:
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
+    def _encode_image_payload(self, image_path: str) -> Tuple[str, str]:
+        """Encode image for chat payload, optionally resizing in memory.
 
-    def _get_image_media_type(self, image_path: str) -> str:
-        ext = Path(image_path).suffix.lower()
-        media_types = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-        }
-        return media_types.get(ext, "image/jpeg")
+        Original files are never modified. Resizing is only applied when
+        `image_max_edge` is configured and the image exceeds that size.
+        """
+        return encode_image_base64(
+            image_path,
+            max_edge=self.image_max_edge,
+            logger=logger,
+        )
 
     def _extract_json(self, text: str) -> str:
         text = text.strip()
@@ -452,8 +455,7 @@ class OpenAIInterface:
                 return result
 
             if image_path:
-                base64_image = self._encode_image(image_path)
-                media_type = self._get_image_media_type(image_path)
+                base64_image, media_type = self._encode_image_payload(image_path)
                 effective_prompt = user_prompt
                 if self.provider_type == "vllm" and schema and self.use_structured_outputs:
                     effective_prompt = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)

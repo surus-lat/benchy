@@ -241,6 +241,10 @@ def _apply_cli_provider_overrides(
         merged["max_tokens_param_name"] = args.max_tokens_param_name
     if args.api_endpoint is not None:
         merged["api_endpoint"] = args.api_endpoint
+    if args.image_max_edge is not None:
+        if args.image_max_edge <= 0:
+            raise ValueError("--image-max-edge must be a positive integer")
+        merged["image_max_edge"] = args.image_max_edge
 
     return merged
 
@@ -493,6 +497,15 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["auto", "chat", "completions"],
         default=None,
         help="Request mode for OpenAI-compatible providers (default: auto).",
+    )
+    parser.add_argument(
+        "--image-max-edge",
+        type=int,
+        default=None,
+        help=(
+            "Optionally downscale input images before sending requests. "
+            "Sets maximum image width/height in pixels while preserving aspect ratio."
+        ),
     )
     parser.add_argument(
         "--organization",

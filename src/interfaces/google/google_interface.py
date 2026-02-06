@@ -7,14 +7,13 @@ import logging
 import os
 import re
 import tempfile
-from pathlib import Path
 from typing import Dict, Optional, Any, List
 
 from google import genai
-from PIL import Image
 
 from ...engine.protocols import InterfaceCapabilities, parse_interface_capabilities
 from ...engine.retry import RetryableError, classify_http_exception, run_with_retries
+from ..common.image_preprocessing import coerce_positive_int, load_pil_image
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +51,11 @@ class GoogleInterface:
         self.temperature = connection_info.get("temperature", 0.0)
         self.max_tokens = connection_info.get("max_tokens", 2048)
         self.retry_invalid_response = connection_info.get("retry_invalid_response", True)
+        self.image_max_edge = coerce_positive_int(
+            connection_info.get("image_max_edge"),
+            option_name="image_max_edge",
+            logger=logger,
+        )
         
         # Capabilities
         default_capabilities = InterfaceCapabilities(
@@ -78,8 +82,10 @@ class GoogleInterface:
         
         # Initialize the Gemini client
         self.client = genai.Client(api_key=api_key)
-        
+
         logger.info(f"Initialized Google Gemini interface for {model_name}")
+        if isinstance(self.image_max_edge, int):
+            logger.info(f"  Image scaling enabled: max edge={self.image_max_edge}px")
         logger.info(f"  Rate limit: max {default_concurrent} concurrent requests")
     
     def _get_api_key(self, connection_info: Dict[str, Any], default_env: str) -> str:
@@ -258,10 +264,15 @@ class GoogleInterface:
             # Prepare contents for API call
             contents = [full_prompt]
             
+            input_image = None
             # Add image if provided (multimodal)
             if image_path:
-                image = Image.open(image_path)
-                contents.append(image)
+                input_image = load_pil_image(
+                    image_path,
+                    max_edge=self.image_max_edge,
+                    logger=logger,
+                )
+                contents.append(input_image)
             
             # Prepare generation config
             config_params = {}
@@ -364,7 +375,13 @@ class GoogleInterface:
             result["error_type"] = "api_error"
             result["raw"] = str(e)
             logger.error(f"Error calling Google Gemini API: {e}")
-        
+        finally:
+            if "input_image" in locals() and input_image is not None:
+                try:
+                    input_image.close()
+                except Exception:
+                    pass
+
         return result
     
     async def _generate_with_limit(self, req: Dict) -> Dict:
