@@ -129,11 +129,13 @@ def run_task_group(
     task_output_path = Path(output_path) / output_subdir
     task_output_path.mkdir(parents=True, exist_ok=True)
 
+    # Pass model output root (parent of task_output_path) for probe artifacts
+    model_output_root = Path(output_path)
     probe_report = _probe_and_configure_openai_interface(
         connection_info=connection_info,
         model_name=model_name,
         provider_type=provider_type,
-        output_dir=task_output_path,
+        output_dir=model_output_root,
     )
 
     defaults = task_config.get("defaults", {})
@@ -426,20 +428,29 @@ def _probe_and_configure_openai_interface(
     if not request_modes or "raw_payload" in request_modes:
         return None
 
-    # Probe chat/completions/logprobs once and update connection_info for the run.
-    report = asyncio.run(_probe_openai_interface(connection_info, model_name, request_modes))
+    # Delegate to probe module for capability detection
+    from ..probe import run_probe_for_eval
+    
+    report = asyncio.run(run_probe_for_eval(connection_info, model_name))
     _apply_probe_results(connection_info, report)
     _write_probe_report(output_dir, report)
     _log_probe_report(report)
     return report
 
 
+# ============================================================================
+# DEPRECATED: Old probe functions - now handled by src/probe module
+# These are kept temporarily for reference but are no longer used
+# ============================================================================
+
 async def _probe_openai_interface(
     connection_info: Dict[str, Any],
     model_name: str,
     request_modes: List[str],
 ) -> Dict[str, Any]:
-    """Probe OpenAI-style endpoints (chat/completions/logprobs)."""
+    """DEPRECATED: Use src.probe.run_probe_for_eval() instead.
+    
+    Probe OpenAI-style endpoints (chat/completions/logprobs)."""
     schema_forced = bool(connection_info.get("use_structured_outputs_explicit"))
     schema_requested = (
         "structured_outputs" if connection_info.get("use_structured_outputs") else "response_format"
@@ -676,13 +687,102 @@ def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]
                 )
         else:
             connection_info["use_structured_outputs"] = selected_schema_transport == "structured_outputs"
+    
+    # Apply parameter support detection from probe
+    param_check = report.get("checks", {}).get("param_support", {})
+    if param_check.get("status") in ("ok", "degraded"):
+        detected_param = param_check.get("evidence", {}).get("max_tokens_param")
+        if detected_param and detected_param != "unknown":
+            connection_info["max_tokens_param_name"] = detected_param
+            logger.info(f"Using {detected_param} (detected by probe)")
+
+
+def _generate_probe_summary_text(report: Dict[str, Any]) -> str:
+    """Generate human-readable probe summary text."""
+    lines = []
+    lines.append("=" * 60)
+    # Handle both full probe report and eval probe report formats
+    model = report.get('model') or report.get('model_name', 'unknown')
+    lines.append(f"Probe Report: {model}")
+    lines.append(f"Provider: {report.get('provider_type', 'unknown')} @ {report.get('base_url', 'unknown')}")
+    
+    # Status and duration only in full probe reports
+    if 'status' in report:
+        lines.append(f"Status: {report.get('status', 'unknown').upper()}")
+    if 'duration_s' in report:
+        duration = report.get('duration_s', 0)
+        if isinstance(duration, (int, float)):
+            lines.append(f"Duration: {duration:.1f} seconds")
+        else:
+            lines.append(f"Duration: {duration} seconds")
+    
+    lines.append("")
+    lines.append("Capabilities:")
+    
+    # Add capability checks from modes
+    modes = report.get("modes", {})
+    for mode_name, mode_result in modes.items():
+        if isinstance(mode_result, dict):
+            status = "[OK]" if mode_result.get("ok") else "[FAIL]"
+            display_name = mode_name.replace("_", " ").title()
+            lines.append(f"  {status} {display_name}")
+    
+    # Add additional checks
+    checks = report.get("checks", {})
+    for check_name, check_result in checks.items():
+        if isinstance(check_result, dict):
+            status_map = {"ok": "[OK]", "degraded": "[WARN]", "failed": "[FAIL]"}
+            status = status_map.get(check_result.get("status"), "[UNKNOWN]")
+            display_name = check_name.replace("_", " ").title()
+            lines.append(f"  {status} {display_name}")
+    
+    lines.append("")
+    lines.append("Selected Configuration:")
+    lines.append(f"  API endpoint: {report.get('selected_api_endpoint', 'unknown')}")
+    lines.append(f"  Schema transport: {report.get('selected_schema_transport', 'unknown')}")
+    
+    # Add risk flags if any
+    risk_flags = report.get("risk_flags", {})
+    if isinstance(risk_flags, dict):
+        active_risks = {k: v for k, v in risk_flags.items() if v}
+        if active_risks:
+            lines.append("")
+            lines.append("Risk Flags:")
+            risk_messages = {
+                "truncation_risk": "Repetition patterns detected when truncated",
+                "repetition_risk": "Model shows degenerate repetition behavior",
+                "schema_unreliable": "Structured output may not work correctly",
+                "multimodal_unreliable": "Image inputs may not be supported",
+            }
+            for risk, active in active_risks.items():
+                if active:
+                    msg = risk_messages.get(risk, risk.replace("_", " ").title())
+                    lines.append(f"  [!] {msg}")
+    
+    lines.append("=" * 60)
+    return "\n".join(lines)
 
 
 def _write_probe_report(output_dir: Path, report: Dict[str, Any]) -> None:
-    """Persist probe report to the task output directory."""
-    report_path = output_dir / "compatibility_report.json"
+    """Persist probe report and summary to the model output directory.
+    
+    Args:
+        output_dir: Model output root (same level as run_outcome.json)
+        report: Probe report dict from run_probe_for_eval()
+    """
+    # Write full JSON report
+    report_path = output_dir / "probe_report.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
+    
+    # Write human-readable summary
+    summary_path = output_dir / "probe_summary.txt"
+    summary_text = _generate_probe_summary_text(report)
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(summary_text)
+    
+    logger.info(f"Wrote probe report: {report_path}")
+    logger.info(f"Wrote probe summary: {summary_path}")
 
 
 def _log_probe_report(report: Dict[str, Any]) -> None:

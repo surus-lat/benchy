@@ -46,7 +46,19 @@ SUMMARY_SKIP_KEYS = {
     "match_distribution_counts",
     "subtasks",
 }
+SUMMARY_INCLUDE_DICT_KEYS = {
+    "diagnostic_counts",
+    "diagnostic_rates",
+}
 RUN_OUTCOME_SCHEMA_VERSION = "1.0"
+
+
+def _normalize_task_key(task_key: str) -> str:
+    """Canonicalize task keys so `group.sub-task` and `group.sub_task` align."""
+    parts = (task_key or "").split(".", 1)
+    if len(parts) == 2:
+        return f"{parts[0]}.{parts[1].replace('-', '_')}"
+    return task_key or ""
 
 
 def _get_benchy_version() -> str:
@@ -79,6 +91,8 @@ def _build_artifacts(
         "model_output_dir": _artifact_ref(str(model_root)),
         "run_outcome": _artifact_ref(str(model_root / "run_outcome.json")),
         "run_summary": _artifact_ref(str(model_root / "run_summary.json")),
+        "probe_report": _artifact_ref(str(model_root / "probe_report.json")),
+        "probe_summary": _artifact_ref(str(model_root / "probe_summary.txt")),
         "run_config": _artifact_ref(run_config_path),
         "log_file": _artifact_ref(log_file_path),
         "task_status_glob": str(model_root / "*/task_status.json"),
@@ -175,9 +189,9 @@ def _summarize_task_metrics(
 def _summarize_single_task_metrics(
     metrics: Dict[str, Any],
     metrics_manifest: Optional[list] = None,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """Summarize metrics for a single task/subtask."""
-    summarized: Dict[str, float] = {}
+    summarized: Dict[str, Any] = {}
     if metrics_manifest:
         for key in metrics_manifest:
             value = metrics.get(key)
@@ -185,9 +199,16 @@ def _summarize_single_task_metrics(
                 continue
             if isinstance(value, (int, float)):
                 summarized[key] = float(value)
+        for key in SUMMARY_INCLUDE_DICT_KEYS:
+            value = metrics.get(key)
+            if isinstance(value, dict):
+                summarized[key] = value
         return summarized
 
     for key, value in metrics.items():
+        if key in SUMMARY_INCLUDE_DICT_KEYS and isinstance(value, dict):
+            summarized[key] = value
+            continue
         if key in SUMMARY_SKIP_KEYS:
             continue
         if isinstance(value, bool):
@@ -197,6 +218,103 @@ def _summarize_single_task_metrics(
     return summarized
 
 
+def _aggregate_summary_diagnostics(tasks_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate diagnostic counts/rates from run_summary task metrics."""
+    counts: Dict[str, int] = {}
+    run_samples = 0
+
+    def _walk(node: Any) -> None:
+        nonlocal run_samples
+        if not isinstance(node, dict):
+            return
+        diag_counts = node.get("diagnostic_counts")
+        if isinstance(diag_counts, dict):
+            for cls, value in diag_counts.items():
+                if isinstance(value, bool):
+                    continue
+                if isinstance(value, (int, float)):
+                    counts[str(cls)] = counts.get(str(cls), 0) + int(value)
+        sample_count = node.get("run_samples")
+        if isinstance(sample_count, (int, float)) and not isinstance(sample_count, bool):
+            run_samples += int(sample_count)
+
+        subtasks = node.get("subtasks")
+        if isinstance(subtasks, dict):
+            for child in subtasks.values():
+                _walk(child)
+
+    for task_data in (tasks_payload or {}).values():
+        _walk(task_data)
+
+    rates: Dict[str, float] = {}
+    if run_samples > 0:
+        rates = {
+            cls: round(count / float(run_samples), 6)
+            for cls, count in counts.items()
+        }
+
+    return {
+        "counts": counts,
+        "run_samples": run_samples,
+        "rates": rates,
+    }
+
+
+def _extract_task_diagnostics(summary_entry: Any) -> Dict[str, Any]:
+    """Extract task-level diagnostics (including per-subtask diagnostics) from run_summary task data."""
+    if not isinstance(summary_entry, dict):
+        return {}
+
+    diagnostics: Dict[str, Any] = {}
+    for key in ("diagnostic_counts", "diagnostic_rates", "run_samples"):
+        value = summary_entry.get(key)
+        if isinstance(value, dict) or isinstance(value, (int, float)):
+            diagnostics[key] = value
+
+    subtasks = summary_entry.get("subtasks")
+    if isinstance(subtasks, dict):
+        subtask_diags: Dict[str, Any] = {}
+        for subtask_name, subtask_summary in subtasks.items():
+            extracted = _extract_task_diagnostics(subtask_summary)
+            if extracted:
+                subtask_diags[subtask_name] = extracted
+        if subtask_diags:
+            diagnostics["subtasks"] = subtask_diags
+
+    return diagnostics
+
+
+def _attach_per_task_diagnostics(
+    task_records: Dict[str, Dict[str, Any]],
+    run_summary_payload: Optional[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Attach per-task diagnostics from run_summary into run_outcome task records."""
+    summary_tasks = {}
+    if isinstance(run_summary_payload, dict):
+        candidate = run_summary_payload.get("tasks")
+        if isinstance(candidate, dict):
+            summary_tasks = candidate
+
+    canonical_summary = {
+        _normalize_task_key(task_name): payload
+        for task_name, payload in summary_tasks.items()
+        if isinstance(task_name, str)
+    }
+
+    enriched: Dict[str, Dict[str, Any]] = {}
+    for task_name, record in (task_records or {}).items():
+        record_payload = dict(record or {})
+        summary_entry = summary_tasks.get(task_name)
+        if summary_entry is None:
+            summary_entry = canonical_summary.get(_normalize_task_key(task_name))
+
+        diagnostics = _extract_task_diagnostics(summary_entry)
+        if diagnostics:
+            record_payload["diagnostics"] = diagnostics
+        enriched[task_name] = record_payload
+    return enriched
+
+
 def _write_run_summary(
     model_output_path: str,
     model_name: str,
@@ -204,14 +322,7 @@ def _write_run_summary(
     tasks: list,
     task_results: Dict[str, Any],
     task_configs_by_name: Dict[str, Any],
-) -> None:
-    def _canonical_task_key(task_key: str) -> str:
-        """Canonicalize task keys so `classify.spanish-spam` == `classify.spanish_spam`."""
-        parts = (task_key or "").split(".", 1)
-        if len(parts) == 2:
-            return f"{parts[0]}.{parts[1].replace('-', '_')}"
-        return task_key or ""
-
+) -> Dict[str, Any]:
     def _discover_metrics_summaries(root: str) -> Dict[str, Dict[str, Any]]:
         """Scan the run folder for persisted *_metrics.json files.
 
@@ -259,7 +370,7 @@ def _write_run_summary(
                 mtime = 0.0
 
             rank = (ts_rank, mtime)
-            canonical = _canonical_task_key(key)
+            canonical = _normalize_task_key(key)
             if canonical in best_rank and rank <= best_rank[canonical]:
                 continue
 
@@ -284,7 +395,7 @@ def _write_run_summary(
     # the current invocation's in-memory task results on top.
     merged_tasks: Dict[str, Any] = dict(existing_tasks)
     canonical_to_actual: Dict[str, str] = {
-        _canonical_task_key(k): k for k in merged_tasks.keys() if isinstance(k, str)
+        _normalize_task_key(k): k for k in merged_tasks.keys() if isinstance(k, str)
     }
 
     # 1) Scan disk for any other task outputs under this run-id/model folder.
@@ -292,7 +403,7 @@ def _write_run_summary(
     for key, value in disk_tasks.items():
         if not isinstance(key, str):
             continue
-        canonical = _canonical_task_key(key)
+        canonical = _normalize_task_key(key)
         if canonical in canonical_to_actual:
             # Preserve the existing key spelling, but refresh its metrics from disk.
             merged_tasks[canonical_to_actual[canonical]] = value
@@ -307,7 +418,7 @@ def _write_run_summary(
         metrics_manifest = task_config.get("metrics_manifest") or None
         summarized = _summarize_task_metrics(metrics, metrics_manifest) if metrics else {}
 
-        canonical = _canonical_task_key(task_name)
+        canonical = _normalize_task_key(task_name)
         existing_key = canonical_to_actual.get(canonical)
         if existing_key and existing_key != task_name:
             # Rename to the current invocation spelling (e.g. prefer spanish-spam over spanish_spam).
@@ -321,9 +432,11 @@ def _write_run_summary(
         "timestamp": datetime.now().isoformat(),
         "tasks": merged_tasks,
     }
+    summary["diagnostics"] = _aggregate_summary_diagnostics(merged_tasks)
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
     logger.info(f"Wrote run summary to {summary_path}")
+    return summary
 
 
 def _write_run_outcome(
@@ -337,6 +450,7 @@ def _write_run_outcome(
     invocation_metadata: Optional[Dict[str, Any]] = None,
     artifacts: Optional[Dict[str, Any]] = None,
     errors: Optional[list] = None,
+    run_summary_payload: Optional[Dict[str, Any]] = None,
     force_status: Optional[str] = None,
     force_exit_code: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -367,6 +481,7 @@ def _write_run_outcome(
             if record.get("status") in {"failed", "error", "pending", "skipped", "no_samples"}
         ),
     }
+    tasks_payload = _attach_per_task_diagnostics(task_records, run_summary_payload)
 
     outcome = {
         "schema_version": RUN_OUTCOME_SCHEMA_VERSION,
@@ -385,8 +500,12 @@ def _write_run_outcome(
         "git": _get_git_metadata(),
         "artifacts": artifacts or {},
         "errors": errors or [],
-        "tasks": task_records,
+        "tasks": tasks_payload,
     }
+    diagnostics = {}
+    if isinstance(run_summary_payload, dict):
+        diagnostics = run_summary_payload.get("diagnostics") or {}
+    outcome["diagnostics"] = diagnostics
 
     outcome_path = Path(model_output_path) / "run_outcome.json"
     with outcome_path.open("w", encoding="utf-8") as f:
@@ -607,6 +726,14 @@ def benchmark_pipeline(
     
     if not pending_tasks:
         logger.info("All tasks are already completed! Nothing to run.")
+        run_summary_payload = None
+        summary_path = Path(model_output_path) / "run_summary.json"
+        if summary_path.exists():
+            try:
+                with summary_path.open("r", encoding="utf-8") as f:
+                    run_summary_payload = json.load(f) or {}
+            except Exception:
+                run_summary_payload = None
         run_outcome = _write_run_outcome(
             model_output_path=model_output_path,
             model_name=model_name,
@@ -620,6 +747,7 @@ def benchmark_pipeline(
                 run_config_path=run_config_path,
                 log_file_path=log_file_path,
             ),
+            run_summary_payload=run_summary_payload,
         )
         _log_run_outcome_summary(run_outcome)
         return {
@@ -722,6 +850,7 @@ def benchmark_pipeline(
                 log_file_path=log_file_path,
             ),
             errors=preflight_errors,
+            run_summary_payload=None,
             force_status="failed",
             force_exit_code=1,
         )
@@ -819,8 +948,9 @@ def benchmark_pipeline(
 
     if execution_error is not None:
         final_records = completion_checker.get_task_records(tasks)
+        run_summary_payload = None
         try:
-            _write_run_summary(
+            run_summary_payload = _write_run_summary(
                 model_output_path=model_output_path,
                 model_name=model_name,
                 run_id=run_id,
@@ -845,6 +975,7 @@ def benchmark_pipeline(
                 log_file_path=log_file_path,
             ),
             errors=execution_errors,
+            run_summary_payload=run_summary_payload,
             force_status="failed",
             force_exit_code=1,
         )
@@ -869,7 +1000,7 @@ def benchmark_pipeline(
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
 
-    _write_run_summary(
+    run_summary_payload = _write_run_summary(
         model_output_path=model_output_path,
         model_name=model_name,
         run_id=run_id,
@@ -891,6 +1022,7 @@ def benchmark_pipeline(
             run_config_path=run_config_path,
             log_file_path=log_file_path,
         ),
+        run_summary_payload=run_summary_payload,
     )
     _log_run_outcome_summary(run_outcome)
 

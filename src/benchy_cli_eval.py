@@ -559,6 +559,17 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--probe-mode",
+        type=str,
+        choices=["skip", "auto"],
+        default="skip",
+        help=(
+            "Probe mode for capability detection. "
+            "'skip'=use current inline probe (default), "
+            "'auto'=run full probe before eval (Phase 2 feature)."
+        ),
+    )
+    parser.add_argument(
         "--image-max-edge",
         type=int,
         default=None,
