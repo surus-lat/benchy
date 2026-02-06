@@ -723,9 +723,28 @@ def _generate_probe_summary_text(report: Dict[str, Any]) -> str:
     modes = report.get("modes", {})
     for mode_name, mode_result in modes.items():
         if isinstance(mode_result, dict):
-            status = "[OK]" if mode_result.get("ok") else "[FAIL]"
+            if not mode_result.get("tested"):
+                status = "[SKIP]"
+            else:
+                status = "[OK]" if mode_result.get("ok") else "[FAIL]"
             display_name = mode_name.replace("_", " ").title()
             lines.append(f"  {status} {display_name}")
+
+    transports = report.get("schema_transports", {})
+    has_transport_warn = False
+    for transport_name, transport_result in transports.items():
+        if isinstance(transport_result, dict):
+            if not transport_result.get("tested"):
+                status = "[SKIP]"
+            elif transport_result.get("ok"):
+                status = "[OK]"
+            elif transport_result.get("accepted_by_api") and not transport_result.get("reliable_for_eval"):
+                status = "[WARN]"
+                has_transport_warn = True
+            else:
+                status = "[FAIL]"
+            display_name = transport_name.replace("_", " ").title()
+            lines.append(f"  {status} {display_name} (schema parameter format)")
     
     # Add additional checks
     checks = report.get("checks", {})
@@ -733,13 +752,35 @@ def _generate_probe_summary_text(report: Dict[str, Any]) -> str:
         if isinstance(check_result, dict):
             status_map = {"ok": "[OK]", "degraded": "[WARN]", "failed": "[FAIL]"}
             status = status_map.get(check_result.get("status"), "[UNKNOWN]")
+            if check_name == "param_support":
+                display_name = "Max Tokens Parameter"
+                selected_param = (check_result.get("evidence") or {}).get("max_tokens_param")
+                suffix = f" (selected: {selected_param})" if selected_param else ""
+                lines.append(f"  {status} {display_name}{suffix}")
+                continue
             display_name = check_name.replace("_", " ").title()
             lines.append(f"  {status} {display_name}")
+
+    if has_transport_warn:
+        lines.append("")
+        lines.append("Notes:")
+        lines.append("  [WARN] schema parameter format: accepted by API but unreliable for eval")
     
     lines.append("")
     lines.append("Selected Configuration:")
     lines.append(f"  API endpoint: {report.get('selected_api_endpoint', 'unknown')}")
-    lines.append(f"  Schema transport: {report.get('selected_schema_transport', 'unknown')}")
+    lines.append(f"  Schema transport: {report.get('selected_schema_transport') or 'none'}")
+    lines.append("  Schema transport options:")
+    for transport_name, transport_result in transports.items():
+        option_status = _schema_transport_option_label(
+            transport_result if isinstance(transport_result, dict) else {}
+        )
+        option_error = ""
+        if isinstance(transport_result, dict):
+            err = transport_result.get("error")
+            if err:
+                option_error = f" ({err})"
+        lines.append(f"    - {transport_name}: {option_status}{option_error}")
     
     # Add risk flags if any
     risk_flags = report.get("risk_flags", {})
@@ -758,6 +799,43 @@ def _generate_probe_summary_text(report: Dict[str, Any]) -> str:
                 if active:
                     msg = risk_messages.get(risk, risk.replace("_", " ").title())
                     lines.append(f"  [!] {msg}")
+
+    details = []
+    for mode_name, mode_result in modes.items():
+        if isinstance(mode_result, dict) and mode_result.get("tested") and not mode_result.get("ok"):
+            details.append(
+                f"mode.{mode_name} failed: {mode_result.get('error') or 'unknown error'}"
+            )
+    for transport_name, transport_result in transports.items():
+        if isinstance(transport_result, dict) and transport_result.get("tested") and not transport_result.get("ok"):
+            accepted = transport_result.get("accepted_by_api")
+            reliable = transport_result.get("reliable_for_eval")
+            state_note = ""
+            if accepted is not None or reliable is not None:
+                state_note = f" (accepted_by_api={accepted}, reliable_for_eval={reliable})"
+            state = "accepted_but_unreliable" if accepted and not reliable else "failed"
+            details.append(
+                f"schema.{transport_name} {state}: {transport_result.get('error') or 'unknown error'}{state_note}"
+            )
+    for check_name, check_result in checks.items():
+        if not isinstance(check_result, dict):
+            continue
+        if check_result.get("status") in {"failed", "degraded"}:
+            details.append(
+                f"check.{check_name} {check_result.get('status')}: {check_result.get('error') or 'warning'}"
+            )
+    if details:
+        lines.append("")
+        lines.append("Failure Details:")
+        for detail in details:
+            lines.append(f"  - {detail}")
+
+    if report.get("test_plan"):
+        lines.append("")
+        lines.append("What Was Tested:")
+        lines.append("  See probe_report.json -> test_plan for exact probes and pass criteria.")
+        lines.append("  Param check validates max token parameter only (not temperature).")
+        lines.append("  Transport = schema parameter format sent to the provider API.")
     
     lines.append("=" * 60)
     return "\n".join(lines)
@@ -791,7 +869,10 @@ def _log_probe_report(report: Dict[str, Any]) -> None:
     selected = report.get("selected_api_endpoint")
     logger.info(f"Request mode probe selected api_endpoint={selected} (requested={requested})")
     for mode, result in (report.get("modes") or {}).items():
-        status = "ok" if result.get("ok") else "failed"
+        if not result.get("tested"):
+            status = "skipped"
+        else:
+            status = "ok" if result.get("ok") else "failed"
         error = result.get("error")
         suffix = f" ({error})" if error else ""
         logger.info(f"Probe {mode}: {status}{suffix}")
@@ -799,13 +880,37 @@ def _log_probe_report(report: Dict[str, Any]) -> None:
     schema_selected = report.get("selected_schema_transport")
     schema_forced = bool(report.get("schema_transport_forced"))
     logger.info(
-        "Schema transport probe selected method=%s (requested=%s, forced=%s)",
+        "Schema transport probe selected format=%s (requested=%s, forced=%s)",
         schema_selected,
         schema_requested,
         schema_forced,
     )
     for method, result in (report.get("schema_transports") or {}).items():
-        status = "ok" if result.get("ok") else "failed"
+        if not result.get("tested"):
+            status = "skipped"
+        elif result.get("ok"):
+            status = "ok"
+        elif result.get("accepted_by_api") and not result.get("reliable_for_eval"):
+            status = "accepted_but_unreliable"
+        else:
+            status = "failed"
         error = result.get("error")
+        accepted = result.get("accepted_by_api")
+        reliable = result.get("reliable_for_eval")
+        transport_state = ""
+        if accepted is not None or reliable is not None:
+            transport_state = f" [accepted_by_api={accepted}, reliable_for_eval={reliable}]"
         suffix = f" ({error})" if error else ""
-        logger.info(f"Probe schema.{method}: {status}{suffix}")
+        logger.info(
+            f"Probe schema format {method}: {status}{transport_state}{suffix}"
+        )
+
+
+def _schema_transport_option_label(result: Dict[str, Any]) -> str:
+    if not isinstance(result, dict) or not result.get("tested"):
+        return "not_tested"
+    if result.get("ok"):
+        return "usable"
+    if result.get("accepted_by_api") and not result.get("reliable_for_eval"):
+        return "accepted_but_unreliable"
+    return "unsupported_or_failed"

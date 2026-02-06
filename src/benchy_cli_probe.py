@@ -233,7 +233,10 @@ def _build_connection_info(args: argparse.Namespace) -> Dict[str, Any]:
         connection_info["capabilities"] = {
             "request_modes": ["chat", "completions"],
             "supports_schema": True,
-            "supports_logprobs": True,
+            # Conservative default to avoid false failures on providers/models where
+            # logprobs are endpoint- or model-dependent.
+            "supports_logprobs": provider_type == "vllm",
+            "supports_multimodal": True,
         }
     
     # Validate required fields
