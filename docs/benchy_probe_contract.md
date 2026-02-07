@@ -8,6 +8,29 @@ This document is the source of truth for what `benchy probe` tests and how to in
 
 ## Checks
 
+### `access_readiness`
+
+Goal:
+- Fail fast on account/access blockers before benchmark runs.
+
+What is tested:
+- Minimal chat request to the target model.
+- Best-effort `/models` lookup for context.
+
+Pass criteria:
+- No blocking auth/model/quota issue is detected.
+
+Typical issue codes:
+- `invalid_api_key`
+- `forbidden`
+- `model_not_found`
+- `insufficient_credits`
+- `rate_limited`
+- `access_error`
+
+Failure meaning:
+- A smoke/full eval run is unlikely to make sense until access is fixed.
+
 ### `request_modes`
 
 Goal:
