@@ -4,9 +4,7 @@ Script to upload the processed results to Hugging Face datasets.
 This uploads the publish directory contents to the configured dataset.
 """
 
-import os
 from pathlib import Path
-from typing import Dict
 from config_loader import load_config
 
 def upload_to_huggingface(publish_dir: Path, dataset_name: str) -> bool:
@@ -82,14 +80,13 @@ def upload_to_hf(publish_dir: str, dataset_name: str) -> bool:
     success = upload_to_huggingface(publish_dir_path, dataset_name)
     
     if success:
-        print(f"\n✨ Upload completed! View your dataset at:")
+        print("\n✨ Upload completed! View your dataset at:")
         print(f"   https://huggingface.co/datasets/{dataset_name}")
     
     return success
 
 def main():
     """Main function for standalone execution."""
-    import yaml
     config = load_config()
     publish_dir = config["paths"]["publish_dir"]
     dataset_name = config["datasets"]["results"]

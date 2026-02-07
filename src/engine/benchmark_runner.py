@@ -544,7 +544,7 @@ def save_results(
     report_file = output_dir / f"{safe_name}_{timestamp}_report.txt"
     with open(report_file, "w") as f:
         f.write("=" * 60 + "\n")
-        f.write(f"BENCHMARK REPORT\n")
+        f.write("BENCHMARK REPORT\n")
         f.write("=" * 60 + "\n")
         f.write(f"Model: {model_name}\n")
         f.write(f"Task: {task_name}\n")

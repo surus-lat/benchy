@@ -24,9 +24,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio ruff pillow jsonschema httpx
 
-      - name: Lint (ruff, incremental scope)
+      - name: Lint (ruff)
         run: |
-          ruff check tests
+          ruff check src tests
 
       - name: Run tests
         run: |
