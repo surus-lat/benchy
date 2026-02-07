@@ -151,6 +151,12 @@ benchy eval --config openai_gpt-4o-mini.yaml --limit 10
 If `benchy` is not on your PATH (for example when running directly from the repo), use:
 `python -m src.benchy_cli ...`
 
+### Run Unit Tests
+
+```bash
+pytest -q
+```
+
 If you want to run the same task list across multiple models, you can override tasks
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `docs/evaluating_models.md` for full examples and behavior.
@@ -349,12 +355,13 @@ benchy probe --provider openai --model-name gpt-5-mini \
 
 The probe system checks:
 
-1. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
-2. **Schema Transports**: Structured output support (structured_outputs vs response_format)
-3. **Multimodal Support**: Whether the model accepts image inputs
-4. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
-5. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
-6. **Provider Fingerprint**: Model server metadata and version information
+1. **Access Readiness**: Fast preflight for invalid API key, model not found, insufficient credits/quota, and similar blockers
+2. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
+3. **Schema Transports**: Structured output support (structured_outputs vs response_format)
+4. **Multimodal Support**: Whether the model accepts image inputs
+5. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
+6. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
+7. **Provider Fingerprint**: Model server metadata and version information
 
 ### Probe Profiles
 
