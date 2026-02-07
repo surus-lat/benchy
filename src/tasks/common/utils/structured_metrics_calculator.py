@@ -14,12 +14,11 @@ The Extraction Quality Score (EQS) is the primary metric, combining:
 - Hallucination rate (does the model add spurious fields?)
 """
 
-import json
 import logging
 import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from jsonschema import validate, ValidationError
 
@@ -424,7 +423,7 @@ class MetricsCalculator:
 
         # Check if schema is empty or missing
         if not schema or not schema.get("properties"):
-            logger.warning(f"Schema is empty or has no properties, skipping validation")
+            logger.warning("Schema is empty or has no properties, skipping validation")
             return True  # Consider valid if no schema to validate against
 
         try:
@@ -770,17 +769,10 @@ class MetricsCalculator:
 
             total_fields = 0
             max_depth = depth
-            has_arrays = False
-            has_nested = False
-
             if "properties" in obj:
                 total_fields += len(obj["properties"])
                 for prop_value in obj["properties"].values():
                     if isinstance(prop_value, dict):
-                        if prop_value.get("type") == "array":
-                            has_arrays = True
-                        if prop_value.get("type") == "object":
-                            has_nested = True
                         sub_fields, sub_depth = count_fields(prop_value, depth + 1)
                         total_fields += sub_fields
                         max_depth = max(max_depth, sub_depth)
@@ -791,7 +783,6 @@ class MetricsCalculator:
                     sub_fields, sub_depth = count_fields(def_value, depth + 1)
                     total_fields += sub_fields
                     max_depth = max(max_depth, sub_depth)
-                    has_nested = True
 
             return total_fields, max_depth
 
@@ -826,7 +817,7 @@ class MetricsCalculator:
         if not isinstance(d, dict):
             # If it's a list at the top level, try to convert to dict-like structure
             if isinstance(d, list):
-                logger.warning(f"Received list instead of dict for flattening, wrapping as 'root' key")
+                logger.warning("Received list instead of dict for flattening, wrapping as 'root' key")
                 d = {"root": d}
             else:
                 # For other types, wrap as a single value

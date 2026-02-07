@@ -839,7 +839,6 @@ async def _probe_truncation(
         
         # The key issue: does the model produce repetition when truncated?
         repetition_detected = _detect_repetition(output_text)
-        truncated = finish_reason == "length" or completion_tokens >= 16
         reports_truncation_correctly = finish_reason == "length"
         
         # ONLY flag as degraded if repetition is detected

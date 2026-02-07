@@ -105,6 +105,37 @@ coverage run -m pytest -q
 coverage report -m
 ```
 
+## Lint Workflow (Ruff)
+
+Linting is part of CI and should pass before merging.
+
+Run locally:
+
+```bash
+ruff check src tests
+```
+
+Safe autofix pass (no unsafe fixes):
+
+```bash
+ruff check --fix src tests
+```
+
+Recommended workflow for larger cleanup:
+
+1. Fix in small batches (about 10 findings at a time).
+2. Re-run lint after each batch.
+3. Re-run tests after each batch:
+
+```bash
+pytest -q
+```
+
+Rules:
+- Do not use `--unsafe-fixes` unless explicitly approved.
+- Prefer manual review for any fix beyond obvious unused imports/variables or no-op f-strings.
+- If a lint finding reveals a real bug (for example undefined names), fix it with targeted code changes and tests.
+
 ## Iterative Expansion Plan
 
 1. Keep adding unit tests around changed logic first.

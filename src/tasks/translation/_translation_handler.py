@@ -9,7 +9,7 @@ Extends FreeformHandler with translation-specific features:
 import logging
 import re
 from collections import defaultdict
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
 from ..common import FreeformHandler
 from .metrics import TranslationMetricsCalculator
@@ -179,7 +179,7 @@ class TranslationHandler(FreeformHandler):
         # CRITICAL: Calculate COMET scores in batch FIRST
         # This fills in the comet=None values from calculate()
         logger.info("Calculating batch COMET scores...")
-        metrics_with_comet = self.metrics_calculator.aggregate(all_metrics)
+        self.metrics_calculator.aggregate(all_metrics)
         
         # Use the metrics with COMET scores filled in
         # The aggregate() method returns aggregated scores, but we need per-sample

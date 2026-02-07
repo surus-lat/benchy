@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any
 
 from ..common import StructuredHandler, CachedDatasetMixin, download_huggingface_dataset, save_to_jsonl
 

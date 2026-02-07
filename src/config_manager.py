@@ -96,7 +96,7 @@ class ConfigManager:
                     default_venv_path = str(current_dir / ".venv")
                     merged_vllm_config['vllm_venv_path'] = default_venv_path
                     logger.info("Using default vLLM version from main project environment")
-                    print(f"✅ Using default vLLM version from main project environment")
+                    print("✅ Using default vLLM version from main project environment")
                 
                 # Log what was overridden
                 if overrides:

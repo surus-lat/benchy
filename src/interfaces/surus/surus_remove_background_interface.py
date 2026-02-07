@@ -257,7 +257,7 @@ class SurusRemoveBackgroundInterface(HTTPInterface):
                 if isinstance(response, dict):
                     # Check if response has the expected structure (results array + model field)
                     if "results" in response and "model" in response:
-                        logger.info(f"Test connection successful - API responded with valid structure")
+                        logger.info("Test connection successful - API responded with valid structure")
                         return True
                     # If there's a detail field with an error message, that's a real error
                     if "detail" in response:

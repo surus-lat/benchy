@@ -862,16 +862,16 @@ def benchmark_pipeline(
     task_configs_by_name: Dict[str, Any] = {}
     
     # Load results from already completed tasks
-    completed_tasks = [task for task, record in completion_records.items() if record.get("completed")]
-    for task in completed_tasks:
-        logger.info(f"Loading results from previously completed task: {task}")
+    completed_tasks = [task_name for task_name, record in completion_records.items() if record.get("completed")]
+    for task_name in completed_tasks:
+        logger.info(f"Loading results from previously completed task: {task_name}")
         # Create a placeholder result for completed tasks
-        task_results[task] = {
+        task_results[task_name] = {
             "model_name": model_name,
-            "task": task,
+            "task": task_name,
             "status": "previously_completed",
-            "output_path": f"{model_output_path}/{task.split('.', 1)[0]}",
-            "message": f"Task {task} was completed in a previous run"
+            "output_path": f"{model_output_path}/{task_name.split('.', 1)[0]}",
+            "message": f"Task {task_name} was completed in a previous run"
         }
     
     gather_result: Dict[str, Any] = {}
