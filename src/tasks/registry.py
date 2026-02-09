@@ -384,7 +384,7 @@ def build_adhoc_task_config(
     Returns:
         Task configuration dict compatible with registry
     """
-    from src.tasks.common import build_task_metadata
+    from src.tasks.common import build_task_metadata, apply_defaults
     
     # Extract task type from name
     # Format: _adhoc_{task_type}_{hash}
@@ -394,17 +394,20 @@ def build_adhoc_task_config(
     else:
         raise ValueError(f"Invalid ad-hoc task name format: {task_name}")
     
+    # Apply defaults to task_config (adds default field mappings)
+    task_config_with_defaults = apply_defaults(task_type, dict(task_config))
+    
     # Build metadata using task_config_schema
-    metadata = build_task_metadata(task_type, task_config)
+    metadata = build_task_metadata(task_type, task_config_with_defaults)
     
     # Apply defaults overrides
-    defaults = dict(task_config.get("defaults", {}))
+    defaults = dict(task_config_with_defaults.get("defaults", {}))
     if task_defaults_overrides:
         defaults.update(task_defaults_overrides)
     
     # Merge dataset config from task_config
-    if "dataset" in task_config:
-        defaults["dataset"] = task_config["dataset"]
+    if "dataset" in task_config_with_defaults:
+        defaults["dataset"] = task_config_with_defaults["dataset"]
     
     # Build subtask name (ad-hoc tasks have a single subtask)
     subtask_name = "main"
@@ -494,11 +497,8 @@ def build_adhoc_task_spec(
     return TaskGroupSpec(
         name=config_dict["name"],
         display_name=config_dict["display_name"],
-        description=config_dict["description"],
-        subtasks=config_dict["tasks"],
+        default_subtasks=config_dict["tasks"],
         prepare_task=_prepare_task,
-        output_config=config_dict["output"],
-        capability_requirements=config_dict["capability_requirements"],
     )
 
 

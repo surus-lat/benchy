@@ -104,6 +104,8 @@ class TranslationMetricsCalculator:
                 "bleu": 0.0,
                 "chrf": 0.0,
                 "comet": 0.0,
+                "metric_degraded": False,
+                "metric_warnings": [],
             }
         
         # Normalize strings
@@ -118,6 +120,8 @@ class TranslationMetricsCalculator:
                 "bleu": 0.0,
                 "chrf": 0.0,
                 "comet": 0.0,
+                "metric_degraded": False,
+                "metric_warnings": [],
             }
         
         metrics = {
@@ -125,6 +129,10 @@ class TranslationMetricsCalculator:
             "bleu": 0.0,
             "chrf": 0.0,
             "comet": 0.0,
+            "metric_degraded": False,
+            "metric_warnings": [],
+            "_text_pred": pred_text,
+            "_text_ref": ref_text,
         }
         
         # Calculate BLEU and chrF (sacrebleu)
@@ -139,10 +147,12 @@ class TranslationMetricsCalculator:
                 metrics["chrf"] = chrf_score.score / 100.0  # Normalize to 0-1
             except Exception as e:
                 logger.warning(f"Error calculating BLEU/chrF: {e}")
-                metrics["valid"] = False
-                metrics["error"] = f"BLEU/chrF calculation error: {e}"
+                metrics["metric_degraded"] = True
+                metrics["metric_warnings"].append(f"bleu_chrf_calculation_error: {e}")
         else:
             logger.warning("sacrebleu not available, skipping BLEU and chrF")
+            metrics["metric_degraded"] = True
+            metrics["metric_warnings"].append("sacrebleu_not_available")
         
         # Defer COMET calculation - we'll batch it later
         # Store prediction/ref for batch processing in aggregate_metrics
@@ -154,6 +164,8 @@ class TranslationMetricsCalculator:
         else:
             logger.debug("COMET not available, skipping")
             metrics["comet"] = 0.0
+            metrics["metric_degraded"] = True
+            metrics["metric_warnings"].append("comet_not_available")
         
         return metrics
     
@@ -176,12 +188,21 @@ class TranslationMetricsCalculator:
                 "bleu": 0.0,
                 "chrf": 0.0,
                 "comet": 0.0,
+                "metric_degraded": False,
+                "metric_warnings": [],
+                "bleu_aggregation": "corpus",
+                "chrf_aggregation": "corpus",
             }
-        
+
         valid_metrics = [m for m in all_metrics if m.get("valid", False)]
         total_samples = len(all_metrics)
         valid_samples = len(valid_metrics)
-        
+        metric_warnings = []
+        for m in all_metrics:
+            for warning in m.get("metric_warnings", []):
+                if warning:
+                    metric_warnings.append(str(warning))
+
         if valid_samples == 0:
             return {
                 "total_samples": total_samples,
@@ -190,12 +211,37 @@ class TranslationMetricsCalculator:
                 "chrf": 0.0,
                 "comet": 0.0,
                 "error_rate": 1.0,
+                "metric_degraded": bool(metric_warnings),
+                "metric_warnings": sorted(set(metric_warnings)),
+                "bleu_aggregation": "corpus",
+                "chrf_aggregation": "corpus",
             }
-        
-        # Calculate BLEU and chrF (already done per-sample)
-        bleu_scores = [float(m.get("bleu", 0.0)) for m in valid_metrics]
-        chrf_scores = [float(m.get("chrf", 0.0)) for m in valid_metrics]
-        
+
+        # Calculate corpus-level BLEU and chrF.
+        bleu_value = 0.0
+        chrf_value = 0.0
+        if SACREBLEU_AVAILABLE:
+            try:
+                pred_texts = []
+                ref_texts = []
+                for m in valid_metrics:
+                    pred = m.get("_text_pred")
+                    ref = m.get("_text_ref")
+                    if pred and ref:
+                        pred_texts.append(str(pred))
+                        ref_texts.append(str(ref))
+
+                if pred_texts and len(pred_texts) == len(ref_texts):
+                    bleu_value = float(sacrebleu.corpus_bleu(pred_texts, [ref_texts]).score) / 100.0
+                    chrf_value = float(sacrebleu.corpus_chrf(pred_texts, [ref_texts]).score) / 100.0
+                else:
+                    metric_warnings.append("missing_text_for_corpus_bleu_chrf")
+            except Exception as e:
+                logger.warning(f"Error calculating corpus BLEU/chrF: {e}")
+                metric_warnings.append(f"corpus_bleu_chrf_calculation_error: {e}")
+        else:
+            metric_warnings.append("sacrebleu_not_available")
+
         # Calculate COMET in batches (much faster than per-sample)
         comet_scores = []
         if COMET_AVAILABLE:
@@ -233,9 +279,11 @@ class TranslationMetricsCalculator:
                                 else:
                                     logger.warning(f"Unexpected COMET output format: {type(comet_output)}")
                                     all_comet_scores.extend([0.0] * len(batch))
+                                    metric_warnings.append("unexpected_comet_output_format")
                             except Exception as e:
                                 logger.warning(f"Error calculating COMET batch {i//batch_size + 1}: {e}")
                                 all_comet_scores.extend([0.0] * len(batch))
+                                metric_warnings.append(f"comet_batch_calculation_error: {e}")
                         
                         # Map scores back to metrics
                         comet_scores = [float(s) if isinstance(s, (int, float)) else 0.0 for s in all_comet_scores]
@@ -252,22 +300,32 @@ class TranslationMetricsCalculator:
                     else:
                         logger.warning("COMET model not available, skipping COMET calculation")
                         comet_scores = [0.0] * len(valid_metrics)
+                        metric_warnings.append("comet_model_not_available")
                 else:
                     logger.debug("No valid COMET data to process")
                     comet_scores = [0.0] * len(valid_metrics)
+                    metric_warnings.append("missing_text_for_comet")
             except Exception as e:
                 logger.warning(f"Error in batch COMET calculation: {e}")
                 comet_scores = [0.0] * len(valid_metrics)
+                metric_warnings.append(f"comet_aggregate_error: {e}")
         else:
             comet_scores = [0.0] * len(valid_metrics)
-        
+            metric_warnings.append("comet_not_available")
+
+        deduped_warnings = sorted(set(metric_warnings))
+
         aggregated = {
             "total_samples": total_samples,
             "valid_samples": valid_samples,
             "error_rate": (total_samples - valid_samples) / total_samples if total_samples > 0 else 0.0,
-            "bleu": sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0.0,
-            "chrf": sum(chrf_scores) / len(chrf_scores) if chrf_scores else 0.0,
+            "bleu": bleu_value,
+            "chrf": chrf_value,
             "comet": sum(comet_scores) / len(comet_scores) if comet_scores else 0.0,
+            "metric_degraded": bool(deduped_warnings),
+            "metric_warnings": deduped_warnings,
+            "bleu_aggregation": "corpus",
+            "chrf_aggregation": "corpus",
         }
-        
+
         return aggregated

@@ -189,6 +189,14 @@ class TranslationHandler(FreeformHandler):
         total_samples = len(all_metrics)
         valid_samples = sum(1 for m in all_metrics if m.get("valid", False))
         error_count = sum(1 for m in all_metrics if not m.get("valid", False))
+        metric_warnings = sorted(
+            {
+                str(warning)
+                for m in all_metrics
+                for warning in m.get("metric_warnings", [])
+                if warning
+            }
+        )
         
         # Group by language pair and direction
         by_pair_direction = defaultdict(lambda: defaultdict(list))
@@ -274,6 +282,8 @@ class TranslationHandler(FreeformHandler):
             "valid_samples": valid_samples,
             "error_count": error_count,
             "error_rate": error_count / total_samples if total_samples > 0 else 0.0,
+            "metric_degraded": bool(metric_warnings),
+            "metric_warnings": metric_warnings,
             **overall_metrics,
             "per_pair": per_pair,
             "per_language": per_language,
