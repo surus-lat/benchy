@@ -301,13 +301,7 @@ def test_get_prompt_uses_custom_template():
 def test_calculate_metrics_returns_accuracy_dict():
     """Test calculate_metrics returns accuracy metrics."""
     handler = SimpleClassificationHandler()
-    
-    sample = {
-        "choices": ["No", "Yes"],
-        "choice_labels": ["0", "1"],
-        "expected": 1
-    }
-    
+
     # calculate_metrics is called by the handler internally
     # For testing, we can check the metrics property exists
     assert handler.metrics is not None
@@ -315,8 +309,6 @@ def test_calculate_metrics_returns_accuracy_dict():
 
 def test_aggregate_metrics_computes_mean_accuracy():
     """Test aggregate_metrics computes mean accuracy."""
-    handler = SimpleClassificationHandler()
-    
     per_sample_metrics = [
         {"accuracy": 1.0, "valid": True},
         {"accuracy": 0.0, "valid": True},
