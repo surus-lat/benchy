@@ -930,7 +930,6 @@ def benchmark_pipeline(
         invocation_metadata=invocation_metadata,
         artifacts=_build_artifacts(
             model_output_path=model_output_path,
-            run_config_path=run_config_path,
             log_file_path=log_file_path,
         ),
         run_summary_payload=run_summary_payload,
