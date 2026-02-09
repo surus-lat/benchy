@@ -203,9 +203,13 @@ class PearsonCorrelation:
     
     def per_sample(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> Dict[str, Any]:
         # Store individual values for correlation computation during aggregation
+        import math
+
         try:
             pred_val = float(prediction)
             exp_val = float(expected)
+            if not (math.isfinite(pred_val) and math.isfinite(exp_val)):
+                return {"valid": False}
             return {
                 "prediction": pred_val,
                 "expected": exp_val,
@@ -216,8 +220,19 @@ class PearsonCorrelation:
     
     def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
         import math
-        
-        valid = [entry for entry in values if entry.get("valid")]
+
+        valid = []
+        for entry in values:
+            if not entry.get("valid"):
+                continue
+            pred_val = entry.get("prediction")
+            exp_val = entry.get("expected")
+            if not isinstance(pred_val, (int, float)) or not isinstance(exp_val, (int, float)):
+                continue
+            if not (math.isfinite(pred_val) and math.isfinite(exp_val)):
+                continue
+            valid.append(entry)
+
         if len(valid) < 2:
             return {"pearson": 0.0}
         
@@ -236,4 +251,7 @@ class PearsonCorrelation:
         if denominator == 0:
             return {"pearson": 0.0}
         
-        return {"pearson": numerator / denominator}
+        corr = numerator / denominator
+        if not math.isfinite(corr):
+            return {"pearson": 0.0}
+        return {"pearson": max(-1.0, min(1.0, corr))}
