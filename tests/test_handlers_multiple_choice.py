@@ -1,10 +1,7 @@
 """Tests for MultipleChoiceHandler classification logic."""
 
-import json
-from pathlib import Path
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, ClassVar, Dict
 
-import pytest
 
 from src.tasks.common.multiple_choice import MultipleChoiceHandler
 

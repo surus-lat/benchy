@@ -1,9 +1,7 @@
 """Tests for dataset mixin classes."""
 
-import json
 from pathlib import Path
 
-import pytest
 
 from src.tasks.common.dataset_loaders import (
     CachedDatasetMixin,

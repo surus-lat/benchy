@@ -1,7 +1,6 @@
 """Tests for dataset utility functions."""
 
 import json
-from pathlib import Path
 
 import pytest
 

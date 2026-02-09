@@ -1049,7 +1049,7 @@ def run_eval(args: argparse.Namespace) -> int:
         # Validate that we have a dataset
         if not dataset_config.get("name"):
             raise ValueError(
-                f"--task-type requires --dataset-name to specify the dataset"
+                "--task-type requires --dataset-name to specify the dataset"
             )
         
         # Build ad-hoc task config
@@ -1062,7 +1062,6 @@ def run_eval(args: argparse.Namespace) -> int:
         
         # Generate unique task name
         import hashlib
-        import time
         config_hash = hashlib.md5(str(adhoc_config).encode()).hexdigest()[:8]
         adhoc_task_name = f"_adhoc_{args.task_type}_{config_hash}"
         

@@ -1,6 +1,5 @@
 """Tests for ad-hoc task registry functionality."""
 
-import pytest
 
 from src.tasks.registry import (
     build_adhoc_task_config,

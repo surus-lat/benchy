@@ -1,6 +1,5 @@
 """Tests for structured extraction metrics calculator."""
 
-import json
 import pytest
 
 from src.tasks.common.utils.structured_metrics_calculator import MetricsCalculator
