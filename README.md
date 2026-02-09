@@ -218,6 +218,121 @@ benchy eval --config surus-remove-background --dataset your-dataset --limit 10
 benchy eval --config surus-remove-background --dataset ICM57 --limit 10
 ```
 
+## CLI Dataset Usage (New!)
+
+Benchy now supports creating tasks directly from the CLI without writing code. You can evaluate custom datasets using three task types: **classification**, **structured extraction**, and **freeform generation**.
+
+### Quick Start Examples
+
+**Classification Task** (binary or multi-class):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name climatebert/environmental_claims \
+  --dataset-labels '{"0": "No", "1": "Yes"}' \
+  --limit 10
+```
+
+**Structured Extraction** (JSON output with schema):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoice-extraction \
+  --dataset-schema-path schemas/invoice_schema.json \
+  --limit 10
+```
+
+**Freeform Generation** (open-ended text):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name ./data/questions.jsonl \
+  --dataset-source local \
+  --limit 10
+```
+
+### Key Features
+
+- **Three Task Types**: Classification, Structured Extraction, Freeform Generation
+- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL files, or directory structures
+- **Flexible Field Mapping**: Map your dataset fields to expected inputs/outputs
+- **Multimodal Support**: Add `--multimodal-input` for image-based tasks
+- **Config Generation**: Save your CLI setup with `--save-config output.yaml` for reuse
+
+### Common CLI Flags
+
+**Task Type & Dataset**:
+- `--task-type {classification,structured,freeform}` - Type of task to create
+- `--dataset-name <name>` - HuggingFace dataset or local path
+- `--dataset-source {auto,huggingface,local,directory}` - Dataset source (default: auto)
+- `--dataset-split <split>` - Dataset split for HuggingFace (default: test)
+
+**Field Mappings**:
+- `--dataset-input-field <field>` - Input text field (default: text)
+- `--dataset-output-field <field>` - Expected output field (default: expected/label)
+- `--dataset-id-field <field>` - Sample ID field (auto-generated if missing)
+
+**Classification-Specific**:
+- `--dataset-labels <json>` - Label mapping: `'{"0": "No", "1": "Yes"}'`
+- `--dataset-label-field <field>` - Label field name (default: label)
+
+**Structured Extraction-Specific**:
+- `--dataset-schema-field <field>` - Schema field in dataset
+- `--dataset-schema-path <path>` - JSON file with schema
+- `--dataset-schema-json <json>` - Inline JSON schema
+
+**Multimodal**:
+- `--multimodal-input` - Enable multimodal input (images)
+- `--multimodal-image-field <field>` - Image path field (default: image_path)
+
+**Prompts**:
+- `--system-prompt <text>` - Custom system prompt
+- `--user-prompt-template <text>` - Template with {field} placeholders
+
+**Config Generation**:
+- `--save-config <path>` - Save CLI parameters as reusable YAML config
+
+### Override Existing Task Datasets
+
+You can also override the dataset for any existing task:
+
+```bash
+# Use your own dataset with an existing task
+benchy eval --config my-model.yaml \
+  --tasks classify.environmental_claims \
+  --dataset-name my-org/my-climate-dataset \
+  --dataset-split validation \
+  --limit 10
+```
+
+### Multimodal Classification Example
+
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name my-org/image-classification \
+  --multimodal-input \
+  --dataset-labels '{"0": "Cat", "1": "Dog"}' \
+  --limit 10
+```
+
+### Save and Reuse Configurations
+
+```bash
+# Create and save a config
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoices \
+  --dataset-schema-path schemas/invoice.json \
+  --save-config configs/my-invoice-task.yaml \
+  --limit 10
+
+# Reuse the saved config
+benchy eval --config configs/my-invoice-task.yaml --limit 100
+```
+
+For detailed documentation on dataset formats and advanced usage, see `docs/CLI_DATASET_USAGE.md`.
+
 ## Providerless CLI (OpenAI-compatible)
 
 When no config file is provided, Benchy infers the provider from CLI flags:

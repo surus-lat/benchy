@@ -5,6 +5,99 @@ This handler encapsulates logic for structured extraction tasks including:
 - Field-level comparison and metrics
 - Partial matching for near-matches
 - Hallucination detection
+
+## CLI Usage
+
+Create structured extraction tasks directly from the CLI:
+
+```bash
+# With schema in dataset
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoice-extraction \
+  --dataset-schema-field schema \
+  --limit 10
+
+# With external schema file
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoice-extraction \
+  --dataset-schema-path schemas/invoice_schema.json \
+  --system-prompt "Extract invoice information as JSON." \
+  --limit 10
+
+# With inline schema
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name ./data/invoices.jsonl \
+  --dataset-source local \
+  --dataset-schema-json '{"type": "object", "properties": {"name": {"type": "string"}, "amount": {"type": "number"}}, "required": ["name", "amount"]}' \
+  --limit 10
+
+# Multimodal structured extraction (e.g., from images)
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name ./data/receipts/ \
+  --multimodal-input \
+  --dataset-schema-path schemas/receipt_schema.json \
+  --limit 10
+```
+
+## Dataset Format
+
+**With schema in dataset**:
+```jsonl
+{"id": "1", "text": "Invoice from...", "schema": {...}, "expected": {...}}
+{"id": "2", "text": "Invoice from...", "schema": {...}, "expected": {...}}
+```
+
+**With external schema** (use --dataset-schema-path):
+```jsonl
+{"id": "1", "text": "Invoice from...", "expected": {"invoice_number": "INV-001", "date": "2024-01-15", "total": 1500.00}}
+{"id": "2", "text": "Invoice from...", "expected": {"invoice_number": "INV-002", "date": "2024-01-16", "total": 2300.50}}
+```
+
+**Schema file format** (JSON):
+```json
+{
+  "type": "object",
+  "properties": {
+    "invoice_number": {"type": "string"},
+    "date": {"type": "string", "format": "date"},
+    "total": {"type": "number"},
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "quantity": {"type": "integer"},
+          "price": {"type": "number"}
+        }
+      }
+    }
+  },
+  "required": ["invoice_number", "date", "total"]
+}
+```
+
+## Metrics
+
+- **Extraction Quality Score (EQS)**: Primary metric (0-1), weighted by field importance
+- **Field-level accuracy**: Per-field exact match rates
+- **Schema compliance**: Validation against JSON schema
+- **Partial matching**: Credit for near-matches (configurable)
+- **Hallucination detection**: Penalties for extra/incorrect fields
+
+## Schema Validation
+
+The handler supports full JSON Schema Draft 7 including:
+- Type validation (string, number, integer, boolean, array, object)
+- Format validation (date, email, uri, etc.)
+- Required fields
+- Nested objects and arrays
+- Pattern matching (regex)
+- Enum constraints
 """
 
 from __future__ import annotations
@@ -49,10 +142,56 @@ class StructuredHandler(BaseHandler):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the structured handler."""
+        # Apply config overrides BEFORE calling super().__init__
+        if config:
+            self._apply_config_overrides(config)
+        
         super().__init__(config)
 
         # Lazy initialization of metrics calculator
         self._metrics_calc = None
+    
+    def _apply_config_overrides(self, config: Dict[str, Any]):
+        """Apply configuration overrides to handler attributes.
+        
+        This allows CLI/config-driven tasks to work with the same handler
+        as Python-defined tasks.
+        """
+        dataset_config = config.get("dataset", {})
+        
+        # Field mappings
+        if "input_field" in dataset_config:
+            self.text_field = dataset_config["input_field"]
+        if "output_field" in dataset_config:
+            self.label_field = dataset_config["output_field"]
+        if "schema_field" in dataset_config:
+            self.schema_field = dataset_config["schema_field"]
+        
+        # Schema loading (from path or inline JSON)
+        if "schema_path" in dataset_config:
+            import json
+            from pathlib import Path
+            schema_path = Path(dataset_config["schema_path"])
+            if schema_path.exists():
+                with open(schema_path) as f:
+                    self._global_schema = json.load(f)
+            else:
+                logger.warning(f"Schema file not found: {schema_path}")
+        elif "schema_json" in dataset_config:
+            import json
+            self._global_schema = json.loads(dataset_config["schema_json"])
+        else:
+            self._global_schema = None
+        
+        # Prompts
+        if "system_prompt" in config:
+            self.system_prompt = config["system_prompt"]
+        if "user_prompt_template" in config:
+            self.user_prompt_template = config["user_prompt_template"]
+        
+        # Multimodal support
+        if dataset_config.get("multimodal_input"):
+            self.requires_multimodal = True
 
     @property
     def metrics_calculator(self):
@@ -92,6 +231,7 @@ class StructuredHandler(BaseHandler):
         """Transform a raw dataset sample to eval format.
         
         Extracts text, schema, and expected output.
+        Uses global schema if provided via config, otherwise extracts from sample.
         
         Args:
             raw_sample: Raw sample from dataset
@@ -100,13 +240,28 @@ class StructuredHandler(BaseHandler):
         Returns:
             Processed sample with schema and expected fields
         """
+        # If sample is already preprocessed, return as-is
+        if "id" in raw_sample and "text" in raw_sample and "schema" in raw_sample:
+            return raw_sample
+        
         text = raw_sample.get(self.text_field)
-        schema = raw_sample.get(self.schema_field)
         expected = raw_sample.get(self.label_field)
+        
+        # Get schema from global config or sample
+        if hasattr(self, '_global_schema') and self._global_schema is not None:
+            schema = self._global_schema
+        else:
+            schema = raw_sample.get(self.schema_field)
 
-        if text is None or schema is None or expected is None:
+        if text is None or expected is None:
             logger.warning(
-                f"Skipping sample {idx}: missing text, schema, or expected output"
+                f"Skipping sample {idx}: missing text or expected output"
+            )
+            return None
+        
+        if schema is None:
+            logger.warning(
+                f"Skipping sample {idx}: missing schema (not in sample and not in config)"
             )
             return None
 
