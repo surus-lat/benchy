@@ -110,12 +110,7 @@ def test_preprocess_sample_with_custom_fields():
     }
     
     handler = SimpleFreeformHandler(config)
-    
-    raw_sample = {
-        "question": "What is ML?",
-        "answer": "ML is machine learning"
-    }
-    
+
     # Note: preprocess_sample in BaseHandler doesn't do field extraction
     # That's handled by DatasetAdapter. This test verifies the config is stored.
     assert handler.text_field == "question"
@@ -184,8 +179,6 @@ def test_normalize_text_handles_none():
 
 def test_calculate_metrics_exact_match():
     """Test calculate_metrics computes exact match."""
-    handler = SimpleFreeformHandler()
-    
     # Metrics are computed by the metric objects
     from src.tasks.common.metrics import ExactMatch
     metric = ExactMatch()
@@ -197,8 +190,6 @@ def test_calculate_metrics_exact_match():
 
 def test_calculate_metrics_f1_score():
     """Test calculate_metrics computes F1 score."""
-    handler = SimpleFreeformHandler()
-    
     # Metrics are computed by the metric objects
     from src.tasks.common.metrics import F1Score
     metric = F1Score()
@@ -210,8 +201,6 @@ def test_calculate_metrics_f1_score():
 
 def test_calculate_metrics_with_normalization():
     """Test calculate_metrics normalizes text before comparison."""
-    handler = SimpleFreeformHandler()
-    
     # Metrics are computed by the metric objects
     from src.tasks.common.metrics import ExactMatch
     metric = ExactMatch()

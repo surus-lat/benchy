@@ -643,7 +643,6 @@ def benchmark_pipeline(
     
     # Filter out completed tasks
     pending_tasks = [task for task, record in completion_records.items() if not record.get("completed")]
-    run_config_path: Optional[str] = None
     
     if not pending_tasks:
         logger.info("All tasks are already completed! Nothing to run.")
@@ -698,9 +697,8 @@ def benchmark_pipeline(
                 hf_token=vllm_config.hf_token,
             )
 
-        # Note: run_config.yaml has been removed as it's redundant with run_outcome.json
-        # All run metadata is now stored in run_outcome.json which is the authoritative source
-        run_config_path = None
+        # Note: run_config.yaml has been removed as it's redundant with run_outcome.json.
+        # All run metadata is now stored in run_outcome.json, the authoritative source.
 
         # Step 1 & 2: Start and test server (only for vLLM)
         if provider_type == 'vllm':

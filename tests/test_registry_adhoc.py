@@ -99,7 +99,7 @@ def test_build_adhoc_task_config_invalid_name_raises():
     # Should handle gracefully or raise
     # Implementation may vary
     try:
-        config = build_adhoc_task_config(task_name, task_config)
+        build_adhoc_task_config(task_name, task_config)
         # If it doesn't raise, that's also acceptable
         assert True
     except ValueError:
@@ -183,7 +183,7 @@ def test_build_handler_task_config_regular_task():
     # Should handle regular task lookup
     # May raise if task doesn't exist, which is acceptable
     try:
-        config = build_handler_task_config(task_ref)
+        build_handler_task_config(task_ref)
         assert True
     except (ValueError, KeyError):
         # Expected if task doesn't exist
