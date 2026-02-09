@@ -1,10 +1,7 @@
 """Tests for StructuredHandler extraction logic."""
 
 import json
-from pathlib import Path
-from typing import Any, Dict, Optional
 
-import pytest
 
 from src.tasks.common.structured import StructuredHandler
 

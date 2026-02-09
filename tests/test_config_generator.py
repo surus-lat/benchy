@@ -1,15 +1,10 @@
 """Tests for config generation from CLI arguments."""
 
-import json
 import yaml
-from argparse import Namespace
-from pathlib import Path
 
-import pytest
 
 from src.tasks.common.config_generator import (
     generate_config_from_cli,
-    _build_dataset_config_from_args,
     _cleanup_empty_sections,
     validate_generated_config,
 )

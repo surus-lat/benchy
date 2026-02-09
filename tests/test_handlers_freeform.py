@@ -1,8 +1,6 @@
 """Tests for FreeformHandler generation logic."""
 
-from typing import Any, Dict, Optional
 
-import pytest
 
 from src.tasks.common.freeform import FreeformHandler
 from src.tasks.common.metrics import ExactMatch, F1Score
