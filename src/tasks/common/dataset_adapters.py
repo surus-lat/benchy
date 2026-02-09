@@ -245,7 +245,8 @@ class DatasetAdapter:
         metadata_file = path / "metadata.jsonl"
         if metadata_file.exists():
             logger.info(f"Found metadata file: {metadata_file}")
-            raw_samples = self._load_jsonl({"name": str(metadata_file), **dataset_config})
+            # Keep dataset options but force JSONL loader to read metadata file.
+            raw_samples = self._load_jsonl({**dataset_config, "name": str(metadata_file)})
             
             # Resolve relative paths for multimodal fields
             if dataset_config.get("multimodal_input"):
