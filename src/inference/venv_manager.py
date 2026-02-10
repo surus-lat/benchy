@@ -1,11 +1,9 @@
 """Virtual environment management for different vLLM versions."""
 
-import os
 import subprocess
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
-import uuid
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +71,7 @@ class VLLMVenvManager:
         try:
             # Create virtual environment using uv
             print(f"   Running: uv venv {venv_path}")
-            result = subprocess.run(
+            subprocess.run(
                 ["uv", "venv", venv_path],
                 check=True,
                 capture_output=True,
@@ -110,7 +108,7 @@ class VLLMVenvManager:
                 logger.info(f"Installing transformers {transformers_version} first")
                 print(f"📦 Installing transformers {transformers_version}...")
                 print(f"   Running: uv pip install --python {venv_path}/bin/python transformers=={transformers_version}")
-                transformers_result = subprocess.run(
+                subprocess.run(
                     ["uv", "pip", "install", "--python", f"{venv_path}/bin/python", f"transformers=={transformers_version}"],
                     check=True,
                     capture_output=True,
@@ -120,7 +118,7 @@ class VLLMVenvManager:
             
             # Install vLLM
             print(f"   Running: uv pip install --python {venv_path}/bin/python vllm=={vllm_version}")
-            result = subprocess.run(
+            subprocess.run(
                 ["uv", "pip", "install", "--python", f"{venv_path}/bin/python", f"vllm=={vllm_version}"],
                 check=True,
                 capture_output=True,
@@ -130,7 +128,7 @@ class VLLMVenvManager:
             print(f"✅ Successfully installed vLLM {vllm_version}")
             
             # Verify installation
-            print(f"   Verifying installation...")
+            print("   Verifying installation...")
             venv_python = str(Path(venv_path) / "bin" / "python")
             try:
                 verify_result = subprocess.run(
@@ -183,14 +181,14 @@ class VLLMVenvManager:
         if not Path(venv_path).exists():
             logger.info(f"Virtual environment not found for vLLM {vllm_version}, creating automatically...")
             print(f"🚀 Virtual environment not found for vLLM {vllm_version}")
-            print(f"   Creating automatically...")
+            print("   Creating automatically...")
             try:
                 return self.create_venv(vllm_version, transformers_version=transformers_version)
             except Exception as e:
                 logger.error(f"Failed to create virtual environment for vLLM {vllm_version}: {e}")
                 logger.info("Falling back to main project environment")
                 print(f"⚠️  Failed to create virtual environment for vLLM {vllm_version}")
-                print(f"   Falling back to main project environment")
+                print("   Falling back to main project environment")
                 # Find the project root by looking for pyproject.toml
                 current_dir = Path(__file__).parent
                 while current_dir != current_dir.parent:

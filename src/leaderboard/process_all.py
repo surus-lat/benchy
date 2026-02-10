@@ -12,7 +12,6 @@ Where run_id is the specific run directory under outputs/benchmark_outputs/
 import sys
 import argparse
 from pathlib import Path
-import argparse
 
 # Add the src directory to the path for imports
 current_dir = Path(__file__).parent
@@ -84,7 +83,7 @@ def main():
     # Load configuration
     try:
         config = load_config()
-        print(f"✓ Configuration loaded from configs/config.yaml")
+        print("✓ Configuration loaded from configs/config.yaml")
     except Exception as e:
         print(f"❌ Error loading configuration: {e}")
         return False
@@ -105,7 +104,7 @@ def main():
     else:
         # Use base directory (backward compatibility)
         benchmark_outputs = base_benchmark_outputs
-        print(f"📁 Processing all results in base directory")
+        print("📁 Processing all results in base directory")
         print(f"   Looking in: {benchmark_outputs}")
     
     # Check if required directories exist
@@ -113,7 +112,7 @@ def main():
         print(f"❌ Benchmark outputs directory not found: {benchmark_outputs}")
         if args.run_id:
             print(f"   Run ID '{args.run_id}' not found in {base_benchmark_outputs}")
-            print(f"   Available run IDs:")
+            print("   Available run IDs:")
             if base_benchmark_outputs.exists():
                 for subdir in sorted(base_benchmark_outputs.iterdir()):
                     if subdir.is_dir():
@@ -198,7 +197,7 @@ def main():
             size_str = f"{size:,} bytes" if size < 1024 else f"{size/1024:.1f} KB"
             print(f"     - {file.name} ({size_str})")
     
-    print(f"\n✨ Ready for upload to Hugging Face dataset!")
+    print("\n✨ Ready for upload to Hugging Face dataset!")
     print(f"   Dataset: {config['datasets']['results']}")
     print(f"   To upload: python -m src.leaderboard.publish --path {publish_dir}")
     

@@ -1,7 +1,6 @@
 """OpenBookQA-es (Spanish OpenBookQA) task."""
 
 from pathlib import Path
-from typing import Any, Dict
 
 from ..common import download_huggingface_dataset, save_to_jsonl
 from ..common import MultipleChoiceHandler

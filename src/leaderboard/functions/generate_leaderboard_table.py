@@ -5,7 +5,7 @@ Generate leaderboard table in the format expected by the frontend.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List
 import pandas as pd
 from config_loader import load_config
 

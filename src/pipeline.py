@@ -82,7 +82,6 @@ def _artifact_ref(path: Optional[str]) -> Dict[str, Any]:
 def _build_artifacts(
     *,
     model_output_path: str,
-    run_config_path: Optional[str],
     log_file_path: Optional[str],
 ) -> Dict[str, Any]:
     """Build run artifact index for automation clients."""
@@ -93,7 +92,6 @@ def _build_artifacts(
         "run_summary": _artifact_ref(str(model_root / "run_summary.json")),
         "probe_report": _artifact_ref(str(model_root / "probe_report.json")),
         "probe_summary": _artifact_ref(str(model_root / "probe_summary.txt")),
-        "run_config": _artifact_ref(run_config_path),
         "log_file": _artifact_ref(log_file_path),
         "task_status_glob": str(model_root / "*/task_status.json"),
     }
@@ -465,6 +463,16 @@ def _write_run_outcome(
     if force_exit_code is not None:
         exit_code = int(force_exit_code)
 
+    subtask_statuses: list[str] = []
+    for record in task_records.values():
+        subtasks = record.get("subtasks")
+        if not isinstance(subtasks, dict):
+            continue
+        for subtask_payload in subtasks.values():
+            if not isinstance(subtask_payload, dict):
+                continue
+            subtask_statuses.append(str(subtask_payload.get("status") or "pending"))
+
     counts = {
         "requested_tasks": len(task_records),
         "completed_tasks": sum(1 for record in task_records.values() if record.get("completed")),
@@ -480,6 +488,8 @@ def _write_run_outcome(
             for record in task_records.values()
             if record.get("status") in {"failed", "error", "pending", "skipped", "no_samples"}
         ),
+        "requested_subtasks": len(subtask_statuses),
+        "passed_subtasks": sum(1 for status in subtask_statuses if status == "passed"),
     }
     tasks_payload = _attach_per_task_diagnostics(task_records, run_summary_payload)
 
@@ -535,6 +545,8 @@ def _log_run_outcome_summary(outcome: Dict[str, Any]) -> None:
     logger.info(f"Error tasks: {counts.get('error_tasks', 0)}")
     logger.info(f"Pending tasks: {counts.get('pending_tasks', 0)}")
     logger.info(f"Non-passing tasks: {counts.get('non_passing_tasks', 0)}")
+    logger.info(f"Requested subtasks: {counts.get('requested_subtasks', 0)}")
+    logger.info(f"Passed subtasks: {counts.get('passed_subtasks', 0)}")
     logger.info(f"Errors: {len(outcome.get('errors') or [])}")
     logger.info("")
     logger.info("Per-task statuses:")
@@ -545,87 +557,17 @@ def _log_run_outcome_summary(outcome: Dict[str, Any]) -> None:
         reason = record.get("reason")
         suffix = f" ({reason})" if reason else ""
         logger.info(f"  - {task_name}: {status}{suffix}")
+        subtasks = record.get("subtasks")
+        if isinstance(subtasks, dict):
+            for subtask_name in sorted(subtasks):
+                subtask_record = subtasks[subtask_name] or {}
+                sub_status = subtask_record.get("status", "pending")
+                sub_reason = subtask_record.get("reason")
+                sub_suffix = f" ({sub_reason})" if sub_reason else ""
+                logger.info(f"    - {subtask_name}: {sub_status}{sub_suffix}")
     logger.info("=" * 60)
 
 
-def write_run_config(
-    model_name: str,
-    model_path: Optional[str],
-    run_id: str,
-    output_path: str,
-    tasks: list,
-    limit: Optional[int],
-    api_endpoint: str,
-    task_defaults_overrides: Optional[Dict[str, Any]],
-    vllm_config: VLLMServerConfig,
-    organization: Optional[str] = None,
-    url: Optional[str] = None
-) -> str:
-    """
-    Write complete run configuration to a YAML file.
-    
-    Args:
-        model_name: The model being evaluated (request / display name).
-        model_path: Optional local path / HF ID used to load the model in vLLM.
-        run_id: Run ID for this execution
-        output_path: Base output path
-        tasks: List of tasks to run
-        limit: Limit for examples per task
-        api_endpoint: API endpoint mode ("completions" or "chat")
-        task_defaults_overrides: Task configuration overrides
-        vllm_config: vLLM server configuration
-        organization: Optional organization name
-        url: Optional URL for the model/organization
-        
-    Returns:
-        Path to the written config file
-    """
-    # Create the complete configuration dictionary
-    model_config = {
-        'name': model_name,
-        'path': model_path,
-        'api_endpoint': api_endpoint
-    }
-    
-    # Add organization and url if provided
-    if organization is not None:
-        model_config['organization'] = organization
-    if url is not None:
-        model_config['url'] = url
-    
-    run_config = {
-        'run_metadata': {
-            'run_id': run_id,
-            'model_name': model_name,
-            'model_path': model_path,
-            'timestamp': datetime.now().isoformat(),
-            'output_structure': f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
-        },
-        'model': model_config,
-        'tasks': tasks,
-        'evaluation': {
-            'limit': limit,
-            'task_defaults_overrides': task_defaults_overrides or {}
-        },
-        'vllm_server': vllm_config.to_dict(),
-        'environment': {
-            'python_executable': sys.executable,
-            'working_directory': os.getcwd(),
-            'prefect_api_url': os.environ.get('PREFECT_API_URL', 'http://localhost:4200/api')
-        }
-    }
-    
-    # Create model output directory
-    model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
-    os.makedirs(model_output_path, exist_ok=True)
-    
-    # Write config file
-    config_file_path = f"{model_output_path}/run_config.yaml"
-    with open(config_file_path, 'w') as f:
-        yaml.dump(run_config, f, default_flow_style=False, sort_keys=False, indent=2)
-    
-    logger.info(f"Run configuration written to: {config_file_path}")
-    return config_file_path
 
 
 @flow()
@@ -638,6 +580,7 @@ def benchmark_pipeline(
     limit: Optional[int] = None,
     api_endpoint: str = "completions",
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
+    adhoc_task_configs: Optional[Dict[str, Any]] = None,
     log_setup: Optional[Any] = None,
     run_id: Optional[str] = None,
     provider_type: str = "vllm",
@@ -722,7 +665,6 @@ def benchmark_pipeline(
     
     # Filter out completed tasks
     pending_tasks = [task for task, record in completion_records.items() if not record.get("completed")]
-    run_config_path: Optional[str] = None
     
     if not pending_tasks:
         logger.info("All tasks are already completed! Nothing to run.")
@@ -744,7 +686,6 @@ def benchmark_pipeline(
             invocation_metadata=invocation_metadata,
             artifacts=_build_artifacts(
                 model_output_path=model_output_path,
-                run_config_path=run_config_path,
                 log_file_path=log_file_path,
             ),
             run_summary_payload=run_summary_payload,
@@ -778,20 +719,8 @@ def benchmark_pipeline(
                 hf_token=vllm_config.hf_token,
             )
 
-        # Write complete run configuration
-        run_config_path = write_run_config(
-            model_name=model_name,
-            model_path=model_path,
-            run_id=run_id,
-            output_path=output_path,
-            tasks=tasks,
-            limit=limit,
-            api_endpoint=api_endpoint,
-            task_defaults_overrides=task_defaults_overrides,
-            vllm_config=vllm_config,
-            organization=organization,
-            url=url
-        )
+        # Note: run_config.yaml has been removed as it's redundant with run_outcome.json.
+        # All run metadata is now stored in run_outcome.json, the authoritative source.
 
         # Step 1 & 2: Start and test server (only for vLLM)
         if provider_type == 'vllm':
@@ -846,7 +775,6 @@ def benchmark_pipeline(
             invocation_metadata=invocation_metadata,
             artifacts=_build_artifacts(
                 model_output_path=model_output_path,
-                run_config_path=run_config_path,
                 log_file_path=log_file_path,
             ),
             errors=preflight_errors,
@@ -862,16 +790,16 @@ def benchmark_pipeline(
     task_configs_by_name: Dict[str, Any] = {}
     
     # Load results from already completed tasks
-    completed_tasks = [task for task, record in completion_records.items() if record.get("completed")]
-    for task in completed_tasks:
-        logger.info(f"Loading results from previously completed task: {task}")
+    completed_tasks = [task_name for task_name, record in completion_records.items() if record.get("completed")]
+    for task_name in completed_tasks:
+        logger.info(f"Loading results from previously completed task: {task_name}")
         # Create a placeholder result for completed tasks
-        task_results[task] = {
+        task_results[task_name] = {
             "model_name": model_name,
-            "task": task,
+            "task": task_name,
             "status": "previously_completed",
-            "output_path": f"{model_output_path}/{task.split('.', 1)[0]}",
-            "message": f"Task {task} was completed in a previous run"
+            "output_path": f"{model_output_path}/{task_name.split('.', 1)[0]}",
+            "message": f"Task {task_name} was completed in a previous run"
         }
     
     gather_result: Dict[str, Any] = {}
@@ -885,7 +813,11 @@ def benchmark_pipeline(
                     "Legacy task.json tasks are no longer supported."
                 )
 
-            task_config = build_handler_task_config(task_name, task_defaults_overrides)
+            task_config = build_handler_task_config(
+                task_name,
+                task_defaults_overrides,
+                adhoc_task_configs,
+            )
 
             task_configs_by_name[task_name] = task_config
 
@@ -971,7 +903,6 @@ def benchmark_pipeline(
             invocation_metadata=invocation_metadata,
             artifacts=_build_artifacts(
                 model_output_path=model_output_path,
-                run_config_path=run_config_path,
                 log_file_path=log_file_path,
             ),
             errors=execution_errors,
@@ -1019,7 +950,6 @@ def benchmark_pipeline(
         invocation_metadata=invocation_metadata,
         artifacts=_build_artifacts(
             model_output_path=model_output_path,
-            run_config_path=run_config_path,
             log_file_path=log_file_path,
         ),
         run_summary_payload=run_summary_payload,

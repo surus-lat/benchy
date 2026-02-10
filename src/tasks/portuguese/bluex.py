@@ -2,14 +2,13 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from ..common import (
     MultipleChoiceHandler,
     CachedDatasetMixin,
     download_huggingface_dataset,
     save_to_jsonl,
-    load_jsonl_dataset,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,7 +91,7 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
             return answer_key
         elif isinstance(answer_key, str) and answer_key in labels:
             return labels.index(answer_key)
-        logger.warning(f"Missing answer key for sample, defaulting to 0")
+        logger.warning("Missing answer key for sample, defaulting to 0")
         return 0
 
     def format_prompt(self, sample: Dict[str, Any]) -> str:
@@ -106,4 +105,3 @@ class Bluex(CachedDatasetMixin, MultipleChoiceHandler):
             "Resposta correta:"
         )
         return f"{self.description}{doc_text}".strip()
-
