@@ -53,15 +53,8 @@ def test_load_jsonl_dataset_malformed_json(tmp_path):
         f.write('invalid json line\n')
         f.write('{"id": "2", "text": "Also valid"}\n')
     
-    # Should either skip the malformed line or raise error
-    try:
-        loaded = load_jsonl_dataset(dataset_file)
-        # If successful, should have skipped bad line
-        assert loaded is not None
-        assert len(loaded) >= 1  # At least one valid line
-    except json.JSONDecodeError:
-        # Also acceptable - strict parsing
-        pass
+    with pytest.raises(json.JSONDecodeError):
+        load_jsonl_dataset(dataset_file)
 
 
 def test_save_to_jsonl_writes_file(tmp_path):

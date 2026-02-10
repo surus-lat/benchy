@@ -246,7 +246,7 @@ def test_pearson_correlation_insufficient_samples():
     metric = PearsonCorrelation()
     
     per_sample = [
-        {"pearson": 0.0},
+        {"valid": True, "prediction": 1.0, "expected": 1.0},
     ]
     
     # Need at least 2 samples for correlation

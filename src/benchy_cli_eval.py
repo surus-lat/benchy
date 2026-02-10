@@ -946,7 +946,7 @@ def _build_adhoc_task_config(
     Returns:
         Task configuration dict
     """
-    from src.tasks.common import validate_task_config, apply_defaults
+    from .tasks.common import validate_task_config, apply_defaults
     
     # Build base config
     config = {
@@ -1128,13 +1128,14 @@ def run_eval(args: argparse.Namespace) -> int:
     # If ad-hoc task was created, use it
     if adhoc_task_name:
         tasks_override = [adhoc_task_name]
-    elif args.tasks:
-        tasks_override.extend(_parse_tasks_arg(args.tasks))
-    if args.tasks_file:
-        tasks_override.extend(_load_tasks_file(args.tasks_file))
-    if args.task_group:
-        for group_entry in args.task_group:
-            tasks_override.extend(_parse_tasks_arg(group_entry))
+    else:
+        if args.tasks:
+            tasks_override.extend(_parse_tasks_arg(args.tasks))
+        if args.tasks_file:
+            tasks_override.extend(_load_tasks_file(args.tasks_file))
+        if args.task_group:
+            for group_entry in args.task_group:
+                tasks_override.extend(_parse_tasks_arg(group_entry))
     tasks_override = _dedupe_tasks(tasks_override)
 
     is_system_provider = provider_type not in MODEL_PROVIDER_TYPES
@@ -1228,7 +1229,7 @@ def run_eval(args: argparse.Namespace) -> int:
     
     # Save config if requested
     if args.save_config:
-        from src.tasks.common.config_generator import generate_config_from_cli
+        from .tasks.common.config_generator import generate_config_from_cli
         try:
             generate_config_from_cli(args, args.save_config, config)
         except Exception as e:
