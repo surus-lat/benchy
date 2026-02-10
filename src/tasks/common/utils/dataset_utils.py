@@ -75,6 +75,19 @@ def download_huggingface_dataset(
         logger.info(f"Downloaded {len(dataset_list)} samples")
         return dataset_list
     except Exception as exc:
+        if split == "test":
+            try:
+                logger.warning(
+                    "Failed to load split 'test' for %s; trying fallback split 'train'",
+                    dataset_name,
+                )
+                dataset = load_dataset(dataset_name, split="train", cache_dir=cache_dir)
+                dataset_list = list(dataset)
+                logger.info(f"Downloaded {len(dataset_list)} samples from fallback split 'train'")
+                return dataset_list
+            except Exception:
+                pass
+
         # Some datasets on the Hub are misconfigured such that `datasets.load_dataset()`
         # fails while trying to build splits (often due to mismatched CSV headers across files).
         # For the common simple case where a repo contains `{split}.csv` or `{split}.tsv`,

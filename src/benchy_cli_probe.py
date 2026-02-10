@@ -5,20 +5,17 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
 from dotenv import load_dotenv
 
-from .config_loader import load_config
-from .logging_utils import setup_file_logging
 from .run_id_manager import generate_run_id
 
 logger = logging.getLogger(__name__)
 
 # Import provider defaults from eval CLI
-from .benchy_cli_eval import CLI_PROVIDER_DEFAULTS, MODEL_PROVIDER_TYPES
+from .benchy_cli_eval import CLI_PROVIDER_DEFAULTS
 
 
 def add_probe_arguments(parser: argparse.ArgumentParser) -> None:
@@ -105,7 +102,7 @@ def run_probe(args: argparse.Namespace) -> int:
     model_name_segment = args.model_name.split("/")[-1]
     output_path = output_base / run_id / model_name_segment
     
-    logger.info(f"Benchy Probe")
+    logger.info("Benchy Probe")
     logger.info(f"Run ID: {run_id}")
     logger.info(f"Model: {args.model_name}")
     logger.info(f"Output: {output_path}")

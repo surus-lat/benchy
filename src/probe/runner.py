@@ -18,6 +18,7 @@ TOKEN_REPETITION_MIN_COUNT = 5  # repetitions to flag
 
 # Explicit check definitions - no dynamic discovery
 QUICK_PROFILE_CHECKS = [
+    "access_readiness",   # auth/model/quota preflight
     "request_modes",      # chat/completions/logprobs
     "schema_transports",  # structured_outputs/response_format
     "multimodal",         # image + text
@@ -31,6 +32,7 @@ FULL_PROFILE_CHECKS = QUICK_PROFILE_CHECKS + [
 
 # Per-check timeout budgets (seconds)
 CHECK_TIMEOUTS = {
+    "access_readiness": 20,
     "request_modes": 30,
     "schema_transports": 30,
     "multimodal": 45,
@@ -40,6 +42,7 @@ CHECK_TIMEOUTS = {
 
 # Fail-open behavior per check
 CHECK_FAIL_MODES = {
+    "access_readiness": "failed",    # Critical preflight
     "request_modes": "failed",      # Critical for eval
     "schema_transports": "failed",  # Critical for eval
     "multimodal": "degraded",       # Non-critical
@@ -48,6 +51,7 @@ CHECK_FAIL_MODES = {
 }
 
 CHECK_DISPLAY_NAMES = {
+    "access_readiness": "Access Readiness",
     "request_modes": "Request Modes",
     "schema_transports": "Schema Transports",
     "multimodal": "Multimodal",
@@ -161,7 +165,17 @@ async def run_probe(
         supports_schema = bool((connection_info.get("capabilities") or {}).get("supports_schema"))
         
         # Run core compatibility checks
-        if request_modes and "raw_payload" not in request_modes:
+        access_allows_probing = True
+        if "access_readiness" in checks_to_run:
+            report["checks"]["access_readiness"] = await _run_check_with_timeout(
+                "access_readiness",
+                lambda: _probe_access_readiness(connection_info, model_name),
+                CHECK_TIMEOUTS["access_readiness"],
+                CHECK_FAIL_MODES["access_readiness"],
+            )
+            access_allows_probing = report["checks"]["access_readiness"].get("status") != "failed"
+
+        if access_allows_probing and request_modes and "raw_payload" not in request_modes:
             # Request modes check
             if "request_modes" in checks_to_run:
                 modes_result = await _run_check_with_timeout(
@@ -194,7 +208,7 @@ async def run_probe(
         )
         
         # Run additional checks
-        if "multimodal" in checks_to_run:
+        if access_allows_probing and "multimodal" in checks_to_run:
             report["checks"]["multimodal"] = await _run_check_with_timeout(
                 "multimodal",
                 lambda: _probe_multimodal(connection_info, model_name),
@@ -202,7 +216,7 @@ async def run_probe(
                 CHECK_FAIL_MODES["multimodal"],
             )
         
-        if "truncation" in checks_to_run:
+        if access_allows_probing and "truncation" in checks_to_run:
             report["checks"]["truncation"] = await _run_check_with_timeout(
                 "truncation",
                 lambda: _probe_truncation(connection_info, model_name),
@@ -210,7 +224,7 @@ async def run_probe(
                 CHECK_FAIL_MODES["truncation"],
             )
         
-        if "param_support" in checks_to_run:
+        if access_allows_probing and "param_support" in checks_to_run:
             report["checks"]["param_support"] = await _run_check_with_timeout(
                 "param_support",
                 lambda: _probe_param_support(connection_info, model_name),
@@ -279,6 +293,7 @@ async def run_probe_for_eval(
         },
         "selected_api_endpoint": "chat",
         "selected_schema_transport": None,
+        "checks": {},
         "test_plan": _build_test_plan("quick"),
         "known_blindspots": _known_blindspots(),
     }
@@ -287,7 +302,15 @@ async def run_probe_for_eval(
         request_modes = (connection_info.get("capabilities") or {}).get("request_modes") or []
         supports_schema = bool((connection_info.get("capabilities") or {}).get("supports_schema"))
         
-        if request_modes and "raw_payload" not in request_modes:
+        report["checks"]["access_readiness"] = await _run_check_with_timeout(
+            "access_readiness",
+            lambda: _probe_access_readiness(connection_info, model_name),
+            CHECK_TIMEOUTS["access_readiness"],
+            CHECK_FAIL_MODES["access_readiness"],
+        )
+        access_allows_probing = report["checks"]["access_readiness"].get("status") != "failed"
+
+        if access_allows_probing and request_modes and "raw_payload" not in request_modes:
             # Probe request modes
             modes_result = await _probe_request_modes(connection_info, model_name, request_modes)
             report["modes"].update(modes_result)
@@ -821,7 +844,6 @@ async def _probe_truncation(
         
         # The key issue: does the model produce repetition when truncated?
         repetition_detected = _detect_repetition(output_text)
-        truncated = finish_reason == "length" or completion_tokens >= 16
         reports_truncation_correctly = finish_reason == "length"
         
         # ONLY flag as degraded if repetition is detected
@@ -1048,6 +1070,155 @@ async def _collect_provider_fingerprint(
     return fingerprint
 
 
+def _parse_error_status_code(error: Optional[str]) -> Optional[int]:
+    if not error:
+        return None
+    match = re.search(r"(?:status code|error code)[:\s]+(\d{3})", str(error).lower())
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _classify_access_issue(
+    error: Optional[str],
+    error_type: Optional[str],
+) -> Dict[str, Optional[str]]:
+    msg = (error or "").lower()
+    status_code = _parse_error_status_code(error)
+
+    if status_code == 401 or "invalid api key" in msg or "unauthorized" in msg:
+        return {"issue_code": "invalid_api_key", "severity": "failed", "status_code": str(status_code or 401)}
+    if status_code == 403 or "forbidden" in msg:
+        return {"issue_code": "forbidden", "severity": "failed", "status_code": str(status_code or 403)}
+    if status_code == 404 or ("model" in msg and "not found" in msg):
+        return {"issue_code": "model_not_found", "severity": "failed", "status_code": str(status_code or 404)}
+    if "insufficient_quota" in msg or "insufficient quota" in msg or "credits" in msg or "billing" in msg:
+        return {"issue_code": "insufficient_credits", "severity": "failed", "status_code": str(status_code or 429)}
+    if status_code == 429 or error_type == "rate_limit" or "rate limit" in msg:
+        return {"issue_code": "rate_limited", "severity": "degraded", "status_code": str(status_code or 429)}
+    if error:
+        return {"issue_code": "access_error", "severity": "failed", "status_code": str(status_code) if status_code else None}
+    return {"issue_code": None, "severity": None, "status_code": None}
+
+
+def _remediation_for_issue(issue_code: Optional[str]) -> List[str]:
+    mapping = {
+        "invalid_api_key": [
+            "Set a valid API key (`--api-key` or provider env var).",
+            "Verify key has access to the configured base URL/provider.",
+        ],
+        "forbidden": [
+            "Check account/project permissions for this endpoint/model.",
+            "Verify organization/project scoping for the API key.",
+        ],
+        "model_not_found": [
+            "Verify `--model-name` exactly matches provider model ID.",
+            "Check `/models` output for available model IDs.",
+        ],
+        "insufficient_credits": [
+            "Check account billing/quota and add credits.",
+            "Retry probe after quota replenishment.",
+        ],
+        "rate_limited": [
+            "Retry probe after cooldown or lower concurrency.",
+            "Check provider rate limits for your key/project.",
+        ],
+        "access_error": [
+            "Check provider response body/error details in probe report.",
+            "Validate base URL and provider compatibility.",
+        ],
+    }
+    return mapping.get(issue_code or "", ["Inspect provider error details in probe_report.json."])
+
+
+async def _probe_access_readiness(
+    connection_info: Dict[str, Any],
+    model_name: str,
+) -> Dict[str, Any]:
+    """Preflight access check for auth/model/quota readiness."""
+    from ..interfaces.openai_interface import OpenAIInterface
+
+    probe_info = deepcopy(connection_info)
+    probe_info["api_endpoint"] = "chat"
+    probe_info["temperature"] = 0.0
+    probe_info["max_tokens"] = 16
+
+    interface = OpenAIInterface(probe_info, model_name)
+    request = {
+        "system_prompt": "",
+        "user_prompt": "Reply with OK.",
+        "schema": None,
+        "sample_id": "probe_access_readiness",
+        "use_logprobs": False,
+        "choices": None,
+    }
+
+    try:
+        results = await interface.generate_batch([request])
+    finally:
+        close_fn = getattr(interface, "close", None)
+        if close_fn:
+            await close_fn()
+
+    result = results[0] if results else {}
+    error = result.get("error")
+    error_type = result.get("error_type")
+    classification = _classify_access_issue(error, error_type)
+    issue_code = classification["issue_code"]
+    severity = classification["severity"]
+    status_code = classification["status_code"]
+
+    status = "ok"
+    if severity == "failed":
+        status = "failed"
+    elif severity == "degraded":
+        status = "degraded"
+
+    model_listed = None
+    models_endpoint_status = None
+    try:
+        base_url = connection_info.get("base_url")
+        if base_url:
+            import httpx
+
+            api_key = connection_info.get("api_key") or "EMPTY"
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{base_url}/models",
+                    timeout=10,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                models_endpoint_status = resp.status_code
+                if resp.status_code == 200:
+                    payload = resp.json()
+                    ids = [
+                        m.get("id")
+                        for m in payload.get("data", [])
+                        if isinstance(m, dict) and m.get("id")
+                    ]
+                    model_listed = model_name in ids
+    except Exception:
+        pass
+
+    return {
+        "status": status,
+        "issue_code": issue_code,
+        "error": error,
+        "error_type": error_type,
+        "evidence": {
+            "status_code": int(status_code) if status_code else None,
+            "models_endpoint_status": models_endpoint_status,
+            "model_listed": model_listed,
+            "response_received": bool(result.get("output") is not None),
+            "finish_reason": result.get("finish_reason"),
+        },
+        "remediation": _remediation_for_issue(issue_code),
+        "finish_reason": result.get("finish_reason"),
+        "completion_tokens": result.get("completion_tokens"),
+        "prompt_tokens": result.get("prompt_tokens"),
+    }
+
+
 def _build_test_plan(profile: str) -> Dict[str, Any]:
     checks = QUICK_PROFILE_CHECKS if profile == "quick" else FULL_PROFILE_CHECKS
     timeout_map = {name: CHECK_TIMEOUTS.get(name) for name in checks}
@@ -1056,6 +1227,17 @@ def _build_test_plan(profile: str) -> Dict[str, Any]:
         "checks": checks,
         "timeouts_s": timeout_map,
         "definitions": {
+            "access_readiness": {
+                "goal": "Fail fast on auth/model/quota blockers before benchmark runs",
+                "tests": [
+                    "minimal chat request to target model",
+                    "best-effort /models lookup for listing/context",
+                ],
+                "pass_criteria": (
+                    "No auth/quota/model-not-found blockers detected; "
+                    "request returns usable output"
+                ),
+            },
             "request_modes": {
                 "goal": "Detect chat/completions/logprobs endpoint behavior",
                 "tests": [
@@ -1106,6 +1288,7 @@ def _known_blindspots() -> List[str]:
         "Prompt-token pressure in real tasks may be much higher than probe scenarios.",
         "Provider-side transient load can cause occasional false negatives.",
         "Parameter check validates max token key only; it does not validate every request option.",
+        "Access readiness relies on provider error strings/status shape for issue classification.",
     ]
 
 
@@ -1152,6 +1335,11 @@ def _generate_risk_flags(report: Dict[str, Any]) -> Dict[str, bool]:
 
 def _determine_overall_status(report: Dict[str, Any]) -> str:
     """Determine overall probe status."""
+    checks = report.get("checks", {})
+    access_check = checks.get("access_readiness", {})
+    if isinstance(access_check, dict) and access_check.get("status") == "failed":
+        return "failed"
+
     modes = report.get("modes", {})
     tested_modes = [m for m in modes.values() if isinstance(m, dict) and m.get("tested")]
     if tested_modes and not any(m.get("ok") for m in tested_modes):
@@ -1160,7 +1348,6 @@ def _determine_overall_status(report: Dict[str, Any]) -> str:
     transports = report.get("schema_transports", {})
     tested_transports = [t for t in transports.values() if isinstance(t, dict) and t.get("tested")]
 
-    checks = report.get("checks", {})
     if tested_transports and not any(t.get("ok") for t in tested_transports):
         return "degraded"
 
@@ -1361,7 +1548,13 @@ def _collect_failure_details(report: Dict[str, Any]) -> List[str]:
         if status not in {"failed", "degraded"}:
             continue
         err = result.get("error") or "warning/no error message"
-        details.append(f"check.{check_name} {status}: {err}")
+        issue_code = result.get("issue_code")
+        issue_suffix = f" issue={issue_code}" if issue_code else ""
+        details.append(f"check.{check_name} {status}:{issue_suffix} {err}".rstrip())
+        remediation = result.get("remediation") or []
+        if isinstance(remediation, list):
+            for step in remediation[:2]:
+                details.append(f"  remediation: {step}")
 
     return details
 

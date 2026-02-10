@@ -73,7 +73,6 @@ class GoogleInterface:
         )
         
         # Concurrency control
-        is_cloud = True  # Google API is always cloud-based
         default_concurrent = connection_info.get("max_concurrent") or 3
         self._semaphore = asyncio.Semaphore(default_concurrent)
         

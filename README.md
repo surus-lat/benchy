@@ -151,6 +151,12 @@ benchy eval --config openai_gpt-4o-mini.yaml --limit 10
 If `benchy` is not on your PATH (for example when running directly from the repo), use:
 `python -m src.benchy_cli ...`
 
+### Run Unit Tests
+
+```bash
+pytest -q
+```
+
 If you want to run the same task list across multiple models, you can override tasks
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `docs/evaluating_models.md` for full examples and behavior.
@@ -211,6 +217,121 @@ benchy eval --config surus-remove-background --dataset your-dataset --limit 10
 # Use ICM57 dataset (default)
 benchy eval --config surus-remove-background --dataset ICM57 --limit 10
 ```
+
+## CLI Dataset Usage (New!)
+
+Benchy now supports creating tasks directly from the CLI without writing code. You can evaluate custom datasets using three task types: **classification**, **structured extraction**, and **freeform generation**.
+
+### Quick Start Examples
+
+**Classification Task** (binary or multi-class):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name climatebert/environmental_claims \
+  --dataset-labels '{"0": "No", "1": "Yes"}' \
+  --limit 10
+```
+
+**Structured Extraction** (JSON output with schema):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoice-extraction \
+  --dataset-schema-path schemas/invoice_schema.json \
+  --limit 10
+```
+
+**Freeform Generation** (open-ended text):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name ./data/questions.jsonl \
+  --dataset-source local \
+  --limit 10
+```
+
+### Key Features
+
+- **Three Task Types**: Classification, Structured Extraction, Freeform Generation
+- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL files, or directory structures
+- **Flexible Field Mapping**: Map your dataset fields to expected inputs/outputs
+- **Multimodal Support**: Add `--multimodal-input` for image-based tasks
+- **Config Generation**: Save your CLI setup with `--save-config output.yaml` for reuse
+
+### Common CLI Flags
+
+**Task Type & Dataset**:
+- `--task-type {classification,structured,freeform}` - Type of task to create
+- `--dataset-name <name>` - HuggingFace dataset or local path
+- `--dataset-source {auto,huggingface,local,directory}` - Dataset source (default: auto)
+- `--dataset-split <split>` - Dataset split for HuggingFace (default: test)
+
+**Field Mappings**:
+- `--dataset-input-field <field>` - Input text field (default: text)
+- `--dataset-output-field <field>` - Expected output field (default: expected/label)
+- `--dataset-id-field <field>` - Sample ID field (auto-generated if missing)
+
+**Classification-Specific**:
+- `--dataset-labels <json>` - Label mapping: `'{"0": "No", "1": "Yes"}'`
+- `--dataset-label-field <field>` - Label field name (default: label)
+
+**Structured Extraction-Specific**:
+- `--dataset-schema-field <field>` - Schema field in dataset
+- `--dataset-schema-path <path>` - JSON file with schema
+- `--dataset-schema-json <json>` - Inline JSON schema
+
+**Multimodal**:
+- `--multimodal-input` - Enable multimodal input (images)
+- `--multimodal-image-field <field>` - Image path field (default: image_path)
+
+**Prompts**:
+- `--system-prompt <text>` - Custom system prompt
+- `--user-prompt-template <text>` - Template with {field} placeholders
+
+**Config Generation**:
+- `--save-config <path>` - Save CLI parameters as reusable YAML config
+
+### Override Existing Task Datasets
+
+You can also override the dataset for any existing task:
+
+```bash
+# Use your own dataset with an existing task
+benchy eval --config my-model.yaml \
+  --tasks classify.environmental_claims \
+  --dataset-name my-org/my-climate-dataset \
+  --dataset-split validation \
+  --limit 10
+```
+
+### Multimodal Classification Example
+
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name my-org/image-classification \
+  --multimodal-input \
+  --dataset-labels '{"0": "Cat", "1": "Dog"}' \
+  --limit 10
+```
+
+### Save and Reuse Configurations
+
+```bash
+# Create and save a config
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoices \
+  --dataset-schema-path schemas/invoice.json \
+  --save-config configs/my-invoice-task.yaml \
+  --limit 10
+
+# Reuse the saved config
+benchy eval --config configs/my-invoice-task.yaml --limit 100
+```
+
+For detailed documentation on dataset formats and advanced usage, see `docs/CLI_DATASET_USAGE.md`.
 
 ## Providerless CLI (OpenAI-compatible)
 
@@ -349,12 +470,13 @@ benchy probe --provider openai --model-name gpt-5-mini \
 
 The probe system checks:
 
-1. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
-2. **Schema Transports**: Structured output support (structured_outputs vs response_format)
-3. **Multimodal Support**: Whether the model accepts image inputs
-4. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
-5. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
-6. **Provider Fingerprint**: Model server metadata and version information
+1. **Access Readiness**: Fast preflight for invalid API key, model not found, insufficient credits/quota, and similar blockers
+2. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
+3. **Schema Transports**: Structured output support (structured_outputs vs response_format)
+4. **Multimodal Support**: Whether the model accepts image inputs
+5. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
+6. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
+7. **Provider Fingerprint**: Model server metadata and version information
 
 ### Probe Profiles
 

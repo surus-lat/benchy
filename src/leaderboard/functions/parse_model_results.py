@@ -13,7 +13,6 @@ MODULAR STRUCTURE:
   3. Adding task metadata under src/tasks/<task>/metadata.yaml
 """
 
-import os
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -363,7 +362,7 @@ def load_tasks_mapping() -> Dict[str, Any]:
 
 def process_spanish_results(model_dir: Path, model_name: str) -> Optional[Dict[str, Any]]:
     """Process Spanish evaluation results for a model."""
-    print(f"    Processing Spanish results...")
+    print("    Processing Spanish results...")
     
     # Load Spanish task config to get output subdirectory
     spanish_config = load_task_config("spanish")
@@ -383,7 +382,7 @@ def process_spanish_results(model_dir: Path, model_name: str) -> Optional[Dict[s
             subcategories=[{"name": "teleia", "filter_prefix": "teleia_"}],
         )
         spanish_scores["model_name"] = model_name
-        print(f"    ✓ Spanish results processed from summary file")
+        print("    ✓ Spanish results processed from summary file")
         return spanish_scores
     
     # Look for results_*.json files in Spanish directory (including nested subdirectories)
@@ -410,7 +409,7 @@ def process_spanish_results(model_dir: Path, model_name: str) -> Optional[Dict[s
 
 def process_portuguese_results(model_dir: Path, model_name: str) -> Optional[Dict[str, Any]]:
     """Process Portuguese evaluation results for a model."""
-    print(f"    Processing Portuguese results...")
+    print("    Processing Portuguese results...")
     
     # Load Portuguese task config to get output subdirectory
     portuguese_config = load_task_config("portuguese")
@@ -429,7 +428,7 @@ def process_portuguese_results(model_dir: Path, model_name: str) -> Optional[Dic
             category_key="latam_pr",
         )
         portuguese_scores["model_name"] = model_name
-        print(f"    ✓ Portuguese results processed from summary file")
+        print("    ✓ Portuguese results processed from summary file")
         return portuguese_scores
     
     # Look for results.json in Portuguese directory
@@ -454,7 +453,7 @@ def process_portuguese_results(model_dir: Path, model_name: str) -> Optional[Dic
 
 def process_translation_results(model_dir: Path, model_name: str, normalize_tasks: list = None) -> Optional[Dict[str, Any]]:
     """Process Translation evaluation results for a model."""
-    print(f"    Processing Translation results...")
+    print("    Processing Translation results...")
     
     # Load task config to get output subdirectory
     task_config = load_task_config("translation")
@@ -474,7 +473,7 @@ def process_translation_results(model_dir: Path, model_name: str, normalize_task
             primary_metric="comet",
         )
         task_scores["model_name"] = model_name
-        print(f"    ✓ Translation results processed from summary file")
+        print("    ✓ Translation results processed from summary file")
         return task_scores
     
     # Look for results_*.json files in translation directory (including nested subdirectories)
@@ -916,7 +915,6 @@ def process_model_directory(model_dir: Path, config: Dict = None) -> Dict[str, A
         
         # Get leaderboard configuration
         leaderboard_config = config.get("leaderboard", {})
-        main_categories = leaderboard_config.get("overall_score_categories", ["latam_es", "latam_pr", "translation"])
         normalize_tasks = leaderboard_config.get("normalize_scores", ["translation"])
         task_definitions = leaderboard_config.get("tasks", {})
         
@@ -1048,7 +1046,7 @@ def parse_model_results(benchmark_outputs_dir: str, publish_dir: str) -> bool:
     with open(combined_file, 'w') as f:
         json.dump(all_summaries, f, indent=2)
     
-    print(f"\n✓ Processing completed!")
+    print("\n✓ Processing completed!")
     print(f"  Summaries directory: {summaries_dir}")
     print(f"  Models processed: {len(all_summaries)}")
     print(f"  Combined summaries: {combined_file}")
@@ -1057,7 +1055,6 @@ def parse_model_results(benchmark_outputs_dir: str, publish_dir: str) -> bool:
 
 def main():
     """Main function for standalone execution."""
-    import yaml
     config = load_config()
     benchmark_outputs = config["paths"]["benchmark_outputs"]
     publish_dir = config["paths"]["publish_dir"]

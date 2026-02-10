@@ -309,8 +309,27 @@ def list_handler_task_groups() -> List[str]:
 def build_handler_task_config(
     task_ref: str,
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
+    adhoc_task_configs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build a task config payload for a handler-based task reference."""
+    """Build a task config payload for a handler-based task reference.
+    
+    Args:
+        task_ref: Task reference (e.g., "classify.environmental_claims" or "_adhoc_classification_abc123")
+        task_defaults_overrides: Optional defaults to override
+        adhoc_task_configs: Optional ad-hoc task configurations from config["task_configs"]
+        
+    Returns:
+        Task configuration dict
+    """
+    # Check if this is an ad-hoc task
+    if task_ref.startswith("_adhoc_") and adhoc_task_configs and task_ref in adhoc_task_configs:
+        return build_adhoc_task_config(
+            task_ref,
+            adhoc_task_configs[task_ref],
+            task_defaults_overrides,
+        )
+    
+    # Regular handler-based task
     parts = task_ref.split(".", 1)
     group_name = parts[0]
     specific_subtask = parts[1].replace("-", "_") if len(parts) > 1 else None
@@ -348,6 +367,139 @@ def build_handler_task_config(
         "capability_requirements": dict(metadata.get("capability_requirements") or {}),
         "metrics_manifest": metadata.get("metrics_manifest", []),
     }
+
+
+def build_adhoc_task_config(
+    task_name: str,
+    task_config: Dict[str, Any],
+    task_defaults_overrides: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build configuration for an ad-hoc task.
+    
+    Args:
+        task_name: Name of the ad-hoc task (e.g., "_adhoc_classification_abc123")
+        task_config: Task configuration from config["task_configs"]
+        task_defaults_overrides: Optional defaults to override
+        
+    Returns:
+        Task configuration dict compatible with registry
+    """
+    from src.tasks.common import build_task_metadata, apply_defaults
+    
+    # Extract task type from name
+    # Format: _adhoc_{task_type}_{hash}
+    parts = task_name.split("_")
+    if len(parts) >= 3 and parts[0] == "" and parts[1] == "adhoc":
+        task_type = parts[2]
+    else:
+        raise ValueError(f"Invalid ad-hoc task name format: {task_name}")
+    
+    # Apply defaults to task_config (adds default field mappings)
+    task_config_with_defaults = apply_defaults(task_type, dict(task_config))
+    
+    # Build metadata using task_config_schema
+    metadata = build_task_metadata(task_type, task_config_with_defaults)
+    
+    # Apply defaults overrides
+    defaults = dict(task_config_with_defaults.get("defaults", {}))
+    if task_defaults_overrides:
+        defaults.update(task_defaults_overrides)
+    
+    # Merge dataset config from task_config
+    if "dataset" in task_config_with_defaults:
+        defaults["dataset"] = task_config_with_defaults["dataset"]
+    
+    # Build subtask name (ad-hoc tasks have a single subtask)
+    subtask_name = "main"
+    
+    return {
+        "name": task_name,
+        "display_name": metadata["display_name"],
+        "description": metadata["description"],
+        "tasks": [subtask_name],
+        "defaults": defaults,
+        "prompts": task_config.get("prompts", {}),
+        "task_configs": {
+            subtask_name: task_config
+        },
+        "output": {"subdirectory": task_name},
+        "capability_requirements": metadata.get("capability_requirements", {}),
+        "metrics_manifest": metadata.get("metrics_manifest", []),
+        "_adhoc": True,  # Mark as ad-hoc for special handling
+        "_task_type": task_type,  # Store task type for handler loading
+    }
+
+
+def build_adhoc_task_spec(
+    task_name: str,
+    task_config: Dict[str, Any],
+    task_defaults_overrides: Optional[Dict[str, Any]] = None,
+) -> TaskGroupSpec:
+    """Build a TaskGroupSpec for an ad-hoc task.
+    
+    Args:
+        task_name: Name of the ad-hoc task
+        task_config: Task configuration
+        task_defaults_overrides: Optional defaults to override
+        
+    Returns:
+        TaskGroupSpec for the ad-hoc task
+    """
+    from src.tasks.common import get_handler_class
+    
+    # Extract task type
+    parts = task_name.split("_")
+    if len(parts) >= 3 and parts[0] == "" and parts[1] == "adhoc":
+        task_type = parts[2]
+    else:
+        raise ValueError(f"Invalid ad-hoc task name format: {task_name}")
+    
+    # Get the handler class for this task type
+    handler_class = get_handler_class(task_type)
+    
+    # Build config
+    config_dict = build_adhoc_task_config(task_name, task_config, task_defaults_overrides)
+    
+    def _prepare_task(context: SubtaskContext):
+        """Prepare an ad-hoc task handler."""
+        # Merge defaults with subtask config
+        def _merge_dict(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+            result = dict(default)
+            for key, value in override.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    result[key] = _merge_dict(result[key], value)
+                else:
+                    result[key] = value
+            return result
+        
+        dataset_config = _merge_dict(
+            context.defaults.get("dataset", {}),
+            context.subtask_config.get("dataset", {})
+        )
+        
+        handler_config = {
+            "subtask_name": context.subtask_name,
+            "dataset": dataset_config,
+            "prompts": context.subtask_config.get("prompts", context.prompts),
+            "metrics": context.subtask_config.get("metrics", {}),
+            "capability_requirements": context.task_config.get("capability_requirements", {}),
+        }
+        
+        # Add prompts to handler config
+        if "system_prompt" in task_config:
+            handler_config["system_prompt"] = task_config["system_prompt"]
+        if "user_prompt_template" in task_config:
+            handler_config["user_prompt_template"] = task_config["user_prompt_template"]
+        
+        # Instantiate handler
+        return handler_class(handler_config)
+    
+    return TaskGroupSpec(
+        name=config_dict["name"],
+        display_name=config_dict["display_name"],
+        default_subtasks=config_dict["tasks"],
+        prepare_task=_prepare_task,
+    )
 
 
 def load_subtask_handler(subtask_info: SubtaskInfo, config: Optional[Dict[str, Any]] = None):
@@ -496,7 +648,7 @@ def discover_and_run_handler_task(
     """Discover and run a convention-based handler task.
     
     Args:
-        task_ref: Task reference like "classify" or "classify.diag_test"
+        task_ref: Task reference like "classify", "classify.diag_test", or "_adhoc_classification_abc123"
         model_name: Model to evaluate
         output_path: Output directory
         server_info: Server info for vLLM
@@ -512,19 +664,33 @@ def discover_and_run_handler_task(
             return value
         return value.replace("-", "_")
 
-    # Parse task reference
-    parts = task_ref.split(".")
-    group_name = parts[0]
-    subtask_name_raw = parts[1] if len(parts) > 1 else None
-    subtask_name = _normalize_subtask_ref(subtask_name_raw)
+    # Check if this is an ad-hoc task
+    if task_ref.startswith("_adhoc_"):
+        # Build spec for ad-hoc task
+        adhoc_config = task_config.get("task_configs", {}).get(task_ref, {})
+        if not adhoc_config:
+            # Try to get from defaults (for CLI-created tasks)
+            adhoc_config = task_config.get("defaults", {})
+        
+        spec = build_adhoc_task_spec(
+            task_ref,
+            adhoc_config,
+            task_config.get("defaults"),
+        )
+    else:
+        # Parse task reference
+        parts = task_ref.split(".")
+        group_name = parts[0]
+        subtask_name_raw = parts[1] if len(parts) > 1 else None
+        subtask_name = _normalize_subtask_ref(subtask_name_raw)
 
-    # Discover task group
-    group_info = discover_task_group(group_name)
-    if not group_info:
-        raise ValueError(f"Task group '{group_name}' not found or not using convention system")
+        # Discover task group
+        group_info = discover_task_group(group_name)
+        if not group_info:
+            raise ValueError(f"Task group '{group_name}' not found or not using convention system")
 
-    # Build spec
-    spec = build_handler_task_spec(group_info, subtask_name)
+        # Build spec
+        spec = build_handler_task_spec(group_info, subtask_name)
 
     # If specific subtask requested, update task_config
     if subtask_name:
@@ -551,11 +717,15 @@ def is_handler_based_task(task_name: str) -> bool:
     """Check if a task uses the convention-based handler system.
     
     Args:
-        task_name: Name of the task (e.g., "classify")
+        task_name: Name of the task (e.g., "classify" or "_adhoc_classification_abc123")
         
     Returns:
         True if task uses handler system, False otherwise
     """
+    # Ad-hoc tasks are handler-based
+    if task_name.startswith("_adhoc_"):
+        return True
+    
     group_name = task_name.split(".")[0]
     group_info = discover_task_group(group_name)
     return group_info is not None

@@ -1,7 +1,6 @@
 """MGSM (Multilingual Grade School Math) Spanish task."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
 
 from ..common import FreeformHandler
 from ..common import CachedTSVMixin
