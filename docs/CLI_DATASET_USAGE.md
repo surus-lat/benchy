@@ -206,7 +206,7 @@ Use schema file:
 ```
 
 **Directory scan** (no metadata file):
-```
+```text
 data/images/
 ├── 001.jpg
 ├── 002.jpg

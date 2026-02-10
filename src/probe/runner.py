@@ -302,7 +302,12 @@ async def run_probe_for_eval(
         request_modes = (connection_info.get("capabilities") or {}).get("request_modes") or []
         supports_schema = bool((connection_info.get("capabilities") or {}).get("supports_schema"))
         
-        report["checks"]["access_readiness"] = await _probe_access_readiness(connection_info, model_name)
+        report["checks"]["access_readiness"] = await _run_check_with_timeout(
+            "access_readiness",
+            lambda: _probe_access_readiness(connection_info, model_name),
+            CHECK_TIMEOUTS["access_readiness"],
+            CHECK_FAIL_MODES["access_readiness"],
+        )
         access_allows_probing = report["checks"]["access_readiness"].get("status") != "failed"
 
         if access_allows_probing and request_modes and "raw_payload" not in request_modes:

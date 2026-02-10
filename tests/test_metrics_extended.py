@@ -136,8 +136,8 @@ def test_multiple_choice_accuracy_wrong_answer():
     assert result["accuracy"] == 0.0
 
 
-def test_multiple_choice_accuracy_with_logprobs():
-    """Test MultipleChoiceAccuracy with text prediction that matches choice."""
+def test_multiple_choice_accuracy_with_text_prediction():
+    """Test MultipleChoiceAccuracy with text prediction that matches a choice."""
     metric = MultipleChoiceAccuracy()
     
     sample = {

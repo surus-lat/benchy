@@ -60,8 +60,8 @@ def test_resolve_config_path_short_name_in_systems(tmp_path, monkeypatch):
     assert resolved.name.startswith("test-system")
 
 
-def test_resolve_config_path_not_found_raises(tmp_path, monkeypatch):
-    """Test resolve_config_path handles nonexistent files."""
+def test_resolve_config_path_not_found_returns_fallback_path(tmp_path, monkeypatch):
+    """Test resolve_config_path returns a fallback Path for nonexistent short names."""
     monkeypatch.chdir(tmp_path)
     
     # Use a name that's very unlikely to exist

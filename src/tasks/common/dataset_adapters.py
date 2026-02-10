@@ -153,7 +153,7 @@ class DatasetAdapter:
         # Check if cached
         if cache_path.exists():
             logger.info(f"Loading cached dataset from {cache_path}")
-            return self._load_jsonl({"name": str(cache_path), **dataset_config})
+            return self._load_jsonl({**dataset_config, "name": str(cache_path)})
         
         # Download from HuggingFace
         logger.info(f"Downloading dataset {name} (split: {split}) from HuggingFace")
@@ -303,14 +303,17 @@ class DatasetAdapter:
         """
         # If sample is already normalized (has id, text, expected), return as-is
         # This allows tasks to pre-process samples in their own way
-        if "id" in raw_sample and "text" in raw_sample:
+        output_field = dataset_config.get("output_field", "expected")
+        if (
+            "id" in raw_sample
+            and "text" in raw_sample
+            and ("expected" in raw_sample or output_field in raw_sample)
+        ):
             return raw_sample
         
         # Extract field mappings from config
         id_field = dataset_config.get("id_field", "id")
         input_field = dataset_config.get("input_field", "text")
-        output_field = dataset_config.get("output_field", "expected")
-        
         # Build normalized sample
         sample = {}
         
