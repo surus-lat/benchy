@@ -892,10 +892,41 @@ def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     # Multimodal support
     if args.multimodal_input:
         dataset_config["multimodal_input"] = True
-    if args.multimodal_image_field:
+    if args.multimodal_input and args.multimodal_image_field:
         dataset_config["multimodal_image_field"] = args.multimodal_image_field
     
     return dataset_config
+
+
+def _has_meaningful_dataset_override(args: argparse.Namespace, dataset_config: Dict[str, Any]) -> bool:
+    """Return True when CLI dataset flags represent an intentional override."""
+    if not dataset_config:
+        return False
+    if dataset_config.get("name"):
+        return True
+
+    default_values = {
+        "source": "auto",
+        "split": "test",
+        "multimodal_image_field": "image_path",
+    }
+    for key, default in default_values.items():
+        if key in dataset_config and dataset_config.get(key) != default:
+            return True
+
+    override_flags = [
+        "dataset_input_field",
+        "dataset_output_field",
+        "dataset_id_field",
+        "dataset_label_field",
+        "dataset_labels",
+        "dataset_choices_field",
+        "dataset_schema_field",
+        "dataset_schema_path",
+        "dataset_schema_json",
+        "multimodal_input",
+    ]
+    return any(getattr(args, flag, None) for flag in override_flags)
 
 
 def _build_adhoc_task_config(
@@ -1074,7 +1105,7 @@ def run_eval(args: argparse.Namespace) -> int:
         logger.info(f"Created ad-hoc task: {adhoc_task_name}")
     
     # Handle dataset override for existing tasks
-    elif dataset_config:
+    elif _has_meaningful_dataset_override(args, dataset_config):
         # Merge dataset config into task_defaults_overrides
         if "dataset" not in task_defaults_overrides:
             task_defaults_overrides["dataset"] = {}

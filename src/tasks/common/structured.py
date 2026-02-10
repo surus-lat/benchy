@@ -169,16 +169,20 @@ class StructuredHandler(BaseHandler):
         
         # Schema loading (from path or inline JSON)
         if "schema_path" in dataset_config:
-            import json
             from pathlib import Path
             schema_path = Path(dataset_config["schema_path"])
             if schema_path.exists():
                 with open(schema_path) as f:
                     self._global_schema = json.load(f)
             else:
-                logger.warning(f"Schema file not found: {schema_path}")
+                self._global_schema = None
+                message = (
+                    f"Schema file not found: {schema_path} "
+                    f"(dataset_config['schema_path']={dataset_config['schema_path']!r})"
+                )
+                logger.error(message)
+                raise FileNotFoundError(message)
         elif "schema_json" in dataset_config:
-            import json
             self._global_schema = json.loads(dataset_config["schema_json"])
         else:
             self._global_schema = None
@@ -241,7 +245,7 @@ class StructuredHandler(BaseHandler):
             Processed sample with schema and expected fields
         """
         # If sample is already preprocessed, return as-is
-        if "id" in raw_sample and "text" in raw_sample and "schema" in raw_sample:
+        if raw_sample.get("_preprocessed") is True and "expected" in raw_sample:
             return raw_sample
         
         text = raw_sample.get(self.text_field)

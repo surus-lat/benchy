@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 
 from src.tasks.common.structured import StructuredHandler
 
@@ -74,19 +75,16 @@ def test_init_with_schema_json_config():
     assert handler._global_schema == schema
 
 
-def test_init_with_missing_schema_file_warns(tmp_path):
-    """Test initialization with non-existent schema_path logs warning."""
+def test_init_with_missing_schema_file_raises(tmp_path):
+    """Test initialization with non-existent schema_path raises clearly."""
     config = {
         "dataset": {
             "schema_path": str(tmp_path / "nonexistent.json")
         }
     }
     
-    # Should not raise, just warn
-    handler = SimpleStructuredHandler(config)
-    
-    # Handler should initialize even if schema file doesn't exist
-    assert handler is not None
+    with pytest.raises(FileNotFoundError, match="Schema file not found"):
+        SimpleStructuredHandler(config)
 
 
 def test_apply_config_overrides_field_mappings():
@@ -189,6 +187,7 @@ def test_preprocess_sample_already_preprocessed_passes_through():
     
     schema = {"type": "object"}
     preprocessed = {
+        "_preprocessed": True,
         "id": "test_1",
         "text": "Sample",
         "schema": schema,

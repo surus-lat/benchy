@@ -159,12 +159,12 @@ def test_download_huggingface_dataset_fallback_to_train(monkeypatch):
         fake_load_dataset
     )
     
-    # This test depends on implementation details
-    # If fallback is implemented, it should try train after test fails
     try:
         download_huggingface_dataset("test/dataset", split="test")
-    except:
-        pass  # May or may not have fallback
+    except Exception:
+        pass
+
+    assert attempts == ["test", "train"]
 
 
 def test_download_huggingface_dataset_failure_raises(monkeypatch):

@@ -236,7 +236,7 @@ def build_task_metadata(task_type: str, config: Dict[str, Any]) -> Dict[str, Any
         "description": f"{schema.get('description', task_type)} - {dataset_name}",
         "capability_requirements": {
             "requires_logprobs": "optional",
-            "requires_multimodal": "optional" if config.get("dataset", {}).get("multimodal_input") else "no",
+            "requires_multimodal": "required" if config.get("dataset", {}).get("multimodal_input") else "no",
             "requires_schema": "preferred" if task_type == "structured" else "optional",
             "requires_files": "optional",
             "requires_streaming": "optional",
