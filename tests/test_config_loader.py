@@ -26,12 +26,12 @@ def test_resolve_config_path_relative(tmp_path, monkeypatch):
     # Create config in current directory
     config_file = tmp_path / "config.yaml"
     config_file.write_text("model:\n  name: test")
-    
-    monkeypatch.chdir(tmp_path)
-    
-    resolved = resolve_config_path("config.yaml")
-    
-    assert resolved.name == "config.yaml"
+
+    monkeypatch.setattr("src.config_loader._find_project_root", lambda _: tmp_path)
+
+    resolved = resolve_config_path("./config.yaml")
+
+    assert resolved == config_file
 
 
 def test_resolve_config_path_short_name_in_models(tmp_path, monkeypatch):

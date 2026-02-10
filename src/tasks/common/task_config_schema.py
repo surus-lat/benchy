@@ -225,7 +225,12 @@ def build_task_metadata(task_type: str, config: Dict[str, Any]) -> Dict[str, Any
     Returns:
         Task metadata dict suitable for registry
     """
-    schema = TASK_TYPE_SCHEMAS.get(task_type, {})
+    if task_type not in TASK_TYPE_SCHEMAS:
+        valid_types = ", ".join(TASK_TYPE_SCHEMAS.keys())
+        raise ValueError(
+            f"Invalid task type '{task_type}'. Must be one of: {valid_types}"
+        )
+    schema = TASK_TYPE_SCHEMAS[task_type]
     
     # Extract dataset name for display
     dataset_name = config.get("dataset", {}).get("name", "custom-dataset")
