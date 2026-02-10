@@ -463,6 +463,16 @@ def _write_run_outcome(
     if force_exit_code is not None:
         exit_code = int(force_exit_code)
 
+    subtask_statuses: list[str] = []
+    for record in task_records.values():
+        subtasks = record.get("subtasks")
+        if not isinstance(subtasks, dict):
+            continue
+        for subtask_payload in subtasks.values():
+            if not isinstance(subtask_payload, dict):
+                continue
+            subtask_statuses.append(str(subtask_payload.get("status") or "pending"))
+
     counts = {
         "requested_tasks": len(task_records),
         "completed_tasks": sum(1 for record in task_records.values() if record.get("completed")),
@@ -478,6 +488,8 @@ def _write_run_outcome(
             for record in task_records.values()
             if record.get("status") in {"failed", "error", "pending", "skipped", "no_samples"}
         ),
+        "requested_subtasks": len(subtask_statuses),
+        "passed_subtasks": sum(1 for status in subtask_statuses if status == "passed"),
     }
     tasks_payload = _attach_per_task_diagnostics(task_records, run_summary_payload)
 
@@ -533,6 +545,8 @@ def _log_run_outcome_summary(outcome: Dict[str, Any]) -> None:
     logger.info(f"Error tasks: {counts.get('error_tasks', 0)}")
     logger.info(f"Pending tasks: {counts.get('pending_tasks', 0)}")
     logger.info(f"Non-passing tasks: {counts.get('non_passing_tasks', 0)}")
+    logger.info(f"Requested subtasks: {counts.get('requested_subtasks', 0)}")
+    logger.info(f"Passed subtasks: {counts.get('passed_subtasks', 0)}")
     logger.info(f"Errors: {len(outcome.get('errors') or [])}")
     logger.info("")
     logger.info("Per-task statuses:")
@@ -543,6 +557,14 @@ def _log_run_outcome_summary(outcome: Dict[str, Any]) -> None:
         reason = record.get("reason")
         suffix = f" ({reason})" if reason else ""
         logger.info(f"  - {task_name}: {status}{suffix}")
+        subtasks = record.get("subtasks")
+        if isinstance(subtasks, dict):
+            for subtask_name in sorted(subtasks):
+                subtask_record = subtasks[subtask_name] or {}
+                sub_status = subtask_record.get("status", "pending")
+                sub_reason = subtask_record.get("reason")
+                sub_suffix = f" ({sub_reason})" if sub_reason else ""
+                logger.info(f"    - {subtask_name}: {sub_status}{sub_suffix}")
     logger.info("=" * 60)
 
 
