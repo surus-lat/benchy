@@ -34,7 +34,7 @@ def add_probe_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["vllm", "openai", "anthropic", "together"],
+        choices=["vllm", "openai", "anthropic", "together", "alibaba"],
         help="Provider type"
     )
     parser.add_argument(
@@ -178,6 +178,8 @@ def _build_connection_info(args: argparse.Namespace) -> Dict[str, Any]:
                 provider_type = "anthropic"
             elif "together.xyz" in args.base_url:
                 provider_type = "together"
+            elif "aliyuncs.com" in args.base_url:
+                provider_type = "alibaba"
         
         if not provider_type:
             # Try to infer from model name
@@ -226,7 +228,7 @@ def _build_connection_info(args: argparse.Namespace) -> Dict[str, Any]:
         connection_info["image_max_edge"] = args.image_max_edge
     
     # Set capabilities for OpenAI-compatible providers
-    if provider_type in {"vllm", "openai", "anthropic", "together"}:
+    if provider_type in {"vllm", "openai", "anthropic", "together", "alibaba"}:
         connection_info["capabilities"] = {
             "request_modes": ["chat", "completions"],
             "supports_schema": True,

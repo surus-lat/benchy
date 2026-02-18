@@ -48,6 +48,15 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["chat", "completions"],
     ),
+    "alibaba": InterfaceCapabilities(
+        # Alibaba DashScope compatible-mode is OpenAI-compatible.
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["chat", "completions"],
+    ),
     "surus": InterfaceCapabilities(
         supports_multimodal=False,
         supports_logprobs=False,
@@ -244,6 +253,14 @@ def build_connection_info(
         connection_info["base_url"] = provider_config.get("base_url", "https://api.together.xyz/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "TOGETHER_API_KEY")
         connection_info["use_structured_outputs"] = False
+
+    elif provider_type == "alibaba":
+        connection_info["base_url"] = provider_config.get(
+            "base_url",
+            "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        )
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "DASHSCOPE_API_KEY")
+        connection_info["use_structured_outputs"] = False
         
     elif provider_type == "surus":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
@@ -383,6 +400,6 @@ def get_interface_for_provider(
         return GoogleInterface(connection_info, model_name)
     
     else:
-        # Use OpenAIInterface for vllm, openai, anthropic, together
+        # Use OpenAIInterface for vllm/openai-compatible providers.
         from ..interfaces.openai_interface import OpenAIInterface
         return OpenAIInterface(connection_info, model_name)

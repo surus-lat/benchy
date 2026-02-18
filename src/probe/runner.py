@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from jsonschema import ValidationError, validate
+
 logger = logging.getLogger(__name__)
 
 # Tunable thresholds for repetition detection
@@ -73,6 +75,14 @@ def _empty_mode_result(*, schema_transport: Optional[str] = None) -> Dict[str, A
     }
 
 
+def _preferred_schema_transport(connection_info: Dict[str, Any]) -> str:
+    """Return requested schema transport for probing/selection."""
+    explicit = bool(connection_info.get("use_structured_outputs_explicit"))
+    if explicit:
+        return "structured_outputs" if connection_info.get("use_structured_outputs") else "response_format"
+    return "auto"
+
+
 async def run_probe(
     connection_info: Dict[str, Any],
     model_name: str,
@@ -125,9 +135,7 @@ async def run_probe(
         "selected_api_endpoint": "chat",  # Default, will be updated
         "selected_schema_transport": None,
         "api_endpoint_requested": connection_info.get("api_endpoint") or "auto",
-        "schema_transport_requested": (
-            "structured_outputs" if connection_info.get("use_structured_outputs") else "auto"
-        ),
+        "schema_transport_requested": _preferred_schema_transport(connection_info),
         "schema_transport_forced": bool(connection_info.get("use_structured_outputs_explicit")),
         
         # NEW: Additional checks
@@ -203,7 +211,7 @@ async def run_probe(
         ) or "chat"
         
         report["selected_schema_transport"] = _select_schema_transport(
-            "structured_outputs" if connection_info.get("use_structured_outputs") else "auto",
+            _preferred_schema_transport(connection_info),
             report["schema_transports"],
         )
         
@@ -278,9 +286,7 @@ async def run_probe_for_eval(
         "provider_type": provider_type,
         "base_url": connection_info.get("base_url"),
         "api_endpoint_requested": connection_info.get("api_endpoint") or "auto",
-        "schema_transport_requested": (
-            "structured_outputs" if connection_info.get("use_structured_outputs") else "auto"
-        ),
+        "schema_transport_requested": _preferred_schema_transport(connection_info),
         "schema_transport_forced": bool(connection_info.get("use_structured_outputs_explicit")),
         "modes": {
             "chat": _empty_mode_result(),
@@ -327,7 +333,7 @@ async def run_probe_for_eval(
         ) or "chat"
         
         report["selected_schema_transport"] = _select_schema_transport(
-            "structured_outputs" if connection_info.get("use_structured_outputs") else "auto",
+            _preferred_schema_transport(connection_info),
             report["schema_transports"],
         )
         
@@ -475,10 +481,19 @@ async def _probe_openai_mode(
         results = await interface.generate_batch([request])
 
         result = results[0] if results else {}
-        ok = _probe_schema_transport_success(result) if schema_transport else _probe_success(result)
+        basic_reason: Optional[str] = None
+        if schema_transport:
+            basic_ok, basic_reason = _probe_schema_transport_reliability(
+                result,
+                expected_schema=request.get("schema"),
+            )
+            ok = basic_ok
+        else:
+            ok = _probe_success(result)
 
         stress_result: Dict[str, Any] = {}
         stress_ok: Optional[bool] = None
+        stress_reason: Optional[str] = None
         stress_executed = False
         if schema_transport and ok:
             stress_executed = True
@@ -496,7 +511,10 @@ async def _probe_openai_mode(
                 stress_request["image_path"] = str(get_test_image_path())
             stress_results = await interface.generate_batch([stress_request])
             stress_result = stress_results[0] if stress_results else {}
-            stress_ok = _probe_schema_transport_success(stress_result)
+            stress_ok, stress_reason = _probe_schema_transport_reliability(
+                stress_result,
+                expected_schema=stress_request.get("schema"),
+            )
             ok = ok and stress_ok
     finally:
         close_fn = getattr(interface, "close", None)
@@ -507,16 +525,27 @@ async def _probe_openai_mode(
     error = selected_result.get("error")
     error_type = selected_result.get("error_type")
     if not ok and stress_result and not error:
-        error = stress_result.get("error") or "Schema transport failed stress probe"
+        error = stress_result.get("error") or stress_reason or "Schema transport failed stress probe"
         error_type = stress_result.get("error_type")
+    if not ok and not error and basic_reason:
+        error = basic_reason
+        error_type = "invalid_response"
 
     accepted_by_api = None
     reliable_for_eval = None
     if schema_transport:
         basic_accepted = _probe_schema_transport_accepted(result)
-        basic_reliable = _probe_schema_transport_success(result)
+        basic_reliable, _ = _probe_schema_transport_reliability(
+            result,
+            expected_schema=request.get("schema"),
+        )
         stress_accepted = _probe_schema_transport_accepted(stress_result) if stress_executed else None
-        stress_reliable = _probe_schema_transport_success(stress_result) if stress_executed else None
+        stress_reliable = None
+        if stress_executed:
+            stress_reliable, _ = _probe_schema_transport_reliability(
+                stress_result,
+                expected_schema=stress_request.get("schema"),
+            )
         effective_stress_accepted = stress_accepted if stress_accepted is not None else True
         effective_stress_reliable = stress_reliable if stress_reliable is not None else True
         accepted_by_api = bool(basic_accepted and effective_stress_accepted)
@@ -539,11 +568,13 @@ async def _probe_openai_mode(
         "completion_tokens": selected_result.get("completion_tokens"),
         "prompt_tokens": selected_result.get("prompt_tokens"),
         "evidence": {
-            "basic_ok": bool(_probe_schema_transport_success(result) if schema_transport else _probe_success(result)),
+            "basic_ok": bool(basic_reliable if schema_transport else _probe_success(result)),
             "stress_ok": stress_ok if schema_transport else None,
             "stress_executed": stress_executed if schema_transport else None,
             "basic_accepted": _probe_schema_transport_accepted(result) if schema_transport else None,
             "stress_accepted": _probe_schema_transport_accepted(stress_result) if schema_transport and stress_executed else None,
+            "basic_reason": basic_reason if schema_transport else None,
+            "stress_reason": stress_reason if schema_transport else None,
         },
     }
 
@@ -647,21 +678,36 @@ def _probe_success(result: Dict[str, Any]) -> bool:
 
 
 def _probe_schema_transport_success(result: Dict[str, Any]) -> bool:
-    """Return True when schema transport appears accepted by the endpoint."""
+    """Return True when schema transport appears accepted and reliable."""
+    ok, _ = _probe_schema_transport_reliability(result, expected_schema=None)
+    return ok
+
+
+def _probe_schema_transport_reliability(
+    result: Dict[str, Any],
+    *,
+    expected_schema: Optional[Dict[str, Any]],
+) -> tuple[bool, Optional[str]]:
+    """Return (ok, reason) for schema transport reliability."""
     if result.get("error"):
-        return False
+        return False, str(result.get("error"))
     finish_reason = str(result.get("finish_reason") or "").lower()
     if finish_reason == "length":
-        return False
+        return False, "finish_reason=length"
     output = result.get("output")
     if not isinstance(output, dict):
-        return False
-    if output.get("ok") not in {"yes", None}:
-        return False
+        return False, "output is not a JSON object"
+    if output.get("ok") not in {"yes", None}:  # probe sentinel only
+        return False, "missing or invalid sentinel field 'ok'"
+    if isinstance(expected_schema, dict):
+        try:
+            validate(instance=output, schema=expected_schema)
+        except ValidationError as exc:
+            return False, f"schema_validation_failed: {exc.message}"
     raw = result.get("raw")
     if isinstance(raw, str) and _detect_repetition(raw):
-        return False
-    return True
+        return False, "repetition_detected"
+    return True, None
 
 
 def _probe_schema_transport_accepted(result: Dict[str, Any]) -> bool:

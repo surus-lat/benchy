@@ -52,3 +52,14 @@ def test_vllm_structured_outputs_default_and_override() -> None:
         model_config={},
     )
     assert overridden_info["use_structured_outputs"] is False
+
+
+def test_alibaba_connection_defaults_include_expected_capabilities() -> None:
+    info = build_connection_info("alibaba", provider_config={}, model_config={})
+
+    assert info["base_url"] == "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+    assert info["api_key_env"] == "DASHSCOPE_API_KEY"
+    assert info["use_structured_outputs"] is False
+    assert info["supports_logprobs"] is False
+    assert info["capabilities"]["supports_multimodal"] is True
+    assert info["capabilities"]["request_modes"] == ["chat", "completions"]
