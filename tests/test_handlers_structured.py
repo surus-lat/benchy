@@ -269,3 +269,70 @@ def test_metrics_calculator_merges_config():
     
     # Config should override defaults
     assert calc is not None
+
+
+def test_build_additional_artifacts_writes_field_diagnostics(tmp_path):
+    """Structured handler writes field diagnostics artifacts from per-sample metrics."""
+    handler = SimpleStructuredHandler()
+    results = {
+        "per_sample_metrics": [
+            {
+                "sample_id": "s1",
+                "schema_fingerprint": "schema_1",
+                "field_results": {
+                    "total": {
+                        "match_type": "incorrect",
+                        "type_match": False,
+                        "expected": 100,
+                        "predicted": "100.00",
+                    }
+                },
+            },
+            {
+                "sample_id": "s2",
+                "schema_fingerprint": "schema_1",
+                "field_results": {
+                    "total": {
+                        "match_type": "exact",
+                        "type_match": True,
+                        "expected": 200,
+                        "predicted": 200,
+                    }
+                },
+            },
+        ]
+    }
+
+    artifacts = handler.build_additional_artifacts(
+        results=results,
+        output_dir=tmp_path,
+        safe_model_name="model_x",
+        timestamp="20260218_180000",
+        task_name="simple_structured",
+    )
+
+    assert len(artifacts) == 2
+    assert all(path.exists() for path in artifacts)
+    assert artifacts[0].name.endswith("_field_diagnostics.json")
+    assert artifacts[1].name.endswith("_field_diagnostics.txt")
+
+
+def test_build_additional_artifacts_skips_multiple_schema_fingerprints(tmp_path):
+    """Structured handler skips diagnostics when run has mixed schemas."""
+    handler = SimpleStructuredHandler()
+    results = {
+        "per_sample_metrics": [
+            {"sample_id": "s1", "schema_fingerprint": "schema_a", "field_results": {"a": {"match_type": "exact"}}},
+            {"sample_id": "s2", "schema_fingerprint": "schema_b", "field_results": {"a": {"match_type": "exact"}}},
+        ]
+    }
+
+    artifacts = handler.build_additional_artifacts(
+        results=results,
+        output_dir=tmp_path,
+        safe_model_name="model_x",
+        timestamp="20260218_180001",
+        task_name="simple_structured",
+    )
+
+    assert artifacts == []

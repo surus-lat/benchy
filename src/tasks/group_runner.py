@@ -408,6 +408,7 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
         task_answer_type=task_answer_type,
         task_name=task_instance.get_task_name(),
         log_samples=context.defaults.get("log_samples", False),
+        task_instance=task_instance,
     )
 
     return results

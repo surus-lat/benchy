@@ -297,6 +297,7 @@ def _run_flores_subtask(
             model_name=model_name,
             task_name=task_instance.get_task_name(),
             log_samples=defaults.get('log_samples', False),
+            task_instance=task_instance,
         )
         
         all_pair_results[pair] = pair_results

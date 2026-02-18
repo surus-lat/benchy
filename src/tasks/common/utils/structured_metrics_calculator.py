@@ -16,6 +16,8 @@ The Extraction Quality Score (EQS) is the primary metric, combining:
 
 import logging
 import re
+import hashlib
+import json
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List
@@ -245,6 +247,14 @@ class MetricsCalculator:
         penalty = max(0.0, null_string_conversions * max(0.0, per_conversion))
         return min(penalty, max(0.0, max_penalty))
 
+    def _schema_fingerprint(self, schema: Any) -> str:
+        """Return a stable short fingerprint for a schema payload."""
+        try:
+            canonical = json.dumps(schema, sort_keys=True, ensure_ascii=True, default=str)
+        except (TypeError, ValueError):
+            canonical = str(schema)
+        return hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:12]
+
     def calculate_all(
         self,
         prediction: Dict,
@@ -270,6 +280,7 @@ class MetricsCalculator:
             "valid": False,
             "error": error,
             "error_type": error_type,
+            "schema_fingerprint": self._schema_fingerprint(schema),
             # Tier 1: Overall Assessment
             "schema_validity": 0.0,
             "hallucination_rate": 0.0,
@@ -292,6 +303,7 @@ class MetricsCalculator:
                 "spurious": 0
             },
             "composite_scores": [],  # List of all composite scores for diagnostics
+            "field_results": {},
             # Schema complexity (for this sample)
             "schema_complexity": {},
             # Normalization diagnostics
@@ -360,6 +372,8 @@ class MetricsCalculator:
                 logger.error(f"Error comparing fields: {e}")
                 metrics["error"] = f"Field comparison error: {str(e)}"
                 return metrics
+
+            metrics["field_results"] = field_results
 
             # Calculate metrics from field results
             try:

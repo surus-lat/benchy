@@ -233,7 +233,10 @@ class BenchmarkRunner:
                     error_msg = str(e)
                     error_type = output.get("error_type", "connectivity_error")
                     metrics = self.task.get_error_metrics(error_msg, error_type)
-                
+
+                if isinstance(metrics, dict):
+                    metrics.setdefault("sample_id", sample.get("id"))
+
                 results["per_sample_metrics"].append(metrics)
                 metrics_by_id[sample["id"]] = metrics
 
@@ -490,6 +493,7 @@ def save_results(
     task_name: str,
     log_samples: bool = False,
     task_answer_type: Optional[str] = None,
+    task_instance: Optional[Any] = None,
 ) -> None:
     """Save benchmark results to files.
     
@@ -500,6 +504,7 @@ def save_results(
         task_name: Task name for filename
         log_samples: Whether to save sample details
         task_answer_type: Task answer type (e.g., "image_artifact") for special handling
+        task_instance: Optional task/handler instance for extra artifact hooks
     """
     from datetime import datetime
     
@@ -559,4 +564,19 @@ def save_results(
                 f.write(f"  {key}: {value}\n")
         f.write("=" * 60 + "\n")
     logger.info(f"Saved report to {report_file}")
+
+    if task_instance is not None and hasattr(task_instance, "build_additional_artifacts"):
+        try:
+            artifact_paths = task_instance.build_additional_artifacts(
+                results=results,
+                output_dir=output_dir,
+                safe_model_name=safe_name,
+                timestamp=timestamp,
+                task_name=task_name,
+            )
+            if artifact_paths:
+                for artifact_path in artifact_paths:
+                    logger.info(f"Saved additional artifact: {artifact_path}")
+        except Exception as exc:
+            logger.warning(f"Failed to write additional artifacts for {task_name}: {exc}")
     

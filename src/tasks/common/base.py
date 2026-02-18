@@ -377,3 +377,19 @@ class BaseHandler:
 
         return aggregated
 
+    def build_additional_artifacts(
+        self,
+        *,
+        results: Dict[str, Any],
+        output_dir: Path,
+        safe_model_name: str,
+        timestamp: str,
+        task_name: str,
+    ) -> List[Path]:
+        """Optionally write task-specific artifacts after benchmark completion.
+
+        Handlers can override this to emit additional reports using the same
+        benchmark output directory and naming convention.
+        """
+        return []
+

@@ -104,6 +104,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .base import BaseHandler
@@ -139,6 +140,10 @@ class StructuredHandler(BaseHandler):
     requires_schema = True
     schema_field: str = "schema"
     metrics_config: Optional[Dict[str, Any]] = None
+    field_diagnostics_enabled: bool = True
+    field_diagnostics_max_examples_per_field: int = 20
+    field_diagnostics_max_fields_in_report: int = 200
+    field_diagnostics_max_value_chars: int = 240
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the structured handler."""
@@ -196,6 +201,23 @@ class StructuredHandler(BaseHandler):
         # Multimodal support
         if dataset_config.get("multimodal_input"):
             self.requires_multimodal = True
+
+        diagnostics_cfg = config.get("metrics", {}).get("field_diagnostics", {}) if config else {}
+        if isinstance(diagnostics_cfg, dict):
+            if "enabled" in diagnostics_cfg:
+                self.field_diagnostics_enabled = bool(diagnostics_cfg["enabled"])
+            if "max_examples_per_field" in diagnostics_cfg:
+                self.field_diagnostics_max_examples_per_field = max(
+                    1, int(diagnostics_cfg["max_examples_per_field"])
+                )
+            if "max_fields_in_report" in diagnostics_cfg:
+                self.field_diagnostics_max_fields_in_report = max(
+                    1, int(diagnostics_cfg["max_fields_in_report"])
+                )
+            if "max_value_chars" in diagnostics_cfg:
+                self.field_diagnostics_max_value_chars = max(
+                    16, int(diagnostics_cfg["max_value_chars"])
+                )
 
     @property
     def metrics_calculator(self):
@@ -365,3 +387,45 @@ class StructuredHandler(BaseHandler):
         if "field_recall_partial" in aggregated and "field_recall" not in aggregated:
             aggregated["field_recall"] = aggregated.get("field_recall_partial", 0.0)
         return aggregated
+
+    def build_additional_artifacts(
+        self,
+        *,
+        results: Dict[str, Any],
+        output_dir: Path,
+        safe_model_name: str,
+        timestamp: str,
+        task_name: str,
+    ) -> List[Path]:
+        """Write field-level diagnostics for single-schema structured tasks."""
+        if not self.field_diagnostics_enabled:
+            return []
+
+        from .utils.field_diagnostics_report import (
+            build_field_diagnostics_report,
+            write_field_diagnostics_artifacts,
+        )
+
+        per_sample_metrics = results.get("per_sample_metrics", [])
+        report = build_field_diagnostics_report(
+            per_sample_metrics=per_sample_metrics,
+            max_examples_per_field=self.field_diagnostics_max_examples_per_field,
+            max_fields_in_report=self.field_diagnostics_max_fields_in_report,
+            max_value_chars=self.field_diagnostics_max_value_chars,
+            require_single_schema=True,
+        )
+
+        if report.get("status") != "ok":
+            logger.info(
+                "Skipping field diagnostics for %s: %s",
+                task_name,
+                report.get("reason", "unknown"),
+            )
+            return []
+
+        return write_field_diagnostics_artifacts(
+            report=report,
+            output_dir=output_dir,
+            safe_model_name=safe_model_name,
+            timestamp=timestamp,
+        )
