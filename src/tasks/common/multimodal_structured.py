@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from .base import BaseHandler
 
@@ -157,6 +159,8 @@ class MultimodalStructuredHandler(BaseHandler):
                     logger.info(f"Populating dataset in {self.data_dir}")
                 self._copy_source_data()
             except Exception as exc:
+                if isinstance(exc, FileNotFoundError):
+                    raise
                 if not self.source_path:
                     raise FileNotFoundError(
                         f"Dataset not found in {self.data_dir}.\n"
@@ -189,20 +193,109 @@ class MultimodalStructuredHandler(BaseHandler):
         self.dataset_data = self._load_samples()
 
     def _copy_source_data(self) -> None:
-        """Copy data from source directory to task data directory."""
-        if not self.source_path:
-            raise ValueError(
-                f"{self.__class__.__name__} has no source_dir configured. "
-                "Set config['dataset']['source_dir'] (or config['source_dir']) or override _copy_source_data()."
-            )
+        """Populate data from local source_dir or HuggingFace dataset snapshot."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy all files from source to data directory
-        for file_path in self.source_path.glob("*"):
-            if file_path.is_file():
-                dest_path = self.data_dir / file_path.name
-                shutil.copy2(file_path, dest_path)
-                logger.debug(f"Copied {file_path.name}")
+        if self.source_path:
+            if not self.source_path.exists():
+                raise FileNotFoundError(f"source_dir not found: {self.source_path}")
+
+            # Copy all files/directories from source to data directory.
+            for entry in self.source_path.iterdir():
+                dest_path = self.data_dir / entry.name
+                if entry.is_dir():
+                    if dest_path.exists():
+                        shutil.rmtree(dest_path)
+                    shutil.copytree(entry, dest_path)
+                else:
+                    shutil.copy2(entry, dest_path)
+            return
+
+        dataset_cfg = self._get_dataset_config()
+        repo_id = self._resolve_dataset_repo_id(dataset_cfg)
+        if not repo_id:
+            raise ValueError(
+                f"{self.__class__.__name__} has no source_dir or dataset repo configured. "
+                "Set config['dataset']['source_dir'] (or config['source_dir']) or provide "
+                "config['dataset']['dataset_url']/repo_id in task metadata/config."
+            )
+
+        token = self._resolve_hf_token(dataset_cfg)
+        revision = dataset_cfg.get("revision")
+
+        logger.info(f"Downloading dataset snapshot: {repo_id}")
+        try:
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(
+                repo_id=repo_id,
+                repo_type="dataset",
+                local_dir=str(self.data_dir),
+                local_dir_use_symlinks=False,
+                token=token,
+                revision=str(revision) if revision else None,
+            )
+        except Exception as exc:
+            raise FileNotFoundError(
+                f"Failed to download dataset snapshot from '{repo_id}'. "
+                "If the dataset is private/gated, set HF_TOKEN (or config['dataset']['token'])."
+            ) from exc
+
+    def _get_dataset_config(self) -> Dict[str, Any]:
+        cfg = self.config or {}
+        dataset_cfg = cfg.get("dataset")
+        return dataset_cfg if isinstance(dataset_cfg, dict) else {}
+
+    def _normalize_repo_id(self, value: Any) -> str:
+        text = str(value).strip()
+        if not text:
+            return text
+
+        parsed = urlparse(text)
+        if parsed.scheme and parsed.netloc:
+            parts = [p for p in parsed.path.split("/") if p]
+            # Accept:
+            # - https://huggingface.co/datasets/<owner>/<name>
+            # - https://huggingface.co/<owner>/<name>
+            if len(parts) >= 3 and parts[0] == "datasets":
+                return f"{parts[1]}/{parts[2]}"
+            if len(parts) >= 2:
+                return f"{parts[0]}/{parts[1]}"
+            return text
+
+        if text.startswith("datasets/"):
+            return text[len("datasets/") :]
+        return text
+
+    def _resolve_dataset_repo_id(self, dataset_cfg: Dict[str, Any]) -> Optional[str]:
+        cfg = self.config or {}
+        candidates = [
+            dataset_cfg.get("repo_id"),
+            dataset_cfg.get("dataset_repo_id"),
+            dataset_cfg.get("dataset_url"),
+            dataset_cfg.get("name"),
+            dataset_cfg.get("dataset_name"),
+            dataset_cfg.get("dataset"),
+            cfg.get("dataset_url"),
+            cfg.get("repo_id"),
+            getattr(self, "dataset_repo_id", None),
+        ]
+        for candidate in candidates:
+            if candidate:
+                repo_id = self._normalize_repo_id(candidate)
+                if repo_id:
+                    return repo_id
+        return None
+
+    def _resolve_hf_token(self, dataset_cfg: Dict[str, Any]) -> Optional[str]:
+        token = dataset_cfg.get("token") or dataset_cfg.get("auth_token")
+        if token:
+            return str(token)
+        for env_var in ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+            value = os.getenv(env_var)
+            if value:
+                return value
+        return None
 
     def _load_samples(self) -> List[Dict]:
         """Load samples from data directory.

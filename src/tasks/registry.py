@@ -351,6 +351,41 @@ def build_handler_task_config(
     if task_defaults_overrides:
         defaults.update(task_defaults_overrides)
 
+    task_configs = dict(metadata.get("task_configs") or {})
+    metadata_subtasks = metadata.get("subtasks") or {}
+    if isinstance(metadata_subtasks, dict):
+        for subtask_name, subtask_meta in metadata_subtasks.items():
+            if not isinstance(subtask_meta, dict):
+                continue
+
+            normalized_cfg = dict(subtask_meta)
+            dataset_cfg = dict(normalized_cfg.get("dataset") or {})
+
+            # Allow dataset fields directly in metadata.yaml subtask blocks.
+            for key in (
+                "dataset_url",
+                "repo_id",
+                "dataset_repo_id",
+                "source_dir",
+                "path",
+                "revision",
+                "token",
+                "auth_token",
+                "name",
+                "dataset_name",
+            ):
+                if key in normalized_cfg and key not in dataset_cfg:
+                    dataset_cfg[key] = normalized_cfg[key]
+
+            if dataset_cfg:
+                normalized_cfg["dataset"] = dataset_cfg
+
+            merged_cfg = dict(normalized_cfg)
+            explicit_cfg = task_configs.get(subtask_name)
+            if isinstance(explicit_cfg, dict):
+                merged_cfg.update(explicit_cfg)
+            task_configs[subtask_name] = merged_cfg
+
     output_cfg = metadata.get("output")
     if not isinstance(output_cfg, dict):
         output_cfg = {"subdirectory": group_name}
@@ -362,7 +397,7 @@ def build_handler_task_config(
         "tasks": tasks_to_run,
         "defaults": defaults,
         "prompts": dict(metadata.get("prompts") or {}),
-        "task_configs": dict(metadata.get("task_configs") or {}),
+        "task_configs": task_configs,
         "output": output_cfg,
         "capability_requirements": dict(metadata.get("capability_requirements") or {}),
         "metrics_manifest": metadata.get("metrics_manifest", []),
