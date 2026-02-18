@@ -1,6 +1,7 @@
 import pytest
 
 from src.engine.benchmark_runner import BenchmarkRunner
+from src.engine.benchmark_runner import save_results
 from src.engine.protocols import InterfaceCapabilities
 
 
@@ -155,3 +156,41 @@ async def test_runner_uses_checkpoint_and_skips_generation_when_already_complete
     assert interface.generate_calls == 0
     assert len(results["per_sample_metrics"]) == 2
     assert results["aggregate_metrics"]["total_samples"] == 2
+
+
+def test_save_results_calls_task_additional_artifact_hook(tmp_path):
+    class FakeTaskWithArtifacts:
+        def __init__(self):
+            self.called = False
+
+        def build_additional_artifacts(
+            self,
+            *,
+            results,
+            output_dir,
+            safe_model_name,
+            timestamp,
+            task_name,
+        ):
+            self.called = True
+            marker = output_dir / f"{safe_model_name}_{timestamp}_marker.txt"
+            marker.write_text(task_name, encoding="utf-8")
+            return [marker]
+
+    task = FakeTaskWithArtifacts()
+    results = {
+        "aggregate_metrics": {"score": 1.0},
+        "samples": [],
+    }
+
+    save_results(
+        results=results,
+        output_dir=tmp_path,
+        model_name="provider/model",
+        task_name="fake_task",
+        log_samples=False,
+        task_instance=task,
+    )
+
+    assert task.called is True
+    assert any(path.name.endswith("_marker.txt") for path in tmp_path.iterdir())
