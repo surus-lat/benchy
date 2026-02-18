@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-
-from huggingface_hub import snapshot_download
 
 from ..common import MultimodalStructuredHandler
 
@@ -144,7 +141,7 @@ class FacturasArgentinas(MultimodalStructuredHandler):
         "requires_schema": "required",
     }
 
-    dataset_repo_id = "mauroibz/facturas-argentinas"
+    dataset_repo_id = "mauroibz/facturas-argentinas_2"
 
     system_prompt = "You are a precise information extraction system."
     user_prompt_template = (
@@ -205,55 +202,12 @@ class FacturasArgentinas(MultimodalStructuredHandler):
         },
     }
 
-    def _dataset_config(self) -> Dict[str, Any]:
-        cfg = self.config or {}
-        dataset_cfg = cfg.get("dataset", {})
-        return dataset_cfg if isinstance(dataset_cfg, dict) else {}
-
     def _dataset_paths(self) -> Tuple[Path, Path, Path, Optional[Path]]:
         schema_path = self.data_dir / "schema.json"
         facturas_path = self.data_dir / "facturas.json"
         images_dir = self.data_dir / "jpg"
         ids_path = self.data_dir / "documento_ids.txt"
         return schema_path, facturas_path, images_dir, (ids_path if ids_path.exists() else None)
-
-    def _copy_source_data(self) -> None:
-        """Populate .data from a local folder or HF dataset repo snapshot."""
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
-        dataset_cfg = self._dataset_config()
-        source_dir = dataset_cfg.get("source_dir") or dataset_cfg.get("path") or self.config.get("source_dir")
-        repo_id = dataset_cfg.get("repo_id") or dataset_cfg.get("dataset_repo_id") or self.dataset_repo_id
-
-        if source_dir:
-            src = Path(str(source_dir))
-            if not src.exists():
-                raise FileNotFoundError(f"source_dir not found: {src}")
-
-            # Copy known files if present.
-            for filename in ("schema.json", "facturas.json", "documento_ids.txt"):
-                src_file = src / filename
-                if src_file.exists():
-                    shutil.copy2(src_file, self.data_dir / filename)
-
-            # Copy jpg/ directory if present.
-            src_images = src / "jpg"
-            dst_images = self.data_dir / "jpg"
-            if src_images.exists() and src_images.is_dir():
-                if dst_images.exists():
-                    shutil.rmtree(dst_images)
-                shutil.copytree(src_images, dst_images)
-
-            return
-
-        # Default: download HF dataset snapshot into .data
-        logger.info(f"Downloading dataset snapshot: {repo_id}")
-        snapshot_download(
-            repo_id=str(repo_id),
-            repo_type="dataset",
-            local_dir=str(self.data_dir),
-            local_dir_use_symlinks=False,
-        )
 
     def _load_samples(self) -> List[Dict[str, Any]]:
         schema_path, facturas_path, images_dir, ids_path = self._dataset_paths()
