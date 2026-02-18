@@ -51,7 +51,7 @@ def generate_config_from_cli(
     
     # Provider configuration
     provider_type = generated_config.get("provider_type", "vllm")
-    if args.base_url and provider_type in ["openai", "together", "anthropic", "google"]:
+    if args.base_url and provider_type in ["openai", "together", "anthropic", "alibaba", "google"]:
         if provider_type not in generated_config:
             generated_config[provider_type] = {}
         generated_config[provider_type]["base_url"] = args.base_url

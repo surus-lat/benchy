@@ -421,7 +421,7 @@ def _probe_and_configure_openai_interface(
     output_dir: Path,
 ) -> Optional[Dict[str, Any]]:
     """Probe OpenAI-style interfaces for supported request modes once per task group."""
-    if provider_type not in {"vllm", "openai", "anthropic", "together"}:
+    if provider_type not in {"vllm", "openai", "anthropic", "together", "alibaba"}:
         return None
 
     request_modes = (connection_info.get("capabilities") or {}).get("request_modes") or []
@@ -678,6 +678,7 @@ def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]
     schema_forced = bool(report.get("schema_transport_forced"))
     requested_schema_transport = report.get("schema_transport_requested")
     if selected_schema_transport:
+        connection_info["disable_api_schema"] = False
         if schema_forced:
             if requested_schema_transport != selected_schema_transport:
                 logger.warning(
@@ -687,6 +688,10 @@ def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]
                 )
         else:
             connection_info["use_structured_outputs"] = selected_schema_transport == "structured_outputs"
+    elif not schema_forced:
+        # If probe found no reliable API-level schema transport, force prompt-only schema handling.
+        connection_info["use_structured_outputs"] = False
+        connection_info["disable_api_schema"] = True
     
     # Apply parameter support detection from probe
     param_check = report.get("checks", {}).get("param_support", {})

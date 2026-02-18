@@ -62,13 +62,17 @@ PROVIDER_SPECS = {
         "config_key": "together",
         "log": "Using Together AI cloud provider for model: {model_name}",
     },
+    "alibaba": {
+        "config_key": "alibaba",
+        "log": "Using Alibaba Cloud Model Studio provider for model: {model_name}",
+    },
     "google": {
         "config_key": "google",
         "log": "Using Google cloud provider for model: {model_name}",
     },
 }
 
-MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "google"}
+MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google"}
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -84,6 +88,17 @@ CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "together": {
         "base_url": "https://api.together.xyz/v1",
         "api_key_env": "TOGETHER_API_KEY",
+        "timeout": 120,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 0.0,
+        "max_tokens": 4096,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "auto",
+    },
+    "alibaba": {
+        "base_url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        "api_key_env": "DASHSCOPE_API_KEY",
         "timeout": 120,
         "max_retries": 3,
         "max_concurrent": 3,
@@ -249,7 +264,7 @@ def _redact_argv(argv: list[str]) -> list[str]:
 def _default_api_endpoint(provider_type: str) -> str:
     if provider_type == "anthropic":
         return "chat"
-    if provider_type in {"openai", "together"}:
+    if provider_type in {"openai", "together", "alibaba"}:
         return "auto"
     return "completions"
 
@@ -300,8 +315,21 @@ def _apply_cli_provider_overrides(
     return merged
 
 
-def _build_cli_provider_config(provider_type: str, args: argparse.Namespace) -> Dict[str, Any]:
-    defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+def _build_cli_provider_config(
+    provider_type: str,
+    args: argparse.Namespace,
+    *,
+    config_manager: Optional[ConfigManager] = None,
+) -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {}
+    if config_manager is not None:
+        try:
+            defaults = dict(config_manager.get_provider_config(_normalize_provider_name(provider_type)))
+        except FileNotFoundError:
+            defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+    else:
+        defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+
     merged = _apply_cli_provider_overrides(
         defaults,
         args,
@@ -389,7 +417,11 @@ def _build_cli_only_config(
             raise ValueError("Missing required --model-name for OpenAI-compatible runs")
         config["model"] = {"name": args.model_name}
         config["provider_type"] = provider_type
-        config[provider_type] = _build_cli_provider_config(provider_type, args)
+        config[provider_type] = _build_cli_provider_config(
+            provider_type,
+            args,
+            config_manager=config_manager,
+        )
 
     _apply_model_metadata(config, args)
     return config, model_path_override
@@ -484,7 +516,7 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["vllm", "openai", "together", "anthropic", "google"],
+        choices=["vllm", "openai", "together", "anthropic", "alibaba", "google"],
         default=None,
         help="Provider type to use when no model config is provided (default: inferred).",
     )
@@ -825,7 +857,7 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
 
     provider_type = config.get("provider_type", "vllm")
     provider_section = dict(config.get(provider_type) or {})
-    allow_base_url = provider_type in {"openai", "together", "anthropic", "google"}
+    allow_base_url = provider_type in {"openai", "together", "anthropic", "alibaba", "google"}
     allow_api_key = allow_base_url
     config[provider_type] = _apply_cli_provider_overrides(
         provider_section,

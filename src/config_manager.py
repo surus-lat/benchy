@@ -42,6 +42,11 @@ class ConfigManager:
         elif 'together' in model_config:
             self._merge_cloud_provider_config(model_config, 'together')
             model_config['provider_type'] = 'together'
+
+        # Handle Alibaba Cloud Model Studio config merging
+        elif 'alibaba' in model_config:
+            self._merge_cloud_provider_config(model_config, 'alibaba')
+            model_config['provider_type'] = 'alibaba'
         
         # Handle vLLM config merging
         elif 'vllm' in model_config:
@@ -158,7 +163,7 @@ class ConfigManager:
         
         Args:
             model_config: Model configuration dictionary to modify in-place
-            provider: Provider name ('openai' or 'anthropic')
+            provider: Provider name ('openai', 'anthropic', 'together', or 'alibaba')
         """
         provider_config = model_config[provider]
         

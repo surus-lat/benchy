@@ -1,4 +1,4 @@
-"""OpenAI-compatible interface (vLLM, OpenAI, Anthropic, Together)."""
+"""OpenAI-compatible interface (vLLM, OpenAI, Anthropic, Together, Alibaba)."""
 
 import asyncio
 import json
@@ -33,6 +33,7 @@ class OpenAIInterface:
         self.api_endpoint = connection_info.get("api_endpoint") or "auto"
 
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
+        self.disable_api_schema = bool(connection_info.get("disable_api_schema", False))
         # Image artifact generation via images endpoints (OpenAI-compatible).
         self.image_response_format = connection_info.get("image_response_format", "b64_json")
         self.image_size = connection_info.get("image_size")
@@ -71,7 +72,10 @@ class OpenAIInterface:
         ]
         self.is_problematic_model = any(name in self.model_name for name in problematic_models)
 
-        is_cloud = any(host in self.base_url for host in ["openai.com", "anthropic.com", "together.xyz"])
+        is_cloud = any(
+            host in self.base_url
+            for host in ["openai.com", "anthropic.com", "together.xyz", "aliyuncs.com"]
+        )
         default_concurrent = 2 if is_cloud else 20
         max_concurrent = connection_info.get("max_concurrent")
         if max_concurrent is None:
@@ -542,9 +546,11 @@ class OpenAIInterface:
 
             schema_transport = "none"
             if schema:
-                if self.use_structured_outputs:
+                if self.disable_api_schema:
+                    schema_transport = "prompt_only"
+                elif self.use_structured_outputs:
                     schema_transport = "structured_outputs"
-                elif self.provider_type == "openai":
+                elif self.provider_type in {"openai", "alibaba"}:
                     schema_transport = "response_format"
                 else:
                     schema_transport = "prompt_only"
@@ -554,27 +560,42 @@ class OpenAIInterface:
             )
 
             if schema and not self._logged_schema_enforcement_mode:
-                if self.use_structured_outputs:
+                if self.disable_api_schema:
+                    mode = "prompt_only (probe selected no reliable API schema transport)"
+                elif self.use_structured_outputs:
                     mode = "guided_json (extra_body.structured_outputs)"
                 elif self.provider_type == "openai":
                     mode = "response_format json_schema strict"
+                elif self.provider_type == "alibaba":
+                    mode = "response_format json_schema"
                 else:
                     mode = "prompt_only (no API-level schema parameter)"
                 logger.info(f"Schema enforcement mode: {mode}")
                 self._logged_schema_enforcement_mode = True
 
-            if schema and self.use_structured_outputs:
+            if schema and not self.disable_api_schema and self.use_structured_outputs:
                 # OpenAI-compatible guided JSON (vLLM structured outputs extension).
                 from ..common.schema_sanitizer import sanitize_schema_for_vllm
                 sanitized_schema = sanitize_schema_for_vllm(schema)
                 params["extra_body"] = {"structured_outputs": {"json": sanitized_schema}}
-            elif schema and self.provider_type == "openai":
+            elif schema and not self.disable_api_schema and self.provider_type == "openai":
                 # OpenAI strict mode structured outputs (chat.completions response_format)
                 from ..common.schema_sanitizer import sanitize_schema_for_openai_strict
                 sanitized_schema = sanitize_schema_for_openai_strict(schema)
                 params["response_format"] = {
                     "type": "json_schema",
                     "json_schema": {"name": "extraction", "strict": True, "schema": sanitized_schema},
+                }
+            elif schema and not self.disable_api_schema and self.provider_type == "alibaba":
+                # DashScope OpenAI-compatible structured output.
+                from ..common.schema_sanitizer import unwrap_openai_response_format_schema
+                plain_schema = unwrap_openai_response_format_schema(schema)
+                params["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "schema": plain_schema,
+                    },
                 }
 
             response = await self.client.chat.completions.create(**params)
