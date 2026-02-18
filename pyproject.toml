@@ -23,7 +23,7 @@ dependencies = [
     "pandas>=1.5.0",
     "openpyxl>=3.0.0",
     "huggingface-hub>=0.20.0",
-    "vllm>=0.13.0",
+    "vllm>=0.13.0; sys_platform == 'linux'",
     "timm",
     "openai>=1.0.0",
     "anthropic>=0.18.0",
