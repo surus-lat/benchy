@@ -56,9 +56,11 @@ Useful flags:
 - `--run-id NAME` sets a custom run folder name.
 - `--log-samples` forces sample logging for all tasks.
 - `--test` is only supported for vLLM and starts the server without running tasks.
-- `--tasks a,b,c` overrides the task list from the config.
+- `--tasks a b c` or `--tasks a,b,c` overrides the task list from the config.
 - `--tasks-file path.txt` loads tasks from a file (one per line, comments allowed).
 - `--task-group name` injects task groups from `configs/config.yaml` (repeatable).
+- `--exit-policy` controls process exit behavior for automation (`relaxed`, `smoke`, `strict`).
+- `--image-max-edge N` optionally downscales input images in memory before request (keeps originals intact) for multimodal interfaces (OpenAI-compatible, Google, SURUS).
 
 ## Model Config Structure
 
@@ -143,9 +145,26 @@ Results are written under:
 outputs/benchmark_outputs/<run_id>/<model_name>/
 ```
 
-Each task folder contains metrics, samples, and a report file. The pipeline also
-writes `run_summary.json` at the model root with a summary of task results and the
-overall run status.
+Each task folder contains metrics, samples, and a report file. The pipeline also writes:
+- `run_outcome.json` as the machine-readable status source of truth for automation.
+- `run_summary.json` with compact task metric summaries.
+- `<task>/task_status.json` files used by resume logic when reusing the same run-id.
+
+`run_outcome.json` contains:
+- `schema_version`, `benchy_version`
+- `status`, `exit_policy`, `exit_code`
+- `started_at`, `ended_at`, `duration_s`
+- `git` (`repo`, `commit`, `dirty`) when available
+- `counts` and per-task `tasks` records
+- `invocation` (redacted CLI context), `artifacts` (indexed paths), `errors` (structured failures)
+
+Benchy writes `run_outcome.json` on success, "all tasks already completed", and fatal
+pipeline failures after run directory initialization.
+
+Structured-output concessions (applies to structured handlers):
+- Date values on date-like fields accept `YYYY-MM-DD` and `DD-MM-YYYY` (also `DD/MM/YYYY`) and are normalized to `YYYY-MM-DD` for validation/scoring.
+- Literal `"null"` strings are coerced to JSON `null` before validation/scoring, and a bounded `normalization_penalty` is applied to extraction scores (default `0.02` per coercion, capped at `0.20`).
+  Configure via `metrics.normalization_penalty.null_string_to_null` and `metrics.normalization_penalty.max`.
 
 ## Tips
 

@@ -33,7 +33,7 @@ Optional: `bash setup.sh` to prefetch structured extraction data (or `BENCHY_SKI
 
 ## What to Update
 
-- New tasks should include a task config (`task.json`), task code, and a pipeline registration.
+- New tasks should include `metadata.yaml` plus task code under `src/tasks/<group>/`.
 - New providers should include a provider config, an interface, and documentation updates.
 - Docs should stay in sync with behavior in `src/` and `configs/`.
 

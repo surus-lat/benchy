@@ -1,18 +1,17 @@
-"""OpenAI-compatible interface (vLLM, OpenAI, Anthropic, Together)."""
+"""OpenAI-compatible interface (vLLM, OpenAI, Anthropic, Together, Alibaba)."""
 
 import asyncio
-import base64
 import json
 import logging
 import os
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple, Set
 
 from openai import AsyncOpenAI
 
 from ..engine.protocols import InterfaceCapabilities, parse_interface_capabilities
 from ..engine.retry import RetryDecision, classify_http_exception, extract_status_code, run_with_retries
+from .common.image_preprocessing import coerce_positive_int, encode_image_base64
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +33,15 @@ class OpenAIInterface:
         self.api_endpoint = connection_info.get("api_endpoint") or "auto"
 
         self.use_structured_outputs = connection_info.get("use_structured_outputs", False)
+        self.disable_api_schema = bool(connection_info.get("disable_api_schema", False))
         # Image artifact generation via images endpoints (OpenAI-compatible).
         self.image_response_format = connection_info.get("image_response_format", "b64_json")
         self.image_size = connection_info.get("image_size")
+        self.image_max_edge = coerce_positive_int(
+            connection_info.get("image_max_edge"),
+            option_name="image_max_edge",
+            logger=logger,
+        )
         self.image_artifact_fallback_to_chat = connection_info.get(
             "image_artifact_fallback_to_chat", True
         )
@@ -58,6 +63,8 @@ class OpenAIInterface:
             )
         self._supports_logprobs = self._capabilities.supports_logprobs
         self.logprobs_top_k = connection_info.get("logprobs_top_k") or 20
+        self._logged_schema_enforcement_mode = False
+        self._logged_request_strategies: Set[Tuple[str, str]] = set()
 
         problematic_models = connection_info.get("problematic_models") or [
             "ByteDance-Seed/Seed-X-Instruct-7B",
@@ -65,7 +72,10 @@ class OpenAIInterface:
         ]
         self.is_problematic_model = any(name in self.model_name for name in problematic_models)
 
-        is_cloud = any(host in self.base_url for host in ["openai.com", "anthropic.com", "together.xyz"])
+        is_cloud = any(
+            host in self.base_url
+            for host in ["openai.com", "anthropic.com", "together.xyz", "aliyuncs.com"]
+        )
         default_concurrent = 2 if is_cloud else 20
         max_concurrent = connection_info.get("max_concurrent")
         if max_concurrent is None:
@@ -88,6 +98,9 @@ class OpenAIInterface:
 
         logger.info(f"Initialized OpenAIInterface for {model_name}")
         logger.info(f"  Base URL: {self.base_url}")
+        logger.info(f"  Max tokens parameter: {self.max_tokens_param_name}")
+        if isinstance(self.image_max_edge, int) and self.image_max_edge > 0:
+            logger.info(f"  Image scaling enabled: max edge={self.image_max_edge}px")
         if is_cloud:
             logger.info(f"  Rate limit: max {max_concurrent} concurrent requests")
 
@@ -150,20 +163,17 @@ class OpenAIInterface:
 
         return request
 
-    def _encode_image(self, image_path: str) -> str:
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
+    def _encode_image_payload(self, image_path: str) -> Tuple[str, str]:
+        """Encode image for chat payload, optionally resizing in memory.
 
-    def _get_image_media_type(self, image_path: str) -> str:
-        ext = Path(image_path).suffix.lower()
-        media_types = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".gif": "image/gif",
-            ".webp": "image/webp",
-        }
-        return media_types.get(ext, "image/jpeg")
+        Original files are never modified. Resizing is only applied when
+        `image_max_edge` is configured and the image exceeds that size.
+        """
+        return encode_image_base64(
+            image_path,
+            max_edge=self.image_max_edge,
+            logger=logger,
+        )
 
     def _extract_json(self, text: str) -> str:
         text = text.strip()
@@ -217,11 +227,33 @@ class OpenAIInterface:
         return user_prompt[:idx].rstrip() + "\n"
 
     def _max_tokens_key(self) -> str:
+        """Determine which max_tokens parameter name to use.
+        
+        Returns the configured max_tokens_param_name, with auto-detection fallback
+        for known model families that require max_completion_tokens.
+        """
         if self.provider_type == "openai":
             for marker in ["gpt-5", "o1", "o3", "o4"]:
                 if marker in self.model_name.lower() and self.max_tokens_param_name == "max_tokens":
+                    logger.debug(
+                        f"Auto-detecting max_completion_tokens for {marker} model "
+                        f"(configured: {self.max_tokens_param_name})"
+                    )
                     return "max_completion_tokens"
+        
+        # Use configured parameter (may have been set by probe)
         return self.max_tokens_param_name
+
+    def _log_request_strategy_once(self, *, api_endpoint: str, schema_transport: str) -> None:
+        key = (api_endpoint, schema_transport)
+        if key in self._logged_request_strategies:
+            return
+        logger.info(
+            "Request strategy api_endpoint=%s schema_transport=%s",
+            api_endpoint,
+            schema_transport,
+        )
+        self._logged_request_strategies.add(key)
 
     def _extract_text_from_content(self, content: Any) -> Optional[str]:
         """Extract text from OpenAI-style content payloads (string or list of parts)."""
@@ -271,7 +303,15 @@ class OpenAIInterface:
         sample_id: str,
     ) -> Dict:
         """Generate an image artifact via OpenAI-compatible images endpoints."""
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         response_format = self.image_response_format or "b64_json"
         extra_params: Dict[str, Any] = {}
@@ -331,6 +371,9 @@ class OpenAIInterface:
                     "raw": f"images_api=b64_json len={len(b64)}",
                     "error": None,
                     "error_type": None,
+                    "finish_reason": None,
+                    "completion_tokens": None,
+                    "prompt_tokens": None,
                 }
             if isinstance(url, str) and url.strip():
                 return {
@@ -338,6 +381,9 @@ class OpenAIInterface:
                     "raw": "images_api=url",
                     "error": None,
                     "error_type": None,
+                    "finish_reason": None,
+                    "completion_tokens": None,
+                    "prompt_tokens": None,
                 }
 
             raise ValueError("Images API returned no b64_json/url payload")
@@ -369,7 +415,15 @@ class OpenAIInterface:
         expects_image_artifact: bool = False,
     ) -> Dict:
         """Generate output for a single request."""
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         # Image artifact tasks: prefer images endpoints (OpenAI-compatible) only when the
         # interface explicitly declares support, with optional chat fallback.
@@ -426,6 +480,11 @@ class OpenAIInterface:
 
         async def attempt_fn(_: int) -> Dict:
             if use_completions_api:
+                schema_transport = "prompt_only" if schema else "none"
+                self._log_request_strategy_once(
+                    api_endpoint="completions",
+                    schema_transport=schema_transport,
+                )
                 combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
                 response = await self.client.completions.create(
                     model=self.model_name,
@@ -435,6 +494,10 @@ class OpenAIInterface:
                     timeout=self.timeout,
                 )
                 raw_output = response.choices[0].text
+                usage = getattr(response, "usage", None)
+                result["completion_tokens"] = getattr(usage, "completion_tokens", None) if usage else None
+                result["prompt_tokens"] = getattr(usage, "prompt_tokens", None) if usage else None
+                result["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
                 result["raw"] = raw_output
                 if raw_output is None:
                     result["error"] = "Empty response content"
@@ -452,10 +515,9 @@ class OpenAIInterface:
                 return result
 
             if image_path:
-                base64_image = self._encode_image(image_path)
-                media_type = self._get_image_media_type(image_path)
+                base64_image, media_type = self._encode_image_payload(image_path)
                 effective_prompt = user_prompt
-                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                if schema and self.use_structured_outputs:
                     effective_prompt = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
                 user_content = [
                     {"type": "text", "text": effective_prompt},
@@ -463,7 +525,7 @@ class OpenAIInterface:
                 ]
             else:
                 user_content = user_prompt
-                if self.provider_type == "vllm" and schema and self.use_structured_outputs:
+                if schema and self.use_structured_outputs:
                     user_content = self._strip_schema_from_prompt_for_structured_outputs(user_prompt)
 
             messages = [
@@ -482,12 +544,41 @@ class OpenAIInterface:
 
             params[self._max_tokens_key()] = self.max_tokens
 
-            if schema and self.use_structured_outputs:
-                # vLLM structured outputs
+            schema_transport = "none"
+            if schema:
+                if self.disable_api_schema:
+                    schema_transport = "prompt_only"
+                elif self.use_structured_outputs:
+                    schema_transport = "structured_outputs"
+                elif self.provider_type in {"openai", "alibaba"}:
+                    schema_transport = "response_format"
+                else:
+                    schema_transport = "prompt_only"
+            self._log_request_strategy_once(
+                api_endpoint="chat",
+                schema_transport=schema_transport,
+            )
+
+            if schema and not self._logged_schema_enforcement_mode:
+                if self.disable_api_schema:
+                    mode = "prompt_only (probe selected no reliable API schema transport)"
+                elif self.use_structured_outputs:
+                    mode = "guided_json (extra_body.structured_outputs)"
+                elif self.provider_type == "openai":
+                    mode = "response_format json_schema strict"
+                elif self.provider_type == "alibaba":
+                    mode = "response_format json_schema"
+                else:
+                    mode = "prompt_only (no API-level schema parameter)"
+                logger.info(f"Schema enforcement mode: {mode}")
+                self._logged_schema_enforcement_mode = True
+
+            if schema and not self.disable_api_schema and self.use_structured_outputs:
+                # OpenAI-compatible guided JSON (vLLM structured outputs extension).
                 from ..common.schema_sanitizer import sanitize_schema_for_vllm
                 sanitized_schema = sanitize_schema_for_vllm(schema)
                 params["extra_body"] = {"structured_outputs": {"json": sanitized_schema}}
-            elif schema and self.provider_type == "openai":
+            elif schema and not self.disable_api_schema and self.provider_type == "openai":
                 # OpenAI strict mode structured outputs (chat.completions response_format)
                 from ..common.schema_sanitizer import sanitize_schema_for_openai_strict
                 sanitized_schema = sanitize_schema_for_openai_strict(schema)
@@ -495,9 +586,24 @@ class OpenAIInterface:
                     "type": "json_schema",
                     "json_schema": {"name": "extraction", "strict": True, "schema": sanitized_schema},
                 }
+            elif schema and not self.disable_api_schema and self.provider_type == "alibaba":
+                # DashScope OpenAI-compatible structured output.
+                from ..common.schema_sanitizer import unwrap_openai_response_format_schema
+                plain_schema = unwrap_openai_response_format_schema(schema)
+                params["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "extraction",
+                        "schema": plain_schema,
+                    },
+                }
 
             response = await self.client.chat.completions.create(**params)
             content = response.choices[0].message.content
+            usage = getattr(response, "usage", None)
+            result["completion_tokens"] = getattr(usage, "completion_tokens", None) if usage else None
+            result["prompt_tokens"] = getattr(usage, "prompt_tokens", None) if usage else None
+            result["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
             result["raw"] = content
             if content is None:
                 result["error"] = "Empty response content"
@@ -550,7 +656,15 @@ class OpenAIInterface:
         sample_id: str,
     ) -> Dict:
         """Generate prediction using log probabilities for multiple choice."""
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         # Capability: enforce logprobs support before issuing the request.
         if not self.supports_logprobs:
@@ -575,6 +689,10 @@ class OpenAIInterface:
                 logprobs=self.logprobs_top_k,
                 timeout=self.timeout,
             )
+            usage = getattr(response, "usage", None)
+            result["completion_tokens"] = getattr(usage, "completion_tokens", None) if usage else None
+            result["prompt_tokens"] = getattr(usage, "prompt_tokens", None) if usage else None
+            result["finish_reason"] = getattr(response.choices[0], "finish_reason", None)
 
             logprobs = getattr(response.choices[0], "logprobs", None)
             if not logprobs or not getattr(logprobs, "top_logprobs", None):
@@ -689,7 +807,15 @@ class OpenAIInterface:
         schema: Optional[Dict],
         sample_id: str,
     ) -> Dict:
-        result = {"output": None, "raw": None, "error": None, "error_type": None}
+        result = {
+            "output": None,
+            "raw": None,
+            "error": None,
+            "error_type": None,
+            "finish_reason": None,
+            "completion_tokens": None,
+            "prompt_tokens": None,
+        }
 
         if schema:
             schema_str = json.dumps(schema, indent=2)
@@ -709,6 +835,7 @@ class OpenAIInterface:
             )
 
             raw_output = response.content[0].text
+            result["finish_reason"] = getattr(response, "stop_reason", None)
             result["raw"] = raw_output
             if raw_output is None:
                 result["error"] = "Empty response content"

@@ -1,7 +1,6 @@
 """COPA-es (Choice of Plausible Alternatives) Spanish task."""
 
 from pathlib import Path
-from typing import Any, Dict, List
 
 from ..common import download_huggingface_dataset, save_to_jsonl
 from ..common import MultipleChoiceHandler

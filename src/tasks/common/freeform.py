@@ -5,6 +5,95 @@ This handler encapsulates logic for freeform text generation tasks including:
 - F1 score calculation
 - BLEU score (optional)
 - Text normalization
+
+## CLI Usage
+
+Create freeform generation tasks directly from the CLI:
+
+```bash
+# Question answering
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name squad \
+  --dataset-split validation \
+  --dataset-input-field question \
+  --dataset-output-field answer \
+  --user-prompt-template "Context: {context}\n\nQuestion: {question}\n\nAnswer:" \
+  --limit 10
+
+# Summarization
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name cnn_dailymail \
+  --dataset-input-field article \
+  --dataset-output-field summary \
+  --system-prompt "Summarize the following article concisely." \
+  --limit 10
+
+# Local JSONL dataset
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name ./data/qa_pairs.jsonl \
+  --dataset-source local \
+  --user-prompt-template "Q: {text}\nA:" \
+  --limit 10
+
+# Translation
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name wmt14 \
+  --dataset-input-field source \
+  --dataset-output-field target \
+  --system-prompt "Translate the following text from English to Spanish." \
+  --limit 10
+```
+
+## Dataset Format
+
+**Minimum required fields**:
+```jsonl
+{"id": "1", "text": "What is AI?", "expected": "AI is artificial intelligence..."}
+{"id": "2", "text": "Explain ML", "expected": "ML is machine learning..."}
+```
+
+**With custom field names** (use --dataset-*-field flags):
+```jsonl
+{"sample_id": "1", "question": "What is AI?", "answer": "AI is..."}
+```
+
+**With additional context fields**:
+```jsonl
+{"id": "1", "context": "Background info...", "question": "What is...?", "expected": "Answer..."}
+```
+
+Use prompt template to include context:
+```bash
+--user-prompt-template "Context: {context}\n\nQuestion: {question}\n\nAnswer:"
+```
+
+## Metrics
+
+- **ExactMatch**: Binary metric (0 or 1) for exact string match after normalization
+- **F1Score**: Token-level F1 score (precision and recall of tokens)
+- **BLEU** (optional): N-gram based similarity metric
+
+### Text Normalization
+
+By default, predictions and references are normalized before comparison:
+- Convert to lowercase (unless case_sensitive=True)
+- Remove extra whitespace
+- Strip punctuation (configurable)
+- Remove accents (configurable)
+
+This ensures fair comparison while accounting for minor formatting differences.
+
+## Use Cases
+
+**Question Answering**: Compare generated answers to reference answers
+**Summarization**: Evaluate summary quality against reference summaries
+**Translation**: Compare translations to reference translations
+**Creative Writing**: Evaluate generated text against examples
+**Code Generation**: Compare generated code to reference implementations
 """
 
 from __future__ import annotations
@@ -43,11 +132,39 @@ class FreeformHandler(BaseHandler):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the freeform handler."""
+        # Apply config overrides BEFORE calling super().__init__
+        if config:
+            self._apply_config_overrides(config)
+        
         super().__init__(config)
 
         # Set default metrics if not provided
         if not self.metrics:
             self.metrics = [ExactMatch(), F1Score()]
+    
+    def _apply_config_overrides(self, config: Dict[str, Any]):
+        """Apply configuration overrides to handler attributes.
+        
+        This allows CLI/config-driven tasks to work with the same handler
+        as Python-defined tasks.
+        """
+        dataset_config = config.get("dataset", {})
+        
+        # Field mappings
+        if "input_field" in dataset_config:
+            self.text_field = dataset_config["input_field"]
+        if "output_field" in dataset_config:
+            self.label_field = dataset_config["output_field"]
+        
+        # Prompts
+        if "system_prompt" in config:
+            self.system_prompt = config["system_prompt"]
+        if "user_prompt_template" in config:
+            self.user_prompt_template = config["user_prompt_template"]
+        
+        # Multimodal support
+        if dataset_config.get("multimodal_input"):
+            self.requires_multimodal = True
 
     def preprocess_sample(
         self, raw_sample: Dict[str, Any], idx: int

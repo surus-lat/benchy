@@ -10,6 +10,6 @@ capability_requirements:
 subtasks:
   facturas_argentinas:
     description: Extract structured invoice data from Argentinian factura images
-    dataset_url: https://huggingface.co/datasets/mauroibz/facturas-argentinas
+    dataset_url: https://huggingface.co/datasets/mauroibz/facturas_argentinas_2
     long_description: "Facturas Argentinas evaluates vision-language models on extracting structured data from Argentinian invoice images. The model must return JSON that strictly matches the provided invoice schema (schema.json). Ground truth targets are provided in facturas.json and images in jpg/."
 

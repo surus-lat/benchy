@@ -1,19 +1,12 @@
-"""Task registry and simple runner helpers.
-
-This module provides task discovery capabilities:
-- Convention-based discovery for format handler tasks (new system)
-- JSON config entrypoint discovery for SimpleTask-based tasks (legacy)
-- Build generic TaskGroupSpec to run tasks through the engine
-"""
+"""Task registry and runner helpers for handler-based tasks."""
 
 from __future__ import annotations
 
 import importlib
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -21,139 +14,12 @@ from .group_runner import SubtaskContext, TaskGroupSpec, run_task_group
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True)
-class RegisteredTask:
-    """Metadata for a registered SimpleTask entrypoint."""
-
-    name: str
-    entrypoint: str
-    display_name: str
-    provider_types: Optional[list]
-    output_subdir: str
-
-
-def is_simple_task_config(task_config: Dict[str, Any]) -> bool:
-    # SimpleTask configs are identified by a class entrypoint.
-    return bool(task_config.get("entrypoint"))
+_INTERNAL_TASK_GROUPS = {"common"}
 
 
 def _tasks_root() -> Path:
-    # Task configs live under src/tasks/*/task.json.
+    # Task modules live under src/tasks/*.
     return Path(__file__).resolve().parent
-
-
-@lru_cache(maxsize=1)
-def load_registry() -> Dict[str, RegisteredTask]:
-    # Scan task.json files and collect entrypoint metadata.
-    tasks_root = _tasks_root()
-    registry: Dict[str, RegisteredTask] = {}
-    for task_path in tasks_root.rglob("task.json"):
-        if task_path.parent.name == "_template":
-            continue
-        try:
-            import json
-            with open(task_path, "r") as handle:
-                task_config = json.load(handle)
-        except Exception:
-            continue
-        entrypoint = task_config.get("entrypoint")
-        if not entrypoint:
-            continue
-        name = task_config.get("name")
-        if not name:
-            continue
-        display_name = task_config.get("display_name", name)
-        provider_types = task_config.get("provider_types")
-        output_subdir = task_config.get("output", {}).get("subdirectory", name)
-        registry[name] = RegisteredTask(
-            name=name,
-            entrypoint=entrypoint,
-            display_name=display_name,
-            provider_types=provider_types,
-            output_subdir=output_subdir,
-        )
-    return registry
-
-
-def get_registered_task(task_name: str) -> Optional[RegisteredTask]:
-    # Cached lookup for registered entrypoints.
-    return load_registry().get(task_name)
-
-
-def resolve_entrypoint(entrypoint: str) -> Any:
-    """Resolve a module:attribute entrypoint.
-
-    Returns a class or function, depending on the entrypoint target.
-    """
-    if ":" not in entrypoint:
-        raise ValueError(f"Invalid entrypoint '{entrypoint}'. Expected 'module:attribute'.")
-    module_path, attr = entrypoint.split(":", 1)
-    module = importlib.import_module(module_path)
-    resolved = getattr(module, attr, None)
-    if resolved is None:
-        raise ValueError(f"Entrypoint '{entrypoint}' did not resolve to a symbol.")
-    return resolved
-
-
-def build_simple_task_spec(task_config: Dict[str, Any]) -> TaskGroupSpec:
-    # Build a TaskGroupSpec that instantiates the SimpleTask class.
-    entrypoint = task_config.get("entrypoint")
-    if not entrypoint:
-        raise ValueError("Task config missing entrypoint for SimpleTask.")
-    task_class = resolve_entrypoint(entrypoint)
-
-    def _prepare_task(context: SubtaskContext):
-        # Provide task.json config as-is to the SimpleTask constructor.
-        merged_config = dict(context.task_config)
-        merged_config["dataset"] = context.task_config.get("dataset", {})
-        merged_config["prompts"] = context.task_config.get("prompts", {})
-        return task_class(merged_config)
-
-    display_name = task_config.get("display_name") or task_config.get("name", "Simple Task")
-    output_subdir = task_config.get("output", {}).get("subdirectory", task_config.get("name", "task"))
-
-    return TaskGroupSpec(
-        name=task_config.get("name", "simple_task"),
-        display_name=display_name,
-        output_subdir=output_subdir,
-        supports_subtasks=False,
-        prepare_task=_prepare_task,
-    )
-
-
-def run_simple_task(
-    *,
-    model_name: str,
-    output_path: str,
-    server_info: Optional[Dict[str, Any]],
-    api_test_result: Dict[str, Any],
-    task_config: Dict[str, Any],
-    limit: Optional[int] = None,
-    cuda_devices: Optional[str] = None,
-    provider_config: Optional[Dict[str, Any]] = None,
-    compatibility_mode: str = "skip",
-) -> Dict[str, Any]:
-    """Run a SimpleTask using the generic task group runner.
-
-    This mirrors the signature of run_* wrappers so the pipeline can call it.
-    """
-    spec = build_simple_task_spec(task_config)
-    return run_task_group(
-        spec=spec,
-        model_name=model_name,
-        output_path=output_path,
-        server_info=server_info,
-        task_config=task_config,
-        limit=limit,
-        provider_config=provider_config,
-        compatibility_mode=compatibility_mode,
-    )
-
-
-# ============================================================================
-# NEW CONVENTION-BASED DISCOVERY SYSTEM
-# ============================================================================
 
 
 @dataclass(frozen=True)
@@ -348,6 +214,10 @@ def _is_subtask_file(file_path: Path) -> bool:
     return True
 
 
+def _is_internal_task_group(group_name: str) -> bool:
+    return group_name.startswith("_") or group_name in _INTERNAL_TASK_GROUPS
+
+
 def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
     """Discover a task group using convention-based file scanning.
     
@@ -361,6 +231,9 @@ def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
     Returns:
         TaskGroupInfo if found and using new convention, None otherwise
     """
+    if _is_internal_task_group(group_name):
+        return None
+
     tasks_root = _tasks_root()
     group_dir = tasks_root / group_name
 
@@ -368,7 +241,10 @@ def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
         return None
 
     # Check if this is a convention-based task group (has subtask .py files)
-    subtask_files = [f for f in group_dir.glob("*.py") if _is_subtask_file(f)]
+    subtask_files = sorted(
+        (f for f in group_dir.glob("*.py") if _is_subtask_file(f)),
+        key=lambda p: p.name,
+    )
     if not subtask_files:
         return None
 
@@ -409,6 +285,255 @@ def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
         subtasks=subtasks,
         metadata=metadata,
         metadata_file=metadata_file if metadata_file.exists() else None,
+    )
+
+
+def list_handler_task_groups() -> List[str]:
+    """List discoverable handler-based task groups."""
+    tasks_root = _tasks_root()
+    if not tasks_root.exists():
+        return []
+
+    groups: List[str] = []
+    for group_dir in sorted(tasks_root.iterdir(), key=lambda p: p.name):
+        if not group_dir.is_dir():
+            continue
+        group_name = group_dir.name
+        if _is_internal_task_group(group_name):
+            continue
+        if discover_task_group(group_name):
+            groups.append(group_name)
+    return groups
+
+
+def build_handler_task_config(
+    task_ref: str,
+    task_defaults_overrides: Optional[Dict[str, Any]] = None,
+    adhoc_task_configs: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build a task config payload for a handler-based task reference.
+    
+    Args:
+        task_ref: Task reference (e.g., "classify.environmental_claims" or "_adhoc_classification_abc123")
+        task_defaults_overrides: Optional defaults to override
+        adhoc_task_configs: Optional ad-hoc task configurations from config["task_configs"]
+        
+    Returns:
+        Task configuration dict
+    """
+    # Check if this is an ad-hoc task
+    if task_ref.startswith("_adhoc_") and adhoc_task_configs and task_ref in adhoc_task_configs:
+        return build_adhoc_task_config(
+            task_ref,
+            adhoc_task_configs[task_ref],
+            task_defaults_overrides,
+        )
+    
+    # Regular handler-based task
+    parts = task_ref.split(".", 1)
+    group_name = parts[0]
+    specific_subtask = parts[1].replace("-", "_") if len(parts) > 1 else None
+
+    group_info = discover_task_group(group_name)
+    if not group_info:
+        raise ValueError(f"Unknown task '{task_ref}'. Handler-based task group not found.")
+
+    available_subtasks = [s.name for s in group_info.subtasks]
+    if specific_subtask:
+        if specific_subtask not in available_subtasks:
+            raise ValueError(f"Subtask '{specific_subtask}' not found in group '{group_name}'.")
+        tasks_to_run = [specific_subtask]
+    else:
+        tasks_to_run = available_subtasks
+
+    metadata = group_info.metadata or {}
+    defaults = dict(metadata.get("defaults") or {})
+    if task_defaults_overrides:
+        defaults.update(task_defaults_overrides)
+
+    task_configs = dict(metadata.get("task_configs") or {})
+    metadata_subtasks = metadata.get("subtasks") or {}
+    if isinstance(metadata_subtasks, dict):
+        for subtask_name, subtask_meta in metadata_subtasks.items():
+            if not isinstance(subtask_meta, dict):
+                continue
+
+            normalized_cfg = dict(subtask_meta)
+            dataset_cfg = dict(normalized_cfg.get("dataset") or {})
+
+            # Allow dataset fields directly in metadata.yaml subtask blocks.
+            for key in (
+                "dataset_url",
+                "repo_id",
+                "dataset_repo_id",
+                "source_dir",
+                "path",
+                "revision",
+                "token",
+                "auth_token",
+                "name",
+                "dataset_name",
+            ):
+                if key in normalized_cfg and key not in dataset_cfg:
+                    dataset_cfg[key] = normalized_cfg[key]
+
+            if dataset_cfg:
+                normalized_cfg["dataset"] = dataset_cfg
+
+            merged_cfg = dict(normalized_cfg)
+            explicit_cfg = task_configs.get(subtask_name)
+            if isinstance(explicit_cfg, dict):
+                merged_cfg.update(explicit_cfg)
+            task_configs[subtask_name] = merged_cfg
+
+    output_cfg = metadata.get("output")
+    if not isinstance(output_cfg, dict):
+        output_cfg = {"subdirectory": group_name}
+
+    return {
+        "name": group_info.name,
+        "display_name": group_info.display_name,
+        "description": group_info.description,
+        "tasks": tasks_to_run,
+        "defaults": defaults,
+        "prompts": dict(metadata.get("prompts") or {}),
+        "task_configs": task_configs,
+        "output": output_cfg,
+        "capability_requirements": dict(metadata.get("capability_requirements") or {}),
+        "metrics_manifest": metadata.get("metrics_manifest", []),
+    }
+
+
+def build_adhoc_task_config(
+    task_name: str,
+    task_config: Dict[str, Any],
+    task_defaults_overrides: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build configuration for an ad-hoc task.
+    
+    Args:
+        task_name: Name of the ad-hoc task (e.g., "_adhoc_classification_abc123")
+        task_config: Task configuration from config["task_configs"]
+        task_defaults_overrides: Optional defaults to override
+        
+    Returns:
+        Task configuration dict compatible with registry
+    """
+    from src.tasks.common import build_task_metadata, apply_defaults
+    
+    # Extract task type from name
+    # Format: _adhoc_{task_type}_{hash}
+    parts = task_name.split("_")
+    if len(parts) >= 3 and parts[0] == "" and parts[1] == "adhoc":
+        task_type = parts[2]
+    else:
+        raise ValueError(f"Invalid ad-hoc task name format: {task_name}")
+    
+    # Apply defaults to task_config (adds default field mappings)
+    task_config_with_defaults = apply_defaults(task_type, dict(task_config))
+    
+    # Build metadata using task_config_schema
+    metadata = build_task_metadata(task_type, task_config_with_defaults)
+    
+    # Apply defaults overrides
+    defaults = dict(task_config_with_defaults.get("defaults", {}))
+    if task_defaults_overrides:
+        defaults.update(task_defaults_overrides)
+    
+    # Merge dataset config from task_config
+    if "dataset" in task_config_with_defaults:
+        defaults["dataset"] = task_config_with_defaults["dataset"]
+    
+    # Build subtask name (ad-hoc tasks have a single subtask)
+    subtask_name = "main"
+    
+    return {
+        "name": task_name,
+        "display_name": metadata["display_name"],
+        "description": metadata["description"],
+        "tasks": [subtask_name],
+        "defaults": defaults,
+        "prompts": task_config.get("prompts", {}),
+        "task_configs": {
+            subtask_name: task_config
+        },
+        "output": {"subdirectory": task_name},
+        "capability_requirements": metadata.get("capability_requirements", {}),
+        "metrics_manifest": metadata.get("metrics_manifest", []),
+        "_adhoc": True,  # Mark as ad-hoc for special handling
+        "_task_type": task_type,  # Store task type for handler loading
+    }
+
+
+def build_adhoc_task_spec(
+    task_name: str,
+    task_config: Dict[str, Any],
+    task_defaults_overrides: Optional[Dict[str, Any]] = None,
+) -> TaskGroupSpec:
+    """Build a TaskGroupSpec for an ad-hoc task.
+    
+    Args:
+        task_name: Name of the ad-hoc task
+        task_config: Task configuration
+        task_defaults_overrides: Optional defaults to override
+        
+    Returns:
+        TaskGroupSpec for the ad-hoc task
+    """
+    from src.tasks.common import get_handler_class
+    
+    # Extract task type
+    parts = task_name.split("_")
+    if len(parts) >= 3 and parts[0] == "" and parts[1] == "adhoc":
+        task_type = parts[2]
+    else:
+        raise ValueError(f"Invalid ad-hoc task name format: {task_name}")
+    
+    # Get the handler class for this task type
+    handler_class = get_handler_class(task_type)
+    
+    # Build config
+    config_dict = build_adhoc_task_config(task_name, task_config, task_defaults_overrides)
+    
+    def _prepare_task(context: SubtaskContext):
+        """Prepare an ad-hoc task handler."""
+        # Merge defaults with subtask config
+        def _merge_dict(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+            result = dict(default)
+            for key, value in override.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    result[key] = _merge_dict(result[key], value)
+                else:
+                    result[key] = value
+            return result
+        
+        dataset_config = _merge_dict(
+            context.defaults.get("dataset", {}),
+            context.subtask_config.get("dataset", {})
+        )
+        
+        handler_config = {
+            "subtask_name": context.subtask_name,
+            "dataset": dataset_config,
+            "prompts": context.subtask_config.get("prompts", context.prompts),
+            "metrics": context.subtask_config.get("metrics", {}),
+            "capability_requirements": context.task_config.get("capability_requirements", {}),
+        }
+        
+        # Add prompts to handler config
+        if "system_prompt" in task_config:
+            handler_config["system_prompt"] = task_config["system_prompt"]
+        if "user_prompt_template" in task_config:
+            handler_config["user_prompt_template"] = task_config["user_prompt_template"]
+        
+        # Instantiate handler
+        return handler_class(handler_config)
+    
+    return TaskGroupSpec(
+        name=config_dict["name"],
+        display_name=config_dict["display_name"],
+        default_subtasks=config_dict["tasks"],
+        prepare_task=_prepare_task,
     )
 
 
@@ -478,11 +603,32 @@ def build_handler_task_spec(
         if isinstance(subtask_reqs, dict):
             capability_requirements.update(subtask_reqs)
 
+        # Merge defaults with subtask_config for dataset, prompts, and metrics
+        # Priority: subtask_config > defaults
+        def _merge_dict(default: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+            """Deep merge two dicts, with override taking precedence."""
+            result = dict(default)
+            for key, value in override.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    result[key] = _merge_dict(result[key], value)
+                else:
+                    result[key] = value
+            return result
+
+        dataset_config = _merge_dict(
+            context.defaults.get("dataset", {}),
+            context.subtask_config.get("dataset", {})
+        )
+        metrics_config = _merge_dict(
+            context.defaults.get("metrics", {}),
+            context.subtask_config.get("metrics", {})
+        )
+
         handler_config = {
             "subtask_name": context.subtask_name,
-            "dataset": context.subtask_config.get("dataset", {}),
+            "dataset": dataset_config,
             "prompts": context.subtask_config.get("prompts", context.prompts),
-            "metrics": context.subtask_config.get("metrics", {}),
+            "metrics": metrics_config,
             "capability_requirements": capability_requirements,
         }
 
@@ -537,7 +683,7 @@ def discover_and_run_handler_task(
     """Discover and run a convention-based handler task.
     
     Args:
-        task_ref: Task reference like "classify" or "classify.diag_test"
+        task_ref: Task reference like "classify", "classify.diag_test", or "_adhoc_classification_abc123"
         model_name: Model to evaluate
         output_path: Output directory
         server_info: Server info for vLLM
@@ -553,19 +699,33 @@ def discover_and_run_handler_task(
             return value
         return value.replace("-", "_")
 
-    # Parse task reference
-    parts = task_ref.split(".")
-    group_name = parts[0]
-    subtask_name_raw = parts[1] if len(parts) > 1 else None
-    subtask_name = _normalize_subtask_ref(subtask_name_raw)
+    # Check if this is an ad-hoc task
+    if task_ref.startswith("_adhoc_"):
+        # Build spec for ad-hoc task
+        adhoc_config = task_config.get("task_configs", {}).get(task_ref, {})
+        if not adhoc_config:
+            # Try to get from defaults (for CLI-created tasks)
+            adhoc_config = task_config.get("defaults", {})
+        
+        spec = build_adhoc_task_spec(
+            task_ref,
+            adhoc_config,
+            task_config.get("defaults"),
+        )
+    else:
+        # Parse task reference
+        parts = task_ref.split(".")
+        group_name = parts[0]
+        subtask_name_raw = parts[1] if len(parts) > 1 else None
+        subtask_name = _normalize_subtask_ref(subtask_name_raw)
 
-    # Discover task group
-    group_info = discover_task_group(group_name)
-    if not group_info:
-        raise ValueError(f"Task group '{group_name}' not found or not using convention system")
+        # Discover task group
+        group_info = discover_task_group(group_name)
+        if not group_info:
+            raise ValueError(f"Task group '{group_name}' not found or not using convention system")
 
-    # Build spec
-    spec = build_handler_task_spec(group_info, subtask_name)
+        # Build spec
+        spec = build_handler_task_spec(group_info, subtask_name)
 
     # If specific subtask requested, update task_config
     if subtask_name:
@@ -592,11 +752,15 @@ def is_handler_based_task(task_name: str) -> bool:
     """Check if a task uses the convention-based handler system.
     
     Args:
-        task_name: Name of the task (e.g., "classify")
+        task_name: Name of the task (e.g., "classify" or "_adhoc_classification_abc123")
         
     Returns:
         True if task uses handler system, False otherwise
     """
+    # Ad-hoc tasks are handler-based
+    if task_name.startswith("_adhoc_"):
+        return True
+    
     group_name = task_name.split(".")[0]
     group_info = discover_task_group(group_name)
     return group_info is not None

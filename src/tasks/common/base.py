@@ -166,12 +166,20 @@ class BaseHandler:
     def load_dataset(self) -> List[Dict[str, Any]]:
         """Load and preprocess the dataset.
         
-        If dataset path is set, downloads from HuggingFace and caches locally.
-        Otherwise loads from local JSONL file.
+        If config provides dataset configuration, uses DatasetAdapter for unified loading.
+        Otherwise falls back to legacy behavior (HuggingFace download or local JSONL).
         
         Returns:
             List of preprocessed samples
         """
+        # NEW: Use DatasetAdapter if config specifies dataset
+        if self.config and "dataset" in self.config:
+            from .dataset_adapters import DatasetAdapter
+            logger.info("Using DatasetAdapter for config-driven dataset loading")
+            adapter = DatasetAdapter()
+            return adapter.load(self.config["dataset"], self.data_dir)
+        
+        # EXISTING: Legacy behavior for class-based tasks
         # Check for cached data first
         if self.data_file.exists():
             logger.info(f"Loading cached dataset from {self.data_file}")
@@ -368,4 +376,20 @@ class BaseHandler:
                 aggregated[key] = sum(values) / len(values)
 
         return aggregated
+
+    def build_additional_artifacts(
+        self,
+        *,
+        results: Dict[str, Any],
+        output_dir: Path,
+        safe_model_name: str,
+        timestamp: str,
+        task_name: str,
+    ) -> List[Path]:
+        """Optionally write task-specific artifacts after benchmark completion.
+
+        Handlers can override this to emit additional reports using the same
+        benchmark output directory and naming convention.
+        """
+        return []
 

@@ -6,6 +6,7 @@ Generate reference task metadata files from per-task configs.
 import json
 from pathlib import Path
 from typing import Dict, Any, Iterable, Tuple, List
+import yaml
 
 
 DEFAULT_GROUP_ORDER = [
@@ -17,14 +18,47 @@ DEFAULT_GROUP_ORDER = [
 
 
 def _iter_task_configs(tasks_root: Path) -> Iterable[Tuple[Path, Dict[str, Any]]]:
-    for config_path in sorted(tasks_root.rglob("task.json")):
-        if config_path.parent.name == "_template":
+    # Handler format: src/tasks/<task>/metadata.yaml
+    for metadata_path in sorted(tasks_root.rglob("metadata.yaml")):
+        group_name = metadata_path.parent.name
+        if group_name.startswith("_") or group_name == "common":
             continue
         try:
-            config = json.loads(config_path.read_text())
-        except json.JSONDecodeError:
+            metadata = yaml.safe_load(metadata_path.read_text()) or {}
+        except yaml.YAMLError:
             continue
-        yield config_path, config
+        if not isinstance(metadata, dict):
+            continue
+
+        group_id = metadata.get("group")
+        if not group_id:
+            continue
+
+        subtasks = metadata.get("subtasks") or {}
+        if isinstance(subtasks, dict):
+            tasks = list(subtasks.keys())
+            task_metadata = metadata.get("task_metadata") or subtasks
+        elif isinstance(subtasks, list):
+            tasks = [task for task in subtasks if isinstance(task, str)]
+            task_metadata = metadata.get("task_metadata") or {}
+        else:
+            tasks = []
+            task_metadata = metadata.get("task_metadata") or {}
+
+        group_metadata = metadata.get("group_metadata")
+        if not group_metadata:
+            group_metadata = {
+                "name": metadata.get("display_name", group_name),
+                "description": metadata.get("description", ""),
+            }
+
+        yield metadata_path, {
+            "name": metadata.get("name", group_name),
+            "group": group_id,
+            "group_metadata": group_metadata,
+            "tasks": tasks,
+            "task_metadata": task_metadata,
+        }
 
 
 def _build_reference_payloads(tasks_root: Path) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -121,7 +155,7 @@ def main() -> None:
     parser.add_argument(
         "--tasks-root",
         default=None,
-        help="Root directory containing task.json configs (defaults to src/tasks)",
+        help="Root directory containing task metadata (defaults to src/tasks)",
     )
 
     args = parser.parse_args()

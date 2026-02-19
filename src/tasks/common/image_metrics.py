@@ -3,6 +3,54 @@
 These helpers are used by image manipulation tasks such as background removal,
 where evaluation compares a predicted cutout (often with alpha) to a ground-truth
 mask.
+
+External Usage Example:
+-----------------------
+The mask comparison metrics can be called from outside benchy to validate results:
+
+    from benchy.tasks.common import BackgroundRemovalMetrics
+    
+    # Initialize the metrics calculator
+    metrics = BackgroundRemovalMetrics()
+    
+    # Calculate metrics for a prediction (base64, bytes, or file path)
+    result, error = metrics.per_sample(
+        prediction="<base64_string_or_path_or_bytes>",
+        mask_path="/path/to/ground_truth_mask.png"
+    )
+    
+    # Check results
+    if error:
+        print(f"Error: {error}")
+    else:
+        print(f"IoU: {result['mask_iou']:.3f}")
+        print(f"Precision: {result['mask_precision']:.3f}")
+        print(f"Recall: {result['mask_recall']:.3f}")
+        print(f"F1: {result['mask_f1']:.3f}")
+        print(f"Accuracy: {result['mask_accuracy']:.3f}")
+        print(f"MAE: {result['mask_mae']:.3f}")
+
+Alternative - Using individual functions:
+    
+    from benchy.tasks.common import (
+        coerce_prediction_to_image_bytes,
+        predicted_image_to_mask,
+        load_mask_as_bool,
+        binary_mask_metrics,
+    )
+    
+    # Convert prediction to image bytes
+    img_bytes = coerce_prediction_to_image_bytes(prediction)
+    
+    # Extract foreground mask from alpha channel
+    pred_mask = predicted_image_to_mask(img_bytes, alpha_threshold=1)
+    
+    # Load ground truth mask
+    true_mask = load_mask_as_bool("/path/to/mask.png", threshold=127)
+    
+    # Calculate metrics
+    metrics = binary_mask_metrics(pred_mask, true_mask)
+    print(metrics)  # {'mask_iou': 0.95, 'mask_precision': 0.97, ...}
 """
 
 from __future__ import annotations
@@ -84,8 +132,24 @@ def coerce_prediction_to_image_bytes(prediction: Any) -> bytes:
                 "Got an image URL output; set provider config `image_response_format: b64_json` "
                 "or use a provider that returns base64 artifacts."
             )
-        if candidate and Path(candidate).exists():
-            return Path(candidate).read_bytes()
+        # Try to detect if it's a file path vs base64
+        # Base64 is typically very long and contains specific patterns
+        is_likely_path = (
+            len(candidate) < 500 and  # Paths are usually short
+            ("/" in candidate or "\\" in candidate or "." in candidate) and  # Path separators
+            not candidate.startswith(("iVBOR", "R0lGO", "/9j/", "AAAA"))  # Common base64 image headers
+        )
+        
+        if is_likely_path:
+            try:
+                path_obj = Path(candidate)
+                if path_obj.exists():
+                    return path_obj.read_bytes()
+            except (OSError, ValueError):
+                # Path invalid, fall through to base64 decoding
+                pass
+        
+        # Assume it's base64
         return decode_base64_image(candidate)
 
     raise ValueError(f"Unsupported prediction type: {type(prediction).__name__}")

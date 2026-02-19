@@ -8,7 +8,7 @@ This module provides the core infrastructure for running benchmarks:
 - Result handling and aggregation
 """
 
-from .benchmark_runner import BenchmarkRunner, run_benchmark, save_results, mark_task_complete
+from .benchmark_runner import BenchmarkRunner, run_benchmark, save_results
 from .protocols import BaseTask, BaseInterface, check_compatibility
 from .connection import build_connection_info, get_interface_for_provider
 from .checkpoint import (
@@ -23,7 +23,6 @@ __all__ = [
     "BenchmarkRunner",
     "run_benchmark",
     "save_results",
-    "mark_task_complete",
     # Protocols
     "BaseTask",
     "BaseInterface",
@@ -37,4 +36,3 @@ __all__ = [
     "save_checkpoint",
     "load_checkpoint",
 ]
-

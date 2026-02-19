@@ -48,6 +48,15 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["chat", "completions"],
     ),
+    "alibaba": InterfaceCapabilities(
+        # Alibaba DashScope compatible-mode is OpenAI-compatible.
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["chat", "completions"],
+    ),
     "surus": InterfaceCapabilities(
         supports_multimodal=False,
         supports_logprobs=False,
@@ -85,6 +94,14 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_logprobs=False,
         supports_schema=True,
         supports_files=False,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
+    "google": InterfaceCapabilities(
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=True,
         supports_streaming=False,
         request_modes=["raw_payload"],
     ),
@@ -182,11 +199,20 @@ def build_connection_info(
         # Image artifact generation (OpenAI-compatible images endpoints).
         "image_response_format": provider_config.get("image_response_format", model_config.get("image_response_format")),
         "image_size": provider_config.get("image_size", model_config.get("image_size")),
+        "image_max_edge": provider_config.get("image_max_edge", model_config.get("image_max_edge")),
         "image_artifact_fallback_to_chat": provider_config.get(
             "image_artifact_fallback_to_chat",
             model_config.get("image_artifact_fallback_to_chat", True),
         ),
+        # Tracks whether this was explicitly set by config/CLI (vs inferred defaults),
+        # so probes can auto-select when unspecified.
+        "use_structured_outputs_explicit": "use_structured_outputs" in provider_config,
     }
+    # Preserve explicit API keys (e.g. --api-key on CLI). Interfaces will
+    # still fall back to api_key_env if this is missing/empty.
+    if provider_config.get("api_key") is not None:
+        connection_info["api_key"] = provider_config.get("api_key")
+
     base_capabilities = PROVIDER_CAPABILITY_DEFAULTS.get(provider_type, InterfaceCapabilities())
     provider_capabilities = parse_interface_capabilities(
         provider_config.get("capabilities"),
@@ -216,7 +242,7 @@ def build_connection_info(
     elif provider_type == "openai":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.openai.com/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "OPENAI_API_KEY")
-        connection_info["use_structured_outputs"] = False
+        connection_info["use_structured_outputs"] = bool(provider_config.get("use_structured_outputs", False))
         
     elif provider_type == "anthropic":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.anthropic.com/v1")
@@ -226,6 +252,14 @@ def build_connection_info(
     elif provider_type == "together":
         connection_info["base_url"] = provider_config.get("base_url", "https://api.together.xyz/v1")
         connection_info["api_key_env"] = provider_config.get("api_key_env", "TOGETHER_API_KEY")
+        connection_info["use_structured_outputs"] = False
+
+    elif provider_type == "alibaba":
+        connection_info["base_url"] = provider_config.get(
+            "base_url",
+            "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        )
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "DASHSCOPE_API_KEY")
         connection_info["use_structured_outputs"] = False
         
     elif provider_type == "surus":
@@ -246,6 +280,16 @@ def build_connection_info(
     elif provider_type == "surus_classify":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
+        connection_info["use_structured_outputs"] = False
+
+    elif provider_type == "surus_remove_background":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
+        connection_info["use_structured_outputs"] = False
+    
+    elif provider_type == "google":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url", "https://generativelanguage.googleapis.com/v1"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "GOOGLE_API_KEY")
         connection_info["use_structured_outputs"] = False
         
     else:
@@ -286,6 +330,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 30),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -300,6 +345,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -314,6 +360,7 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 60),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
@@ -327,12 +374,32 @@ def get_interface_for_provider(
                 "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
                 "timeout": connection_info.get("timeout", 30),
                 "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
                 "capabilities": connection_info.get("capabilities"),
             }
         }
         return SurusClassifyInterface(surus_classify_config, model_name, "surus_classify")
+
+    elif provider_type == "surus_remove_background":
+        from ..interfaces.surus.surus_remove_background_interface import SurusRemoveBackgroundInterface
+        surus_remove_background_config = {
+            "surus_remove_background": {
+                "endpoint": connection_info["base_url"],
+                "api_key_env": connection_info.get("api_key_env", "SURUS_API_KEY"),
+                "timeout": connection_info.get("timeout", 60),
+                "max_retries": connection_info.get("max_retries", 3),
+                "image_max_edge": connection_info.get("image_max_edge"),
+                "capabilities": connection_info.get("capabilities"),
+            }
+        }
+        return SurusRemoveBackgroundInterface(surus_remove_background_config, model_name, "surus_remove_background")
+    
+    elif provider_type == "google":
+        # Use generic GoogleInterface (similar to OpenAIInterface pattern)
+        from ..interfaces.google.google_interface import GoogleInterface
+        return GoogleInterface(connection_info, model_name)
     
     else:
-        # Use OpenAIInterface for vllm, openai, anthropic, together
+        # Use OpenAIInterface for vllm/openai-compatible providers.
         from ..interfaces.openai_interface import OpenAIInterface
         return OpenAIInterface(connection_info, model_name)
