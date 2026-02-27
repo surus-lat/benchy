@@ -76,7 +76,7 @@ PROVIDER_CAPABILITY_DEFAULTS = {
     "surus_factura": InterfaceCapabilities(
         supports_multimodal=True,
         supports_logprobs=False,
-        supports_schema=False,
+        supports_schema=True,
         supports_files=True,
         supports_streaming=False,
         request_modes=["raw_payload"],
