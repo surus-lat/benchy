@@ -1,58 +1,11 @@
 """Simple configuration manager for merging model and provider configs."""
 
-import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Centralized task config schema for light validation and discoverability.
-TASK_CONFIG_SCHEMA = {
-    "field_descriptions": {
-        "name": "Unique task identifier used in configs and output paths.",
-        "display_name": "Human-readable task name used in logs and summaries.",
-        "description": "Short description of the task's purpose.",
-        "entrypoint": "SimpleTask class entrypoint (module:ClassName).",
-        "runner_entrypoint": "Runner entrypoint (module:run_fn) for grouped/custom tasks.",
-        "provider_types": "List of supported provider types for this task.",
-        "pipeline_overrides": "Optional pipeline flags (set_api_endpoint, set_generation_config).",
-        "task_format": "Task format: multiple_choice, freeform, structured, grouped.",
-        "defaults": "Task-level defaults (batch_size, timeout, max_tokens, etc.).",
-        "output": "Output directory settings (subdirectory).",
-        "metrics_manifest": "Aggregate metric keys to surface in run summaries.",
-        "capability_requirements": "Required/preferred interface capabilities.",
-        "prompts": "Prompt templates for LLM-style interfaces.",
-        "dataset": "Dataset config (data_file or dataset_path + split).",
-        "metrics": "Metric configuration (task-specific).",
-        "tasks": "Subtask name list for grouped tasks.",
-        "task_configs": "Per-subtask configuration overrides.",
-        "group": "Group identifier for leaderboards/collections.",
-        "group_metadata": "Group descriptions and metadata.",
-        "task_metadata": "Per-subtask metadata used in reporting.",
-        "source_dir": "Source data path for local datasets (e.g., images).",
-    },
-    "format_fields": {
-        # Additional allowed fields per task_format (currently none).
-        "multiple_choice": set(),
-        "freeform": set(),
-        "structured": set(),
-        "grouped": set(),
-    },
-    "required_fields": {
-        # Minimal requirements per format; the validator only warns.
-        "multiple_choice": {"dataset", "prompts"},
-        "freeform": {"dataset", "prompts"},
-        "structured": {"prompts"},
-        "grouped": {"tasks"},
-    },
-    "deprecated_fields": {
-        "task_name": "Deprecated top-level field. Use 'name' instead.",
-        "dataset_file": "Deprecated top-level field. Move under dataset.data_file.",
-        "dataset_name": "Deprecated top-level field. Move under dataset.dataset_name.",
-    },
-}
 
 
 class ConfigManager:
@@ -89,6 +42,11 @@ class ConfigManager:
         elif 'together' in model_config:
             self._merge_cloud_provider_config(model_config, 'together')
             model_config['provider_type'] = 'together'
+
+        # Handle Alibaba Cloud Model Studio config merging
+        elif 'alibaba' in model_config:
+            self._merge_cloud_provider_config(model_config, 'alibaba')
+            model_config['provider_type'] = 'alibaba'
         
         # Handle vLLM config merging
         elif 'vllm' in model_config:
@@ -143,7 +101,7 @@ class ConfigManager:
                     default_venv_path = str(current_dir / ".venv")
                     merged_vllm_config['vllm_venv_path'] = default_venv_path
                     logger.info("Using default vLLM version from main project environment")
-                    print(f"✅ Using default vLLM version from main project environment")
+                    print("✅ Using default vLLM version from main project environment")
                 
                 # Log what was overridden
                 if overrides:
@@ -205,7 +163,7 @@ class ConfigManager:
         
         Args:
             model_config: Model configuration dictionary to modify in-place
-            provider: Provider name ('openai' or 'anthropic')
+            provider: Provider name ('openai', 'anthropic', 'together', or 'alibaba')
         """
         provider_config = model_config[provider]
         
@@ -274,7 +232,7 @@ class ConfigManager:
         return [f.stem for f in models_dir.glob("*.yaml")]
 
     def _get_tasks_root(self) -> Path:
-        """Return the root directory that contains task.json configs."""
+        """Return the root directory that contains task definitions."""
         return Path(__file__).resolve().parent / "tasks"
 
     def _load_task_config_from_tasks_root(self, task_name: str) -> Dict[str, Any]:
@@ -283,17 +241,35 @@ class ConfigManager:
         if not tasks_root.exists():
             raise FileNotFoundError(f"Tasks directory not found: {tasks_root}")
 
-        for task_path in tasks_root.rglob("task.json"):
-            if task_path.parent.name == "_template":
-                continue
-            try:
-                with open(task_path, "r") as f:
-                    task_config = json.load(f)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid JSON in task config: {task_path}") from exc
+        metadata_path = tasks_root / task_name / "metadata.yaml"
+        if metadata_path.exists():
+            with open(metadata_path, "r") as f:
+                metadata = yaml.safe_load(f) or {}
+            if isinstance(metadata, dict):
+                subtasks = metadata.get("subtasks") or {}
+                if isinstance(subtasks, dict):
+                    task_list = list(subtasks.keys())
+                elif isinstance(subtasks, list):
+                    task_list = [task for task in subtasks if isinstance(task, str)]
+                else:
+                    task_list = []
 
-            if task_config.get("name") == task_name:
-                return task_config
+                output_cfg = metadata.get("output")
+                if not isinstance(output_cfg, dict):
+                    output_cfg = {"subdirectory": task_name}
+
+                return {
+                    "name": metadata.get("name", task_name),
+                    "display_name": metadata.get("display_name", task_name.replace("_", " ").title()),
+                    "description": metadata.get("description", ""),
+                    "tasks": task_list,
+                    "defaults": {},
+                    "prompts": {},
+                    "task_configs": {},
+                    "output": output_cfg,
+                    "capability_requirements": metadata.get("capability_requirements", {}),
+                    "metrics_manifest": metadata.get("metrics_manifest", []),
+                }
 
         raise FileNotFoundError(f"Task config not found for: {task_name}")
 
@@ -309,8 +285,6 @@ class ConfigManager:
             Task configuration dictionary with overrides applied
         """
         task_config = self._load_task_config_from_tasks_root(task_name)
-        # Run lightweight validation to surface schema drift early.
-        self._validate_task_config(task_config, task_name)
         
         # Apply task defaults overrides if provided
         if task_defaults_overrides:
@@ -322,72 +296,12 @@ class ConfigManager:
                 task_config['defaults'] = task_defaults_overrides
         
         return task_config
-
-    def _validate_task_config(self, task_config: Dict[str, Any], task_name: str) -> None:
-        """Warn on missing/unknown fields for task configs.
-
-        This keeps config shape discoverable without hard failures during migration.
-        """
-        format_name = task_config.get("task_format")
-        # Keep warnings limited to configs that define entrypoints (i.e., runnable tasks).
-        if not task_config.get("entrypoint") and not task_config.get("runner_entrypoint"):
-            return
-        if not format_name:
-            logger.warning("Task config '%s' missing task_format.", task_name)
-
-        # Build the allowed field set from the centralized schema.
-        allowed_fields = set(TASK_CONFIG_SCHEMA["field_descriptions"].keys())
-        # Extend allowed fields for the declared task_format (if any).
-        format_fields = TASK_CONFIG_SCHEMA["format_fields"].get(format_name)
-        if format_fields:
-            allowed_fields |= set(format_fields)
-
-        # Report unknown keys once at load time.
-        unknown_fields = sorted(set(task_config.keys()) - allowed_fields)
-        if unknown_fields:
-            logger.warning(
-                "Task config '%s' has unknown fields: %s",
-                task_name,
-                ", ".join(unknown_fields),
-            )
-
-        # Report deprecated keys so they can be cleaned up.
-        for key, message in TASK_CONFIG_SCHEMA["deprecated_fields"].items():
-            if key in task_config:
-                logger.warning("Task config '%s' uses '%s': %s", task_name, key, message)
-
-        # Report missing format-required keys.
-        required_fields = TASK_CONFIG_SCHEMA["required_fields"].get(format_name, set())
-        missing_fields = [field for field in required_fields if field not in task_config]
-        if missing_fields:
-            logger.warning(
-                "Task config '%s' missing required fields for format '%s': %s",
-                task_name,
-                format_name,
-                ", ".join(missing_fields),
-            )
     
     def list_available_tasks(self) -> list:
-        """List all available task configurations."""
-        tasks_root = self._get_tasks_root()
+        """List all available handler-based task groups."""
+        from .tasks.registry import list_handler_task_groups
 
-        if not tasks_root.exists():
-            return []
-
-        task_names = []
-        for task_path in tasks_root.rglob("task.json"):
-            if task_path.parent.name == "_template":
-                continue
-            try:
-                with open(task_path, "r") as f:
-                    task_config = json.load(f)
-            except json.JSONDecodeError:
-                continue
-            name = task_config.get("name")
-            if name and name != "template_task":
-                task_names.append(name)
-
-        return sorted(set(task_names))
+        return list_handler_task_groups()
     
     def expand_task_groups(self, tasks: list, central_config: Dict[str, Any]) -> list:
         """

@@ -5,13 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import traceback
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from ..engine import BenchmarkRunner, build_connection_info, get_interface_for_provider, mark_task_complete, save_results
+from ..engine import BenchmarkRunner, build_connection_info, get_interface_for_provider, save_results
 from ..engine.protocols import BaseTask, check_compatibility
+from ..outcome import TASK_STATUS_ERROR, build_task_outcome
+from ..task_completion_checker import write_task_status
 
 logger = logging.getLogger(__name__)
 
@@ -126,11 +129,13 @@ def run_task_group(
     task_output_path = Path(output_path) / output_subdir
     task_output_path.mkdir(parents=True, exist_ok=True)
 
+    # Pass model output root (parent of task_output_path) for probe artifacts
+    model_output_root = Path(output_path)
     probe_report = _probe_and_configure_openai_interface(
         connection_info=connection_info,
         model_name=model_name,
         provider_type=provider_type,
-        output_dir=task_output_path,
+        output_dir=model_output_root,
     )
 
     defaults = task_config.get("defaults", {})
@@ -284,23 +289,56 @@ def run_task_group(
                 subtasks_to_run,
             )
 
-        mark_task_complete(task_output_path)
+        task_outcome = build_task_outcome(
+            task_name=spec.name,
+            aggregated_metrics=aggregated if isinstance(aggregated, dict) else {},
+            subtask_metrics=all_metrics,
+            skipped_subtasks=skipped_subtasks,
+        )
+        write_task_status(
+            task_output_path,
+            task_name=spec.name,
+            status=task_outcome["status"],
+            reason=task_outcome.get("reason"),
+            summary=task_outcome.get("summary"),
+            subtasks=task_outcome.get("subtasks"),
+        )
 
-        logger.info(f"{spec.display_name} evaluation completed successfully")
+        logger.info(f"{spec.display_name} evaluation completed with status={task_outcome['status']}")
 
         return {
             "model_name": model_name,
             "task": spec.name,
+            "status": task_outcome["status"],
+            "reason": task_outcome.get("reason"),
             "output_path": str(task_output_path),
             "metrics": aggregated,
             "subtask_metrics": all_metrics,
             "skipped_subtasks": skipped_subtasks,
+            "outcome": task_outcome,
         }
 
     except ConnectionError as exc:
+        write_task_status(
+            task_output_path,
+            task_name=spec.name,
+            status=TASK_STATUS_ERROR,
+            reason=str(exc),
+            details={"error_type": type(exc).__name__},
+        )
         logger.error(f"Connection failed: {exc}")
         raise
     except Exception as exc:
+        write_task_status(
+            task_output_path,
+            task_name=spec.name,
+            status=TASK_STATUS_ERROR,
+            reason=str(exc),
+            details={
+                "error_type": type(exc).__name__,
+                "traceback": traceback.format_exc(),
+            },
+        )
         logger.error(f"Error running {spec.name}: {type(exc).__name__}: {exc}")
         raise
     finally:
@@ -360,13 +398,17 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
     runner = BenchmarkRunner(task_instance, interface, runner_config)
     results = await runner.run(limit=context.limit, no_resume=False)
 
+    # Get task answer type for special handling (e.g., image artifacts)
+    task_answer_type = getattr(task_instance, "answer_type", None)
+
     save_results(
         results=results,
         output_dir=context.subtask_output_dir,
         model_name=context.model_name,
+        task_answer_type=task_answer_type,
         task_name=task_instance.get_task_name(),
         log_samples=context.defaults.get("log_samples", False),
-        mark_complete=False,
+        task_instance=task_instance,
     )
 
     return results
@@ -380,32 +422,52 @@ def _probe_and_configure_openai_interface(
     output_dir: Path,
 ) -> Optional[Dict[str, Any]]:
     """Probe OpenAI-style interfaces for supported request modes once per task group."""
-    if provider_type not in {"vllm", "openai", "anthropic", "together"}:
+    if provider_type not in {"vllm", "openai", "anthropic", "together", "alibaba"}:
         return None
 
     request_modes = (connection_info.get("capabilities") or {}).get("request_modes") or []
     if not request_modes or "raw_payload" in request_modes:
         return None
 
-    # Probe chat/completions/logprobs once and update connection_info for the run.
-    report = asyncio.run(_probe_openai_interface(connection_info, model_name, request_modes))
+    # Delegate to probe module for capability detection
+    from ..probe import run_probe_for_eval
+    
+    report = asyncio.run(run_probe_for_eval(connection_info, model_name))
     _apply_probe_results(connection_info, report)
     _write_probe_report(output_dir, report)
     _log_probe_report(report)
     return report
 
 
+# ============================================================================
+# DEPRECATED: Old probe functions - now handled by src/probe module
+# These are kept temporarily for reference but are no longer used
+# ============================================================================
+
 async def _probe_openai_interface(
     connection_info: Dict[str, Any],
     model_name: str,
     request_modes: List[str],
 ) -> Dict[str, Any]:
-    """Probe OpenAI-style endpoints (chat/completions/logprobs)."""
+    """DEPRECATED: Use src.probe.run_probe_for_eval() instead.
+    
+    Probe OpenAI-style endpoints (chat/completions/logprobs)."""
+    schema_forced = bool(connection_info.get("use_structured_outputs_explicit"))
+    schema_requested = (
+        "structured_outputs" if connection_info.get("use_structured_outputs") else "response_format"
+    )
+    if not schema_forced:
+        schema_requested = "auto"
+
     report: Dict[str, Any] = {
         "model_name": model_name,
         "provider_type": connection_info.get("provider_type"),
         "base_url": connection_info.get("base_url"),
         "api_endpoint_requested": connection_info.get("api_endpoint") or "auto",
+        "schema_transport_requested": schema_requested,
+        "schema_transport_forced": schema_forced,
+        "schema_transports": {},
+        "selected_schema_transport": None,
         "modes": {},
         "selected_api_endpoint": None,
     }
@@ -435,6 +497,28 @@ async def _probe_openai_interface(
             use_logprobs=True,
         )
 
+    supports_schema = bool((connection_info.get("capabilities") or {}).get("supports_schema"))
+    if supports_schema and "chat" in request_modes:
+        report["schema_transports"]["structured_outputs"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="chat",
+            use_logprobs=False,
+            schema_transport="structured_outputs",
+        )
+        report["schema_transports"]["response_format"] = await _probe_openai_mode(
+            connection_info,
+            model_name,
+            api_endpoint="chat",
+            use_logprobs=False,
+            schema_transport="response_format",
+        )
+
+    report["selected_schema_transport"] = _select_schema_transport(
+        report.get("schema_transport_requested") or "auto",
+        report.get("schema_transports") or {},
+    )
+
     report["selected_api_endpoint"] = _select_api_endpoint(
         report["api_endpoint_requested"],
         report["modes"],
@@ -448,6 +532,7 @@ async def _probe_openai_mode(
     *,
     api_endpoint: str,
     use_logprobs: bool,
+    schema_transport: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a single probe call for a request mode."""
     from ..interfaces.openai_interface import OpenAIInterface
@@ -455,9 +540,13 @@ async def _probe_openai_mode(
     probe_info = deepcopy(connection_info)
     probe_info["api_endpoint"] = api_endpoint
     probe_info["max_tokens"] = min(int(probe_info.get("max_tokens", 16)), 16)
+    if schema_transport == "structured_outputs":
+        probe_info["use_structured_outputs"] = True
+    elif schema_transport == "response_format":
+        probe_info["use_structured_outputs"] = False
 
     interface = OpenAIInterface(probe_info, model_name)
-    request = _build_probe_request(use_logprobs=use_logprobs)
+    request = _build_probe_request(use_logprobs=use_logprobs, schema_transport=schema_transport)
     try:
         results = await interface.generate_batch([request])
     finally:
@@ -466,15 +555,16 @@ async def _probe_openai_mode(
             await close_fn()
 
     result = results[0] if results else {}
-    ok = _probe_success(result)
+    ok = _probe_schema_transport_success(result) if schema_transport else _probe_success(result)
     return {
         "ok": ok,
         "error": result.get("error"),
         "error_type": result.get("error_type"),
+        "schema_transport": schema_transport,
     }
 
 
-def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
+def _build_probe_request(*, use_logprobs: bool, schema_transport: Optional[str] = None) -> Dict[str, Any]:
     """Build a minimal probe request for mode detection."""
     if use_logprobs:
         return {
@@ -484,6 +574,20 @@ def _build_probe_request(*, use_logprobs: bool) -> Dict[str, Any]:
             "sample_id": "probe_logprobs",
             "use_logprobs": True,
             "choices": ["A", "B"],
+        }
+    if schema_transport:
+        return {
+            "system_prompt": "",
+            "user_prompt": "Return JSON with field `ok` and value `yes`.",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"ok": {"type": "string"}},
+                "required": ["ok"],
+            },
+            "sample_id": f"probe_schema_{schema_transport}",
+            "use_logprobs": False,
+            "choices": None,
         }
     return {
         "system_prompt": "",
@@ -507,6 +611,16 @@ def _probe_success(result: Dict[str, Any]) -> bool:
     return True
 
 
+def _probe_schema_transport_success(result: Dict[str, Any]) -> bool:
+    """Return True when schema transport appears accepted by the endpoint."""
+    if result.get("output") is not None:
+        return True
+    raw = result.get("raw")
+    if isinstance(raw, str) and raw.strip():
+        return True
+    return False
+
+
 def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Optional[str]:
     """Select the best available endpoint based on probe results."""
     preferred = requested or "auto"
@@ -525,6 +639,28 @@ def _select_api_endpoint(requested: str, modes: Dict[str, Dict[str, Any]]) -> Op
     return None
 
 
+def _select_schema_transport(
+    requested: str,
+    schema_transports: Dict[str, Dict[str, Any]],
+) -> Optional[str]:
+    """Select best schema transport based on probe results."""
+    preferred = requested or "auto"
+    if preferred in ("structured_outputs", "response_format"):
+        if schema_transports.get(preferred, {}).get("ok"):
+            return preferred
+        fallback = "response_format" if preferred == "structured_outputs" else "structured_outputs"
+        if schema_transports.get(fallback, {}).get("ok"):
+            return fallback
+        return preferred
+
+    # Auto mode preference: guided decoding first, then response_format.
+    if schema_transports.get("structured_outputs", {}).get("ok"):
+        return "structured_outputs"
+    if schema_transports.get("response_format", {}).get("ok"):
+        return "response_format"
+    return None
+
+
 def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]) -> None:
     """Apply probe-derived endpoint/logprobs support to connection_info."""
     selected = report.get("selected_api_endpoint")
@@ -539,12 +675,198 @@ def _apply_probe_results(connection_info: Dict[str, Any], report: Dict[str, Any]
         capabilities["supports_logprobs"] = supports_logprobs
         connection_info["capabilities"] = capabilities
 
+    selected_schema_transport = report.get("selected_schema_transport")
+    schema_forced = bool(report.get("schema_transport_forced"))
+    requested_schema_transport = report.get("schema_transport_requested")
+    if selected_schema_transport:
+        connection_info["disable_api_schema"] = False
+        if schema_forced:
+            if requested_schema_transport != selected_schema_transport:
+                logger.warning(
+                    "Schema transport forced to %s but probe prefers %s; keeping forced setting.",
+                    requested_schema_transport,
+                    selected_schema_transport,
+                )
+        else:
+            connection_info["use_structured_outputs"] = selected_schema_transport == "structured_outputs"
+    elif not schema_forced:
+        # If probe found no reliable API-level schema transport, force prompt-only schema handling.
+        connection_info["use_structured_outputs"] = False
+        connection_info["disable_api_schema"] = True
+    
+    # Apply parameter support detection from probe
+    param_check = report.get("checks", {}).get("param_support", {})
+    if param_check.get("status") in ("ok", "degraded"):
+        detected_param = param_check.get("evidence", {}).get("max_tokens_param")
+        if detected_param and detected_param != "unknown":
+            connection_info["max_tokens_param_name"] = detected_param
+            logger.info(f"Using {detected_param} (detected by probe)")
+
+
+def _generate_probe_summary_text(report: Dict[str, Any]) -> str:
+    """Generate human-readable probe summary text."""
+    lines = []
+    lines.append("=" * 60)
+    # Handle both full probe report and eval probe report formats
+    model = report.get('model') or report.get('model_name', 'unknown')
+    lines.append(f"Probe Report: {model}")
+    lines.append(f"Provider: {report.get('provider_type', 'unknown')} @ {report.get('base_url', 'unknown')}")
+    
+    # Status and duration only in full probe reports
+    if 'status' in report:
+        lines.append(f"Status: {report.get('status', 'unknown').upper()}")
+    if 'duration_s' in report:
+        duration = report.get('duration_s', 0)
+        if isinstance(duration, (int, float)):
+            lines.append(f"Duration: {duration:.1f} seconds")
+        else:
+            lines.append(f"Duration: {duration} seconds")
+    
+    lines.append("")
+    lines.append("Capabilities:")
+    
+    # Add capability checks from modes
+    modes = report.get("modes", {})
+    for mode_name, mode_result in modes.items():
+        if isinstance(mode_result, dict):
+            if not mode_result.get("tested"):
+                status = "[SKIP]"
+            else:
+                status = "[OK]" if mode_result.get("ok") else "[FAIL]"
+            display_name = mode_name.replace("_", " ").title()
+            lines.append(f"  {status} {display_name}")
+
+    transports = report.get("schema_transports", {})
+    has_transport_warn = False
+    for transport_name, transport_result in transports.items():
+        if isinstance(transport_result, dict):
+            if not transport_result.get("tested"):
+                status = "[SKIP]"
+            elif transport_result.get("ok"):
+                status = "[OK]"
+            elif transport_result.get("accepted_by_api") and not transport_result.get("reliable_for_eval"):
+                status = "[WARN]"
+                has_transport_warn = True
+            else:
+                status = "[FAIL]"
+            display_name = transport_name.replace("_", " ").title()
+            lines.append(f"  {status} {display_name} (schema parameter format)")
+    
+    # Add additional checks
+    checks = report.get("checks", {})
+    for check_name, check_result in checks.items():
+        if isinstance(check_result, dict):
+            status_map = {"ok": "[OK]", "degraded": "[WARN]", "failed": "[FAIL]"}
+            status = status_map.get(check_result.get("status"), "[UNKNOWN]")
+            if check_name == "param_support":
+                display_name = "Max Tokens Parameter"
+                selected_param = (check_result.get("evidence") or {}).get("max_tokens_param")
+                suffix = f" (selected: {selected_param})" if selected_param else ""
+                lines.append(f"  {status} {display_name}{suffix}")
+                continue
+            display_name = check_name.replace("_", " ").title()
+            lines.append(f"  {status} {display_name}")
+
+    if has_transport_warn:
+        lines.append("")
+        lines.append("Notes:")
+        lines.append("  [WARN] schema parameter format: accepted by API but unreliable for eval")
+    
+    lines.append("")
+    lines.append("Selected Configuration:")
+    lines.append(f"  API endpoint: {report.get('selected_api_endpoint', 'unknown')}")
+    lines.append(f"  Schema transport: {report.get('selected_schema_transport') or 'none'}")
+    lines.append("  Schema transport options:")
+    for transport_name, transport_result in transports.items():
+        option_status = _schema_transport_option_label(
+            transport_result if isinstance(transport_result, dict) else {}
+        )
+        option_error = ""
+        if isinstance(transport_result, dict):
+            err = transport_result.get("error")
+            if err:
+                option_error = f" ({err})"
+        lines.append(f"    - {transport_name}: {option_status}{option_error}")
+    
+    # Add risk flags if any
+    risk_flags = report.get("risk_flags", {})
+    if isinstance(risk_flags, dict):
+        active_risks = {k: v for k, v in risk_flags.items() if v}
+        if active_risks:
+            lines.append("")
+            lines.append("Risk Flags:")
+            risk_messages = {
+                "truncation_risk": "Repetition patterns detected when truncated",
+                "repetition_risk": "Model shows degenerate repetition behavior",
+                "schema_unreliable": "Structured output may not work correctly",
+                "multimodal_unreliable": "Image inputs may not be supported",
+            }
+            for risk, active in active_risks.items():
+                if active:
+                    msg = risk_messages.get(risk, risk.replace("_", " ").title())
+                    lines.append(f"  [!] {msg}")
+
+    details = []
+    for mode_name, mode_result in modes.items():
+        if isinstance(mode_result, dict) and mode_result.get("tested") and not mode_result.get("ok"):
+            details.append(
+                f"mode.{mode_name} failed: {mode_result.get('error') or 'unknown error'}"
+            )
+    for transport_name, transport_result in transports.items():
+        if isinstance(transport_result, dict) and transport_result.get("tested") and not transport_result.get("ok"):
+            accepted = transport_result.get("accepted_by_api")
+            reliable = transport_result.get("reliable_for_eval")
+            state_note = ""
+            if accepted is not None or reliable is not None:
+                state_note = f" (accepted_by_api={accepted}, reliable_for_eval={reliable})"
+            state = "accepted_but_unreliable" if accepted and not reliable else "failed"
+            details.append(
+                f"schema.{transport_name} {state}: {transport_result.get('error') or 'unknown error'}{state_note}"
+            )
+    for check_name, check_result in checks.items():
+        if not isinstance(check_result, dict):
+            continue
+        if check_result.get("status") in {"failed", "degraded"}:
+            details.append(
+                f"check.{check_name} {check_result.get('status')}: {check_result.get('error') or 'warning'}"
+            )
+    if details:
+        lines.append("")
+        lines.append("Failure Details:")
+        for detail in details:
+            lines.append(f"  - {detail}")
+
+    if report.get("test_plan"):
+        lines.append("")
+        lines.append("What Was Tested:")
+        lines.append("  See probe_report.json -> test_plan for exact probes and pass criteria.")
+        lines.append("  Param check validates max token parameter only (not temperature).")
+        lines.append("  Transport = schema parameter format sent to the provider API.")
+    
+    lines.append("=" * 60)
+    return "\n".join(lines)
+
 
 def _write_probe_report(output_dir: Path, report: Dict[str, Any]) -> None:
-    """Persist probe report to the task output directory."""
-    report_path = output_dir / "compatibility_report.json"
+    """Persist probe report and summary to the model output directory.
+    
+    Args:
+        output_dir: Model output root (same level as run_outcome.json)
+        report: Probe report dict from run_probe_for_eval()
+    """
+    # Write full JSON report
+    report_path = output_dir / "probe_report.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
+    
+    # Write human-readable summary
+    summary_path = output_dir / "probe_summary.txt"
+    summary_text = _generate_probe_summary_text(report)
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(summary_text)
+    
+    logger.info(f"Wrote probe report: {report_path}")
+    logger.info(f"Wrote probe summary: {summary_path}")
 
 
 def _log_probe_report(report: Dict[str, Any]) -> None:
@@ -553,7 +875,48 @@ def _log_probe_report(report: Dict[str, Any]) -> None:
     selected = report.get("selected_api_endpoint")
     logger.info(f"Request mode probe selected api_endpoint={selected} (requested={requested})")
     for mode, result in (report.get("modes") or {}).items():
-        status = "ok" if result.get("ok") else "failed"
+        if not result.get("tested"):
+            status = "skipped"
+        else:
+            status = "ok" if result.get("ok") else "failed"
         error = result.get("error")
         suffix = f" ({error})" if error else ""
         logger.info(f"Probe {mode}: {status}{suffix}")
+    schema_requested = report.get("schema_transport_requested")
+    schema_selected = report.get("selected_schema_transport")
+    schema_forced = bool(report.get("schema_transport_forced"))
+    logger.info(
+        "Schema transport probe selected format=%s (requested=%s, forced=%s)",
+        schema_selected,
+        schema_requested,
+        schema_forced,
+    )
+    for method, result in (report.get("schema_transports") or {}).items():
+        if not result.get("tested"):
+            status = "skipped"
+        elif result.get("ok"):
+            status = "ok"
+        elif result.get("accepted_by_api") and not result.get("reliable_for_eval"):
+            status = "accepted_but_unreliable"
+        else:
+            status = "failed"
+        error = result.get("error")
+        accepted = result.get("accepted_by_api")
+        reliable = result.get("reliable_for_eval")
+        transport_state = ""
+        if accepted is not None or reliable is not None:
+            transport_state = f" [accepted_by_api={accepted}, reliable_for_eval={reliable}]"
+        suffix = f" ({error})" if error else ""
+        logger.info(
+            f"Probe schema format {method}: {status}{transport_state}{suffix}"
+        )
+
+
+def _schema_transport_option_label(result: Dict[str, Any]) -> str:
+    if not isinstance(result, dict) or not result.get("tested"):
+        return "not_tested"
+    if result.get("ok"):
+        return "usable"
+    if result.get("accepted_by_api") and not result.get("reliable_for_eval"):
+        return "accepted_but_unreliable"
+    return "unsupported_or_failed"

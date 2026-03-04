@@ -196,7 +196,7 @@ The matrix below reflects typical defaults.
 | HTTPInterface | no | no | yes | no |
 | SurusInterface | no | no | yes | no |
 | SurusOCRInterface | yes | no | yes | yes |
-| SurusFacturaInterface | yes | no | no | yes |
+| SurusFacturaInterface | yes | no | yes | yes |
 
 ## Best Practices
 

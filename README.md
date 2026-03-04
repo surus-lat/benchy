@@ -151,9 +151,187 @@ benchy eval --config openai_gpt-4o-mini.yaml --limit 10
 If `benchy` is not on your PATH (for example when running directly from the repo), use:
 `python -m src.benchy_cli ...`
 
+### Run Unit Tests
+
+```bash
+pytest -q
+```
+
 If you want to run the same task list across multiple models, you can override tasks
 on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
 `docs/evaluating_models.md` for full examples and behavior.
+`--tasks` accepts either space-separated values (e.g. `--tasks spanish portuguese`)
+or comma-separated values (e.g. `--tasks spanish,portuguese`).
+
+For automation/agents, use `--exit-policy` and parse run artifacts under
+`outputs/benchmark_outputs/<run_id>/<model>/`.
+`run_outcome.json` is the status source of truth. `run_summary.json` is metric-focused.
+For a strict machine-facing contract, see `AGENTS.md`.
+
+Canonical automation recipes:
+
+```bash
+# Smoke run (fast validation)
+benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
+  --limit 5 --run-id smoke_20260206 --exit-policy smoke
+
+# Full run (after smoke passes)
+benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
+  --run-id full_20260206 --exit-policy strict
+```
+
+Automation artifact contract:
+- `run_outcome.json`: run status, exit recommendation, counts, per-task statuses, invocation metadata, artifact pointers, structured errors.
+- `run_summary.json`: compact per-task metric summaries.
+- `<task>/task_status.json`: per-task status used by resume logic when reusing a run-id.
+
+Benchy writes `run_outcome.json` on successful runs, already-completed runs, and fatal
+pipeline failures that happen after run directory initialization.
+
+`run_outcome.json` includes:
+- `schema_version`, `benchy_version`
+- `status`, `exit_policy`, `exit_code`
+- `started_at`, `ended_at`, `duration_s`
+- `git` (`repo`, `commit`, `dirty`) when available
+- `counts`, `tasks`
+- `invocation`, `artifacts`, `errors`
+
+Task status semantics used by `run_outcome`/`task_status`:
+- `passed`: no connectivity/invalid-response/error-rate signal.
+- `degraded`: partial issues (any `error_rate > 0`, `invalid_response_rate > 0`, or `connectivity_error_rate > 0`) but not total failure.
+- `failed`: no valid samples for a non-empty task, all samples failed, or any subtask failed.
+- `skipped`: at least one subtask was skipped due to compatibility/requirements.
+- `no_samples`: task/subtask had zero samples or no metrics.
+
+Structured-output concessions (shared across structured handlers):
+- Date values on date-like schema fields accept `YYYY-MM-DD` and `DD-MM-YYYY` (also `DD/MM/YYYY`) and are normalized to `YYYY-MM-DD` for validation/scoring.
+- The literal string `"null"` is coerced to JSON `null` before validation/scoring, with a bounded score penalty (`normalization_penalty`, default `0.02` per coercion, capped at `0.20`) so quality is still penalized.
+  Configure via `metrics.normalization_penalty.null_string_to_null` and `metrics.normalization_penalty.max`.
+
+**Dataset selection**: Some tasks support multiple datasets. Use `--dataset <name>` to specify:
+
+```bash
+# Use custom dataset for background removal
+benchy eval --config surus-remove-background --dataset your-dataset --limit 10
+
+# Use ICM57 dataset (default)
+benchy eval --config surus-remove-background --dataset ICM57 --limit 10
+```
+
+## CLI Dataset Usage (New!)
+
+Benchy now supports creating tasks directly from the CLI without writing code. You can evaluate custom datasets using three task types: **classification**, **structured extraction**, and **freeform generation**.
+
+### Quick Start Examples
+
+**Classification Task** (binary or multi-class):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name climatebert/environmental_claims \
+  --dataset-labels '{"0": "No", "1": "Yes"}' \
+  --limit 10
+```
+
+**Structured Extraction** (JSON output with schema):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoice-extraction \
+  --dataset-schema-path schemas/invoice_schema.json \
+  --limit 10
+```
+
+**Freeform Generation** (open-ended text):
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type freeform \
+  --dataset-name ./data/questions.jsonl \
+  --dataset-source local \
+  --limit 10
+```
+
+### Key Features
+
+- **Three Task Types**: Classification, Structured Extraction, Freeform Generation
+- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL files, or directory structures
+- **Flexible Field Mapping**: Map your dataset fields to expected inputs/outputs
+- **Multimodal Support**: Add `--multimodal-input` for image-based tasks
+- **Config Generation**: Save your CLI setup with `--save-config output.yaml` for reuse
+
+### Common CLI Flags
+
+**Task Type & Dataset**:
+- `--task-type {classification,structured,freeform}` - Type of task to create
+- `--dataset-name <name>` - HuggingFace dataset or local path
+- `--dataset-source {auto,huggingface,local,directory}` - Dataset source (default: auto)
+- `--dataset-split <split>` - Dataset split for HuggingFace (default: test)
+
+**Field Mappings**:
+- `--dataset-input-field <field>` - Input text field (default: text)
+- `--dataset-output-field <field>` - Expected output field (default: expected/label)
+- `--dataset-id-field <field>` - Sample ID field (auto-generated if missing)
+
+**Classification-Specific**:
+- `--dataset-labels <json>` - Label mapping: `'{"0": "No", "1": "Yes"}'`
+- `--dataset-label-field <field>` - Label field name (default: label)
+
+**Structured Extraction-Specific**:
+- `--dataset-schema-field <field>` - Schema field in dataset
+- `--dataset-schema-path <path>` - JSON file with schema
+- `--dataset-schema-json <json>` - Inline JSON schema
+
+**Multimodal**:
+- `--multimodal-input` - Enable multimodal input (images)
+- `--multimodal-image-field <field>` - Image path field (default: image_path)
+
+**Prompts**:
+- `--system-prompt <text>` - Custom system prompt
+- `--user-prompt-template <text>` - Template with {field} placeholders
+
+**Config Generation**:
+- `--save-config <path>` - Save CLI parameters as reusable YAML config
+
+### Override Existing Task Datasets
+
+You can also override the dataset for any existing task:
+
+```bash
+# Use your own dataset with an existing task
+benchy eval --config my-model.yaml \
+  --tasks classify.environmental_claims \
+  --dataset-name my-org/my-climate-dataset \
+  --dataset-split validation \
+  --limit 10
+```
+
+### Multimodal Classification Example
+
+```bash
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name my-org/image-classification \
+  --multimodal-input \
+  --dataset-labels '{"0": "Cat", "1": "Dog"}' \
+  --limit 10
+```
+
+### Save and Reuse Configurations
+
+```bash
+# Create and save a config
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type structured \
+  --dataset-name my-org/invoices \
+  --dataset-schema-path schemas/invoice.json \
+  --save-config configs/my-invoice-task.yaml \
+  --limit 10
+
+# Reuse the saved config
+benchy eval --config configs/my-invoice-task.yaml --limit 100
+```
+
+For detailed documentation on dataset formats and advanced usage, see `docs/CLI_DATASET_USAGE.md`.
 
 ## Providerless CLI (OpenAI-compatible)
 
@@ -161,6 +339,9 @@ When no config file is provided, Benchy infers the provider from CLI flags:
 
 - `--model-path` or `--vllm-config` -> local vLLM (Benchy starts the server)
 - `--base-url` -> OpenAI-compatible remote endpoint (defaults to OpenAI behavior unless `--provider` is set)
+- `--api-key` -> explicit API key value for OpenAI-compatible providers (overrides env lookup)
+- `--exit-policy` -> automation-friendly process exit behavior (`relaxed`, `smoke`, `strict`)
+- `--image-max-edge` -> optional in-memory image downscaling before request (preserves aspect ratio; originals unchanged). Also works with multimodal system/provider configs (e.g. Google, SURUS).
 - no provider hints -> OpenAI defaults (`https://api.openai.com/v1`, `OPENAI_API_KEY`)
 
 This means the model name alone does not determine the provider. The provider comes from
@@ -177,6 +358,13 @@ benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider together  -
 
 # Custom OpenAI-compatible endpoint
 benchy eval --model-name mymodel --base-url http://host:8000/v1 --tasks spanish --limit 2
+
+# Custom OpenAI-compatible endpoint + explicit API key (no .env needed)
+benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key --tasks spanish --limit 2
+
+# Same endpoint with optional image downscaling to reduce multimodal token load
+benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key \
+  --tasks document_extraction image_extraction --image-max-edge 1536 --limit 2
 
 # Local vLLM from Hugging Face (server started by Benchy)
 benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
@@ -210,6 +398,31 @@ benchy eval --config surus-extract --limit 5
 # Surus classification endpoint
 benchy eval --config surus-classify --limit 5
 ```
+
+### Benchmarking Google Gemini models
+
+Google Gemini models work across text, multimodal, and image manipulation tasks. Add your `GOOGLE_API_KEY` to `.env`:
+
+```bash
+# Text generation
+benchy eval --model-name gemini-2.5-flash --provider google \
+  --tasks spanish --limit 10
+
+# Multimodal tasks (text + images)
+benchy eval --model-name gemini-2.5-flash --provider google \
+  --tasks image_manipulation.remove_background --limit 10
+
+# Image manipulation with gemini-2.5-flash-image
+benchy eval --model-name gemini-2.5-flash-image --provider google \
+  --tasks image_manipulation.remove_background --dataset your-dataset
+
+# Use different dataset with --dataset parameter
+benchy eval --model-name gemini-2.5-flash-image --provider google \
+  --tasks image_manipulation.remove_background --dataset ICM57
+```
+
+The `--dataset` parameter allows you to select different datasets for tasks that support it. For example, the `remove_background` task supports multiple datasets (`ICM57`, `your-dataset`, or any custom dataset you drop in `.data/`).
+
 ### Benchmarking a new OpenAI model (example: "gpt-5.2")
 
 ```bash
@@ -224,6 +437,146 @@ benchy eval --provider openai --model-name gpt-5.2 \
   --api-key-env OPENAI_API_KEY \
   --tasks spanish --limit 2
 ```
+
+Or pass the key directly at runtime:
+
+```bash
+benchy eval --provider openai --model-name gpt-5.2 \
+  --api-key your-api-key \
+  --tasks spanish --limit 2
+```
+
+## Probe System
+
+Benchy includes a capability detection system that identifies model features and compatibility issues before running evaluations.
+
+### Standalone Probe Command
+
+Test model capabilities without running a full evaluation:
+
+```bash
+# Probe OpenAI model
+benchy probe --provider openai --model-name gpt-4o-mini
+
+# Probe local vLLM endpoint
+benchy probe --base-url http://localhost:8001/v1 --model-name mymodel
+
+# Probe with custom settings
+benchy probe --provider openai --model-name gpt-5-mini \
+  --profile quick --global-timeout 120
+```
+
+### What the Probe Detects
+
+The probe system checks:
+
+1. **Access Readiness**: Fast preflight for invalid API key, model not found, insufficient credits/quota, and similar blockers
+2. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
+3. **Schema Transports**: Structured output support (structured_outputs vs response_format)
+4. **Multimodal Support**: Whether the model accepts image inputs
+5. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
+6. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
+7. **Provider Fingerprint**: Model server metadata and version information
+
+### Probe Profiles
+
+- `quick` (default): Fast capability check (30-60 seconds)
+
+Probe check definitions, pass criteria, and blindspots are documented in:
+- `docs/benchy_probe_contract.md`
+
+For schema transports, probe reports two levels:
+- `accepted_by_api`: parameter accepted by provider API
+- `reliable_for_eval`: output quality is reliable enough for structured extraction
+
+Probe summaries also include `Schema transport options` so `Schema transport: none`
+is immediately contextualized with alternatives (`usable`, `accepted_but_unreliable`,
+`unsupported_or_failed`, `not_tested`) and error reasons.
+
+### Probe Outputs
+
+Probe results are written to `outputs/probe_outputs/<run_id>/<model>/`:
+
+- `probe_report.json`: Machine-readable capability report
+- `probe_summary.txt`: Human-readable summary
+
+### Integration with Eval
+
+The probe system runs automatically during `benchy eval` to detect capabilities and configure requests appropriately. It ensures:
+
+- Tasks requiring multimodal support skip if images aren't supported
+- Structured output requests use the correct parameter format
+- Logprobs are only requested when supported
+- The correct max_tokens parameter name is used (critical for gpt-5, o1, o3, o4 models)
+
+### How Decisions Are Made During Eval
+
+When you run `benchy eval`, here's how the system decides which parameters to use:
+
+1. **Initial Configuration**: `connection_info` is built from provider config and CLI arguments
+2. **Probe Detection**: The probe tests actual API behavior:
+   - Tests `max_tokens` explicitly (disabling auto-detection)
+   - Tests `max_completion_tokens` if `max_tokens` fails
+   - Tests which structured output format works
+   - Tests logprobs support
+3. **Apply Probe Results**: Detected capabilities update `connection_info`:
+   - `api_endpoint` → from probe's selected endpoint
+   - `supports_logprobs` → from probe's logprobs test
+   - `use_structured_outputs` → from probe's schema transport test
+   - `max_tokens_param_name` → from probe's parameter test
+4. **Interface Initialization**: `OpenAIInterface` reads the configured values
+5. **Request Building**: Each request uses the probed/configured parameters
+
+You'll see clear logging at each step:
+```
+INFO - Using max_completion_tokens (detected by probe)
+INFO - Initialized OpenAIInterface for gpt-5-mini
+INFO -   Max tokens parameter: max_completion_tokens
+```
+
+### Example: gpt-5-mini Configuration
+
+OpenAI's gpt-5 models require `max_completion_tokens` instead of `max_tokens`. The probe detects this automatically:
+
+```bash
+# Probe will detect max_completion_tokens is required
+benchy probe --provider openai --model-name gpt-5-mini
+
+# Eval will use the probed parameter automatically
+benchy eval --provider openai --model-name gpt-5-mini \
+  --tasks spanish --limit 10
+```
+
+You can also configure it explicitly in a model config:
+
+```yaml
+# configs/models/openai_gpt-5-mini.yaml
+model:
+  name: gpt-5-mini
+openai:
+  provider_config: openai
+  overrides:
+    max_tokens_param_name: "max_completion_tokens"
+```
+
+Or via CLI:
+
+```bash
+benchy eval --provider openai --model-name gpt-5-mini \
+  --max-tokens-param-name max_completion_tokens \
+  --tasks spanish --limit 10
+```
+
+### Risk Flags
+
+The probe generates risk flags for common issues:
+
+- **truncation_risk**: Model produces repetition patterns when hitting token limits
+- **repetition_risk**: Model shows degenerate repetition behavior
+- **schema_unreliable**: Structured output may not work correctly
+- **multimodal_unreliable**: Image inputs may not be supported
+
+These flags help diagnose evaluation failures and guide configuration adjustments.
 
 ## Configuration Overview
 

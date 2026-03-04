@@ -1,0 +1,53 @@
+# SURUS AI /remove-background endpoint configuration for image manipulation
+
+# System identification
+system_name: "surus-remove-background"
+provider_type: "surus_remove_background"
+
+# SURUS remove-background configuration
+surus_remove_background:
+  endpoint: 'https://api.surus.dev/functions/v1/remove-background' #"https://cuqhdcqkpspghnjbrged.supabase.co/functions/v1/remove-background" #
+  api_key_env: "SURUS_API_KEY"
+  timeout: 60
+  max_retries: 3
+  capabilities:
+    supports_multimodal: true
+    supports_files: true
+    supports_schema: false
+    supports_logprobs: false
+    supports_streaming: false
+    request_modes: ["raw_payload"]
+
+# Model configuration (for tracking purposes)
+model:
+  name: "surus-remove-background"  # System identifier, not the backend model
+  organization: surus-ai
+  url: https://surus.lat
+
+# Tasks to run (image manipulation compatible)
+tasks:
+  - "image_manipulation.remove_background"
+
+# Task defaults
+task_defaults:
+  log_samples: true
+
+# Task-specific configuration
+# To use different datasets:
+# 1. Use --dataset CLI flag: benchy eval --config surus-remove-background.yaml --dataset kapaxia
+# 2. Or configure per-task:
+#    image_manipulation:
+#      remove_background:
+#        dataset:
+#          name: kapaxia
+image_manipulation:
+  defaults:
+    batch_size: 5
+    log_samples: true
+    timeout: 60
+    max_retries: 3
+  
+  # Example: Configure specific dataset (uncomment to use)
+  # remove_background:
+  #   dataset:
+  #     name: kapaxia  # or ICM57 (default)

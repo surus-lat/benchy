@@ -98,6 +98,12 @@ from .image_metrics import (
     binary_mask_metrics,
     BackgroundRemovalMetrics,
 )
+
+# Visualization utilities
+from .visualization import (
+    create_mask_comparison,
+    save_mask_comparison_for_sample,
+)
 # Utilities (auxiliary but still important)
 from .utils.dataset_utils import (
     download_huggingface_dataset,
@@ -124,6 +130,20 @@ from .utils.text_utils import (
     remove_accents,
     extract_float_score,
     format_score_with_comma,
+)
+
+# Dataset adapters and task config (for CLI-driven tasks)
+from .dataset_adapters import DatasetAdapter, validate_dataset_config
+from .task_config_schema import (
+    TASK_TYPE_SCHEMAS,
+    validate_task_config,
+    apply_defaults,
+    get_handler_class,
+    build_task_metadata,
+    get_task_type_description,
+    list_task_types,
+    get_required_fields,
+    get_optional_fields,
 )
 
 __all__ = [
@@ -153,6 +173,9 @@ __all__ = [
     "predicted_image_to_mask",
     "binary_mask_metrics",
     "BackgroundRemovalMetrics",
+    # Visualization
+    "create_mask_comparison",
+    "save_mask_comparison_for_sample",
     # Dataset utilities
     "download_huggingface_dataset",
     "load_jsonl_dataset",
@@ -172,4 +195,16 @@ __all__ = [
     "remove_accents",
     "extract_float_score",
     "format_score_with_comma",
+    # Dataset adapters and task config (CLI support)
+    "DatasetAdapter",
+    "validate_dataset_config",
+    "TASK_TYPE_SCHEMAS",
+    "validate_task_config",
+    "apply_defaults",
+    "get_handler_class",
+    "build_task_metadata",
+    "get_task_type_description",
+    "list_task_types",
+    "get_required_fields",
+    "get_optional_fields",
 ]

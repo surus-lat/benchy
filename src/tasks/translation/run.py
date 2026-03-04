@@ -4,14 +4,18 @@ This is the main entry point for the translation task.
 It uses the handler-based task system with TaskGroupSpec for COMET model lifecycle.
 """
 
+import asyncio
 import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 from ...prefect_compat import task
+from ...engine import BenchmarkRunner, get_interface_for_provider, save_results
+from ...common.summary_reporter import write_group_summary
 
 from ..group_runner import (
     TaskGroupSpec,
     TaskGroupContext,
+    ensure_task_interface_compatibility,
     run_task_group,
 )
 from .metrics import load_comet_model
@@ -80,7 +84,7 @@ def run_translation(
         output_path: Base output path for results
         server_info: Server info from vLLM (None for cloud providers)
         api_test_result: API test result (unused, for interface compatibility)
-        task_config: Task configuration from src/tasks/translation/task.json
+        task_config: Task configuration payload (built from handler metadata)
         limit: Limit number of examples (for testing)
         cuda_devices: CUDA devices (unused for this task)
         provider_config: Provider configuration (for cloud providers)
@@ -113,132 +117,6 @@ def _setup_translation(context: TaskGroupContext) -> Dict[str, Any]:
         return {}
     logger.info("COMET model loaded successfully and will be shared across all subtasks")
     return {"comet_model": comet_model}
-
-
-# Old custom subtask runners removed - now using handler-based system
-
-
-# Remove old custom runner - now using default handler-based runner
-
-
-# Old OPUS runner removed - now using Opus handler class
-
-def _old_run_opus_subtask_DEPRECATED(
-    subtask_config: Dict,
-    model_name: str,
-    connection_info: Dict,
-    provider_type: str,
-    task_output_path: Path,
-    limit: Optional[int],
-    defaults: Dict,
-    prompts: Dict,
-    comet_model: Optional[Any] = None,
-    capability_requirements: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Run OPUS subtask for all language pairs."""
-    from .datasets.opus.task import OpusTask
-    from .datasets.opus.download import download_and_preprocess_opus
-    
-    language_pairs = subtask_config.get('language_pairs', ['en-es', 'en-pt'])
-    dataset_name = subtask_config.get('dataset_name', 'Helsinki-NLP/opus-100')
-    
-    # Ensure data is downloaded
-    opus_data_dir = DATA_DIR / 'opus'
-    opus_data_dir.mkdir(parents=True, exist_ok=True)
-    
-    for pair in language_pairs:
-        pair_file = opus_data_dir / f"{pair}.jsonl"
-        if not pair_file.exists():
-            logger.info(f"Downloading OPUS data for {pair}...")
-            download_and_preprocess_opus(
-                dataset_name=dataset_name,
-                language_pairs=[pair],
-                output_dir=opus_data_dir,
-                cache_dir=str(CACHE_DIR),
-                split='test',  # Use test split for evaluation
-            )
-    
-    # Aggregate results across all language pairs
-    all_pair_results = {}
-    all_pair_metrics = {}
-    
-    for pair in language_pairs:
-        pair_file = opus_data_dir / f"{pair}.jsonl"
-        if not pair_file.exists():
-            logger.warning(f"Data file not found for {pair}, skipping")
-            continue
-        
-        logger.info(f"Running OPUS evaluation for {pair}")
-        
-        # Create task instance
-        task_instance = OpusTask({
-            'dataset': {'data_file': str(pair_file)},
-            'prompts': prompts,
-            'language_pair': pair,
-            'comet_model': comet_model,
-            'capability_requirements': capability_requirements or {},
-        })
-        
-        # Create interface
-        interface = get_interface_for_provider(
-            provider_type=provider_type,
-            connection_info=connection_info,
-            model_name=model_name,
-        )
-        report = ensure_task_interface_compatibility(task_instance, interface)
-        if not report.compatible:
-            reason = ", ".join(report.errors) if report.errors else "incompatible capabilities"
-            logger.warning(f"Skipping OPUS subtask due to incompatibility: {reason}")
-            return {
-                "subtask": "opus",
-                "language_pairs": language_pairs,
-                "per_pair_results": {},
-                "aggregate_metrics": {
-                    "total_samples": 0,
-                    "valid_samples": 0,
-                    "bleu": 0.0,
-                    "chrf": 0.0,
-                    "comet": 0.0,
-                    "error_rate": 0.0,
-                },
-                "skipped": True,
-                "skip_reason": reason,
-            }
-        
-        # Create runner config
-        runner_config = {
-            "model_name": model_name,
-            "batch_size": defaults.get('batch_size', 20),
-            "output_dir": str(task_output_path / 'opus' / pair),
-            "log_samples": defaults.get('log_samples', False),
-        }
-        
-        # Run benchmark
-        runner = BenchmarkRunner(task_instance, interface, runner_config)
-        pair_results = asyncio.run(runner.run(limit=limit, no_resume=False))
-        
-        # Save results
-        save_results(
-            results=pair_results,
-            output_dir=task_output_path / 'opus' / pair,
-            model_name=model_name,
-            task_name=task_instance.get_task_name(),
-            log_samples=defaults.get('log_samples', False),
-            mark_complete=False,
-        )
-        
-        all_pair_results[pair] = pair_results
-        all_pair_metrics[pair] = pair_results.get('aggregate_metrics', {})
-    
-    # Aggregate across pairs
-    aggregated = _aggregate_pair_metrics(all_pair_metrics, language_pairs)
-    
-    return {
-        "subtask": "opus",
-        "language_pairs": language_pairs,
-        "per_pair_results": all_pair_results,
-        "aggregate_metrics": aggregated,
-    }
 
 
 def _run_flores_subtask(
@@ -419,7 +297,7 @@ def _run_flores_subtask(
             model_name=model_name,
             task_name=task_instance.get_task_name(),
             log_samples=defaults.get('log_samples', False),
-            mark_complete=False,
+            task_instance=task_instance,
         )
         
         all_pair_results[pair] = pair_results

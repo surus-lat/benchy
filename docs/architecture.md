@@ -54,8 +54,11 @@ an interface, and aggregates metrics. It also handles checkpointing and can resu
 partial runs when checkpoint files are present.
 
 Results are saved via `save_results(...)` and aggregated summaries are produced per
-subtask. The pipeline writes a `run_summary.json` at the model output root so you can
-see overall completion status in one place.
+subtask. The pipeline writes:
+- `run_summary.json` for metric summaries
+- `run_outcome.json` for machine-readable run/task status and exit recommendation.
+  It includes schema/version metadata, timings, invocation context, artifacts, and structured errors.
+- per-task `task_status.json` files for resume decisions
 
 ## Interfaces
 

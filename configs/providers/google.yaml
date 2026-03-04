@@ -1,0 +1,38 @@
+# Google Gemini API Provider Configuration
+#
+# This config enables using Google Gemini models via the Google GenAI SDK.
+# Models supported:
+#   - gemini-2.0-flash, gemini-2.5-flash (text + multimodal)
+#   - gemini-2.5-flash-image (image manipulation: remove background, etc.)
+#   - gemini-pro, gemini-pro-vision
+#
+# Usage:
+#   benchy eval --model-name gemini-2.5-flash --provider google --tasks <task>
+
+# Base URL (not used directly, but required for compatibility)
+base_url: "https://generativelanguage.googleapis.com/v1"
+
+# API key environment variable
+api_key_env: "GOOGLE_API_KEY"
+
+# Request timeouts and retries
+timeout: 60
+max_retries: 3
+max_concurrent: 3
+
+# Generation parameters
+temperature: 0.0
+max_tokens: 2048
+
+# Enable retrying on invalid responses (useful for structured outputs)
+retry_invalid_response: true
+
+# Capabilities
+capabilities:
+  supports_multimodal: true
+  supports_logprobs: false
+  supports_schema: true
+  supports_files: true
+  supports_streaming: false
+  supports_batch: true
+  request_modes: ["chat"]
