@@ -1,7 +1,6 @@
 """XNLI-es (Cross-lingual Natural Language Inference) Spanish task."""
 
 from pathlib import Path
-from typing import Any, Dict, List
 
 from ..common import save_to_jsonl
 from ..common import MultipleChoiceHandler

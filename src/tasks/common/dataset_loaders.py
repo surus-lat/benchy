@@ -7,13 +7,12 @@ logic in their _download_and_cache() method.
 This eliminates ~40-60 lines of boilerplate per task.
 """
 
-import csv
 import logging
 from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .utils.dataset_utils import load_jsonl_dataset, save_to_jsonl
+from .utils.dataset_utils import load_jsonl_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -210,4 +209,3 @@ class CachedCSVMixin:
                 save_to_jsonl(processed, output_path)
         """
         pass
-

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -53,13 +54,25 @@ PROVIDER_SPECS = {
         "config_key": "surus_classify",
         "log": "Using SURUS AI classify provider for classification tasks",
     },
+    "surus_remove_background": {
+        "config_key": "surus_remove_background",
+        "log": "Using SURUS AI remove-background provider for image manipulation tasks",
+    },
     "together": {
         "config_key": "together",
         "log": "Using Together AI cloud provider for model: {model_name}",
     },
+    "alibaba": {
+        "config_key": "alibaba",
+        "log": "Using Alibaba Cloud Model Studio provider for model: {model_name}",
+    },
+    "google": {
+        "config_key": "google",
+        "log": "Using Google cloud provider for model: {model_name}",
+    },
 }
 
-MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together"}
+MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google"}
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -83,6 +96,17 @@ CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "max_tokens_param_name": "max_tokens",
         "api_endpoint": "auto",
     },
+    "alibaba": {
+        "base_url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "timeout": 120,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 0.0,
+        "max_tokens": 4096,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "auto",
+    },
     "anthropic": {
         "base_url": "https://api.anthropic.com/v1",
         "api_key_env": "ANTHROPIC_API_KEY",
@@ -94,13 +118,35 @@ CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "max_tokens_param_name": "max_tokens",
         "api_endpoint": "chat",
     },
+    "google": {
+        "base_url": "https://generativelanguage.googleapis.com/v1",
+        "api_key_env": "GOOGLE_API_KEY",
+        "timeout": 60,
+        "max_retries": 3,
+        "max_concurrent": 3,
+        "temperature": 0.0,
+        "max_tokens": 2048,
+        "max_tokens_param_name": "max_tokens",
+        "api_endpoint": "auto",
+    },
 }
 
 
-def _parse_tasks_arg(value: Optional[str]) -> list:
+def _parse_tasks_arg(value: Optional[Any]) -> list:
     if not value:
         return []
-    return [entry.strip() for entry in value.split(",") if entry.strip()]
+
+    if isinstance(value, str):
+        tokens = [value]
+    elif isinstance(value, list):
+        tokens = [str(token) for token in value if token is not None]
+    else:
+        tokens = [str(value)]
+
+    parsed = []
+    for token in tokens:
+        parsed.extend(entry.strip() for entry in token.split(",") if entry.strip())
+    return parsed
 
 
 def _load_tasks_file(path: str) -> list:
@@ -161,16 +207,64 @@ def _normalize_provider_name(name: str) -> str:
 
 def _redact_args(args: argparse.Namespace) -> Dict[str, Any]:
     """Return a log-safe copy of CLI args."""
-    payload = dict(vars(args))
+    def _json_safe(value: Any) -> Any:
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            safe_dict: Dict[str, Any] = {}
+            for key, item in value.items():
+                if callable(item):
+                    continue
+                safe_dict[str(key)] = _json_safe(item)
+            return safe_dict
+        if isinstance(value, (list, tuple, set)):
+            return [_json_safe(item) for item in value if not callable(item)]
+        return str(value)
+
+    payload: Dict[str, Any] = {}
+    for key, value in vars(args).items():
+        # Skip argparse internals and callables (e.g., `_handler`).
+        if key.startswith("_") or callable(value):
+            continue
+        payload[key] = _json_safe(value)
+
     if payload.get("api_key"):
         payload["api_key"] = "***"
     return payload
 
 
+def _redact_argv(argv: list[str]) -> list[str]:
+    """Return argv with sensitive values redacted."""
+    if not argv:
+        return []
+
+    redacted: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = str(argv[i])
+        if token == "--api-key":
+            redacted.append(token)
+            if i + 1 < len(argv):
+                redacted.append("***")
+                i += 2
+                continue
+            i += 1
+            continue
+        if token.startswith("--api-key="):
+            redacted.append("--api-key=***")
+            i += 1
+            continue
+        redacted.append(token)
+        i += 1
+    return redacted
+
+
 def _default_api_endpoint(provider_type: str) -> str:
     if provider_type == "anthropic":
         return "chat"
-    if provider_type in {"openai", "together"}:
+    if provider_type in {"openai", "together", "alibaba"}:
         return "auto"
     return "completions"
 
@@ -211,12 +305,31 @@ def _apply_cli_provider_overrides(
         merged["max_tokens_param_name"] = args.max_tokens_param_name
     if args.api_endpoint is not None:
         merged["api_endpoint"] = args.api_endpoint
+    if args.use_structured_outputs is not None:
+        merged["use_structured_outputs"] = args.use_structured_outputs
+    if args.image_max_edge is not None:
+        if args.image_max_edge <= 0:
+            raise ValueError("--image-max-edge must be a positive integer")
+        merged["image_max_edge"] = args.image_max_edge
 
     return merged
 
 
-def _build_cli_provider_config(provider_type: str, args: argparse.Namespace) -> Dict[str, Any]:
-    defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+def _build_cli_provider_config(
+    provider_type: str,
+    args: argparse.Namespace,
+    *,
+    config_manager: Optional[ConfigManager] = None,
+) -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {}
+    if config_manager is not None:
+        try:
+            defaults = dict(config_manager.get_provider_config(_normalize_provider_name(provider_type)))
+        except FileNotFoundError:
+            defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+    else:
+        defaults = dict(CLI_PROVIDER_DEFAULTS.get(provider_type, {}))
+
     merged = _apply_cli_provider_overrides(
         defaults,
         args,
@@ -304,7 +417,11 @@ def _build_cli_only_config(
             raise ValueError("Missing required --model-name for OpenAI-compatible runs")
         config["model"] = {"name": args.model_name}
         config["provider_type"] = provider_type
-        config[provider_type] = _build_cli_provider_config(provider_type, args)
+        config[provider_type] = _build_cli_provider_config(
+            provider_type,
+            args,
+            config_manager=config_manager,
+        )
 
     _apply_model_metadata(config, args)
     return config, model_path_override
@@ -360,9 +477,12 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", type=str, default=None, help="Run ID for organizing outputs")
     parser.add_argument(
         "--tasks",
-        type=str,
+        nargs="+",
         default=None,
-        help="Comma-separated list of tasks or task groups (overrides config tasks)",
+        help=(
+            "Task/task-group overrides (space-separated and/or comma-separated). "
+            "Examples: --tasks spanish portuguese OR --tasks spanish,portuguese"
+        ),
     )
     parser.add_argument(
         "--tasks-file",
@@ -396,7 +516,7 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["vllm", "openai", "together", "anthropic"],
+        choices=["vllm", "openai", "together", "anthropic", "alibaba", "google"],
         default=None,
         help="Provider type to use when no model config is provided (default: inferred).",
     )
@@ -462,6 +582,35 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="Request mode for OpenAI-compatible providers (default: auto).",
     )
     parser.add_argument(
+        "--use-structured-outputs",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Enable guided JSON schema enforcement via OpenAI-compatible "
+            "`extra_body.structured_outputs` (recommended for local vLLM servers)."
+        ),
+    )
+    parser.add_argument(
+        "--probe-mode",
+        type=str,
+        choices=["skip", "auto"],
+        default="skip",
+        help=(
+            "Probe mode for capability detection. "
+            "'skip'=use current inline probe (default), "
+            "'auto'=run full probe before eval (Phase 2 feature)."
+        ),
+    )
+    parser.add_argument(
+        "--image-max-edge",
+        type=int,
+        default=None,
+        help=(
+            "Optionally downscale input images before sending requests. "
+            "Sets maximum image width/height in pixels while preserving aspect ratio."
+        ),
+    )
+    parser.add_argument(
         "--organization",
         type=str,
         default=None,
@@ -487,6 +636,18 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="Compatibility handling for incompatible tasks (default: warn for CLI-only, skip for config).",
     )
     parser.add_argument(
+        "--exit-policy",
+        type=str,
+        choices=["relaxed", "smoke", "strict"],
+        default="relaxed",
+        help=(
+            "Exit code policy for automation. "
+            "'relaxed'=always 0 unless fatal exception, "
+            "'smoke'=fail on failed/skipped/no-samples tasks, "
+            "'strict'=fail unless all requested tasks pass."
+        ),
+    )
+    parser.add_argument(
         "--output-path",
         type=str,
         default=None,
@@ -494,6 +655,135 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
             "Override the benchmark output base directory (default: configs/config.yaml paths.benchmark_outputs). "
             "If set to 'model' and --model-path is provided, outputs go under <model-path>/benchy_outputs."
         ),
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Dataset name to use for tasks (e.g., ICM57, kapaxia). Task must support dataset configuration.",
+    )
+    
+    # Task type and dataset configuration (for ad-hoc tasks)
+    parser.add_argument(
+        "--task-type",
+        type=str,
+        choices=["classification", "structured", "freeform"],
+        default=None,
+        help="Task type for ad-hoc task creation (classification, structured, freeform)",
+    )
+    parser.add_argument(
+        "--dataset-name",
+        type=str,
+        default=None,
+        help="Dataset name or path (HuggingFace dataset, local JSONL, or directory)",
+    )
+    parser.add_argument(
+        "--dataset-source",
+        type=str,
+        choices=["auto", "huggingface", "local", "directory"],
+        default="auto",
+        help="Dataset source type (default: auto-detect)",
+    )
+    parser.add_argument(
+        "--dataset-split",
+        type=str,
+        default="test",
+        help="Dataset split for HuggingFace datasets (default: test)",
+    )
+    
+    # Field mappings
+    parser.add_argument(
+        "--dataset-input-field",
+        type=str,
+        default=None,
+        help="Field name for input text (default: text)",
+    )
+    parser.add_argument(
+        "--dataset-output-field",
+        type=str,
+        default=None,
+        help="Field name for expected output (default: expected or label)",
+    )
+    parser.add_argument(
+        "--dataset-id-field",
+        type=str,
+        default=None,
+        help="Field name for sample ID (default: id, auto-generated if missing)",
+    )
+    
+    # Classification-specific
+    parser.add_argument(
+        "--dataset-label-field",
+        type=str,
+        default=None,
+        help="Field name for labels in classification tasks (default: label)",
+    )
+    parser.add_argument(
+        "--dataset-labels",
+        type=str,
+        default=None,
+        help='Label mapping as JSON string, e.g., \'{"0": "No", "1": "Yes"}\'',
+    )
+    parser.add_argument(
+        "--dataset-choices-field",
+        type=str,
+        default=None,
+        help="Field name for per-sample choices in classification tasks",
+    )
+    
+    # Structured extraction specific
+    parser.add_argument(
+        "--dataset-schema-field",
+        type=str,
+        default=None,
+        help="Field name for schema in dataset (for structured tasks)",
+    )
+    parser.add_argument(
+        "--dataset-schema-path",
+        type=str,
+        default=None,
+        help="Path to JSON file containing schema (for structured tasks)",
+    )
+    parser.add_argument(
+        "--dataset-schema-json",
+        type=str,
+        default=None,
+        help="Inline JSON schema string (for structured tasks)",
+    )
+    
+    # Multimodal support
+    parser.add_argument(
+        "--multimodal-input",
+        action="store_true",
+        help="Enable multimodal input (works with any task type)",
+    )
+    parser.add_argument(
+        "--multimodal-image-field",
+        type=str,
+        default="image_path",
+        help="Field name for image paths in multimodal tasks (default: image_path)",
+    )
+    
+    # Prompts
+    parser.add_argument(
+        "--system-prompt",
+        type=str,
+        default=None,
+        help="System prompt for the task",
+    )
+    parser.add_argument(
+        "--user-prompt-template",
+        type=str,
+        default=None,
+        help="User prompt template with {field} placeholders",
+    )
+    
+    # Config generation
+    parser.add_argument(
+        "--save-config",
+        type=str,
+        default=None,
+        help="Save CLI parameters as reusable YAML config file",
     )
 
 
@@ -506,13 +796,8 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
     used_config_file = False
     if config_ref:
         resolved_config_path = str(resolve_config_path(config_ref))
-        try:
-            config = config_manager.load_model_config(resolved_config_path)
-            logger.info("Loaded configuration from %s using ConfigManager", resolved_config_path)
-        except (FileNotFoundError, KeyError) as exc:
-            logger.info("Falling back to legacy config loading: %s", exc)
-            config = load_config(resolved_config_path)
-            logger.info("Loaded legacy configuration from %s", resolved_config_path)
+        config = config_manager.load_model_config(resolved_config_path)
+        logger.info("Loaded configuration from %s using ConfigManager", resolved_config_path)
         used_config_file = True
 
     if not config:
@@ -572,7 +857,7 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
 
     provider_type = config.get("provider_type", "vllm")
     provider_section = dict(config.get(provider_type) or {})
-    allow_base_url = provider_type in {"openai", "together", "anthropic"}
+    allow_base_url = provider_type in {"openai", "together", "anthropic", "alibaba", "google"}
     allow_api_key = allow_base_url
     config[provider_type] = _apply_cli_provider_overrides(
         provider_section,
@@ -588,6 +873,136 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
         raise KeyError("Missing required config key: model.name")
 
     return config, model_path_override, used_config_file
+
+
+def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
+    """Build dataset configuration from CLI arguments.
+    
+    Args:
+        args: Parsed CLI arguments
+        
+    Returns:
+        Dataset configuration dict
+    """
+    dataset_config = {}
+    
+    # Basic dataset info
+    if args.dataset_name:
+        dataset_config["name"] = args.dataset_name
+    elif args.dataset:  # Backward compatibility with old --dataset flag
+        dataset_config["name"] = args.dataset
+    
+    if args.dataset_source:
+        dataset_config["source"] = args.dataset_source
+    if args.dataset_split:
+        dataset_config["split"] = args.dataset_split
+    
+    # Field mappings
+    if args.dataset_input_field:
+        dataset_config["input_field"] = args.dataset_input_field
+    if args.dataset_output_field:
+        dataset_config["output_field"] = args.dataset_output_field
+    if args.dataset_id_field:
+        dataset_config["id_field"] = args.dataset_id_field
+    
+    # Classification-specific
+    if args.dataset_label_field:
+        dataset_config["label_field"] = args.dataset_label_field
+    if args.dataset_labels:
+        dataset_config["labels"] = args.dataset_labels
+    if args.dataset_choices_field:
+        dataset_config["choices_field"] = args.dataset_choices_field
+    
+    # Structured extraction specific
+    if args.dataset_schema_field:
+        dataset_config["schema_field"] = args.dataset_schema_field
+    if args.dataset_schema_path:
+        dataset_config["schema_path"] = args.dataset_schema_path
+    if args.dataset_schema_json:
+        dataset_config["schema_json"] = args.dataset_schema_json
+    
+    # Multimodal support
+    if args.multimodal_input:
+        dataset_config["multimodal_input"] = True
+    if args.multimodal_input and args.multimodal_image_field:
+        dataset_config["multimodal_image_field"] = args.multimodal_image_field
+    
+    return dataset_config
+
+
+def _has_meaningful_dataset_override(args: argparse.Namespace, dataset_config: Dict[str, Any]) -> bool:
+    """Return True when CLI dataset flags represent an intentional override."""
+    if not dataset_config:
+        return False
+    if dataset_config.get("name"):
+        return True
+
+    default_values = {
+        "source": "auto",
+        "split": "test",
+        "multimodal_image_field": "image_path",
+    }
+    for key, default in default_values.items():
+        if key in dataset_config and dataset_config.get(key) != default:
+            return True
+
+    override_flags = [
+        "dataset_input_field",
+        "dataset_output_field",
+        "dataset_id_field",
+        "dataset_label_field",
+        "dataset_labels",
+        "dataset_choices_field",
+        "dataset_schema_field",
+        "dataset_schema_path",
+        "dataset_schema_json",
+        "multimodal_input",
+    ]
+    return any(getattr(args, flag, None) for flag in override_flags)
+
+
+def _build_adhoc_task_config(
+    task_type: str,
+    dataset_config: Dict[str, Any],
+    system_prompt: Optional[str] = None,
+    user_prompt_template: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build configuration for an ad-hoc task.
+    
+    Args:
+        task_type: Type of task (classification, structured, freeform)
+        dataset_config: Dataset configuration
+        system_prompt: Optional system prompt
+        user_prompt_template: Optional user prompt template
+        
+    Returns:
+        Task configuration dict
+    """
+    from .tasks.common import validate_task_config, apply_defaults
+    
+    # Build base config
+    config = {
+        "dataset": dataset_config,
+    }
+    
+    # Add prompts if provided
+    if system_prompt:
+        config["system_prompt"] = system_prompt
+    if user_prompt_template:
+        config["user_prompt_template"] = user_prompt_template
+    
+    # Apply defaults for task type
+    config = apply_defaults(task_type, config)
+    
+    # Validate configuration
+    errors = validate_task_config(task_type, config)
+    if errors:
+        error_msg = "\n".join(f"  - {err}" for err in errors)
+        raise ValueError(
+            f"Invalid task configuration for type '{task_type}':\n{error_msg}"
+        )
+    
+    return config
 
 
 def run_eval(args: argparse.Namespace) -> int:
@@ -670,12 +1085,64 @@ def run_eval(args: argparse.Namespace) -> int:
     api_endpoint = provider_config.get("api_endpoint", config.get("api_endpoint", "completions"))
 
     task_defaults_overrides = {}
+    # Handle log_samples flag
     if args.log_samples:
+        # Explicitly enabled via CLI
         task_defaults_overrides["log_samples"] = True
     elif args.no_log_samples:
+        # Explicitly disabled via CLI
         task_defaults_overrides["log_samples"] = False
+    elif not used_config_file:
+        # Default to False when running from CLI without a config file
+        # (configs can still override this in their task_defaults)
+        task_defaults_overrides["log_samples"] = False
+    # If used_config_file and no explicit CLI flag, let config decide
+    
     if args.batch_size is not None:
         task_defaults_overrides["batch_size"] = args.batch_size
+    
+    # Build dataset config from CLI arguments (supports both old --dataset and new flags)
+    dataset_config = _build_dataset_config_from_args(args)
+    
+    # Handle ad-hoc task creation via --task-type
+    adhoc_task_name = None
+    if args.task_type:
+        logger.info(f"Creating ad-hoc {args.task_type} task from CLI parameters")
+        
+        # Validate that we have a dataset
+        if not dataset_config.get("name"):
+            raise ValueError(
+                "--task-type requires --dataset-name to specify the dataset"
+            )
+        
+        # Build ad-hoc task config
+        adhoc_config = _build_adhoc_task_config(
+            task_type=args.task_type,
+            dataset_config=dataset_config,
+            system_prompt=args.system_prompt,
+            user_prompt_template=args.user_prompt_template,
+        )
+        
+        # Generate unique task name
+        import hashlib
+        config_hash = hashlib.md5(str(adhoc_config).encode()).hexdigest()[:8]
+        adhoc_task_name = f"_adhoc_{args.task_type}_{config_hash}"
+        
+        # Register the ad-hoc task (will be done in registry)
+        # For now, store it in config for registry to pick up
+        if "task_configs" not in config:
+            config["task_configs"] = {}
+        config["task_configs"][adhoc_task_name] = adhoc_config
+        
+        logger.info(f"Created ad-hoc task: {adhoc_task_name}")
+    
+    # Handle dataset override for existing tasks
+    elif _has_meaningful_dataset_override(args, dataset_config):
+        # Merge dataset config into task_defaults_overrides
+        if "dataset" not in task_defaults_overrides:
+            task_defaults_overrides["dataset"] = {}
+        task_defaults_overrides["dataset"].update(dataset_config)
+        logger.info(f"Dataset override applied to all tasks: {dataset_config.get('name')}")
 
     provider_task_defaults = {}
     if isinstance(provider_config, dict):
@@ -689,13 +1156,18 @@ def run_eval(args: argparse.Namespace) -> int:
 
     config_tasks = config.get("tasks", ["spanish", "portuguese"])
     tasks_override = []
-    if args.tasks:
-        tasks_override.extend(_parse_tasks_arg(args.tasks))
-    if args.tasks_file:
-        tasks_override.extend(_load_tasks_file(args.tasks_file))
-    if args.task_group:
-        for group_entry in args.task_group:
-            tasks_override.extend(_parse_tasks_arg(group_entry))
+    
+    # If ad-hoc task was created, use it
+    if adhoc_task_name:
+        tasks_override = [adhoc_task_name]
+    else:
+        if args.tasks:
+            tasks_override.extend(_parse_tasks_arg(args.tasks))
+        if args.tasks_file:
+            tasks_override.extend(_load_tasks_file(args.tasks_file))
+        if args.task_group:
+            for group_entry in args.task_group:
+                tasks_override.extend(_parse_tasks_arg(group_entry))
     tasks_override = _dedupe_tasks(tasks_override)
 
     is_system_provider = provider_type not in MODEL_PROVIDER_TYPES
@@ -758,7 +1230,14 @@ def run_eval(args: argparse.Namespace) -> int:
         )
         return 0
 
-    benchmark_pipeline(
+    invocation_metadata = {
+        "argv": _redact_argv(sys.argv),
+        "cli_args": _redact_args(args),
+        "cwd": os.getcwd(),
+    }
+    log_file_path = str(log_setup.get_log_filepath())
+
+    pipeline_result = benchmark_pipeline(
         model_name=model_name,
         model_path=model_path_override,
         tasks=tasks_to_run,
@@ -766,13 +1245,29 @@ def run_eval(args: argparse.Namespace) -> int:
         limit=args.limit,
         api_endpoint=api_endpoint,
         task_defaults_overrides=task_defaults_overrides or None,
+        adhoc_task_configs=config.get("task_configs") if config else None,
         log_setup=log_setup,
         run_id=run_id,
         provider_type=provider_type,
         provider_config=provider_config,
         compatibility_mode=compatibility_mode,
+        exit_policy=args.exit_policy,
+        invocation_metadata=invocation_metadata,
+        log_file_path=log_file_path,
         organization=organization,
         url=url,
         vllm_config=vllm_server_config,
     )
+    
+    # Save config if requested
+    if args.save_config:
+        from .tasks.common.config_generator import generate_config_from_cli
+        try:
+            generate_config_from_cli(args, args.save_config, config)
+        except Exception as e:
+            logger.error(f"Failed to save config: {e}")
+            print(f"Warning: Failed to save config to {args.save_config}: {e}")
+    
+    if isinstance(pipeline_result, dict):
+        return int(pipeline_result.get("exit_code", 0) or 0)
     return 0

@@ -152,7 +152,7 @@ def start_vllm_server(
     # Get Python logger for detailed file logging with safe error handling
     file_logger = logging.getLogger('benchy.vllm_server')
     try:
-        file_logger.info(f"=== Starting vLLM Server ===")
+        file_logger.info("=== Starting vLLM Server ===")
         file_logger.info(f"Model: {served_name}")
         file_logger.info(f"Model load ref: {model_to_load}")
         file_logger.info(f"Host: {host}, Port: {port}")
@@ -358,7 +358,7 @@ def test_vllm_api(server_info: Dict[str, Any], model_name: str) -> Dict[str, Any
     
     file_logger = logging.getLogger('benchy.api_test')
     try:
-        file_logger.info(f"=== Testing vLLM API ===")
+        file_logger.info("=== Testing vLLM API ===")
         file_logger.info(f"Server URL: {server_url}")
         file_logger.info(f"Model: {model_name}")
     except (RuntimeError, OSError):

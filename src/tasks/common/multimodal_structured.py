@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from .base import BaseHandler
 
@@ -59,6 +61,10 @@ class MultimodalStructuredHandler(BaseHandler):
     image_field: str = "image_path"
     source_dir: Optional[Any] = None
     metrics_config: Optional[Dict[str, Any]] = None
+    field_diagnostics_enabled: bool = True
+    field_diagnostics_max_examples_per_field: int = 20
+    field_diagnostics_max_fields_in_report: int = 200
+    field_diagnostics_max_value_chars: int = 240
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the multimodal structured handler."""
@@ -80,6 +86,23 @@ class MultimodalStructuredHandler(BaseHandler):
         self.source_path: Optional[Path] = Path(str(self.source_dir)) if self.source_dir else None
         self.schema: Optional[Dict] = None
         self.dataset_metrics_config: Optional[Dict] = None
+
+        diagnostics_cfg = config.get("metrics", {}).get("field_diagnostics", {}) if config else {}
+        if isinstance(diagnostics_cfg, dict):
+            if "enabled" in diagnostics_cfg:
+                self.field_diagnostics_enabled = bool(diagnostics_cfg["enabled"])
+            if "max_examples_per_field" in diagnostics_cfg:
+                self.field_diagnostics_max_examples_per_field = max(
+                    1, int(diagnostics_cfg["max_examples_per_field"])
+                )
+            if "max_fields_in_report" in diagnostics_cfg:
+                self.field_diagnostics_max_fields_in_report = max(
+                    1, int(diagnostics_cfg["max_fields_in_report"])
+                )
+            if "max_value_chars" in diagnostics_cfg:
+                self.field_diagnostics_max_value_chars = max(
+                    16, int(diagnostics_cfg["max_value_chars"])
+                )
 
         # Lazy initialization of metrics calculator
         self._metrics_calc = None
@@ -157,6 +180,8 @@ class MultimodalStructuredHandler(BaseHandler):
                     logger.info(f"Populating dataset in {self.data_dir}")
                 self._copy_source_data()
             except Exception as exc:
+                if isinstance(exc, FileNotFoundError):
+                    raise
                 if not self.source_path:
                     raise FileNotFoundError(
                         f"Dataset not found in {self.data_dir}.\n"
@@ -189,20 +214,109 @@ class MultimodalStructuredHandler(BaseHandler):
         self.dataset_data = self._load_samples()
 
     def _copy_source_data(self) -> None:
-        """Copy data from source directory to task data directory."""
-        if not self.source_path:
-            raise ValueError(
-                f"{self.__class__.__name__} has no source_dir configured. "
-                "Set config['dataset']['source_dir'] (or config['source_dir']) or override _copy_source_data()."
-            )
+        """Populate data from local source_dir or HuggingFace dataset snapshot."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy all files from source to data directory
-        for file_path in self.source_path.glob("*"):
-            if file_path.is_file():
-                dest_path = self.data_dir / file_path.name
-                shutil.copy2(file_path, dest_path)
-                logger.debug(f"Copied {file_path.name}")
+        if self.source_path:
+            if not self.source_path.exists():
+                raise FileNotFoundError(f"source_dir not found: {self.source_path}")
+
+            # Copy all files/directories from source to data directory.
+            for entry in self.source_path.iterdir():
+                dest_path = self.data_dir / entry.name
+                if entry.is_dir():
+                    if dest_path.exists():
+                        shutil.rmtree(dest_path)
+                    shutil.copytree(entry, dest_path)
+                else:
+                    shutil.copy2(entry, dest_path)
+            return
+
+        dataset_cfg = self._get_dataset_config()
+        repo_id = self._resolve_dataset_repo_id(dataset_cfg)
+        if not repo_id:
+            raise ValueError(
+                f"{self.__class__.__name__} has no source_dir or dataset repo configured. "
+                "Set config['dataset']['source_dir'] (or config['source_dir']) or provide "
+                "config['dataset']['dataset_url']/repo_id in task metadata/config."
+            )
+
+        token = self._resolve_hf_token(dataset_cfg)
+        revision = dataset_cfg.get("revision")
+
+        logger.info(f"Downloading dataset snapshot: {repo_id}")
+        try:
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(
+                repo_id=repo_id,
+                repo_type="dataset",
+                local_dir=str(self.data_dir),
+                local_dir_use_symlinks=False,
+                token=token,
+                revision=str(revision) if revision else None,
+            )
+        except Exception as exc:
+            raise FileNotFoundError(
+                f"Failed to download dataset snapshot from '{repo_id}'. "
+                "If the dataset is private/gated, set HF_TOKEN (or config['dataset']['token'])."
+            ) from exc
+
+    def _get_dataset_config(self) -> Dict[str, Any]:
+        cfg = self.config or {}
+        dataset_cfg = cfg.get("dataset")
+        return dataset_cfg if isinstance(dataset_cfg, dict) else {}
+
+    def _normalize_repo_id(self, value: Any) -> str:
+        text = str(value).strip()
+        if not text:
+            return text
+
+        parsed = urlparse(text)
+        if parsed.scheme and parsed.netloc:
+            parts = [p for p in parsed.path.split("/") if p]
+            # Accept:
+            # - https://huggingface.co/datasets/<owner>/<name>
+            # - https://huggingface.co/<owner>/<name>
+            if len(parts) >= 3 and parts[0] == "datasets":
+                return f"{parts[1]}/{parts[2]}"
+            if len(parts) >= 2:
+                return f"{parts[0]}/{parts[1]}"
+            return text
+
+        if text.startswith("datasets/"):
+            return text[len("datasets/") :]
+        return text
+
+    def _resolve_dataset_repo_id(self, dataset_cfg: Dict[str, Any]) -> Optional[str]:
+        cfg = self.config or {}
+        candidates = [
+            dataset_cfg.get("repo_id"),
+            dataset_cfg.get("dataset_repo_id"),
+            dataset_cfg.get("dataset_url"),
+            dataset_cfg.get("name"),
+            dataset_cfg.get("dataset_name"),
+            dataset_cfg.get("dataset"),
+            cfg.get("dataset_url"),
+            cfg.get("repo_id"),
+            getattr(self, "dataset_repo_id", None),
+        ]
+        for candidate in candidates:
+            if candidate:
+                repo_id = self._normalize_repo_id(candidate)
+                if repo_id:
+                    return repo_id
+        return None
+
+    def _resolve_hf_token(self, dataset_cfg: Dict[str, Any]) -> Optional[str]:
+        token = dataset_cfg.get("token") or dataset_cfg.get("auth_token")
+        if token:
+            return str(token)
+        for env_var in ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
+            value = os.getenv(env_var)
+            if value:
+                return value
+        return None
 
     def _load_samples(self) -> List[Dict]:
         """Load samples from data directory.
@@ -355,3 +469,58 @@ class MultimodalStructuredHandler(BaseHandler):
         if "type_accuracy" in aggregated and "strict_type_compliance_rate" not in aggregated:
             aggregated["strict_type_compliance_rate"] = aggregated.get("type_accuracy", 0.0)
         return aggregated
+
+    def build_additional_artifacts(
+        self,
+        *,
+        results: Dict[str, Any],
+        output_dir: Path,
+        safe_model_name: str,
+        timestamp: str,
+        task_name: str,
+    ) -> List[Path]:
+        """Write field-level diagnostics for single-schema multimodal tasks."""
+        merged_cfg = self._get_merged_config()
+        diagnostics_cfg = (merged_cfg.get("metrics", {}) or {}).get("field_diagnostics", {})
+        enabled = self.field_diagnostics_enabled
+        max_examples_per_field = self.field_diagnostics_max_examples_per_field
+        max_fields_in_report = self.field_diagnostics_max_fields_in_report
+        max_value_chars = self.field_diagnostics_max_value_chars
+
+        if isinstance(diagnostics_cfg, dict):
+            enabled = bool(diagnostics_cfg.get("enabled", enabled))
+            max_examples_per_field = max(1, int(diagnostics_cfg.get("max_examples_per_field", max_examples_per_field)))
+            max_fields_in_report = max(1, int(diagnostics_cfg.get("max_fields_in_report", max_fields_in_report)))
+            max_value_chars = max(16, int(diagnostics_cfg.get("max_value_chars", max_value_chars)))
+
+        if not enabled:
+            return []
+
+        from .utils.field_diagnostics_report import (
+            build_field_diagnostics_report,
+            write_field_diagnostics_artifacts,
+        )
+
+        per_sample_metrics = results.get("per_sample_metrics", [])
+        report = build_field_diagnostics_report(
+            per_sample_metrics=per_sample_metrics,
+            max_examples_per_field=max_examples_per_field,
+            max_fields_in_report=max_fields_in_report,
+            max_value_chars=max_value_chars,
+            require_single_schema=True,
+        )
+
+        if report.get("status") != "ok":
+            logger.info(
+                "Skipping field diagnostics for %s: %s",
+                task_name,
+                report.get("reason", "unknown"),
+            )
+            return []
+
+        return write_field_diagnostics_artifacts(
+            report=report,
+            output_dir=output_dir,
+            safe_model_name=safe_model_name,
+            timestamp=timestamp,
+        )

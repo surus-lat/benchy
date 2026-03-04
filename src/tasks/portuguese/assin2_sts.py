@@ -10,7 +10,6 @@ from ..common import (
     download_huggingface_dataset,
     save_to_jsonl,
     extract_float_score,
-    format_score_with_comma,
     MeanSquaredError,
     PearsonCorrelation,
 )
@@ -176,4 +175,3 @@ class Assin2Sts(CachedDatasetMixin, FreeformHandler):
             aggregated["pearson"] = 0.0
 
         return aggregated
-

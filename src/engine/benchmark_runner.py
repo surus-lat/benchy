@@ -5,6 +5,7 @@ any task implementing BaseTask and any interface implementing BaseInterface.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -18,6 +19,7 @@ from .checkpoint import (
     load_checkpoint,
 )
 from .protocols import BaseTask, BaseInterface, check_compatibility
+from .output_diagnostics import analyze_output, aggregate_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +182,7 @@ class BenchmarkRunner:
             "samples": [],
             "per_sample_metrics": list(metrics_by_id.values()),
         }
+        diagnostics_entries: List[Dict[str, Any]] = []
         start_time = time.time()
         
         # Log example for first sample
@@ -230,9 +233,30 @@ class BenchmarkRunner:
                     error_msg = str(e)
                     error_type = output.get("error_type", "connectivity_error")
                     metrics = self.task.get_error_metrics(error_msg, error_type)
-                
+
+                if isinstance(metrics, dict):
+                    metrics.setdefault("sample_id", sample.get("id"))
+
                 results["per_sample_metrics"].append(metrics)
                 metrics_by_id[sample["id"]] = metrics
+
+                diagnostics = analyze_output(sample=sample, output=output, task=self.task)
+                diagnostics_entries.append(diagnostics)
+
+                if output.get("error") or metrics.get("error_type") == "invalid_response":
+                    logger.warning(
+                        "Sample %s invalid output: error=%s error_type=%s finish_reason=%s completion_tokens=%s prompt_tokens=%s diagnostic_class=%s whitespace_run=%s repetition=%s raw_len=%s",
+                        sample["id"],
+                        output.get("error"),
+                        output.get("error_type"),
+                        diagnostics.get("finish_reason"),
+                        diagnostics.get("completion_tokens"),
+                        diagnostics.get("prompt_tokens"),
+                        diagnostics.get("diagnostic_class"),
+                        diagnostics.get("max_whitespace_run"),
+                        diagnostics.get("repetition_detected"),
+                        diagnostics.get("raw_length"),
+                    )
                 
                 # Log sample details if requested
                 if self.log_samples:
@@ -243,7 +267,11 @@ class BenchmarkRunner:
                         "expected": sample.get("expected"),
                         "metrics": metrics,
                         "error": output.get("error"),
+                        "finish_reason": diagnostics.get("finish_reason"),
+                        "completion_tokens": diagnostics.get("completion_tokens"),
+                        "prompt_tokens": diagnostics.get("prompt_tokens"),
                     }
+                    sample_data["diagnostics"] = diagnostics
                     # Add task-specific fields
                     for key in ["title", "topic", "text"]:
                         if key in sample:
@@ -270,6 +298,9 @@ class BenchmarkRunner:
         run_samples = len(samples)
         aggregate["throughput"] = run_samples / aggregate["total_duration"] if aggregate["total_duration"] > 0 else 0
         aggregate["run_samples"] = run_samples
+        counts, rates = aggregate_diagnostics(diagnostics_entries, run_samples=run_samples)
+        aggregate["diagnostic_counts"] = counts
+        aggregate["diagnostic_rates"] = rates
         results["aggregate_metrics"] = aggregate
         
         self._log_summary(aggregate)
@@ -332,6 +363,21 @@ class BenchmarkRunner:
                     logger.info(f"{key}: {value:.4f}")
                 elif isinstance(value, (int, str)):
                     logger.info(f"{key}: {value}")
+
+        # Print compact diagnostic summary (dict metrics are skipped above).
+        diagnostic_counts = metrics.get("diagnostic_counts")
+        diagnostic_rates = metrics.get("diagnostic_rates")
+        if isinstance(diagnostic_counts, dict) and diagnostic_counts:
+            parts = []
+            for cls, count in sorted(diagnostic_counts.items(), key=lambda kv: kv[1], reverse=True):
+                rate = None
+                if isinstance(diagnostic_rates, dict):
+                    rate = diagnostic_rates.get(cls)
+                if isinstance(rate, (float, int)):
+                    parts.append(f"{cls}={count} ({float(rate):.3f})")
+                else:
+                    parts.append(f"{cls}={count}")
+            logger.info("diagnostic_summary: %s", ", ".join(parts))
         
         logger.info("=" * 60)
 
@@ -359,13 +405,95 @@ async def run_benchmark(
     return await runner.run(limit=limit, no_resume=no_resume)
 
 
+def _save_image_artifacts(samples: List[Dict], output_dir: Path, timestamp: str) -> List[Dict]:
+    """Extract and save image artifacts from samples, replacing base64 with file references.
+    
+    Also generates comparison visualizations for mask-based tasks if ground truth is available.
+    
+    Args:
+        samples: List of sample dictionaries
+        output_dir: Output directory for images
+        timestamp: Timestamp for file naming
+        
+    Returns:
+        Modified samples with image file references instead of base64
+    """
+    from ..tasks.common.visualization import save_mask_comparison_for_sample
+    
+    images_dir = output_dir / f"images_{timestamp}"
+    comparisons_dir = output_dir / f"comparisons_{timestamp}"
+    images_dir.mkdir(exist_ok=True)
+    
+    modified_samples = []
+    comparison_count = 0
+    
+    for sample in samples:
+        modified_sample = sample.copy()
+        
+        # Check if prediction contains base64 image data
+        prediction = sample.get("prediction")
+        if prediction and isinstance(prediction, str):
+            # Try to decode as base64
+            try:
+                # Strip data URI prefix if present
+                b64_data = prediction
+                if b64_data.startswith("data:"):
+                    b64_data = b64_data.split(",", 1)[1] if "," in b64_data else b64_data
+                
+                # Decode and save
+                image_data = base64.b64decode(b64_data)
+                sample_id = sample.get("id", "unknown")
+                image_filename = f"{sample_id}.png"
+                image_path = images_dir / image_filename
+                
+                with open(image_path, "wb") as f:
+                    f.write(image_data)
+                
+                # Replace prediction with file reference
+                modified_sample["prediction"] = str(image_path.relative_to(output_dir))
+                modified_sample["prediction_saved_as"] = image_filename
+                
+                logger.debug(f"Saved image artifact for {sample_id} to {image_filename}")
+                
+                # Generate comparison visualization if ground truth available
+                ground_truth = sample.get("mask_path") or sample.get("expected")
+                if ground_truth and Path(str(ground_truth)).exists():
+                    # Check if this is a valid sample (not an error)
+                    metrics = sample.get("metrics", {})
+                    if metrics.get("valid", True):
+                        source_image = sample.get("image_path")
+                        comparison_path = comparisons_dir / f"{sample_id}_comparison.png"
+                        
+                        if save_mask_comparison_for_sample(
+                            prediction_bytes=image_data,
+                            ground_truth_path=str(ground_truth),
+                            source_image_path=source_image,
+                            output_path=comparison_path,
+                            metrics=metrics,
+                        ):
+                            modified_sample["comparison"] = str(comparison_path.relative_to(output_dir))
+                            comparison_count += 1
+                
+            except Exception as e:
+                # If decoding fails, keep original (might not be an image)
+                logger.debug(f"Could not save image for {sample.get('id')}: {e}")
+        
+        modified_samples.append(modified_sample)
+    
+    if comparison_count > 0:
+        logger.info(f"Generated {comparison_count} comparison visualizations in {comparisons_dir.name}")
+    
+    return modified_samples
+
+
 def save_results(
     results: Dict[str, Any],
     output_dir: Path,
     model_name: str,
     task_name: str,
     log_samples: bool = False,
-    mark_complete: bool = True,
+    task_answer_type: Optional[str] = None,
+    task_instance: Optional[Any] = None,
 ) -> None:
     """Save benchmark results to files.
     
@@ -375,7 +503,8 @@ def save_results(
         model_name: Model name for filename
         task_name: Task name for filename
         log_samples: Whether to save sample details
-        mark_complete: Whether to write .done file (default: True)
+        task_answer_type: Task answer type (e.g., "image_artifact") for special handling
+        task_instance: Optional task/handler instance for extra artifact hooks
     """
     from datetime import datetime
     
@@ -398,22 +527,29 @@ def save_results(
     
     # Save samples if requested
     if log_samples and results.get("samples"):
+        samples = results["samples"]
+        
+        # For image artifact tasks, save actual images and replace base64 with file references
+        if task_answer_type == "image_artifact":
+            logger.info(f"Processing image artifacts for {len(samples)} samples")
+            samples = _save_image_artifacts(samples, output_dir, timestamp)
+        
         samples_file = output_dir / f"{safe_name}_{timestamp}_samples.json"
         with open(samples_file, "w") as f:
             json.dump({
                 "model": model_name,
                 "task": task_name,
                 "timestamp": timestamp,
-                "total_samples": len(results["samples"]),
-                "samples": results["samples"],
+                "total_samples": len(samples),
+                "samples": samples,
             }, f, indent=2)
-        logger.info(f"Saved {len(results['samples'])} samples to {samples_file}")
+        logger.info(f"Saved {len(samples)} samples to {samples_file}")
     
     # Save text report
     report_file = output_dir / f"{safe_name}_{timestamp}_report.txt"
     with open(report_file, "w") as f:
         f.write("=" * 60 + "\n")
-        f.write(f"BENCHMARK REPORT\n")
+        f.write("BENCHMARK REPORT\n")
         f.write("=" * 60 + "\n")
         f.write(f"Model: {model_name}\n")
         f.write(f"Task: {task_name}\n")
@@ -428,23 +564,19 @@ def save_results(
                 f.write(f"  {key}: {value}\n")
         f.write("=" * 60 + "\n")
     logger.info(f"Saved report to {report_file}")
-    
-    # Mark task as complete (for pipeline resumption)
-    if mark_complete:
-        mark_task_complete(output_dir)
 
-
-def mark_task_complete(output_dir: Path) -> None:
-    """Write a .done file to mark task completion.
+    if task_instance is not None and hasattr(task_instance, "build_additional_artifacts"):
+        try:
+            artifact_paths = task_instance.build_additional_artifacts(
+                results=results,
+                output_dir=output_dir,
+                safe_model_name=safe_name,
+                timestamp=timestamp,
+                task_name=task_name,
+            )
+            if artifact_paths:
+                for artifact_path in artifact_paths:
+                    logger.info(f"Saved additional artifact: {artifact_path}")
+        except Exception as exc:
+            logger.warning(f"Failed to write additional artifacts for {task_name}: {exc}")
     
-    This is used by the pipeline's TaskCompletionChecker to skip
-    already-completed tasks when resuming a failed run.
-    
-    Args:
-        output_dir: Task output directory
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    done_file = output_dir / ".done"
-    done_file.touch()
-    logger.info(f"Task marked complete: {done_file}")

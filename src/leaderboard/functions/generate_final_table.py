@@ -7,7 +7,7 @@ This creates a table suitable for display on a website.
 import json
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, Any
 from config_loader import load_config
 
 def create_model_row(model_name: str, model_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -192,14 +192,14 @@ def main():
     print(f"  ✓ Summary statistics saved to: {stats_file}")
     
     # Display preview
-    print(f"\n📊 Final Table Preview:")
+    print("\n📊 Final Table Preview:")
     print(f"   Models: {len(final_table)}")
     print(f"   Columns: {len(final_table.columns)}")
     # No overall score display
     
-    print(f"\n✓ Final table generation completed!")
+    print("\n✓ Final table generation completed!")
     print(f"  Publish directory: {publish_dir}")
-    print(f"  Files created:")
+    print("  Files created:")
     for file in publish_dir.glob("*"):
         print(f"    - {file.name}")
 

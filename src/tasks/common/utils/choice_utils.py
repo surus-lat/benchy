@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from typing import Iterable, List, Optional, Sequence
+from typing import Optional, Sequence
 
 CHOICE_LABELS = [chr(ord("A") + i) for i in range(26)]
 DEFAULT_ANSWER_MARKERS = ("answer", "respuesta", "label", "etiqueta", "salida", "output")

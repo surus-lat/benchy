@@ -54,7 +54,7 @@ def main():
     
     # Check disk space
     total_gb, used_gb, free_gb = get_disk_usage(check_path)
-    print(f"📊 Disk Usage:")
+    print("📊 Disk Usage:")
     print(f"   Total: {total_gb:.1f} GB")
     print(f"   Used:  {used_gb:.1f} GB ({used_gb/total_gb*100:.1f}%)")
     print(f"   Free:  {free_gb:.1f} GB ({free_gb/total_gb*100:.1f}%)")
@@ -63,7 +63,7 @@ def main():
     if free_gb < 5.0:
         print(f"⚠️  WARNING: Low disk space! Only {free_gb:.1f} GB free")
     else:
-        print(f"✅ Disk space OK")
+        print("✅ Disk space OK")
     
     # Find large models
     print(f"\n🔍 Large models (>{args.min_size} GB):")
@@ -81,7 +81,7 @@ def main():
     
     # Interactive cleanup
     if args.cleanup and large_models:
-        print(f"\n🧹 Interactive cleanup:")
+        print("\n🧹 Interactive cleanup:")
         print("Enter model numbers to delete (comma-separated, or 'all' for all, 'q' to quit):")
         
         while True:

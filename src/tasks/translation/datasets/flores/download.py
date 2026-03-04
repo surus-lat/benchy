@@ -277,7 +277,7 @@ def download_and_preprocess_flores(
                 counts[pair_name] = len(docs)
                 logger.info(f"  {pair_name}/{split}: {len(docs)} translation pairs")
     
-    logger.info(f"✅ Dataset building complete!")
+    logger.info("✅ Dataset building complete!")
     logger.info(f"📁 Files saved to: {output_dir}")
     logger.info(f"📊 Total language pairs: {len(counts)}")
     

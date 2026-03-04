@@ -6,6 +6,67 @@ This handler encapsulates common logic for multiple-choice tasks including:
 - Standard accuracy metrics
 - Fallback to text parsing when logprobs unavailable
 
+## CLI Usage
+
+You can create classification tasks directly from the CLI without writing code:
+
+```bash
+# Binary classification
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name climatebert/environmental_claims \
+  --dataset-labels '{"0": "No", "1": "Yes"}' \
+  --limit 10
+
+# Multi-class classification
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name my-org/sentiment-dataset \
+  --dataset-labels '{"0": "Negative", "1": "Neutral", "2": "Positive"}' \
+  --limit 10
+
+# With custom field mappings
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name my-dataset \
+  --dataset-input-field question \
+  --dataset-output-field answer \
+  --dataset-labels '{"A": "Option A", "B": "Option B"}' \
+  --limit 10
+
+# Multimodal classification (images)
+benchy eval --model-name gpt-4o-mini --provider openai \
+  --task-type classification \
+  --dataset-name ./data/images/ \
+  --multimodal-input \
+  --dataset-labels '{"0": "Cat", "1": "Dog"}' \
+  --limit 10
+```
+
+## Dataset Format
+
+**Minimum required fields**:
+```jsonl
+{"id": "1", "text": "Input text", "label": 0}
+{"id": "2", "text": "Another input", "label": 1}
+```
+
+**With custom field names** (use --dataset-*-field flags):
+```jsonl
+{"sample_id": "1", "question": "Is this positive?", "answer": "yes"}
+```
+
+**Per-sample choices** (for questions with different options):
+```jsonl
+{"id": "1", "text": "What is 2+2?", "choices": ["3", "4", "5"], "expected": 1}
+```
+
+## Metrics
+
+- **MultipleChoiceAccuracy**: Primary metric, uses logprobs when available
+- Supports both exact label matching and fuzzy text matching
+- Handles per-sample choices and task-level labels
+
 IMPORTANT: Understanding the `labels` Attribute
 ================================================
 
@@ -157,6 +218,11 @@ class MultipleChoiceHandler(BaseHandler):
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the multiple choice handler."""
+        # Apply config overrides BEFORE calling super().__init__
+        # This allows config to override class attributes
+        if config:
+            self._apply_config_overrides(config)
+        
         super().__init__(config)
 
         # Build choice mapping from labels if provided
@@ -174,6 +240,50 @@ class MultipleChoiceHandler(BaseHandler):
         # Set default metrics
         if not self.metrics:
             self.metrics = [MultipleChoiceAccuracy()]
+    
+    def _apply_config_overrides(self, config: Dict[str, Any]):
+        """Apply configuration overrides to handler attributes.
+        
+        This allows CLI/config-driven tasks to work with the same handler
+        as Python-defined tasks. Config values override class attributes.
+        """
+        dataset_config = config.get("dataset", {})
+        
+        # Field mappings
+        if "input_field" in dataset_config:
+            self.text_field = dataset_config["input_field"]
+        if "output_field" in dataset_config:
+            self.label_field = dataset_config["output_field"]
+        if "label_field" in dataset_config:
+            self.label_field = dataset_config["label_field"]
+        
+        # Labels (for classification)
+        if "labels" in dataset_config:
+            self.labels = self._parse_labels(dataset_config["labels"])
+        
+        # Prompts
+        if "system_prompt" in config:
+            self.system_prompt = config["system_prompt"]
+        if "user_prompt_template" in config:
+            self.user_prompt_template = config["user_prompt_template"]
+        
+        # Multimodal support
+        if dataset_config.get("multimodal_input"):
+            self.requires_multimodal = True
+    
+    def _parse_labels(self, labels_config: Any) -> Dict[Any, str]:
+        """Parse labels from config (JSON string or dict).
+        
+        Args:
+            labels_config: Labels as dict or JSON string
+            
+        Returns:
+            Labels dict mapping values to text
+        """
+        if isinstance(labels_config, str):
+            import json
+            return json.loads(labels_config)
+        return labels_config
 
     def preprocess_sample(
         self, raw_sample: Dict[str, Any], idx: int

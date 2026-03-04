@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional, Dict, Any
+from importlib.metadata import version as package_version, PackageNotFoundError
 from .prefect_compat import flow, task, NO_CACHE
 from .inference.vllm_server import start_vllm_server, test_vllm_api, stop_vllm_server
 from .inference.vllm_config import VLLMServerConfig
@@ -9,13 +10,15 @@ from .config_loader import load_config
 from .config_manager import ConfigManager
 from .generation_config import fetch_generation_config, save_generation_config
 from .gpu_config import load_gpu_config
+from .outcome import (
+    resolve_exit_code,
+    resolve_run_status,
+)
 from .signal_utils import clear_active_server_info, set_active_server_info
 from .task_completion_checker import TaskCompletionChecker
 from .tasks.registry import (
-    is_simple_task_config,
-    run_simple_task,
-    resolve_entrypoint,
     is_handler_based_task,
+    build_handler_task_config,
     discover_and_run_handler_task,
 )
 import os
@@ -23,6 +26,8 @@ import sys
 import logging
 import yaml
 import json
+import traceback
+import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -41,6 +46,86 @@ SUMMARY_SKIP_KEYS = {
     "match_distribution_counts",
     "subtasks",
 }
+SUMMARY_INCLUDE_DICT_KEYS = {
+    "diagnostic_counts",
+    "diagnostic_rates",
+}
+RUN_OUTCOME_SCHEMA_VERSION = "1.0"
+
+
+def _normalize_task_key(task_key: str) -> str:
+    """Canonicalize task keys so `group.sub-task` and `group.sub_task` align."""
+    parts = (task_key or "").split(".", 1)
+    if len(parts) == 2:
+        return f"{parts[0]}.{parts[1].replace('-', '_')}"
+    return task_key or ""
+
+
+def _get_benchy_version() -> str:
+    """Best-effort package version lookup."""
+    try:
+        return package_version("benchy")
+    except PackageNotFoundError:
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _artifact_ref(path: Optional[str]) -> Dict[str, Any]:
+    """Build normalized artifact reference payload."""
+    if not path:
+        return {"path": None, "exists": False}
+    candidate = Path(path)
+    return {"path": str(candidate), "exists": candidate.exists()}
+
+
+def _build_artifacts(
+    *,
+    model_output_path: str,
+    log_file_path: Optional[str],
+) -> Dict[str, Any]:
+    """Build run artifact index for automation clients."""
+    model_root = Path(model_output_path)
+    return {
+        "model_output_dir": _artifact_ref(str(model_root)),
+        "run_outcome": _artifact_ref(str(model_root / "run_outcome.json")),
+        "run_summary": _artifact_ref(str(model_root / "run_summary.json")),
+        "probe_report": _artifact_ref(str(model_root / "probe_report.json")),
+        "probe_summary": _artifact_ref(str(model_root / "probe_summary.txt")),
+        "log_file": _artifact_ref(log_file_path),
+        "task_status_glob": str(model_root / "*/task_status.json"),
+    }
+
+
+def _get_git_metadata() -> Dict[str, Any]:
+    """Best-effort git metadata for reproducibility."""
+    try:
+        repo = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        dirty_status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return {
+            "available": True,
+            "repo": repo,
+            "commit": commit,
+            "dirty": bool(dirty_status),
+        }
+    except Exception:
+        return {"available": False}
 
 
 @task(cache_policy=NO_CACHE)
@@ -61,57 +146,16 @@ def _run_logged_task(
     compatibility_mode: str,
 ) -> Dict[str, Any]:
     """Wrapper so each benchy task shows up as a Prefect task run."""
-    if is_handler_based_task(task_name):
-        return discover_and_run_handler_task(
-            task_ref=task_name,
-            model_name=model_name,
-            output_path=model_output_path,
-            server_info=server_info,
-            task_config=task_config,
-            limit=limit,
-            provider_config=provider_config,
-            compatibility_mode=compatibility_mode,
-        )
+    if not is_handler_based_task(task_name):
+        raise ValueError(f"Unknown task '{task_name}'. Only handler-based tasks are supported.")
 
-    pipeline_overrides = task_config.get("pipeline_overrides", {}) or {}
-    if pipeline_overrides.get("set_api_endpoint"):
-        task_config = dict(task_config)
-        task_config["api_endpoint"] = api_endpoint
-    if pipeline_overrides.get("set_generation_config"):
-        task_config = dict(task_config)
-        task_config["generation_config"] = generation_config
-
-    runner_entrypoint = task_config.get("runner_entrypoint")
-    if runner_entrypoint:
-        run_fn = resolve_entrypoint(runner_entrypoint)
-        return run_fn(
-            model_name=model_name,
-            output_path=model_output_path,
-            server_info=server_info,
-            api_test_result=api_test_result,
-            task_config=task_config,
-            limit=limit,
-            cuda_devices=cuda_devices if provider_type == "vllm" else None,
-            provider_config=provider_config,
-        )
-
-    if not is_simple_task_config(task_config):
-        return {
-            "model_name": model_name,
-            "task": task_name,
-            "output_path": f"{model_output_path}/{task_name}",
-            "metrics": {},
-            "error": f"Unknown task '{task_name}' without entrypoint",
-        }
-
-    return run_simple_task(
+    return discover_and_run_handler_task(
+        task_ref=task_name,
         model_name=model_name,
         output_path=model_output_path,
         server_info=server_info,
-        api_test_result=api_test_result,
         task_config=task_config,
         limit=limit,
-        cuda_devices=cuda_devices if provider_type == "vllm" else None,
         provider_config=provider_config,
         compatibility_mode=compatibility_mode,
     )
@@ -143,9 +187,9 @@ def _summarize_task_metrics(
 def _summarize_single_task_metrics(
     metrics: Dict[str, Any],
     metrics_manifest: Optional[list] = None,
-) -> Dict[str, float]:
+) -> Dict[str, Any]:
     """Summarize metrics for a single task/subtask."""
-    summarized: Dict[str, float] = {}
+    summarized: Dict[str, Any] = {}
     if metrics_manifest:
         for key in metrics_manifest:
             value = metrics.get(key)
@@ -153,9 +197,16 @@ def _summarize_single_task_metrics(
                 continue
             if isinstance(value, (int, float)):
                 summarized[key] = float(value)
+        for key in SUMMARY_INCLUDE_DICT_KEYS:
+            value = metrics.get(key)
+            if isinstance(value, dict):
+                summarized[key] = value
         return summarized
 
     for key, value in metrics.items():
+        if key in SUMMARY_INCLUDE_DICT_KEYS and isinstance(value, dict):
+            summarized[key] = value
+            continue
         if key in SUMMARY_SKIP_KEYS:
             continue
         if isinstance(value, bool):
@@ -165,6 +216,103 @@ def _summarize_single_task_metrics(
     return summarized
 
 
+def _aggregate_summary_diagnostics(tasks_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate diagnostic counts/rates from run_summary task metrics."""
+    counts: Dict[str, int] = {}
+    run_samples = 0
+
+    def _walk(node: Any) -> None:
+        nonlocal run_samples
+        if not isinstance(node, dict):
+            return
+        diag_counts = node.get("diagnostic_counts")
+        if isinstance(diag_counts, dict):
+            for cls, value in diag_counts.items():
+                if isinstance(value, bool):
+                    continue
+                if isinstance(value, (int, float)):
+                    counts[str(cls)] = counts.get(str(cls), 0) + int(value)
+        sample_count = node.get("run_samples")
+        if isinstance(sample_count, (int, float)) and not isinstance(sample_count, bool):
+            run_samples += int(sample_count)
+
+        subtasks = node.get("subtasks")
+        if isinstance(subtasks, dict):
+            for child in subtasks.values():
+                _walk(child)
+
+    for task_data in (tasks_payload or {}).values():
+        _walk(task_data)
+
+    rates: Dict[str, float] = {}
+    if run_samples > 0:
+        rates = {
+            cls: round(count / float(run_samples), 6)
+            for cls, count in counts.items()
+        }
+
+    return {
+        "counts": counts,
+        "run_samples": run_samples,
+        "rates": rates,
+    }
+
+
+def _extract_task_diagnostics(summary_entry: Any) -> Dict[str, Any]:
+    """Extract task-level diagnostics (including per-subtask diagnostics) from run_summary task data."""
+    if not isinstance(summary_entry, dict):
+        return {}
+
+    diagnostics: Dict[str, Any] = {}
+    for key in ("diagnostic_counts", "diagnostic_rates", "run_samples"):
+        value = summary_entry.get(key)
+        if isinstance(value, dict) or isinstance(value, (int, float)):
+            diagnostics[key] = value
+
+    subtasks = summary_entry.get("subtasks")
+    if isinstance(subtasks, dict):
+        subtask_diags: Dict[str, Any] = {}
+        for subtask_name, subtask_summary in subtasks.items():
+            extracted = _extract_task_diagnostics(subtask_summary)
+            if extracted:
+                subtask_diags[subtask_name] = extracted
+        if subtask_diags:
+            diagnostics["subtasks"] = subtask_diags
+
+    return diagnostics
+
+
+def _attach_per_task_diagnostics(
+    task_records: Dict[str, Dict[str, Any]],
+    run_summary_payload: Optional[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Attach per-task diagnostics from run_summary into run_outcome task records."""
+    summary_tasks = {}
+    if isinstance(run_summary_payload, dict):
+        candidate = run_summary_payload.get("tasks")
+        if isinstance(candidate, dict):
+            summary_tasks = candidate
+
+    canonical_summary = {
+        _normalize_task_key(task_name): payload
+        for task_name, payload in summary_tasks.items()
+        if isinstance(task_name, str)
+    }
+
+    enriched: Dict[str, Dict[str, Any]] = {}
+    for task_name, record in (task_records or {}).items():
+        record_payload = dict(record or {})
+        summary_entry = summary_tasks.get(task_name)
+        if summary_entry is None:
+            summary_entry = canonical_summary.get(_normalize_task_key(task_name))
+
+        diagnostics = _extract_task_diagnostics(summary_entry)
+        if diagnostics:
+            record_payload["diagnostics"] = diagnostics
+        enriched[task_name] = record_payload
+    return enriched
+
+
 def _write_run_summary(
     model_output_path: str,
     model_name: str,
@@ -172,14 +320,7 @@ def _write_run_summary(
     tasks: list,
     task_results: Dict[str, Any],
     task_configs_by_name: Dict[str, Any],
-) -> None:
-    def _canonical_task_key(task_key: str) -> str:
-        """Canonicalize task keys so `classify.spanish-spam` == `classify.spanish_spam`."""
-        parts = (task_key or "").split(".", 1)
-        if len(parts) == 2:
-            return f"{parts[0]}.{parts[1].replace('-', '_')}"
-        return task_key or ""
-
+) -> Dict[str, Any]:
     def _discover_metrics_summaries(root: str) -> Dict[str, Dict[str, Any]]:
         """Scan the run folder for persisted *_metrics.json files.
 
@@ -227,7 +368,7 @@ def _write_run_summary(
                 mtime = 0.0
 
             rank = (ts_rank, mtime)
-            canonical = _canonical_task_key(key)
+            canonical = _normalize_task_key(key)
             if canonical in best_rank and rank <= best_rank[canonical]:
                 continue
 
@@ -252,7 +393,7 @@ def _write_run_summary(
     # the current invocation's in-memory task results on top.
     merged_tasks: Dict[str, Any] = dict(existing_tasks)
     canonical_to_actual: Dict[str, str] = {
-        _canonical_task_key(k): k for k in merged_tasks.keys() if isinstance(k, str)
+        _normalize_task_key(k): k for k in merged_tasks.keys() if isinstance(k, str)
     }
 
     # 1) Scan disk for any other task outputs under this run-id/model folder.
@@ -260,7 +401,7 @@ def _write_run_summary(
     for key, value in disk_tasks.items():
         if not isinstance(key, str):
             continue
-        canonical = _canonical_task_key(key)
+        canonical = _normalize_task_key(key)
         if canonical in canonical_to_actual:
             # Preserve the existing key spelling, but refresh its metrics from disk.
             merged_tasks[canonical_to_actual[canonical]] = value
@@ -275,7 +416,7 @@ def _write_run_summary(
         metrics_manifest = task_config.get("metrics_manifest") or None
         summarized = _summarize_task_metrics(metrics, metrics_manifest) if metrics else {}
 
-        canonical = _canonical_task_key(task_name)
+        canonical = _normalize_task_key(task_name)
         existing_key = canonical_to_actual.get(canonical)
         if existing_key and existing_key != task_name:
             # Rename to the current invocation spelling (e.g. prefer spanish-spam over spanish_spam).
@@ -289,89 +430,144 @@ def _write_run_summary(
         "timestamp": datetime.now().isoformat(),
         "tasks": merged_tasks,
     }
+    summary["diagnostics"] = _aggregate_summary_diagnostics(merged_tasks)
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
     logger.info(f"Wrote run summary to {summary_path}")
+    return summary
 
 
-def write_run_config(
+def _write_run_outcome(
+    *,
+    model_output_path: str,
     model_name: str,
-    model_path: Optional[str],
-    run_id: str,
-    output_path: str,
-    tasks: list,
-    limit: Optional[int],
-    api_endpoint: str,
-    task_defaults_overrides: Optional[Dict[str, Any]],
-    vllm_config: VLLMServerConfig,
-    organization: Optional[str] = None,
-    url: Optional[str] = None
-) -> str:
-    """
-    Write complete run configuration to a YAML file.
-    
-    Args:
-        model_name: The model being evaluated (request / display name).
-        model_path: Optional local path / HF ID used to load the model in vLLM.
-        run_id: Run ID for this execution
-        output_path: Base output path
-        tasks: List of tasks to run
-        limit: Limit for examples per task
-        api_endpoint: API endpoint mode ("completions" or "chat")
-        task_defaults_overrides: Task configuration overrides
-        vllm_config: vLLM server configuration
-        organization: Optional organization name
-        url: Optional URL for the model/organization
-        
-    Returns:
-        Path to the written config file
-    """
-    # Create the complete configuration dictionary
-    model_config = {
-        'name': model_name,
-        'path': model_path,
-        'api_endpoint': api_endpoint
+    run_id: Optional[str],
+    exit_policy: str,
+    task_records: Dict[str, Dict[str, Any]],
+    started_at: datetime,
+    invocation_metadata: Optional[Dict[str, Any]] = None,
+    artifacts: Optional[Dict[str, Any]] = None,
+    errors: Optional[list] = None,
+    run_summary_payload: Optional[Dict[str, Any]] = None,
+    force_status: Optional[str] = None,
+    force_exit_code: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Write concise machine-readable run outcome for agents and automation."""
+    finished_at = datetime.now()
+    duration_s = round(max((finished_at - started_at).total_seconds(), 0.0), 6)
+    task_statuses = [str(record.get("status")) for record in task_records.values()]
+    exit_code = resolve_exit_code(task_statuses, policy=exit_policy)
+    run_status = resolve_run_status(task_statuses)
+    if force_status:
+        run_status = force_status
+    if force_exit_code is not None:
+        exit_code = int(force_exit_code)
+
+    subtask_statuses: list[str] = []
+    for record in task_records.values():
+        subtasks = record.get("subtasks")
+        if not isinstance(subtasks, dict):
+            continue
+        for subtask_payload in subtasks.values():
+            if not isinstance(subtask_payload, dict):
+                continue
+            subtask_statuses.append(str(subtask_payload.get("status") or "pending"))
+
+    counts = {
+        "requested_tasks": len(task_records),
+        "completed_tasks": sum(1 for record in task_records.values() if record.get("completed")),
+        "passed_tasks": sum(1 for record in task_records.values() if record.get("status") == "passed"),
+        "degraded_tasks": sum(1 for record in task_records.values() if record.get("status") == "degraded"),
+        "skipped_tasks": sum(1 for record in task_records.values() if record.get("status") == "skipped"),
+        "no_samples_tasks": sum(1 for record in task_records.values() if record.get("status") == "no_samples"),
+        "pending_tasks": sum(1 for record in task_records.values() if record.get("status") == "pending"),
+        "error_tasks": sum(1 for record in task_records.values() if record.get("status") == "error"),
+        "failed_tasks": sum(1 for record in task_records.values() if record.get("status") == "failed"),
+        "non_passing_tasks": sum(
+            1
+            for record in task_records.values()
+            if record.get("status") in {"failed", "error", "pending", "skipped", "no_samples"}
+        ),
+        "requested_subtasks": len(subtask_statuses),
+        "passed_subtasks": sum(1 for status in subtask_statuses if status == "passed"),
     }
-    
-    # Add organization and url if provided
-    if organization is not None:
-        model_config['organization'] = organization
-    if url is not None:
-        model_config['url'] = url
-    
-    run_config = {
-        'run_metadata': {
-            'run_id': run_id,
-            'model_name': model_name,
-            'model_path': model_path,
-            'timestamp': datetime.now().isoformat(),
-            'output_structure': f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
-        },
-        'model': model_config,
-        'tasks': tasks,
-        'evaluation': {
-            'limit': limit,
-            'task_defaults_overrides': task_defaults_overrides or {}
-        },
-        'vllm_server': vllm_config.to_dict(),
-        'environment': {
-            'python_executable': sys.executable,
-            'working_directory': os.getcwd(),
-            'prefect_api_url': os.environ.get('PREFECT_API_URL', 'http://localhost:4200/api')
-        }
+    tasks_payload = _attach_per_task_diagnostics(task_records, run_summary_payload)
+
+    outcome = {
+        "schema_version": RUN_OUTCOME_SCHEMA_VERSION,
+        "benchy_version": _get_benchy_version(),
+        "model": model_name,
+        "run_id": run_id,
+        "timestamp": finished_at.isoformat(),
+        "started_at": started_at.isoformat(),
+        "ended_at": finished_at.isoformat(),
+        "duration_s": duration_s,
+        "status": run_status,
+        "exit_policy": exit_policy,
+        "exit_code": exit_code,
+        "counts": counts,
+        "invocation": invocation_metadata or {},
+        "git": _get_git_metadata(),
+        "artifacts": artifacts or {},
+        "errors": errors or [],
+        "tasks": tasks_payload,
     }
-    
-    # Create model output directory
-    model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
-    os.makedirs(model_output_path, exist_ok=True)
-    
-    # Write config file
-    config_file_path = f"{model_output_path}/run_config.yaml"
-    with open(config_file_path, 'w') as f:
-        yaml.dump(run_config, f, default_flow_style=False, sort_keys=False, indent=2)
-    
-    logger.info(f"Run configuration written to: {config_file_path}")
-    return config_file_path
+    diagnostics = {}
+    if isinstance(run_summary_payload, dict):
+        diagnostics = run_summary_payload.get("diagnostics") or {}
+    outcome["diagnostics"] = diagnostics
+
+    outcome_path = Path(model_output_path) / "run_outcome.json"
+    with outcome_path.open("w", encoding="utf-8") as f:
+        json.dump(outcome, f, indent=2, default=str)
+    logger.info(f"Wrote run outcome to {outcome_path}")
+    return outcome
+
+
+def _log_run_outcome_summary(outcome: Dict[str, Any]) -> None:
+    """Log a compact end-of-run status summary."""
+    logger.info("=" * 60)
+    logger.info("RUN OUTCOME SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Run status: {outcome.get('status')}")
+    logger.info(f"Exit policy: {outcome.get('exit_policy')}")
+    logger.info(f"Suggested exit code: {outcome.get('exit_code')}")
+    logger.info(f"Duration (s): {outcome.get('duration_s')}")
+
+    counts = outcome.get("counts", {}) or {}
+    logger.info(f"Requested tasks: {counts.get('requested_tasks', 0)}")
+    logger.info(f"Completed tasks: {counts.get('completed_tasks', 0)}")
+    logger.info(f"Passed tasks: {counts.get('passed_tasks', 0)}")
+    logger.info(f"Degraded tasks: {counts.get('degraded_tasks', 0)}")
+    logger.info(f"Skipped tasks: {counts.get('skipped_tasks', 0)}")
+    logger.info(f"No-samples tasks: {counts.get('no_samples_tasks', 0)}")
+    logger.info(f"Failed tasks: {counts.get('failed_tasks', 0)}")
+    logger.info(f"Error tasks: {counts.get('error_tasks', 0)}")
+    logger.info(f"Pending tasks: {counts.get('pending_tasks', 0)}")
+    logger.info(f"Non-passing tasks: {counts.get('non_passing_tasks', 0)}")
+    logger.info(f"Requested subtasks: {counts.get('requested_subtasks', 0)}")
+    logger.info(f"Passed subtasks: {counts.get('passed_subtasks', 0)}")
+    logger.info(f"Errors: {len(outcome.get('errors') or [])}")
+    logger.info("")
+    logger.info("Per-task statuses:")
+    tasks = outcome.get("tasks", {}) or {}
+    for task_name in sorted(tasks):
+        record = tasks[task_name] or {}
+        status = record.get("status", "pending")
+        reason = record.get("reason")
+        suffix = f" ({reason})" if reason else ""
+        logger.info(f"  - {task_name}: {status}{suffix}")
+        subtasks = record.get("subtasks")
+        if isinstance(subtasks, dict):
+            for subtask_name in sorted(subtasks):
+                subtask_record = subtasks[subtask_name] or {}
+                sub_status = subtask_record.get("status", "pending")
+                sub_reason = subtask_record.get("reason")
+                sub_suffix = f" ({sub_reason})" if sub_reason else ""
+                logger.info(f"    - {subtask_name}: {sub_status}{sub_suffix}")
+    logger.info("=" * 60)
+
+
 
 
 @flow()
@@ -384,11 +580,15 @@ def benchmark_pipeline(
     limit: Optional[int] = None,
     api_endpoint: str = "completions",
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
+    adhoc_task_configs: Optional[Dict[str, Any]] = None,
     log_setup: Optional[Any] = None,
     run_id: Optional[str] = None,
     provider_type: str = "vllm",
     provider_config: Optional[Dict[str, Any]] = None,
     compatibility_mode: str = "skip",
+    exit_policy: str = "relaxed",
+    invocation_metadata: Optional[Dict[str, Any]] = None,
+    log_file_path: Optional[str] = None,
     organization: Optional[str] = None,
     url: Optional[str] = None,
     vllm_config: Optional[VLLMServerConfig] = None,
@@ -413,12 +613,17 @@ def benchmark_pipeline(
         provider_type: Provider type ('vllm', 'openai', or 'anthropic')
         provider_config: Provider configuration (for cloud providers)
         compatibility_mode: Compatibility handling mode for incompatible tasks
+        exit_policy: Exit behavior policy ('relaxed', 'smoke', 'strict')
+        invocation_metadata: Redacted CLI invocation context (argv, cwd, args)
+        log_file_path: Absolute path to the run log file, if available
         vllm_config: vLLM server configuration (only used if provider_type == 'vllm')
     """
     logger.info(f"Starting benchmark pipeline for model: {model_name}")
     logger.info(f"Provider type: {provider_type}")
     logger.info(f"Tasks to run: {tasks}")
     logger.info(f"Using run_id: {run_id}")
+    logger.info(f"Exit policy: {exit_policy}")
+    run_started_at = datetime.now()
     
     # Initialize config manager
     config_manager = ConfigManager()
@@ -443,7 +648,11 @@ def benchmark_pipeline(
     # Update tasks with expanded list
     tasks = expanded_tasks
     
-    # Check for completed tasks to enable resuming failed runs
+    # Create run-specific output directory structure: {output_path}/{run_id}/{model_name}
+    model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
+    os.makedirs(model_output_path, exist_ok=True)
+
+    # Check for completed tasks to enable resuming runs
     completion_checker = TaskCompletionChecker(
         output_path=output_path,
         run_id=run_id,
@@ -451,199 +660,175 @@ def benchmark_pipeline(
     )
     
     # Check completion status for all requested tasks
-    completion_status = completion_checker.get_completed_tasks(tasks)
-    completion_checker.log_completion_summary(completion_status)
+    completion_records = completion_checker.get_task_records(tasks)
+    completion_checker.log_completion_summary(completion_records)
     
     # Filter out completed tasks
-    pending_tasks = [task for task, completed in completion_status.items() if not completed]
+    pending_tasks = [task for task, record in completion_records.items() if not record.get("completed")]
     
     if not pending_tasks:
         logger.info("All tasks are already completed! Nothing to run.")
-        # Return early with a success result
+        run_summary_payload = None
+        summary_path = Path(model_output_path) / "run_summary.json"
+        if summary_path.exists():
+            try:
+                with summary_path.open("r", encoding="utf-8") as f:
+                    run_summary_payload = json.load(f) or {}
+            except Exception:
+                run_summary_payload = None
+        run_outcome = _write_run_outcome(
+            model_output_path=model_output_path,
+            model_name=model_name,
+            run_id=run_id,
+            exit_policy=exit_policy,
+            task_records=completion_records,
+            started_at=run_started_at,
+            invocation_metadata=invocation_metadata,
+            artifacts=_build_artifacts(
+                model_output_path=model_output_path,
+                log_file_path=log_file_path,
+            ),
+            run_summary_payload=run_summary_payload,
+        )
+        _log_run_outcome_summary(run_outcome)
         return {
             "model_name": model_name,
             "run_id": run_id,
             "status": "all_tasks_completed",
-            "completed_tasks": tasks,
-            "message": "All tasks were already completed in previous run"
+            "completed_tasks": [task for task, record in completion_records.items() if record.get("completed")],
+            "message": "All tasks were already completed in previous run",
+            "run_outcome": run_outcome,
+            "exit_code": run_outcome.get("exit_code", 0),
         }
     
     logger.info(f"Running {len(pending_tasks)} pending tasks: {pending_tasks}")
     
-    # Step 0: Fetch generation config from model repository (only for vLLM)
+    # Initialize runtime state
     generation_config = None
-    if provider_type == 'vllm':
-        generation_config = fetch_generation_config(
-            model_name=model_path or model_name,
-            hf_cache=vllm_config.hf_cache,
-            hf_token=vllm_config.hf_token,
-        )
-    
-    # Write complete run configuration
-    write_run_config(
-        model_name=model_name,
-        model_path=model_path,
-        run_id=run_id,
-        output_path=output_path,
-        tasks=tasks,
-        limit=limit,
-        api_endpoint=api_endpoint,
-        task_defaults_overrides=task_defaults_overrides,
-        vllm_config=vllm_config,
-        organization=organization,
-        url=url
-    )
-    
-    # Initialize server_info and api_test_result
     server_info = None
     api_test_result = {"status": "skipped"}
-    
-    # Step 1 & 2: Start and test server (only for vLLM)
-    if provider_type == 'vllm':
-        logger.info(f"Starting vLLM server with CUDA devices: {vllm_config.cuda_devices}")
-        server_info = start_vllm_server(
+    preflight_error: Optional[Exception] = None
+    preflight_errors: list[Dict[str, Any]] = []
+
+    try:
+        # Step 0: Fetch generation config from model repository (only for vLLM)
+        if provider_type == 'vllm':
+            generation_config = fetch_generation_config(
+                model_name=model_path or model_name,
+                hf_cache=vllm_config.hf_cache,
+                hf_token=vllm_config.hf_token,
+            )
+
+        # Note: run_config.yaml has been removed as it's redundant with run_outcome.json.
+        # All run metadata is now stored in run_outcome.json, the authoritative source.
+
+        # Step 1 & 2: Start and test server (only for vLLM)
+        if provider_type == 'vllm':
+            logger.info(f"Starting vLLM server with CUDA devices: {vllm_config.cuda_devices}")
+            server_info = start_vllm_server(
+                model_name=model_name,
+                model_path=model_path,
+                served_model_name=model_name,
+                vllm_config=vllm_config,
+            )
+
+            # Store server info globally for signal handler
+            set_active_server_info(server_info)
+
+            # Step 2: Test vLLM API
+            api_test_result = test_vllm_api(
+                server_info=server_info,
+                model_name=model_name
+            )
+        else:
+            logger.info(f"Using cloud provider {provider_type}, skipping vLLM server startup")
+
+        # Save generation config to output directory
+        if generation_config:
+            save_generation_config(generation_config, model_output_path, model_name)
+    except Exception as exc:
+        preflight_error = exc
+        preflight_errors.append(
+            {
+                "stage": "pipeline_preflight",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        )
+        logger.exception("Benchmark pipeline failed before task execution: %s", exc)
+    if preflight_error is not None:
+        if provider_type == 'vllm' and server_info:
+            try:
+                stop_vllm_server(server_info=server_info, upload_result={})
+            finally:
+                clear_active_server_info()
+
+        final_records = completion_checker.get_task_records(tasks)
+        run_outcome = _write_run_outcome(
+            model_output_path=model_output_path,
             model_name=model_name,
-            model_path=model_path,
-            served_model_name=model_name,
-            vllm_config=vllm_config,
+            run_id=run_id,
+            exit_policy=exit_policy,
+            task_records=final_records,
+            started_at=run_started_at,
+            invocation_metadata=invocation_metadata,
+            artifacts=_build_artifacts(
+                model_output_path=model_output_path,
+                log_file_path=log_file_path,
+            ),
+            errors=preflight_errors,
+            run_summary_payload=None,
+            force_status="failed",
+            force_exit_code=1,
         )
-        
-        # Store server info globally for signal handler
-        set_active_server_info(server_info)
-            
-        # Step 2: Test vLLM API
-        api_test_result = test_vllm_api(
-            server_info=server_info,
-            model_name=model_name
-        )
-    else:
-        logger.info(f"Using cloud provider {provider_type}, skipping vLLM server startup")
-    
-    # Create run-specific output directory structure: {output_path}/{run_id}/{model_name}
-    model_output_path = f"{output_path}/{run_id}/{model_name.split('/')[-1]}"
-    os.makedirs(model_output_path, exist_ok=True)
-    
-    # Save generation config to output directory
-    if generation_config:
-        save_generation_config(generation_config, model_output_path, model_name)
+        _log_run_outcome_summary(run_outcome)
+        raise preflight_error
     
     # Step 3: Run evaluation tasks (only pending ones)
     task_results = {}
     task_configs_by_name: Dict[str, Any] = {}
     
     # Load results from already completed tasks
-    completed_tasks = [task for task, completed in completion_status.items() if completed]
-    for task in completed_tasks:
-        logger.info(f"Loading results from previously completed task: {task}")
+    completed_tasks = [task_name for task_name, record in completion_records.items() if record.get("completed")]
+    for task_name in completed_tasks:
+        logger.info(f"Loading results from previously completed task: {task_name}")
         # Create a placeholder result for completed tasks
-        task_results[task] = {
+        task_results[task_name] = {
             "model_name": model_name,
-            "task": task,
+            "task": task_name,
             "status": "previously_completed",
-            "output_path": f"{model_output_path}/{task}",
-            "message": f"Task {task} was completed in a previous run"
+            "output_path": f"{model_output_path}/{task_name.split('.', 1)[0]}",
+            "message": f"Task {task_name} was completed in a previous run"
         }
     
     gather_result: Dict[str, Any] = {}
+    execution_error: Optional[Exception] = None
+    execution_errors: list[Dict[str, Any]] = []
     try:
         for task_name in pending_tasks:
-            # Check if this is a handler-based task first (new system)
-            if is_handler_based_task(task_name):
-                logger.info(f"Running {task_name} using convention-based handler system")
-                
-                # For handler-based tasks, construct minimal config from metadata
-                from .tasks.registry import discover_task_group
-                parts = task_name.split('.')
-                group_name = parts[0]
-                specific_subtask = parts[1] if len(parts) > 1 else None
-                
-                group_info = discover_task_group(group_name)
-                
-                if group_info:
-                    # Determine which subtasks to run
-                    if specific_subtask:
-                        # Specific subtask requested: only run that one
-                        subtasks_to_run = [specific_subtask]
-                    else:
-                        # No specific subtask: run all subtasks in the group
-                        subtasks_to_run = [s.name for s in group_info.subtasks]
-                    
-                    # Build minimal task config from metadata
-                    task_config = {
-                        "name": group_info.name,
-                        "display_name": group_info.display_name,
-                        "description": group_info.description,
-                        "tasks": subtasks_to_run,
-                        "defaults": task_defaults_overrides or {},
-                        "prompts": {},
-                        "task_configs": {},
-                    }
-                    
-                    # Merge metadata capability requirements
-                    if "capability_requirements" in group_info.metadata:
-                        task_config["capability_requirements"] = group_info.metadata["capability_requirements"]
-                    
-                    task_configs_by_name[task_name] = task_config
-                    display_name = group_info.display_name
-                    logger.info(f"Running {display_name} evaluation...")
-                    
-                    # Build cloud provider config if needed
-                    cloud_provider_config = None
-                    if provider_config:
-                        cloud_provider_config = {
-                            **provider_config,
-                            "provider_type": provider_type,
-                        }
-                    
-                    run_task_fn = _run_logged_task
-                    if hasattr(run_task_fn, "with_options"):
-                        run_task_fn = run_task_fn.with_options(name=f"task:{task_name}")
-                    task_results[task_name] = run_task_fn(
-                        task_name=task_name,
-                        model_name=model_name,
-                        model_output_path=model_output_path,
-                        server_info=server_info,
-                        api_test_result=api_test_result,
-                        task_config=task_config,
-                        limit=limit,
-                        cuda_devices=gpu_manager.get_task_cuda_devices() if provider_type == 'vllm' else None,
-                        provider_type=provider_type,
-                        provider_config=cloud_provider_config,
-                        api_endpoint=api_endpoint,
-                        generation_config=generation_config,
-                        compatibility_mode=compatibility_mode,
-                    )
-                    continue
-            
-            # Fall back to legacy systems - load task.json config
-            try:
-                task_config = config_manager.get_task_config(task_name, task_defaults_overrides)
-            except FileNotFoundError:
-                logger.warning(f"No task config found for '{task_name}', skipping")
-                continue
+            if not is_handler_based_task(task_name):
+                raise ValueError(
+                    f"Task '{task_name}' is not handler-based. "
+                    "Legacy task.json tasks are no longer supported."
+                )
+
+            task_config = build_handler_task_config(
+                task_name,
+                task_defaults_overrides,
+                adhoc_task_configs,
+            )
 
             task_configs_by_name[task_name] = task_config
 
-            # Prefer display_name from task.json for logging.
             display_name = task_config.get("display_name", task_name)
             logger.info(f"Running {display_name} evaluation...")
-
-            pipeline_overrides = task_config.get("pipeline_overrides", {})
-            # Optional pipeline-level overrides for request mode and generation config.
-            if pipeline_overrides.get("set_api_endpoint"):
-                task_config["api_endpoint"] = api_endpoint
-            if pipeline_overrides.get("set_generation_config"):
-                task_config["generation_config"] = generation_config
 
             if log_setup:
                 log_setup.log_task_config(task_name, task_config)
 
             cloud_provider_config = None
-            # If provider_types is not set, default to the current provider.
-            provider_types = task_config.get("provider_types")
-            if not provider_types:
-                provider_types = [provider_type]
-            if provider_type in provider_types and provider_config:
+            if provider_config:
                 cloud_provider_config = {
                     **provider_config,
                     "provider_type": provider_type,
@@ -672,6 +857,17 @@ def benchmark_pipeline(
         gather_result = {
             f"{task_name}_results": result for task_name, result in task_results.items()
         }
+    except Exception as exc:
+        execution_error = exc
+        execution_errors.append(
+            {
+                "stage": "task_execution",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        )
+        logger.exception("Benchmark pipeline failed during task execution: %s", exc)
     finally:
         # Step 5: Stop vLLM server (cleanup) - only for vLLM, even if a task fails.
         if provider_type == 'vllm' and server_info:
@@ -681,9 +877,48 @@ def benchmark_pipeline(
                 clear_active_server_info()
 
     cleanup_result = gather_result
-    
-    # Log final completion summary
-    newly_completed = [task for task in pending_tasks if task in task_results]
+
+    if execution_error is not None:
+        final_records = completion_checker.get_task_records(tasks)
+        run_summary_payload = None
+        try:
+            run_summary_payload = _write_run_summary(
+                model_output_path=model_output_path,
+                model_name=model_name,
+                run_id=run_id,
+                tasks=tasks,
+                task_results=task_results,
+                task_configs_by_name=task_configs_by_name,
+            )
+        except Exception as summary_exc:
+            logger.warning("Failed to write run_summary after execution error: %s", summary_exc)
+
+        run_outcome = _write_run_outcome(
+            model_output_path=model_output_path,
+            model_name=model_name,
+            run_id=run_id,
+            exit_policy=exit_policy,
+            task_records=final_records,
+            started_at=run_started_at,
+            invocation_metadata=invocation_metadata,
+            artifacts=_build_artifacts(
+                model_output_path=model_output_path,
+                log_file_path=log_file_path,
+            ),
+            errors=execution_errors,
+            run_summary_payload=run_summary_payload,
+            force_status="failed",
+            force_exit_code=1,
+        )
+        _log_run_outcome_summary(run_outcome)
+
+        cleanup_result["run_outcome"] = run_outcome
+        cleanup_result["exit_code"] = 1
+        raise execution_error
+
+    final_records = completion_checker.get_task_records(tasks)
+    newly_completed = [task for task in pending_tasks if final_records.get(task, {}).get("completed")]
+    newly_not_completed = [task for task in pending_tasks if not final_records.get(task, {}).get("completed")]
     total_completed = len(completed_tasks) + len(newly_completed)
     
     logger.info("=" * 60)
@@ -692,10 +927,11 @@ def benchmark_pipeline(
     logger.info(f"Total tasks requested: {len(tasks)}")
     logger.info(f"Previously completed: {len(completed_tasks)}")
     logger.info(f"Newly completed: {len(newly_completed)}")
+    logger.info(f"Still pending/failed: {len(newly_not_completed)}")
     logger.info(f"Total completed: {total_completed}")
     logger.info("=" * 60)
 
-    _write_run_summary(
+    run_summary_payload = _write_run_summary(
         model_output_path=model_output_path,
         model_name=model_name,
         run_id=run_id,
@@ -703,8 +939,27 @@ def benchmark_pipeline(
         task_results=task_results,
         task_configs_by_name=task_configs_by_name,
     )
-    
-    logger.info("Benchmark pipeline completed successfully")
+
+    run_outcome = _write_run_outcome(
+        model_output_path=model_output_path,
+        model_name=model_name,
+        run_id=run_id,
+        exit_policy=exit_policy,
+        task_records=final_records,
+        started_at=run_started_at,
+        invocation_metadata=invocation_metadata,
+        artifacts=_build_artifacts(
+            model_output_path=model_output_path,
+            log_file_path=log_file_path,
+        ),
+        run_summary_payload=run_summary_payload,
+    )
+    _log_run_outcome_summary(run_outcome)
+
+    cleanup_result["run_outcome"] = run_outcome
+    cleanup_result["exit_code"] = run_outcome.get("exit_code", 0)
+
+    logger.info("Benchmark pipeline finished")
     return cleanup_result
 
 @flow()
