@@ -318,13 +318,29 @@ async def run_probe_for_eval(
 
         if access_allows_probing and request_modes and "raw_payload" not in request_modes:
             # Probe request modes
-            modes_result = await _probe_request_modes(connection_info, model_name, request_modes)
-            report["modes"].update(modes_result)
+            modes_result = await _run_check_with_timeout(
+                "request_modes",
+                lambda: _probe_request_modes(connection_info, model_name, request_modes),
+                CHECK_TIMEOUTS["request_modes"],
+                CHECK_FAIL_MODES["request_modes"],
+            )
+            if any(mode in modes_result for mode in ("chat", "completions", "logprobs")):
+                report["modes"].update(modes_result)
+            else:
+                report["checks"]["request_modes"] = modes_result
             
             # Probe schema transports
             if supports_schema and "chat" in request_modes:
-                transports_result = await _probe_schema_transports(connection_info, model_name)
-                report["schema_transports"].update(transports_result)
+                transports_result = await _run_check_with_timeout(
+                    "schema_transports",
+                    lambda: _probe_schema_transports(connection_info, model_name),
+                    CHECK_TIMEOUTS["schema_transports"],
+                    CHECK_FAIL_MODES["schema_transports"],
+                )
+                if any(mode in transports_result for mode in ("structured_outputs", "response_format")):
+                    report["schema_transports"].update(transports_result)
+                else:
+                    report["checks"]["schema_transports"] = transports_result
         
         # Select best options
         report["selected_api_endpoint"] = _select_api_endpoint(
