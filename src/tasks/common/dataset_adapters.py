@@ -10,6 +10,8 @@ The adapter handles field mapping, normalization, and caching automatically.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -42,6 +44,18 @@ class DatasetAdapter:
         )
     """
     
+    @staticmethod
+    def _field_mapping_fingerprint(dataset_config: Dict[str, Any]) -> str:
+        """Build a stable fingerprint for field mapping-related options."""
+        mapping_config: Dict[str, Any] = {}
+
+        for key, value in dataset_config.items():
+            if key.endswith("_field") or key == "field_mapping":
+                mapping_config[key] = value
+
+        payload = json.dumps(mapping_config, sort_keys=True, ensure_ascii=True, default=str)
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
+
     def load(
         self,
         dataset_config: Dict[str, Any],
@@ -142,12 +156,13 @@ class DatasetAdapter:
         
         name = dataset_config["name"]
         split = dataset_config.get("split", "test")
+        mapping_fingerprint = self._field_mapping_fingerprint(dataset_config)
         
         # Create cache directory
         cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generate cache filename based on dataset name and split
-        cache_filename = f"{name.replace('/', '_')}_{split}.jsonl"
+        # Generate cache filename based on dataset name, split, and field mapping.
+        cache_filename = f"{name.replace('/', '_')}_{split}_{mapping_fingerprint}.jsonl"
         cache_path = cache_dir / cache_filename
         
         # Check if cached
