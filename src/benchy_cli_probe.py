@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict
 
@@ -16,6 +17,52 @@ logger = logging.getLogger(__name__)
 
 # Import provider defaults from eval CLI
 from .benchy_cli_eval import CLI_PROVIDER_DEFAULTS
+
+try:
+    from .engine.connection import PROVIDER_CAPABILITY_DEFAULTS  # type: ignore
+except Exception:  # pragma: no cover - defensive fallback for lightweight probe usage
+    PROVIDER_CAPABILITY_DEFAULTS = {
+        "vllm": {
+            "supports_multimodal": False,
+            "supports_logprobs": True,
+            "supports_schema": True,
+            "supports_files": False,
+            "supports_streaming": False,
+            "request_modes": ["chat", "completions"],
+        },
+        "openai": {
+            "supports_multimodal": True,
+            "supports_logprobs": False,
+            "supports_schema": True,
+            "supports_files": True,
+            "supports_streaming": False,
+            "request_modes": ["chat", "completions"],
+        },
+        "anthropic": {
+            "supports_multimodal": False,
+            "supports_logprobs": False,
+            "supports_schema": True,
+            "supports_files": False,
+            "supports_streaming": False,
+            "request_modes": ["chat"],
+        },
+        "together": {
+            "supports_multimodal": True,
+            "supports_logprobs": False,
+            "supports_schema": True,
+            "supports_files": True,
+            "supports_streaming": False,
+            "request_modes": ["chat", "completions"],
+        },
+        "alibaba": {
+            "supports_multimodal": True,
+            "supports_logprobs": False,
+            "supports_schema": True,
+            "supports_files": True,
+            "supports_streaming": False,
+            "request_modes": ["chat"],
+        },
+    }
 
 
 def add_probe_arguments(parser: argparse.ArgumentParser) -> None:
@@ -229,14 +276,12 @@ def _build_connection_info(args: argparse.Namespace) -> Dict[str, Any]:
     
     # Set capabilities for OpenAI-compatible providers
     if provider_type in {"vllm", "openai", "anthropic", "together", "alibaba"}:
-        connection_info["capabilities"] = {
-            "request_modes": ["chat", "completions"],
-            "supports_schema": True,
-            # Conservative default to avoid false failures on providers/models where
-            # logprobs are endpoint- or model-dependent.
-            "supports_logprobs": provider_type == "vllm",
-            "supports_multimodal": True,
-        }
+        provider_capabilities = PROVIDER_CAPABILITY_DEFAULTS.get(provider_type)
+        if provider_capabilities is not None:
+            if hasattr(provider_capabilities, "__dataclass_fields__"):
+                connection_info["capabilities"] = asdict(provider_capabilities)
+            else:
+                connection_info["capabilities"] = dict(provider_capabilities)
     
     # Validate required fields
     if not connection_info.get("base_url"):

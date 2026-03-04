@@ -141,7 +141,7 @@ class FacturasArgentinas(MultimodalStructuredHandler):
         "requires_schema": "required",
     }
 
-    dataset_repo_id = "mauroibz/facturas-argentinas_2"
+    dataset_repo_id = "mauroibz/facturas_argentinas_2"
 
     system_prompt = "You are a precise information extraction system."
     user_prompt_template = (

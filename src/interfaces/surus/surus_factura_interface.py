@@ -4,7 +4,7 @@ import base64
 import io
 import json
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -46,6 +46,93 @@ class SurusFacturaInterface(HTTPInterface):
             "image_path": sample["image_path"],
             "sample_id": sample["id"],
         }
+
+    @staticmethod
+    def _flatten_error_tokens(payload: Any) -> List[str]:
+        """Recursively flatten JSON error payload into comparable text tokens."""
+        tokens: List[str] = []
+
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                tokens.append(str(key).lower())
+                tokens.extend(SurusFacturaInterface._flatten_error_tokens(value))
+            return tokens
+
+        if isinstance(payload, list):
+            for item in payload:
+                tokens.extend(SurusFacturaInterface._flatten_error_tokens(item))
+            return tokens
+
+        if payload is not None:
+            tokens.append(str(payload).lower())
+
+        return tokens
+
+    def _should_retry_with_image_url(self, response: httpx.Response) -> bool:
+        """Retry with `image_url` only when 4xx body indicates field-name mismatch."""
+        if response.status_code not in (400, 422):
+            return False
+        if self.request_image_field == "image_url":
+            return False
+
+        tokens: List[str] = []
+        try:
+            tokens.extend(self._flatten_error_tokens(response.json()))
+        except Exception:
+            pass
+
+        response_text = (response.text or "").strip().lower()
+        if response_text:
+            tokens.append(response_text)
+
+        haystack = " | ".join(tokens)
+        if not haystack:
+            return False
+
+        requested_field = str(self.request_image_field).lower()
+        references_requested = requested_field in haystack
+        references_image_url = "image_url" in haystack
+        has_field_label = any(
+            marker in haystack for marker in ("field", "parameter", "property")
+        )
+        if not has_field_label:
+            return False
+
+        # Retry only for field-name mismatch semantics, not for generic payload validation.
+        explicit_wrong_field = any(
+            marker in haystack
+            for marker in (
+                "unknown field",
+                "unexpected field",
+                "extra field",
+                "unrecognized field",
+                "unknown parameter",
+                "unexpected parameter",
+                "not allowed",
+            )
+        )
+        explicit_image_url_required = references_image_url and any(
+            marker in haystack
+            for marker in (
+                "required",
+                "missing",
+                "field required",
+                "required field",
+                "missing field",
+                "must include",
+            )
+        )
+
+        if references_requested and explicit_wrong_field:
+            return True
+        if explicit_image_url_required:
+            return True
+        if references_requested and references_image_url and any(
+            marker in haystack
+            for marker in ("use image_url", "expected image_url", "instead")
+        ):
+            return True
+        return False
 
     def _image_to_data_url(self, image_path: str) -> str:
         """Convert local image file to base64 data URL."""
@@ -125,10 +212,7 @@ class SurusFacturaInterface(HTTPInterface):
         )
 
         # Backward compatibility for older deployments that expect `image_url`.
-        if (
-            response.status_code in (400, 422)
-            and self.request_image_field != "image_url"
-        ):
+        if self._should_retry_with_image_url(response):
             active_field = "image_url"
             fallback_data = {
                 "image_url": image_url,
@@ -152,32 +236,46 @@ class SurusFacturaInterface(HTTPInterface):
 
         return response.json()
 
-    def _parse_response(self, response: Dict) -> Dict:
+    def _parse_response(self, response: Any) -> Dict:
         """Parse SURUS Factura response to benchy format."""
         result = {"output": None, "raw": None, "error": None, "error_type": None}
 
         try:
+            if not isinstance(response, dict):
+                raise KeyError("Unexpected response type: expected object")
+
             if "data" in response:
                 result["output"] = response["data"]
                 result["raw"] = json.dumps(response["data"])
-            elif "choices" in response and len(response["choices"]) > 0:
-                content = response["choices"][0]["message"]["content"]
-                result["raw"] = content
-                result["output"] = json.loads(content)
-            elif isinstance(response, dict):
+            elif "choices" in response and isinstance(response["choices"], list) and response["choices"]:
+                first_choice = response["choices"][0]
+                message = first_choice.get("message") if isinstance(first_choice, dict) else None
+                content = message.get("content") if isinstance(message, dict) else None
+
+                if isinstance(content, dict):
+                    result["output"] = content
+                    result["raw"] = json.dumps(content)
+                elif isinstance(content, str):
+                    result["raw"] = content
+                    try:
+                        result["output"] = json.loads(content)
+                    except json.JSONDecodeError as exc:
+                        raise KeyError("choices[0].message.content is not valid JSON") from exc
+                else:
+                    raise KeyError("Unexpected choices content type")
+            else:
                 # Fallback for endpoints that return the extracted object directly.
                 result["output"] = response
                 result["raw"] = json.dumps(response)
-            else:
-                raise KeyError("Unexpected response type")
         except KeyError as e:
             logger.warning(f"Unexpected response format: {e}")
-            result["raw"] = json.dumps(response)
+            result["raw"] = json.dumps(response) if isinstance(response, (dict, list)) else str(response)
             result["error"] = f"Unexpected response format: {e}"
             result["error_type"] = "invalid_response"
-        except json.JSONDecodeError as e:
-            logger.warning(f"JSON parse error: {e}")
-            result["error"] = f"JSON parse error: {e}"
+        except (TypeError, json.JSONDecodeError) as e:
+            logger.warning(f"Response parse error: {e}")
+            result["raw"] = json.dumps(response) if isinstance(response, (dict, list)) else str(response)
+            result["error"] = f"Response parse error: {e}"
             result["error_type"] = "invalid_response"
 
         return result
