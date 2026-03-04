@@ -160,6 +160,47 @@ def test_download_huggingface_dataset_fallback_to_train(monkeypatch):
     assert attempts == ["test", "train"]
 
 
+def test_download_huggingface_dataset_does_not_fallback_to_train_on_non_split_error(monkeypatch):
+    """Test test->train fallback is skipped for non split-related failures."""
+    attempts = []
+
+    def fake_load_dataset(name, split=None, **kwargs):
+        attempts.append(split)
+        raise RuntimeError("HTTP 429 quota exceeded")
+
+    monkeypatch.setattr(
+        "src.tasks.common.utils.dataset_utils.load_dataset",
+        fake_load_dataset
+    )
+
+    with pytest.raises(RuntimeError):
+        download_huggingface_dataset("test/dataset", split="test")
+
+    assert attempts == ["test"]
+
+
+def test_download_huggingface_dataset_logs_when_train_fallback_fails(monkeypatch, caplog):
+    """Test fallback failure is visible in logs when train split also fails."""
+    attempts = []
+
+    def fake_load_dataset(name, split=None, **kwargs):
+        attempts.append(split)
+        if split == "test":
+            raise ValueError("Unknown split: test")
+        raise RuntimeError("Train split unavailable")
+
+    monkeypatch.setattr(
+        "src.tasks.common.utils.dataset_utils.load_dataset",
+        fake_load_dataset
+    )
+
+    with pytest.raises(ValueError):
+        download_huggingface_dataset("test/dataset", split="test")
+
+    assert attempts == ["test", "train"]
+    assert "Fallback split 'train' also failed" in caplog.text
+
+
 def test_download_huggingface_dataset_failure_raises(monkeypatch):
     """Test download_huggingface_dataset raises on failure."""
     def fake_load_dataset(name, split=None, **kwargs):

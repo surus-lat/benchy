@@ -198,6 +198,25 @@ def test_generated_config_preserves_prompts(tmp_path, fake_cli_args):
     assert adhoc_task["user_prompt_template"] == "Question: {text}\nAnswer:"
 
 
+def test_generate_config_from_cli_does_not_mutate_input_config(tmp_path, fake_cli_args):
+    """Test generate_config_from_cli deep-copies input config before mutation."""
+    output_file = tmp_path / "config.yaml"
+    input_config = {
+        "model": {"name": "original-model"},
+        "task_defaults": {"batch_size": 8},
+    }
+
+    args = fake_cli_args(
+        model_name="updated-model",
+        batch_size=16,
+    )
+
+    generate_config_from_cli(args, str(output_file), config=input_config)
+
+    assert input_config["model"]["name"] == "original-model"
+    assert input_config["task_defaults"]["batch_size"] == 8
+
+
 # Validation Tests
 
 def test_validate_generated_config_requires_model_name():
