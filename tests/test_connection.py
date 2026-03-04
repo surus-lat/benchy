@@ -62,4 +62,15 @@ def test_alibaba_connection_defaults_include_expected_capabilities() -> None:
     assert info["use_structured_outputs"] is False
     assert info["supports_logprobs"] is False
     assert info["capabilities"]["supports_multimodal"] is True
-    assert info["capabilities"]["request_modes"] == ["chat", "completions"]
+    assert info["capabilities"]["request_modes"] == ["chat"]
+
+
+def test_google_connection_defaults_align_with_google_interface() -> None:
+    info = build_connection_info("google", provider_config={}, model_config={})
+
+    assert info["base_url"] == "https://generativelanguage.googleapis.com/v1"
+    assert info["api_key_env"] == "GOOGLE_API_KEY"
+    assert info["use_structured_outputs"] is False
+    assert info["capabilities"]["supports_multimodal"] is True
+    assert info["capabilities"]["supports_schema"] is True
+    assert info["capabilities"]["request_modes"] == ["chat"]

@@ -396,3 +396,52 @@ def test_load_raises_on_missing_name():
     
     with pytest.raises(ValueError, match="must include 'name'"):
         adapter.load(config, Path("/tmp"))
+
+
+def test_huggingface_cache_includes_field_mapping_fingerprint(tmp_path, monkeypatch):
+    """Different field mappings should not reuse the same normalized cache."""
+    calls = []
+    raw_samples = [
+        {
+            "id": "1",
+            "text_candidate": "text-value",
+            "sentence": "sentence-value",
+            "target": "ok",
+        },
+    ]
+
+    def fake_download(*args, **kwargs):
+        calls.append(kwargs.get("split"))
+        return raw_samples
+
+    monkeypatch.setattr(
+        "src.tasks.common.utils.dataset_utils.download_huggingface_dataset",
+        fake_download,
+    )
+
+    adapter = DatasetAdapter()
+    cache_dir = tmp_path / "cache"
+    config_text = {
+        "name": "org/dataset",
+        "source": "huggingface",
+        "split": "test",
+        "input_field": "text_candidate",
+        "output_field": "target",
+    }
+    config_sentence = {
+        "name": "org/dataset",
+        "source": "huggingface",
+        "split": "test",
+        "input_field": "sentence",
+        "output_field": "target",
+    }
+
+    first = adapter.load(config_text, cache_dir)
+    second = adapter.load(config_sentence, cache_dir)
+
+    assert first[0]["text"] == "text-value"
+    assert second[0]["text"] == "sentence-value"
+    assert calls == ["test", "test"]
+
+    cache_files = sorted(cache_dir.glob("org_dataset_test_*.jsonl"))
+    assert len(cache_files) == 2
