@@ -7,6 +7,7 @@ for future use.
 
 from __future__ import annotations
 
+import copy
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -30,7 +31,7 @@ def generate_config_from_cli(
     """
     # Start with existing config or create new one
     if config:
-        generated_config = dict(config)
+        generated_config = copy.deepcopy(config)
     else:
         generated_config = {}
     
