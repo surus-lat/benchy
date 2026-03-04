@@ -55,7 +55,7 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_schema=True,
         supports_files=True,
         supports_streaming=False,
-        request_modes=["chat", "completions"],
+        request_modes=["chat"],
     ),
     "surus": InterfaceCapabilities(
         supports_multimodal=False,
@@ -100,10 +100,10 @@ PROVIDER_CAPABILITY_DEFAULTS = {
     "google": InterfaceCapabilities(
         supports_multimodal=True,
         supports_logprobs=False,
-        supports_schema=False,
+        supports_schema=True,
         supports_files=True,
         supports_streaming=False,
-        request_modes=["raw_payload"],
+        request_modes=["chat"],
     ),
 }
 
