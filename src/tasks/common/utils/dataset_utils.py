@@ -31,6 +31,23 @@ from datasets import load_dataset
 logger = logging.getLogger(__name__)
 
 
+def _is_missing_split_error(exc: Exception) -> bool:
+    """Best-effort detection for split-not-found errors from `datasets`."""
+    message = str(exc).lower()
+    mentions_split = any(token in message for token in ("split", "splits"))
+    missing_markers = (
+        "not found",
+        "does not exist",
+        "unknown",
+        "invalid",
+        "available split",
+        "available splits",
+        "no split",
+        "bad split",
+    )
+    return mentions_split and any(marker in message for marker in missing_markers)
+
+
 def load_jsonl_dataset(file_path: Path) -> List[Dict[str, Any]]:
     """Load dataset from JSONL file.
     
@@ -75,7 +92,7 @@ def download_huggingface_dataset(
         logger.info(f"Downloaded {len(dataset_list)} samples")
         return dataset_list
     except Exception as exc:
-        if split == "test":
+        if split == "test" and _is_missing_split_error(exc):
             try:
                 logger.warning(
                     "Failed to load split 'test' for %s; trying fallback split 'train'",
@@ -85,8 +102,19 @@ def download_huggingface_dataset(
                 dataset_list = list(dataset)
                 logger.info(f"Downloaded {len(dataset_list)} samples from fallback split 'train'")
                 return dataset_list
-            except Exception:
-                pass
+            except Exception as inner_exc:
+                logger.exception(
+                    "Fallback split 'train' also failed for %s: %s",
+                    dataset_name,
+                    inner_exc,
+                )
+        elif split == "test":
+            logger.warning(
+                "Failed to load split 'test' for %s without split-not-found signal; "
+                "skipping train fallback. Error: %s",
+                dataset_name,
+                exc,
+            )
 
         # Some datasets on the Hub are misconfigured such that `datasets.load_dataset()`
         # fails while trying to build splits (often due to mismatched CSV headers across files).
