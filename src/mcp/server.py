@@ -60,6 +60,62 @@ def _get_output_path() -> Path:
     return Path("outputs/benchmark_outputs")
 
 
+def _validate_relative_component(value: str, label: str) -> None:
+    path_value = Path(value)
+    if path_value.is_absolute():
+        raise ValueError(f"{label} must be a relative path segment (absolute paths are not allowed)")
+    if len(path_value.parts) != 1:
+        raise ValueError(f"{label} must be a single path segment")
+    if any(part == ".." for part in path_value.parts):
+        raise ValueError(f"{label} must not contain '..'")
+
+
+def _is_relative_to(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_run_dir(run_id: str) -> tuple[Path, Path]:
+    _validate_relative_component(run_id, "run_id")
+    output_root = _get_output_path().resolve()
+    resolved_run_dir = (output_root / run_id).resolve()
+    if not _is_relative_to(resolved_run_dir, output_root):
+        raise ValueError("run_id resolves outside the benchmark output root")
+    return output_root, resolved_run_dir
+
+
+def _resolve_model_dir(output_root: Path, run_dir: Path, model_name: str | None) -> Path:
+    if model_name:
+        _validate_relative_component(model_name, "model_name")
+        resolved_model_dir = (run_dir / model_name).resolve()
+        if not _is_relative_to(resolved_model_dir, run_dir) or not _is_relative_to(
+            resolved_model_dir, output_root
+        ):
+            raise ValueError("model_name resolves outside the run directory")
+        return resolved_model_dir
+
+    candidates = [d.resolve() for d in run_dir.iterdir() if d.is_dir()]
+    candidates = [
+        d
+        for d in candidates
+        if _is_relative_to(d, run_dir) and _is_relative_to(d, output_root)
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No model sub-directories found in {run_dir}")
+    if len(candidates) == 1:
+        return candidates[0]
+
+    candidate_names = ", ".join(sorted(d.name for d in candidates))
+    raise FileNotFoundError(
+        "Multiple model sub-directories found. "
+        f"Candidates: {candidate_names}. "
+        "Pass model_name to disambiguate."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tool: read_run_outcome
 # ---------------------------------------------------------------------------
@@ -74,25 +130,24 @@ def read_run_outcome(
 
     Args:
         run_id: The run ID (folder name under the output base path).
-        model_name: Optional model name segment. If omitted, the first model
-                    folder found under run_id is used.
+        model_name: Optional model name segment. If omitted, exactly one model
+                    folder must exist under run_id.
 
     Returns:
         The parsed run_outcome.json dict, or an error dict if not found.
     """
-    base = _get_output_path() / run_id
+    try:
+        output_root, base = _resolve_run_dir(run_id)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
 
     if not base.exists():
         return {"error": f"Run directory not found: {base}"}
 
-    # Find the model sub-folder
-    if model_name:
-        model_dir = base / model_name
-    else:
-        candidates = [d for d in base.iterdir() if d.is_dir()]
-        if not candidates:
-            return {"error": f"No model sub-directories found in {base}"}
-        model_dir = candidates[0]
+    try:
+        model_dir = _resolve_model_dir(output_root, base, model_name)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
 
     outcome_path = model_dir / "run_outcome.json"
     if not outcome_path.exists():
@@ -116,6 +171,7 @@ def validate_smoke_gates(
 
     A run passes if:
     - run_outcome.status is 'passed' or 'degraded'
+    - run_outcome.exit_code == 0
     - counts.failed_tasks == 0
     - counts.error_tasks == 0
     - counts.pending_tasks == 0
@@ -130,12 +186,16 @@ def validate_smoke_gates(
         return {"passed": False, "error": outcome["error"]}
 
     status = outcome.get("status", "unknown")
+    exit_code = outcome.get("exit_code", 0) or 0
     counts = outcome.get("counts", {})
 
     violations: list[str] = []
 
     if status not in {"passed", "degraded"}:
         violations.append(f"run status is '{status}' (expected: passed or degraded)")
+
+    if exit_code != 0:
+        violations.append(f"exit_code = {exit_code} (expected: 0)")
 
     blocking_counts = [
         "failed_tasks",
@@ -152,6 +212,7 @@ def validate_smoke_gates(
     return {
         "passed": len(violations) == 0,
         "status": status,
+        "exit_code": exit_code,
         "counts": counts,
         "violations": violations,
     }
@@ -305,18 +366,18 @@ def read_run_summary(
     Returns:
         The parsed run_summary.json dict, or an error dict if not found.
     """
-    base = _get_output_path() / run_id
+    try:
+        output_root, base = _resolve_run_dir(run_id)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
 
     if not base.exists():
         return {"error": f"Run directory not found: {base}"}
 
-    if model_name:
-        model_dir = base / model_name
-    else:
-        candidates = [d for d in base.iterdir() if d.is_dir()]
-        if not candidates:
-            return {"error": f"No model sub-directories found in {base}"}
-        model_dir = candidates[0]
+    try:
+        model_dir = _resolve_model_dir(output_root, base, model_name)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
 
     summary_path = model_dir / "run_summary.json"
     if not summary_path.exists():
@@ -351,18 +412,18 @@ def get_task_errors(
     Returns:
         Dict with error_count, samples (failed ones up to max_samples), and task_status.
     """
-    base = _get_output_path() / run_id
+    try:
+        output_root, base = _resolve_run_dir(run_id)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
 
     if not base.exists():
         return {"error": f"Run directory not found: {base}"}
 
-    if model_name:
-        model_dir = base / model_name
-    else:
-        candidates = [d for d in base.iterdir() if d.is_dir()]
-        if not candidates:
-            return {"error": "No model sub-directories found"}
-        model_dir = candidates[0]
+    try:
+        model_dir = _resolve_model_dir(output_root, base, model_name)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
 
     # Support dotted subtask path (e.g. document_extraction.facturas_argentinas → document_extraction/facturas_argentinas)
     task_path = model_dir / task_name.replace(".", "/")
