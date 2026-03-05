@@ -1,6 +1,17 @@
 name: document_extraction
 display_name: Document Extraction
 description: Structured data extraction from document images using guided JSON schema
+group: document_extraction
+output:
+  subdirectory: document_extraction
+
+group_metadata:
+  name: Document Extraction
+  description: Structured data extraction from document images
+  description_en: Structured data extraction from document images
+  description_es: Extracción de datos estructurados de imágenes de documentos
+  description_pt: Extração de dados estruturados de imagens de documentos
+  repository: https://github.com/surus-lat/benchy
 
 capability_requirements:
   requires_multimodal: required

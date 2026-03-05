@@ -1,4 +1,4 @@
-"""SURUS AI interface for /ocr endpoint (image extraction)."""
+"""SURUS AI interface for /ocr endpoint (document extraction)."""
 
 import json
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class SurusOCRInterface(HTTPInterface):
-    """Interface for SURUS AI /ocr endpoint for image extraction.
+    """Interface for SURUS AI /ocr endpoint for document extraction.
 
     This interface handles multimodal (image) inputs, converting local
     image files to base64 data URLs for the API.
@@ -42,7 +42,7 @@ class SurusOCRInterface(HTTPInterface):
     def prepare_request(self, sample: Dict, task) -> Dict:
         """Prepare request for SURUS OCR endpoint.
 
-        Handles image_path from image_extraction task samples.
+        Handles image_path from document_extraction task samples.
 
         Args:
             sample: Raw sample with image_path, schema, expected, etc.

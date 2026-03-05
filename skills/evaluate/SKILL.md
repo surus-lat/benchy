@@ -63,7 +63,7 @@ benchy eval --model-path /path/to/model --model-name my-model \
 
 **System endpoint example:**
 ```bash
-benchy eval --config configs/systems/surus-factura.yaml --tasks image_extraction.facturas --limit 5
+benchy eval --config configs/systems/surus-factura.yaml --tasks document_extraction.facturas_argentinas --limit 5
 ```
 
 ---
@@ -140,7 +140,7 @@ cp env.example .env
 | `no_samples` | Dataset not found or path wrong | Check dataset path and download |
 | `skipped` | Capability mismatch | Check `capability_requirements` vs provider capabilities |
 | `connectivity_error` | API unreachable | Check base_url, API key, network |
-| `all_invalid_responses` | Wrong model/endpoint | Verify model name, endpoint mode |
+| `all_invalid_responses` | Wrong model/endpoint or oversized images | Verify model name, endpoint mode; for multimodal endpoints add `image_max_edge` to config if the API has a pixel-size limit (e.g. SURUS /factura requires `image_max_edge: 2048`) |
 | exit code 1 + smoke policy | Any task not clean | Read `run_outcome.json` errors section |
 
 ---

@@ -14,7 +14,10 @@ from .group_runner import SubtaskContext, TaskGroupSpec, run_task_group
 
 logger = logging.getLogger(__name__)
 
-_INTERNAL_TASK_GROUPS = {"common"}
+_INTERNAL_TASK_GROUPS = {"common", "image_extraction"}
+_DEPRECATED_TASK_GROUPS = {
+    "image_extraction": "document_extraction",
+}
 
 
 def _tasks_root() -> Path:
@@ -218,6 +221,16 @@ def _is_internal_task_group(group_name: str) -> bool:
     return group_name.startswith("_") or group_name in _INTERNAL_TASK_GROUPS
 
 
+def _raise_if_deprecated_task_ref(task_ref: str) -> None:
+    group_name = (task_ref or "").split(".", 1)[0]
+    replacement = _DEPRECATED_TASK_GROUPS.get(group_name)
+    if replacement:
+        raise ValueError(
+            f"Task group '{group_name}' is deprecated and no longer supported. "
+            f"Use '{replacement}' instead."
+        )
+
+
 def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
     """Discover a task group using convention-based file scanning.
     
@@ -321,6 +334,8 @@ def build_handler_task_config(
     Returns:
         Task configuration dict
     """
+    _raise_if_deprecated_task_ref(task_ref)
+
     # Check if this is an ad-hoc task
     if task_ref.startswith("_adhoc_") and adhoc_task_configs and task_ref in adhoc_task_configs:
         return build_adhoc_task_config(
@@ -698,6 +713,8 @@ def discover_and_run_handler_task(
         if not value:
             return value
         return value.replace("-", "_")
+
+    _raise_if_deprecated_task_ref(task_ref)
 
     # Check if this is an ad-hoc task
     if task_ref.startswith("_adhoc_"):

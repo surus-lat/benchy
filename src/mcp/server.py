@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -345,7 +344,7 @@ def get_task_errors(
 
     Args:
         run_id: The run ID.
-        task_name: Task or subtask name (e.g. 'spanish' or 'image_extraction.facturas').
+        task_name: Task or subtask name (e.g. 'spanish' or 'document_extraction.facturas_argentinas').
         model_name: Optional model name segment.
         max_samples: Maximum number of error samples to return.
 
@@ -365,7 +364,7 @@ def get_task_errors(
             return {"error": "No model sub-directories found"}
         model_dir = candidates[0]
 
-    # Support dotted subtask path (e.g. image_extraction.facturas → image_extraction/facturas)
+    # Support dotted subtask path (e.g. document_extraction.facturas_argentinas → document_extraction/facturas_argentinas)
     task_path = model_dir / task_name.replace(".", "/")
 
     if not task_path.exists():
@@ -377,7 +376,15 @@ def get_task_errors(
         return {"error": f"No samples file found in {task_path}"}
 
     with open(samples_files[0]) as f:
-        all_samples = json.load(f)
+        raw = json.load(f)
+
+    # Samples file is wrapped: {"model": ..., "samples": [...]}
+    if isinstance(raw, dict) and "samples" in raw:
+        all_samples = raw["samples"]
+    elif isinstance(raw, list):
+        all_samples = raw
+    else:
+        all_samples = []
 
     error_samples = [s for s in all_samples if s.get("error") or s.get("error_type")]
     wrong_samples = [

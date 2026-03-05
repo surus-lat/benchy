@@ -13,6 +13,7 @@ surus_factura:
   max_retries: 3
   force_jpeg_payload: true
   jpeg_quality: 90
+  image_max_edge: 2048  # API limit is 2560px; stay safely below it
   capabilities:
     supports_multimodal: true
     supports_schema: true
@@ -29,19 +30,11 @@ model:
 
 # Tasks to run
 tasks:
-  - "image_extraction"
   - "document_extraction"
 
 # Task defaults
 task_defaults:
   log_samples: true
-
-# Task-specific configuration
-image_extraction:
-  # Only run facturas subtask
-  tasks:
-    - "facturas"
-  
   defaults:
     batch_size: 5  # Conservative for image uploads
     log_samples: true
