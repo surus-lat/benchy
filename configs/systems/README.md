@@ -80,7 +80,7 @@ structured_extraction:
 ### SURUS /extract
 **File**: `surus-extract.yaml`
 **Purpose**: Optimized structured data extraction
-**Endpoint**: https://api.surus.dev/functions/v1/extract
+**Endpoint**: https://api.surus.lat/functions/v1/extract
 **Compatible tasks**: `structured_extraction`
 
 Task-optimized model for JSON extraction with guided schemas. Significantly faster than general-purpose LLMs for extraction tasks.
