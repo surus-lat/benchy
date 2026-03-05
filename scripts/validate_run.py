@@ -52,7 +52,15 @@ def find_outcome_path(run_id: str, model_name: str | None, base_path: Path) -> P
         candidates = [d for d in run_dir.iterdir() if d.is_dir()]
         if not candidates:
             raise FileNotFoundError(f"No model sub-directories in {run_dir}")
-        model_dir = sorted(candidates)[0]
+        if len(candidates) == 1:
+            model_dir = candidates[0]
+        else:
+            candidate_names = ", ".join(sorted(d.name for d in candidates))
+            raise FileNotFoundError(
+                "Multiple model sub-directories found for run "
+                f"'{run_id}': {candidate_names}. "
+                "Pass the desired model name with --model."
+            )
 
     path = model_dir / "run_outcome.json"
     if not path.exists():
@@ -63,11 +71,15 @@ def find_outcome_path(run_id: str, model_name: str | None, base_path: Path) -> P
 def validate_smoke_gates(outcome: dict[str, Any]) -> dict[str, Any]:
     """Apply AGENTS.md smoke gates and return a structured result."""
     status = outcome.get("status", "unknown")
+    exit_code = outcome.get("exit_code", 0) or 0
     counts = outcome.get("counts", {})
     violations: list[str] = []
 
     if status not in VALID_STATUSES:
         violations.append(f"status is '{status}' (expected: passed or degraded)")
+
+    if exit_code != 0:
+        violations.append(f"exit_code = {exit_code} (expected: 0)")
 
     for key in BLOCKING_COUNT_KEYS:
         val = counts.get(key, 0) or 0
@@ -85,6 +97,7 @@ def validate_smoke_gates(outcome: dict[str, Any]) -> dict[str, Any]:
         "run_id": outcome.get("run_id"),
         "model": outcome.get("model"),
         "status": status,
+        "exit_code": exit_code,
         "exit_policy": outcome.get("exit_policy"),
         "duration_s": outcome.get("duration_s"),
         "counts": counts,

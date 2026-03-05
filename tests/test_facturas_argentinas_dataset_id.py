@@ -28,7 +28,14 @@ def test_facturas_dataset_repo_id_matches_metadata():
     with open("src/tasks/document_extraction/metadata.yaml", "r", encoding="utf-8") as handle:
         metadata = yaml.safe_load(handle) or {}
 
-    url = metadata["subtasks"]["facturas_argentinas"]["dataset_url"]
+    task_metadata = metadata["subtasks"]["facturas_argentinas"]
+    url = (
+        task_metadata.get("URL")
+        or task_metadata.get("url")
+        or task_metadata.get("Url")
+        or task_metadata.get("dataset_url")
+    )
+    assert url is not None
     repo_from_url = url.rsplit("/datasets/", 1)[-1].strip("/")
 
     assert dataset_repo_id == repo_from_url
