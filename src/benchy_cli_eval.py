@@ -44,11 +44,11 @@ PROVIDER_SPECS = {
     },
     "surus_ocr": {
         "config_key": "surus_ocr",
-        "log": "Using SURUS AI OCR provider for image extraction tasks",
+        "log": "Using SURUS AI OCR provider for document extraction tasks",
     },
     "surus_factura": {
         "config_key": "surus_factura",
-        "log": "Using SURUS AI Factura provider for image extraction tasks",
+        "log": "Using SURUS AI Factura provider for document extraction tasks",
     },
     "surus_classify": {
         "config_key": "surus_classify",
@@ -73,6 +73,10 @@ PROVIDER_SPECS = {
 }
 
 MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google"}
+DEPRECATED_TASKS: Dict[str, str] = {
+    "image_extraction": "document_extraction",
+}
+
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -169,6 +173,29 @@ def _dedupe_tasks(tasks: list) -> list:
         seen.add(task_name)
         ordered.append(task_name)
     return ordered
+
+
+def _find_deprecated_tasks(tasks: list[str]) -> list[str]:
+    found: set[str] = set()
+    for task_name in tasks:
+        group_name = str(task_name).split(".", 1)[0]
+        if group_name in DEPRECATED_TASKS:
+            found.add(group_name)
+    return sorted(found)
+
+
+def _reject_deprecated_tasks(tasks: list[str], source: str) -> None:
+    deprecated = _find_deprecated_tasks(tasks)
+    if not deprecated:
+        return
+
+    replacements = ", ".join(
+        f"'{name}' -> '{DEPRECATED_TASKS[name]}'" for name in deprecated
+    )
+    raise SystemExit(
+        f"Deprecated task(s) provided via {source}: {', '.join(deprecated)}. "
+        f"Use: {replacements}. Legacy task names are no longer supported."
+    )
 
 
 def resolve_provider_config(
@@ -1155,6 +1182,7 @@ def run_eval(args: argparse.Namespace) -> int:
         task_defaults_overrides = {**provider_task_defaults, **task_defaults_overrides}
 
     config_tasks = config.get("tasks", ["spanish", "portuguese"])
+    _reject_deprecated_tasks(config_tasks, "config")
     tasks_override = []
     
     # If ad-hoc task was created, use it
@@ -1169,6 +1197,7 @@ def run_eval(args: argparse.Namespace) -> int:
             for group_entry in args.task_group:
                 tasks_override.extend(_parse_tasks_arg(group_entry))
     tasks_override = _dedupe_tasks(tasks_override)
+    _reject_deprecated_tasks(tasks_override, "CLI task overrides")
 
     is_system_provider = provider_type not in MODEL_PROVIDER_TYPES
 
@@ -1195,6 +1224,7 @@ def run_eval(args: argparse.Namespace) -> int:
         raise SystemExit("No tasks to run after applying task overrides.")
 
     tasks_to_run = config_manager.expand_task_groups(tasks_to_run, central_config)
+    _reject_deprecated_tasks(tasks_to_run, "resolved task list")
 
     compatibility_mode = args.compatibility
     if compatibility_mode is None:

@@ -184,7 +184,7 @@ For invalid responses: samples with `error_type: "invalid_response"` show the ra
 | `reason` | Fix |
 |---|---|
 | `all_connectivity_errors` | Check API key env var, base URL, network connectivity |
-| `all_invalid_responses` | Check model name, api_endpoint mode (chat vs completions) |
+| `all_invalid_responses` | Check model name, api_endpoint mode (chat vs completions); **for multimodal tasks: check image dimensions** — add `image_max_edge` to provider config if endpoint has a px limit |
 | `no_samples` | Check dataset path, run download script |
 | `incompatible` | Check `capability_requirements` in `metadata.yaml` vs provider capabilities |
 | `subtask_no_samples` | One subtask missing data; check `.data/` directory |
@@ -227,17 +227,22 @@ Compact table of metrics per subtask. Useful for quick comparison across runs.
 
 ## Reading Samples for Debugging
 
-When a task is `degraded` or `failed`, read the samples file:
+When a task is `degraded` or `failed`, read the samples file.
+
+**Important:** samples files are wrapped dicts `{"model":..., "task":..., "samples":[...]}`, not bare lists:
 
 ```python
 import json
 with open("outputs/benchmark_outputs/<run_id>/<model>/<task>/<subtask>/*_samples.json") as f:
-    samples = json.load(f)
+    data = json.load(f)
+
+# Unwrap the envelope
+all_samples = data["samples"] if isinstance(data, dict) else data
 
 # Find failures
-failures = [s for s in samples if s.get("error") or s.get("error_type")]
+failures = [s for s in all_samples if s.get("error") or s.get("error_type")]
 # Find wrong predictions
-wrong = [s for s in samples if s.get("prediction") != s.get("expected")]
+wrong = [s for s in all_samples if s.get("prediction") != s.get("expected")]
 ```
 
 ---

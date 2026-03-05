@@ -58,10 +58,10 @@ task_groups:
     tasks:
       - "structured_extraction"
   
-  image_extraction_only:
-    description: "Image extraction (multimodal) only"
+  document_extraction_only:
+    description: "Document extraction (multimodal) only"
     tasks:
-      - "image_extraction"
+      - "document_extraction"
   
   # Example of additional task groups you can define:
   # language_only:
@@ -120,14 +120,6 @@ leaderboard:
       metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
       primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
     
-    image_extraction:
-      # image_extraction uses structured_extraction processor but remains a separate task
-      processor: "structured_extraction_results_processor"
-      category_score_key: "image_extraction"
-      output_prefix: "image_extraction"
-      metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
-      primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
-
     document_extraction:
       # document_extraction uses structured_extraction processor but remains a separate task
       processor: "structured_extraction_results_processor"

@@ -288,6 +288,6 @@ For OCR/image tasks, lower thresholds (0.85 / 0.40) are more appropriate.
 - `src/tasks/spanish/` — MCQ with Spanish text
 - `src/tasks/portuguese/` — MCQ + regression
 - `src/tasks/structured_extraction/` — JSON extraction from text
-- `src/tasks/image_extraction/` — Document extraction from images
+- `src/tasks/document_extraction/` — Document extraction from images
 - `src/tasks/_template_handler/README.md` — Annotated walkthrough
 ```

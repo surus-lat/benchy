@@ -8,7 +8,7 @@ task_defaults:
   log_samples: true
 tasks:
 - structured_extraction
-- image_extraction
+- document_extraction
 metadata:
   max_context_length: 128000
   supports_multimodal: true

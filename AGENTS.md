@@ -84,6 +84,9 @@ Status vocabulary:
 - Parse JSON artifacts, not human logs.
 - Treat `run_outcome.json` as authoritative for run success/failure.
 - Reusing the same `run_id` must skip tasks already marked completed in `<task>/task_status.json`.
+- Samples files are wrapped dicts `{"model":..., "samples":[...]}` — access `data["samples"]`, not the top-level object.
+- For multimodal HTTP endpoints, always verify `image_max_edge` is set. `all_invalid_responses` from image tasks often means the API pixel-size limit was exceeded (not a model error).
+- `document_extraction` → use `configs/systems/surus-factura.yaml`; requires `image_max_edge: 2048` (SURUS API hard limit: 2560px).
 
 ---
 

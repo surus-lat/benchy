@@ -1,4 +1,4 @@
-# SURUS AI /ocr endpoint configuration for image extraction
+# SURUS AI /ocr endpoint configuration for document extraction
 # Tests multimodal (vision) capabilities with structured output
 
 # System identification
@@ -24,19 +24,19 @@ model:
   name: "surus-ocr"  # System identifier, not the backend model
   organization: surus-ai
   url: https://surus.lat
-# Tasks to run (only image extraction compatible)
+# Tasks to run (document extraction)
 tasks:
-  - "image_extraction"
+  - "document_extraction"
 
 # Task defaults
 task_defaults:
   log_samples: true
 
 # Task-specific configuration
-image_extraction:
-  # Only run facturas subtask
+document_extraction:
+  # Only run facturas_argentinas subtask
   tasks:
-    - "facturas"
+    - "facturas_argentinas"
   
   defaults:
     batch_size: 5  # Conservative for image uploads

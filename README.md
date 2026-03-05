@@ -172,11 +172,11 @@ Canonical automation recipes:
 
 ```bash
 # Smoke run (fast validation)
-benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
+benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction \
   --limit 5 --run-id smoke_20260206 --exit-policy smoke
 
 # Full run (after smoke passes)
-benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
+benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction \
   --run-id full_20260206 --exit-policy strict
 ```
 
@@ -364,7 +364,7 @@ benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-
 
 # Same endpoint with optional image downscaling to reduce multimodal token load
 benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key \
-  --tasks document_extraction image_extraction --image-max-edge 1536 --limit 2
+  --tasks document_extraction --image-max-edge 1536 --limit 2
 
 # Local vLLM from Hugging Face (server started by Benchy)
 benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
@@ -600,7 +600,7 @@ benchy/
 │   │   ├── spanish/         # Spanish language tasks
 │   │   ├── portuguese/      # Portuguese language tasks
 │   │   ├── structured_extraction/  # JSON extraction tasks
-│   │   ├── image_extraction/       # Vision-language tasks
+│   │   ├── document_extraction/    # Vision-language tasks
 │   │   └── _template_handler/      # Task templates
 │   └── leaderboard/         # Results processing
 └── eval.py                  # Legacy CLI wrapper (deprecated)

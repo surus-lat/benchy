@@ -18,7 +18,7 @@ task_defaults:
   log_samples: true
   cuda_devices: '2'
 tasks:
-- image_extraction
+- document_extraction
 metadata:
   max_context_length: 12000
   supports_multimodal: true

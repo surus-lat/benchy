@@ -264,6 +264,17 @@ from src.interfaces.common.image_preprocessing import (
 
 Pass `image_max_edge` from provider config for in-memory resizing. Never modify original files.
 
+**Always set `image_max_edge` in the provider config when the endpoint has a pixel-size limit.**
+Example — SURUS /factura has a 2560px limit:
+```yaml
+surus_factura:
+  image_max_edge: 2048   # hard API limit is 2560px; stay below it
+  force_jpeg_payload: true
+  jpeg_quality: 90
+```
+Without this, images from real datasets are often 3000–5000px and will get HTTP 400 errors
+that manifest as `all_invalid_responses` in `run_outcome.json`.
+
 ---
 
 ## Ground Truth Examples
