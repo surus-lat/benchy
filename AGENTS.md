@@ -84,3 +84,65 @@ Status vocabulary:
 - Parse JSON artifacts, not human logs.
 - Treat `run_outcome.json` as authoritative for run success/failure.
 - Reusing the same `run_id` must skip tasks already marked completed in `<task>/task_status.json`.
+
+---
+
+## Available Skills
+
+Skills are loaded on demand — only the short description stays in context.
+Invoke a skill when you need step-by-step guidance for these workflows:
+
+| Skill | Description |
+|---|---|
+| `evaluate` | Run benchy evals (smoke→full workflow, config selection, exit policies) |
+| `add-task` | Add a new benchmark task or task group |
+| `add-provider` | Add a new inference provider (OpenAI-compatible or custom HTTP) |
+| `interpret-run` | Read and diagnose run_outcome.json, metrics, and failure patterns |
+
+Skill files: `skills/<name>/SKILL.md`
+
+---
+
+## MCP Server
+
+The benchy MCP server exposes run outputs and config as tools for agent use.
+
+Install:
+```bash
+pip install benchy[mcp]
+```
+
+Start:
+```bash
+benchy-mcp
+# or with custom output path:
+benchy-mcp --output-path /my/outputs
+```
+
+Available tools:
+- `read_run_outcome(run_id, model_name?)` — parse `run_outcome.json`
+- `validate_smoke_gates(run_id, model_name?)` — check AGENTS.md smoke contract
+- `list_runs(limit?)` — recent runs with status summary
+- `list_configs(kind?)` — available model/system configs
+- `list_tasks(group?)` — available tasks from `reference/tasks_list.json`
+- `read_run_summary(run_id, model_name?)` — compact metric table
+- `get_task_errors(run_id, task_name, model_name?, max_samples?)` — failed samples
+
+Server source: `src/mcp/server.py`
+
+---
+
+## Validation Script
+
+Validate a run against smoke gates from the command line or CI:
+
+```bash
+python scripts/validate_run.py --run-id <id>
+# exits 0 if gates pass, 1 if not; prints structured JSON
+```
+
+Wire into a workflow:
+```bash
+benchy eval --config ... --run-id my-run --limit 5 --exit-policy smoke \
+  && python scripts/validate_run.py --run-id my-run
+```
