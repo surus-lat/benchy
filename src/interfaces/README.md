@@ -62,7 +62,7 @@ from src.interfaces import SurusInterface
 # SURUS-specific config
 config = {
     "surus": {
-        "endpoint": "https://api.surus.dev/functions/v1/extract",
+        "endpoint": "https://api.surus.lat/functions/v1/extract",
         "api_key_env": "SURUS_API_KEY",
         "timeout": 30,
         "max_retries": 3,
