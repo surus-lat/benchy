@@ -44,11 +44,11 @@ PROVIDER_SPECS = {
     },
     "surus_ocr": {
         "config_key": "surus_ocr",
-        "log": "Using SURUS AI OCR provider for image extraction tasks",
+        "log": "Using SURUS AI OCR provider for document extraction tasks",
     },
     "surus_factura": {
         "config_key": "surus_factura",
-        "log": "Using SURUS AI Factura provider for image extraction tasks",
+        "log": "Using SURUS AI Factura provider for document extraction tasks",
     },
     "surus_classify": {
         "config_key": "surus_classify",
@@ -73,6 +73,10 @@ PROVIDER_SPECS = {
 }
 
 MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google"}
+DEPRECATED_TASKS: Dict[str, str] = {
+    "image_extraction": "document_extraction",
+}
+
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -161,6 +165,15 @@ def _load_tasks_file(path: str) -> list:
 
 
 def _dedupe_tasks(tasks: list) -> list:
+    """
+    Remove duplicate task names while preserving their first-seen order.
+    
+    Parameters:
+        tasks (list): Sequence of task name strings (may contain duplicates).
+    
+    Returns:
+        list: A list of task names with duplicates removed, preserving the original order of first occurrences.
+    """
     seen = set()
     ordered = []
     for task_name in tasks:
@@ -171,13 +184,73 @@ def _dedupe_tasks(tasks: list) -> list:
     return ordered
 
 
+def _find_deprecated_tasks(tasks: list[str]) -> list[str]:
+    """
+    Identify deprecated top-level task groups present in a list of task identifiers.
+    
+    Parameters:
+        tasks (list[str]): Task identifiers (e.g., "group.task" or "task"). Each task's top-level group is taken as the substring before the first dot.
+    
+    Returns:
+        list[str]: Sorted list of deprecated top-level group names found in `tasks`.
+    """
+    found: set[str] = set()
+    for task_name in tasks:
+        group_name = str(task_name).split(".", 1)[0]
+        if group_name in DEPRECATED_TASKS:
+            found.add(group_name)
+    return sorted(found)
+
+
+def _reject_deprecated_tasks(tasks: list[str], source: str) -> None:
+    """
+    Abort execution if any deprecated top-level task groups appear in the provided task list.
+    
+    Checks the given tasks for top-level groups listed in DEPRECATED_TASKS and, if any are found, raises SystemExit with a message that lists the deprecated groups and their suggested replacements.
+    
+    Parameters:
+        tasks (list[str]): Sequence of task identifiers (e.g., "group.task" or "task") to scan for deprecated top-level groups.
+        source (str): Human-readable label describing where the tasks originated (used in the raised error message).
+    
+    Raises:
+        SystemExit: If one or more deprecated task groups are detected; the exception message lists the deprecated names and recommended replacements.
+    """
+    deprecated = _find_deprecated_tasks(tasks)
+    if not deprecated:
+        return
+
+    replacements = ", ".join(
+        f"'{name}' -> '{DEPRECATED_TASKS[name]}'" for name in deprecated
+    )
+    raise SystemExit(
+        f"Deprecated task(s) provided via {source}: {', '.join(deprecated)}. "
+        f"Use: {replacements}. Legacy task names are no longer supported."
+    )
+
+
 def resolve_provider_config(
     config: dict,
     provider_type: str,
     model_name: str,
     gpu_manager,
 ):
-    """Resolve provider config and vLLM server config for a provider type."""
+    """
+    Resolve the provider-specific configuration and, for vLLM providers, construct a vLLM server configuration.
+    
+    Parameters:
+        config (dict): Full application configuration mapping.
+        provider_type (str): Provider type key used to look up provider-specific settings.
+        model_name (str): Model name used for informational logging when available.
+        gpu_manager: GPU manager used to obtain CUDA device information for vLLM server construction.
+    
+    Returns:
+        tuple:
+            provider_config (dict): The provider-specific configuration section (empty dict if missing).
+            vllm_server_config (VLLMServerConfig | None): A VLLMServerConfig built from the provider config when provider_type is "vllm"; otherwise `None`.
+    
+    Raises:
+        ValueError: If `provider_type` is not recognized.
+    """
     provider_spec = PROVIDER_SPECS.get(provider_type)
     if not provider_spec:
         raise ValueError(f"Unknown provider type: {provider_type}")
@@ -1006,6 +1079,24 @@ def _build_adhoc_task_config(
 
 
 def run_eval(args: argparse.Namespace) -> int:
+    """
+    Run the benchmark evaluation flow based on parsed CLI arguments.
+    
+    Execute configuration loading/merging, provider and GPU setup, task selection (including ad-hoc task creation),
+    optional Prefect registration or vLLM test mode, and then invoke the benchmark pipeline.
+    
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments as produced by add_eval_arguments; used to build/override
+            configuration, select tasks, control registration/test modes, and set operational flags.
+    
+    Returns:
+        int: Process exit code (0 on success unless the pipeline returns a non-zero exit_code in its result).
+    
+    Raises:
+        SystemExit: On invalid CLI combinations or missing requirements (e.g., conflicting --log-samples flags,
+            --output-path model without --model-path, no tasks to run after overrides, Prefect not available when
+            --register is requested, or test mode used with a non-vLLM provider).
+    """
     load_dotenv()
 
     if args.log_samples and args.no_log_samples:
@@ -1155,6 +1246,7 @@ def run_eval(args: argparse.Namespace) -> int:
         task_defaults_overrides = {**provider_task_defaults, **task_defaults_overrides}
 
     config_tasks = config.get("tasks", ["spanish", "portuguese"])
+    _reject_deprecated_tasks(config_tasks, "config")
     tasks_override = []
     
     # If ad-hoc task was created, use it
@@ -1169,6 +1261,7 @@ def run_eval(args: argparse.Namespace) -> int:
             for group_entry in args.task_group:
                 tasks_override.extend(_parse_tasks_arg(group_entry))
     tasks_override = _dedupe_tasks(tasks_override)
+    _reject_deprecated_tasks(tasks_override, "CLI task overrides")
 
     is_system_provider = provider_type not in MODEL_PROVIDER_TYPES
 
@@ -1195,6 +1288,7 @@ def run_eval(args: argparse.Namespace) -> int:
         raise SystemExit("No tasks to run after applying task overrides.")
 
     tasks_to_run = config_manager.expand_task_groups(tasks_to_run, central_config)
+    _reject_deprecated_tasks(tasks_to_run, "resolved task list")
 
     compatibility_mode = args.compatibility
     if compatibility_mode is None:

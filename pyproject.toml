@@ -43,8 +43,12 @@ dependencies = [
 
 [project.scripts]
 benchy = "src.benchy_cli:main"
+benchy-mcp = "src.mcp.server:main"
 
 [project.optional-dependencies]
+mcp = [
+    "mcp[cli]>=1.0.0",
+]
 prefect = [
     "prefect>=3.4.19",
 ]
