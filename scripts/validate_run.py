@@ -37,11 +37,34 @@ VALID_STATUSES = {"passed", "degraded"}
 
 
 def load_outcome(outcome_path: Path) -> dict[str, Any]:
+    """
+    Load and parse a JSON outcome file from the given filesystem path.
+    
+    Parameters:
+        outcome_path (Path): Path to the JSON file containing the run outcome (e.g., run_outcome.json).
+    
+    Returns:
+        dict[str, Any]: The parsed JSON content as a dictionary.
+    """
     with open(outcome_path) as f:
         return json.load(f)
 
 
 def find_outcome_path(run_id: str, model_name: str | None, base_path: Path) -> Path:
+    """
+    Locate the run_outcome.json file for a specified run and optional model under a base outputs directory.
+    
+    Parameters:
+        run_id (str): Identifier of the run directory to search.
+        model_name (str | None): If provided, the specific model subdirectory to use; if None, the function selects the single model subdirectory when exactly one exists.
+        base_path (Path): Base directory containing run subdirectories.
+    
+    Returns:
+        Path: Path to the run_outcome.json file for the resolved model.
+    
+    Raises:
+        FileNotFoundError: If the run directory does not exist; if no model subdirectories exist; if multiple model subdirectories exist and no model_name was given; or if run_outcome.json is missing in the resolved model directory.
+    """
     run_dir = base_path / run_id
     if not run_dir.exists():
         raise FileNotFoundError(f"Run directory not found: {run_dir}")
@@ -69,7 +92,29 @@ def find_outcome_path(run_id: str, model_name: str | None, base_path: Path) -> P
 
 
 def validate_smoke_gates(outcome: dict[str, Any]) -> dict[str, Any]:
-    """Apply AGENTS.md smoke gates and return a structured result."""
+    """
+    Validate a benchmark run outcome against the AGENTS.md smoke gate rules.
+    
+    Checks that run status and exit code meet expectations, verifies that all blocking count
+    fields are zero, and collects details for tasks that failed the smoke gates.
+    
+    Parameters:
+        outcome (dict): Parsed run outcome (e.g., contents of run_outcome.json).
+    
+    Returns:
+        result (dict): Structured validation result containing:
+            passed (bool): True if no smoke gate violations were found.
+            run_id (str|None): The run identifier from the outcome.
+            model (str|None): The model name from the outcome.
+            status (str): The run status from the outcome.
+            exit_code (int): The run exit code from the outcome.
+            exit_policy (Any): The exit policy from the outcome, if present.
+            duration_s (Any): The run duration in seconds from the outcome, if present.
+            counts (dict): The counts object from the outcome.
+            violations (list[str]): Human-readable descriptions of any smoke gate violations.
+            failed_task_details (dict): Mapping of failing task name to a dict with `status` and `reason`.
+            errors (list): The outcome's errors list, if any.
+    """
     status = outcome.get("status", "unknown")
     exit_code = outcome.get("exit_code", 0) or 0
     counts = outcome.get("counts", {})
@@ -116,6 +161,14 @@ def validate_smoke_gates(outcome: dict[str, Any]) -> dict[str, Any]:
 
 
 def _default_output_path() -> Path:
+    """
+    Determine the default outputs path for benchmark run artifacts.
+    
+    Attempts to read "paths.benchmark_outputs" from configs/config.yaml and returns it if present; if the config file is missing or cannot be parsed, returns Path("outputs/benchmark_outputs").
+    
+    Returns:
+        Path: The resolved outputs directory path from config or the fallback "outputs/benchmark_outputs".
+    """
     try:
         import yaml
 
@@ -130,6 +183,14 @@ def _default_output_path() -> Path:
 
 
 def main() -> int:
+    """
+    Parse command-line arguments, load a benchy run outcome, validate it against the AGENTS.md smoke gate contract, emit a structured JSON report to stdout and an optional human-readable summary to stderr, and return an appropriate exit code.
+    
+    The CLI accepts either --outcome-path or --run-id (with optional --model and --output-path). If the outcome cannot be found or loaded, a JSON error object is printed to stdout and the function exits with a non-zero code.
+    
+    Returns:
+        int: 0 if smoke gates pass; 1 otherwise (including failure to load the outcome or any validation failures).
+    """
     parser = argparse.ArgumentParser(
         description="Validate a benchy run against the AGENTS.md smoke gate contract."
     )
