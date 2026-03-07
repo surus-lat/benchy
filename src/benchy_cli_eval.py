@@ -165,6 +165,15 @@ def _load_tasks_file(path: str) -> list:
 
 
 def _dedupe_tasks(tasks: list) -> list:
+    """
+    Remove duplicate task names while preserving their first-seen order.
+    
+    Parameters:
+        tasks (list): Sequence of task name strings (may contain duplicates).
+    
+    Returns:
+        list: A list of task names with duplicates removed, preserving the original order of first occurrences.
+    """
     seen = set()
     ordered = []
     for task_name in tasks:
@@ -176,6 +185,15 @@ def _dedupe_tasks(tasks: list) -> list:
 
 
 def _find_deprecated_tasks(tasks: list[str]) -> list[str]:
+    """
+    Identify deprecated top-level task groups present in a list of task identifiers.
+    
+    Parameters:
+        tasks (list[str]): Task identifiers (e.g., "group.task" or "task"). Each task's top-level group is taken as the substring before the first dot.
+    
+    Returns:
+        list[str]: Sorted list of deprecated top-level group names found in `tasks`.
+    """
     found: set[str] = set()
     for task_name in tasks:
         group_name = str(task_name).split(".", 1)[0]
@@ -185,6 +203,18 @@ def _find_deprecated_tasks(tasks: list[str]) -> list[str]:
 
 
 def _reject_deprecated_tasks(tasks: list[str], source: str) -> None:
+    """
+    Abort execution if any deprecated top-level task groups appear in the provided task list.
+    
+    Checks the given tasks for top-level groups listed in DEPRECATED_TASKS and, if any are found, raises SystemExit with a message that lists the deprecated groups and their suggested replacements.
+    
+    Parameters:
+        tasks (list[str]): Sequence of task identifiers (e.g., "group.task" or "task") to scan for deprecated top-level groups.
+        source (str): Human-readable label describing where the tasks originated (used in the raised error message).
+    
+    Raises:
+        SystemExit: If one or more deprecated task groups are detected; the exception message lists the deprecated names and recommended replacements.
+    """
     deprecated = _find_deprecated_tasks(tasks)
     if not deprecated:
         return
@@ -204,7 +234,23 @@ def resolve_provider_config(
     model_name: str,
     gpu_manager,
 ):
-    """Resolve provider config and vLLM server config for a provider type."""
+    """
+    Resolve the provider-specific configuration and, for vLLM providers, construct a vLLM server configuration.
+    
+    Parameters:
+        config (dict): Full application configuration mapping.
+        provider_type (str): Provider type key used to look up provider-specific settings.
+        model_name (str): Model name used for informational logging when available.
+        gpu_manager: GPU manager used to obtain CUDA device information for vLLM server construction.
+    
+    Returns:
+        tuple:
+            provider_config (dict): The provider-specific configuration section (empty dict if missing).
+            vllm_server_config (VLLMServerConfig | None): A VLLMServerConfig built from the provider config when provider_type is "vllm"; otherwise `None`.
+    
+    Raises:
+        ValueError: If `provider_type` is not recognized.
+    """
     provider_spec = PROVIDER_SPECS.get(provider_type)
     if not provider_spec:
         raise ValueError(f"Unknown provider type: {provider_type}")
@@ -1033,6 +1079,24 @@ def _build_adhoc_task_config(
 
 
 def run_eval(args: argparse.Namespace) -> int:
+    """
+    Run the benchmark evaluation flow based on parsed CLI arguments.
+    
+    Execute configuration loading/merging, provider and GPU setup, task selection (including ad-hoc task creation),
+    optional Prefect registration or vLLM test mode, and then invoke the benchmark pipeline.
+    
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments as produced by add_eval_arguments; used to build/override
+            configuration, select tasks, control registration/test modes, and set operational flags.
+    
+    Returns:
+        int: Process exit code (0 on success unless the pipeline returns a non-zero exit_code in its result).
+    
+    Raises:
+        SystemExit: On invalid CLI combinations or missing requirements (e.g., conflicting --log-samples flags,
+            --output-path model without --model-path, no tasks to run after overrides, Prefect not available when
+            --register is requested, or test mode used with a non-vLLM provider).
+    """
     load_dotenv()
 
     if args.log_samples and args.no_log_samples:

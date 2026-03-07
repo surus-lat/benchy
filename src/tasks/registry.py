@@ -22,6 +22,12 @@ _DEPRECATED_TASK_GROUPS = {
 
 def _tasks_root() -> Path:
     # Task modules live under src/tasks/*.
+    """
+    Get the filesystem path for the package's tasks directory.
+    
+    Returns:
+        Path: Filesystem path pointing to the directory containing this module (the src/tasks directory).
+    """
     return Path(__file__).resolve().parent
 
 
@@ -218,10 +224,28 @@ def _is_subtask_file(file_path: Path) -> bool:
 
 
 def _is_internal_task_group(group_name: str) -> bool:
+    """
+    Identify whether a task group is considered internal.
+    
+    Parameters:
+        group_name (str): The task group name to evaluate.
+    
+    Returns:
+        `true` if the name starts with "_" or is listed in the module's internal groups, `false` otherwise.
+    """
     return group_name.startswith("_") or group_name in _INTERNAL_TASK_GROUPS
 
 
 def _raise_if_deprecated_task_ref(task_ref: str) -> None:
+    """
+    Raise an error if the provided task reference targets a deprecated task group.
+    
+    Parameters:
+        task_ref (str): Task reference string, typically in the form "group.subtask" (the group is the substring before the first dot).
+    
+    Raises:
+        ValueError: If the task's group is listed as deprecated; the exception message indicates the replacement group to use.
+    """
     group_name = (task_ref or "").split(".", 1)[0]
     replacement = _DEPRECATED_TASK_GROUPS.get(group_name)
     if replacement:
@@ -232,17 +256,17 @@ def _raise_if_deprecated_task_ref(task_ref: str) -> None:
 
 
 def discover_task_group(group_name: str) -> Optional[TaskGroupInfo]:
-    """Discover a task group using convention-based file scanning.
+    """
+    Locate and assemble a convention-based task group from the repository by scanning the group's directory for subtask Python files and an optional metadata.yaml.
     
-    Scans the task group directory for:
-    - metadata.yaml (optional) for group metadata
-    - *.py files (excluding __init__, run, etc.) as subtasks
+    Parameters:
+        group_name (str): Name of the task group directory to discover (e.g., "classify").
     
-    Args:
-        group_name: Name of the task group (e.g., "classify")
-        
     Returns:
-        TaskGroupInfo if found and using new convention, None otherwise
+        TaskGroupInfo or None: A TaskGroupInfo containing the group's name, display name, description, discovered SubtaskInfo entries, parsed metadata, and metadata_file path if present; returns None if the group is internal, missing, or does not follow the convention (no valid subtask files found).
+    
+    Notes:
+        Discovery skips internal task groups and ignores files that do not qualify as subtask modules.
     """
     if _is_internal_task_group(group_name):
         return None
@@ -324,15 +348,19 @@ def build_handler_task_config(
     task_defaults_overrides: Optional[Dict[str, Any]] = None,
     adhoc_task_configs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build a task config payload for a handler-based task reference.
+    """
+    Builds the configuration dictionary for a handler-based or ad-hoc task reference.
     
-    Args:
-        task_ref: Task reference (e.g., "classify.environmental_claims" or "_adhoc_classification_abc123")
-        task_defaults_overrides: Optional defaults to override
-        adhoc_task_configs: Optional ad-hoc task configurations from config["task_configs"]
-        
+    Parameters:
+        task_ref (str): Task reference string, either a handler-based reference like "group.subtask" or an ad-hoc identifier starting with "_adhoc_{task_type}_{hash}".
+        task_defaults_overrides (Optional[Dict[str, Any]]): Optional defaults to merge on top of group defaults.
+        adhoc_task_configs (Optional[Dict[str, Any]]): Optional mapping of ad-hoc task-specific configs; used when `task_ref` is an ad-hoc key present in this mapping.
+    
     Returns:
-        Task configuration dict
+        Dict[str, Any]: A task configuration dictionary containing keys such as "name", "display_name", "description", "tasks", "defaults", "prompts", "task_configs", "output", "capability_requirements", and "metrics_manifest".
+    
+    Raises:
+        ValueError: If the task group is deprecated, the referenced handler-based group cannot be discovered, or a specified subtask is not found.
     """
     _raise_if_deprecated_task_ref(task_ref)
 
@@ -710,6 +738,15 @@ def discover_and_run_handler_task(
         Task results dict
     """
     def _normalize_subtask_ref(value: Optional[str]) -> Optional[str]:
+        """
+        Normalize a subtask reference by replacing hyphens with underscores.
+        
+        Parameters:
+            value (Optional[str]): The subtask reference to normalize; may be None or empty.
+        
+        Returns:
+            Optional[str]: The normalized subtask reference with `-` replaced by `_`, or the original falsy value.
+        """
         if not value:
             return value
         return value.replace("-", "_")
