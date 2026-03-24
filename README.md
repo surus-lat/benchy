@@ -402,8 +402,72 @@ benchy eval --model-name mymodel --provider openai  --tasks spanish --limit 2
 benchy eval --model-name mymodel --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
 ```
 
-### Benchmarking SURUS AI nodes
-Surus AI nodes are preconfigured with their relevant tasks. Remember to add the necesary SURUS_API_KEY in your .env
+### Benchmarking any API endpoint (Generic API mode)
+
+Benchy can benchmark arbitrary HTTP APIs directly from the CLI using `--api-url`. This lets you evaluate entire pipelines (not just individual models) by targeting any endpoint that accepts JSON and returns JSON.
+
+**New CLI flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--api-url <url>` | Target endpoint URL (sets provider to `api`) |
+| `--api-body-template <json>` | JSON body template with `{{field}}` placeholders from dataset samples |
+| `--api-response-path <path>` | Dot-notation path to extract output from the response |
+| `--api-method <method>` | HTTP method (default: `POST`) |
+| `--api-headers <json>` | Extra HTTP headers as a JSON object |
+
+**Template placeholders:**
+
+- `{{field}}` — plain string substitution from dataset sample
+- `{{field|base64_image}}` — reads an image file and encodes it as a base64 data URL
+- `{{field|json}}` — embeds the value as raw JSON (preserves dicts/lists)
+
+**Response path examples:**
+
+- `data` → `response["data"]`
+- `choices.0.message.content` → `response["choices"][0]["message"]["content"]`
+- *(omit for root)* → uses the entire response object
+
+**Examples:**
+
+```bash
+# Benchmark SURUS facturas API (image → structured invoice extraction)
+benchy eval \
+  --api-url "https://api.surus.ai/factura" \
+  --api-key-env SURUS_API_KEY \
+  --api-body-template '{"image": "{{image_path|base64_image}}"}' \
+  --api-response-path "data" \
+  --tasks document_extraction.facturas_argentinas \
+  --model-name "surus-factura-v1" \
+  --limit 10
+
+# Benchmark a text extraction API with schema
+benchy eval \
+  --api-url "https://my-api.com/extract" \
+  --api-key-env MY_API_KEY \
+  --api-body-template '{"text": "{{text}}", "schema": "{{schema|json}}"}' \
+  --api-response-path "result" \
+  --tasks spanish \
+  --model-name "my-extractor-v1" \
+  --limit 5
+
+# Benchmark with custom headers
+benchy eval \
+  --api-url "https://my-api.com/classify" \
+  --api-key-env MY_API_KEY \
+  --api-body-template '{"text": "{{text}}"}' \
+  --api-response-path "prediction" \
+  --api-headers '{"X-Version": "2"}' \
+  --tasks spanish.spam_detection \
+  --model-name "my-classifier-v2" \
+  --limit 10
+```
+
+The `--model-name` parameter acts as a label for the system under test in output artifacts. Auth is handled via `--api-key-env` (environment variable name) or `--api-key` (direct value). All existing flags like `--limit`, `--tasks`, `--exit-policy`, `--image-max-edge`, etc. work with API mode.
+
+### Benchmarking SURUS AI nodes (preconfigured)
+
+Surus AI nodes are also available as preconfigured systems with their relevant tasks. Remember to add the necessary SURUS_API_KEY in your .env:
 
 ```bash
 # surus extraction endpoint

@@ -70,6 +70,10 @@ PROVIDER_SPECS = {
         "config_key": "google",
         "log": "Using Google cloud provider for model: {model_name}",
     },
+    "api": {
+        "config_key": "api",
+        "log": "Using generic API provider targeting: {model_name}",
+    },
 }
 
 MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google"}
@@ -355,7 +359,9 @@ def _build_cli_only_config(
     *,
     config_manager: ConfigManager,
 ) -> tuple[Dict[str, Any], Optional[str]]:
-    if args.provider:
+    if args.api_url:
+        provider_type = "api"
+    elif args.provider:
         provider_type = args.provider
     elif args.model_path or args.vllm_config:
         provider_type = "vllm"
@@ -412,6 +418,49 @@ def _build_cli_only_config(
         if "api_endpoint" not in provider_config:
             provider_config["api_endpoint"] = _default_api_endpoint("vllm")
         config["vllm"] = provider_config
+    elif provider_type == "api":
+        if not args.api_url:
+            raise ValueError("--api-url is required for generic API benchmarking")
+        if not args.api_body_template:
+            raise ValueError("--api-body-template is required for generic API benchmarking")
+        if not args.model_name:
+            raise ValueError(
+                "Missing required --model-name for API benchmarking. "
+                "Use this as a label for the system under test."
+            )
+
+        import json as _json
+        extra_headers = {}
+        if args.api_headers:
+            try:
+                extra_headers = _json.loads(args.api_headers)
+            except _json.JSONDecodeError as exc:
+                raise ValueError(f"--api-headers is not valid JSON: {exc}") from exc
+
+        api_config: Dict[str, Any] = {
+            "endpoint": args.api_url,
+            "body_template": args.api_body_template,
+            "timeout": args.timeout or 120,
+            "max_retries": args.max_retries or 3,
+        }
+        if args.api_method:
+            api_config["http_method"] = args.api_method
+        if args.api_response_path:
+            api_config["response_path"] = args.api_response_path
+        if extra_headers:
+            api_config["headers"] = extra_headers
+        if args.api_key_env:
+            api_config["api_key_env"] = args.api_key_env
+        if args.api_key:
+            api_config["api_key"] = args.api_key
+        if args.image_max_edge:
+            api_config["image_max_edge"] = args.image_max_edge
+        if args.max_concurrent:
+            api_config["max_concurrent"] = args.max_concurrent
+
+        config["model"] = {"name": args.model_name}
+        config["provider_type"] = "api"
+        config["api"] = api_config
     else:
         if not args.model_name:
             raise ValueError("Missing required --model-name for OpenAI-compatible runs")
@@ -778,6 +827,49 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="User prompt template with {field} placeholders",
     )
     
+    # Generic API benchmarking
+    parser.add_argument(
+        "--api-url",
+        type=str,
+        default=None,
+        help=(
+            "Target URL for generic API benchmarking. Sets provider to 'api'. "
+            "Example: --api-url https://api.surus.ai/factura"
+        ),
+    )
+    parser.add_argument(
+        "--api-method",
+        type=str,
+        default=None,
+        help="HTTP method for API requests (default: POST).",
+    )
+    parser.add_argument(
+        "--api-body-template",
+        type=str,
+        default=None,
+        help=(
+            "JSON body template with {{field}} placeholders from dataset samples. "
+            "Filters: {{field|base64_image}} (image→data URL), {{field|json}} (embed dict/list). "
+            "Example: '{\"image\": \"{{image_path|base64_image}}\"}'"
+        ),
+    )
+    parser.add_argument(
+        "--api-response-path",
+        type=str,
+        default=None,
+        help=(
+            "Dot-notation path to extract output from API response. "
+            "Example: 'data' extracts response[\"data\"]; "
+            "'choices.0.message.content' for nested traversal."
+        ),
+    )
+    parser.add_argument(
+        "--api-headers",
+        type=str,
+        default=None,
+        help="Extra HTTP headers as JSON object. Example: '{\"X-Custom\": \"value\"}'",
+    )
+
     # Config generation
     parser.add_argument(
         "--save-config",
