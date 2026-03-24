@@ -149,15 +149,16 @@ class BaseHandler:
 
     def _resolve_data_dir(self) -> Path:
         """Resolve the data directory for this task.
-        
+
         Returns:
-            Path to .data directory adjacent to the task module
+            Path to .data/<task_group> directory at the repo root
         """
-        # Use class module location to find task directory
         import inspect
         module_file = inspect.getfile(self.__class__)
-        task_dir = Path(module_file).parent
-        return task_dir / ".data"
+        task_group = Path(module_file).parent.name
+        # base.py lives at src/tasks/common/base.py; repo root is 4 levels up
+        repo_root = Path(__file__).parent.parent.parent.parent
+        return repo_root / ".data" / task_group
 
     def load(self) -> None:
         """Load the dataset."""
