@@ -36,9 +36,9 @@ while handlers and interfaces handle **how to evaluate it**.
 ### Prerequisites
 
 - Python 3.12+
-- CUDA-compatible GPU(s) for local vLLM (not required for cloud providers)
-- Docker (optional, for Prefect UI)
 - [uv](https://github.com/astral-sh/uv) (recommended, but optional - traditional venv + pip also works)
+- CUDA-compatible GPU(s) — only required for local vLLM inference
+- Docker (optional, for Prefect UI)
 
 ### Install
 
@@ -56,7 +56,7 @@ This will:
 Optional extras (comma-separated) and dataset skip:
 
 ```bash
-BENCHY_EXTRAS=translation,prefect BENCHY_SKIP_DATASET=1 bash setup.sh
+BENCHY_EXTRAS=local,translation BENCHY_SKIP_DATASET=1 bash setup.sh
 ```
 
 **Option 2: Manual setup with uv (recommended for developers)**
@@ -65,10 +65,13 @@ BENCHY_EXTRAS=translation,prefect BENCHY_SKIP_DATASET=1 bash setup.sh
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Create venv and install dependencies
+# Create venv and install dependencies (cloud providers only)
 uv venv --python 3.12
 source .venv/bin/activate
 uv sync
+
+# For local vLLM inference, add the local extra:
+uv sync --extra local
 ```
 
 **Option 3: Manual setup with traditional venv + pip**
@@ -81,11 +84,22 @@ source .venv/bin/activate
 # Upgrade pip
 pip install --upgrade pip setuptools wheel
 
-# Install dependencies
+# Install dependencies (cloud providers only)
 pip install -e .
+
+# For local vLLM inference, add the local extra:
+pip install -e '.[local]'
 ```
 
 **Optional extras**
+
+Local inference via vLLM (requires Linux + CUDA GPU):
+
+```bash
+pip install -e '.[local]'
+# or with uv:
+uv sync --extra local
+```
 
 Prefect orchestration (optional):
 
@@ -98,7 +112,7 @@ uv sync --extra prefect
 Translation metrics (only for translation tasks):
 
 ```bash
-pip install '.[translation]'
+pip install -e '.[translation]'
 # or with uv:
 uv sync --extra translation
 ```
