@@ -1,4 +1,3 @@
-```skill
 ---
 name: evaluate
 description: Run benchy evaluations against models or systems. Covers the canonical smoke→full workflow, config selection, task filtering, exit policies, and reading run_outcome.json. Use when asked to evaluate, benchmark, or run benchy against a model or system config.
@@ -151,5 +150,4 @@ Reuse the same `--run-id` — tasks already marked completed in `task_status.jso
 
 ```bash
 benchy eval --config my-config.yaml --run-id my-run-id --exit-policy strict
-```
 ```

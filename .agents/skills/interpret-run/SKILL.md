@@ -1,4 +1,3 @@
-```skill
 ---
 name: interpret-run
 description: Read and interpret benchy run outputs. Covers run_outcome.json structure, status vocabulary, metric summaries, failure diagnosis, per-task/subtask breakdown, and actionable next steps. Use when asked to analyze, explain, or act on benchy evaluation results.
@@ -256,4 +255,3 @@ benchy eval --config <config> --run-id <same-run-id> --exit-policy strict
 ```
 
 Tasks already marked `passed` or `degraded` in `task_status.json` are skipped.
-```
