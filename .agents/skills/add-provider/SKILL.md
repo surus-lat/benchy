@@ -1,4 +1,3 @@
-```skill
 ---
 name: add-provider
 description: Add a new inference provider to benchy. Covers both OpenAI-compatible endpoints (prefer this path) and custom HTTP systems (SURUS-style). Includes config files, interface code, CLI wiring, capability declarations, and smoke-test verification. Use when asked to add a new model provider, API endpoint, or custom system.
@@ -281,4 +280,3 @@ that manifest as `all_invalid_responses` in `run_outcome.json`.
 
 - OpenAI-compatible: `configs/providers/openai.yaml`, `src/interfaces/openai_interface.py`
 - Custom HTTP: `configs/systems/surus-remove-background.yaml`, `src/interfaces/surus/surus_remove_background_interface.py`
-```

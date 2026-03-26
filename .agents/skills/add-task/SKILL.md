@@ -1,4 +1,3 @@
-```skill
 ---
 name: add-task
 description: Add a new benchmark task or task group to benchy. Covers handler selection, directory layout, metadata.yaml, task class implementation, __init__.py exports, and smoke-test verification. Use when asked to add a new evaluation task, benchmark, or task group.
@@ -290,4 +289,3 @@ For OCR/image tasks, lower thresholds (0.85 / 0.40) are more appropriate.
 - `src/tasks/structured_extraction/` — JSON extraction from text
 - `src/tasks/document_extraction/` — Document extraction from images
 - `src/tasks/_template_handler/README.md` — Annotated walkthrough
-```
