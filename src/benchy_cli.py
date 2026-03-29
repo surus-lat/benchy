@@ -79,6 +79,51 @@ def _cmd_models(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_datasets(args: argparse.Namespace) -> int:
+    from .tasks.common.dataset_adapters import list_data_datasets
+
+    datasets = list_data_datasets()
+    if not datasets:
+        print("No datasets found in .data/")
+        return 0
+
+    if args.json:
+        _print_json({"datasets": datasets})
+        return 0
+
+    for ds in datasets:
+        name = ds["name"]
+        desc = ds.get("description", "")
+        schema_tag = " [schema]" if ds.get("has_schema") else ""
+        # Summarise splits
+        splits = ds.get("splits", {})
+        if splits:
+            split_parts = [f"{s}={info['num_rows']}" for s, info in splits.items() if isinstance(info, dict) and "num_rows" in info]
+            split_str = ", ".join(split_parts)
+        else:
+            split_str = ""
+
+        print(f"  {name}{schema_tag}")
+        if desc and args.verbose:
+            # Truncate long descriptions
+            if len(desc) > 100:
+                desc = desc[:97] + "..."
+            print(f"    {desc}")
+        if split_str:
+            print(f"    splits: {split_str}")
+
+        labels = ds.get("label_distribution")
+        if labels and args.verbose:
+            label_str = ", ".join(f"{k}={v}" for k, v in labels.items())
+            print(f"    labels: {label_str}")
+
+        if ds.get("features") and args.verbose:
+            print(f"    features: {', '.join(ds['features'])}")
+        print()
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="benchy",
@@ -155,6 +200,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     models_parser.add_argument("--json", action="store_true", help="Output as JSON")
     models_parser.set_defaults(_handler=_cmd_models)
+
+    # datasets
+    datasets_parser = subparsers.add_parser(
+        "datasets",
+        help="List datasets discovered in .data/",
+    )
+    datasets_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    datasets_parser.add_argument(
+        "--verbose", "-v", action="store_true",
+        help="Show descriptions, features, and label distributions",
+    )
+    datasets_parser.set_defaults(_handler=_cmd_datasets)
 
     return parser
 

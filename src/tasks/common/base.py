@@ -178,7 +178,16 @@ class BaseHandler:
             from .dataset_adapters import DatasetAdapter
             logger.info("Using DatasetAdapter for config-driven dataset loading")
             adapter = DatasetAdapter()
-            return adapter.load(self.config["dataset"], self.data_dir)
+            raw_samples = adapter.load(self.config["dataset"], self.data_dir)
+
+            # Run handler preprocessing so subclasses can inject fields
+            # (e.g. StructuredHandler adds schema, MultipleChoiceHandler adds choices)
+            processed = []
+            for idx, raw_sample in enumerate(raw_samples):
+                sample = self.preprocess_sample(raw_sample, idx)
+                if sample is not None:
+                    processed.append(sample)
+            return processed
         
         # EXISTING: Legacy behavior for class-based tasks
         # Check for cached data first

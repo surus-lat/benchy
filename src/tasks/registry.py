@@ -699,6 +699,8 @@ def discover_and_run_handler_task(
             return value
         return value.replace("-", "_")
 
+    subtask_name: Optional[str] = None
+
     # Check if this is an ad-hoc task
     if task_ref.startswith("_adhoc_"):
         # Build spec for ad-hoc task
@@ -706,7 +708,7 @@ def discover_and_run_handler_task(
         if not adhoc_config:
             # Try to get from defaults (for CLI-created tasks)
             adhoc_config = task_config.get("defaults", {})
-        
+
         spec = build_adhoc_task_spec(
             task_ref,
             adhoc_config,
