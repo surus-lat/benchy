@@ -49,6 +49,9 @@ local = [
 prefect = [
     "prefect>=3.4.19",
 ]
+document = [
+    "pymupdf>=1.24.0",
+]
 translation = [
     "sacrebleu>=2.3.0",
     "unbabel-comet>=2.0.0"

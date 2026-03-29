@@ -232,11 +232,62 @@ benchy eval --config surus-remove-background --dataset your-dataset --limit 10
 benchy eval --config surus-remove-background --dataset ICM57 --limit 10
 ```
 
-## CLI Dataset Usage (New!)
+## CLI Dataset Usage
 
-Benchy now supports creating tasks directly from the CLI without writing code. You can evaluate custom datasets using three task types: **classification**, **structured extraction**, and **freeform generation**.
+Benchy supports creating tasks directly from the CLI without writing code. Drop a dataset in `.data/`, and evaluate it with a single command.
 
-### Quick Start Examples
+### Zero-Code Evaluation from `.data/`
+
+Parquet datasets in `.data/<name>/` are auto-discovered. Benchy reads `dataset_info.json` and `schema.json` to infer labels, ground-truth mappings, multimodal input, and schema — no flags needed beyond dataset name and task type.
+
+```bash
+# Document classification (labels auto-discovered from dataset_info.json)
+benchy eval --dataset-name my-doc-classification --task-type classification \
+  --provider openai --model-name gpt-4o --limit 3
+
+# Structured extraction (schema + GT mapping auto-discovered from schema.json)
+benchy eval --dataset-name my-extraction-dataset --task-type structured \
+  --provider openai --model-name gpt-4o --limit 3
+```
+
+**What happens automatically:**
+- Binary columns (`large_binary`) are materialized to disk and rendered to PNG for LLM providers
+- `schema.json` is converted to JSON Schema (if custom format) and sanitized for OpenAI strict mode
+- Ground-truth columns (`gt_*`) are mapped to expected output via schema annotations
+- Labels are inferred from `label_distribution` in `dataset_info.json`
+- Multimodal input is auto-enabled when binary columns are detected
+
+### Dataset Discovery
+
+```bash
+# List all datasets in .data/
+benchy datasets
+
+# Detailed view with schemas and labels
+benchy datasets --verbose
+
+# Machine-readable
+benchy datasets --json
+```
+
+### Custom Prompts Per Dataset
+
+Override the default prompt for any dataset:
+
+```bash
+# Custom system prompt for classification
+benchy eval --dataset-name my-doc-classification --task-type classification \
+  --provider openai --model-name gpt-4o --limit 5 \
+  --system-prompt "Classify documents based on the presence of a specific keyword."
+
+# Custom extraction prompt
+benchy eval --dataset-name my-extraction-dataset --task-type structured \
+  --provider openai --model-name gpt-4o --limit 5 \
+  --system-prompt "You are an expert document reader." \
+  --user-prompt-template "Read this document and extract fields.\n\nSchema:\n{schema}\n\nReturn valid JSON."
+```
+
+### Quick Start Examples (HuggingFace / Local)
 
 **Classification Task** (binary or multi-class):
 ```bash
@@ -268,17 +319,19 @@ benchy eval --model-name gpt-4o-mini --provider openai \
 ### Key Features
 
 - **Three Task Types**: Classification, Structured Extraction, Freeform Generation
-- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL files, or directory structures
+- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL/Parquet files, `.data/` auto-discovery
+- **Auto-Discovery**: Datasets in `.data/` auto-configure labels, schema, GT mapping, and multimodal input
+- **Document Rendering**: Binary blobs (PDF, TIFF, HEIC) rendered to PNG for LLM providers at configurable DPI
 - **Flexible Field Mapping**: Map your dataset fields to expected inputs/outputs
-- **Multimodal Support**: Add `--multimodal-input` for image-based tasks
+- **Custom Prompts**: Override system/user prompts per dataset via `--system-prompt` and `--user-prompt-template`
 - **Config Generation**: Save your CLI setup with `--save-config output.yaml` for reuse
 
 ### Common CLI Flags
 
 **Task Type & Dataset**:
 - `--task-type {classification,structured,freeform}` - Type of task to create
-- `--dataset-name <name>` - HuggingFace dataset or local path
-- `--dataset-source {auto,huggingface,local,directory}` - Dataset source (default: auto)
+- `--dataset-name <name>` - HuggingFace dataset, local path, or `.data/` dataset name
+- `--dataset-source {auto,huggingface,local,parquet,directory}` - Dataset source (default: auto)
 - `--dataset-split <split>` - Dataset split for HuggingFace (default: test)
 
 **Field Mappings**:
@@ -295,9 +348,12 @@ benchy eval --model-name gpt-4o-mini --provider openai \
 - `--dataset-schema-path <path>` - JSON file with schema
 - `--dataset-schema-json <json>` - Inline JSON schema
 
-**Multimodal**:
-- `--multimodal-input` - Enable multimodal input (images)
+**Multimodal & Document Rendering**:
+- `--multimodal-input` - Enable multimodal input (auto-enabled for binary parquet datasets)
 - `--multimodal-image-field <field>` - Image path field (default: image_path)
+- `--render-documents` / `--no-render-documents` - Control PDF/TIFF to PNG rendering (auto for LLM providers)
+- `--render-dpi <int>` - Rendering DPI (default: 200)
+- `--render-max-pages <int>` - Max pages to render per document (default: 1)
 
 **Prompts**:
 - `--system-prompt <text>` - Custom system prompt
@@ -662,6 +718,12 @@ These flags help diagnose evaluation failures and guide configuration adjustment
 
 ```
 benchy/
+├── .data/                    # Auto-discovered datasets (see docs/DATASET_SPEC.md)
+│   └── <dataset-name>/
+│       ├── data/test.parquet # Evaluation data
+│       ├── dataset_info.json # Metadata, labels, features
+│       ├── schema.json       # Extraction schema (optional)
+│       └── benchy.md         # Run commands
 ├── configs/
 │   ├── config.yaml          # Global settings and task groups
 │   ├── models/              # Model configs (vLLM or cloud)
@@ -711,6 +773,10 @@ This generates per-model summaries and leaderboard tables under `outputs/publish
 
 ### For Users
 - `docs/evaluating_models.md` - Running benchmarks and understanding results
+- `docs/CLI_DATASET_USAGE.md` - Creating tasks from the CLI without code
+
+### For Dataset Builders
+- `docs/DATASET_SPEC.md` - **Dataset specification for zero-code evaluation** (recommended read!)
 
 ### For Contributors
 - `docs/contribute_tasks.md` - **Adding new tasks with the handler system** (recommended read!)

@@ -22,6 +22,12 @@ _MIME_TYPES = {
     ".webp": "image/webp",
 }
 
+# Extensions that are already usable as multimodal images
+_NATIVE_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+
+# Extensions that need rendering to an image before sending to vision APIs
+_RENDERABLE_EXTS = {".pdf", ".tif", ".tiff", ".heic", ".heif", ".jfif", ".docx"}
+
 
 def coerce_positive_int(
     value: object,
@@ -202,4 +208,142 @@ def load_pil_image(
                 parsed_max,
             )
         return resized
+
+
+def needs_rendering(file_path: str) -> bool:
+    """Return True if the file needs rendering to an image before use."""
+    ext = Path(file_path).suffix.lower()
+    return ext in _RENDERABLE_EXTS
+
+
+def render_document_to_image(
+    source_path: str,
+    output_path: Optional[str] = None,
+    *,
+    dpi: int = 200,
+    max_pages: int = 1,
+    logger: Optional[logging.Logger] = None,
+) -> str:
+    """Render the first page(s) of a document to a PNG image.
+
+    Supports PDF (via pymupdf), TIFF, HEIC, JFIF (via Pillow).
+    Returns the path to the rendered PNG file.
+
+    Args:
+        source_path: Path to the source document.
+        output_path: Where to write the PNG.  Defaults to
+            ``<source_path_without_ext>.png``.
+        dpi: Resolution for PDF rendering (default 200).
+        max_pages: How many pages to render (default 1 = first page only).
+        logger: Optional logger.
+
+    Returns:
+        Path to the rendered PNG image.
+
+    Raises:
+        ImportError: If pymupdf is not installed (for PDF rendering).
+        ValueError: If file format is not supported.
+    """
+    src = Path(source_path)
+    ext = src.suffix.lower()
+
+    if output_path is None:
+        output_path = str(src.with_suffix(".png"))
+
+    out = Path(output_path)
+
+    # Skip if already rendered
+    if out.exists() and out.stat().st_size > 0:
+        return str(out)
+
+    if ext == ".pdf":
+        return _render_pdf(source_path, str(out), dpi=dpi, max_pages=max_pages, logger=logger)
+    elif ext in {".tif", ".tiff", ".heic", ".heif", ".jfif"}:
+        return _render_pillow(source_path, str(out), logger=logger)
+    else:
+        raise ValueError(
+            f"Cannot render '{ext}' files to images. "
+            f"Supported: {', '.join(sorted(_RENDERABLE_EXTS))}"
+        )
+
+
+def _render_pdf(
+    source_path: str,
+    output_path: str,
+    *,
+    dpi: int = 200,
+    max_pages: int = 1,
+    logger: Optional[logging.Logger] = None,
+) -> str:
+    """Render PDF page(s) to PNG using pymupdf."""
+    try:
+        import pymupdf
+    except ImportError:
+        raise ImportError(
+            "pymupdf is required for PDF rendering. Install it with: "
+            "pip install pymupdf"
+        )
+
+    doc = pymupdf.open(source_path)
+    try:
+        pages_to_render = min(max_pages, len(doc))
+        if pages_to_render == 0:
+            raise ValueError(f"PDF has no pages: {source_path}")
+
+        zoom = dpi / 72.0
+        matrix = pymupdf.Matrix(zoom, zoom)
+
+        if pages_to_render == 1:
+            pix = doc[0].get_pixmap(matrix=matrix)
+            pix.save(output_path)
+        else:
+            # Multiple pages → stitch vertically
+            from PIL import Image as _Image
+
+            images = []
+            for page_idx in range(pages_to_render):
+                pix = doc[page_idx].get_pixmap(matrix=matrix)
+                img = _Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                images.append(img)
+
+            total_height = sum(im.height for im in images)
+            max_width = max(im.width for im in images)
+            combined = _Image.new("RGB", (max_width, total_height), (255, 255, 255))
+            y_offset = 0
+            for im in images:
+                combined.paste(im, (0, y_offset))
+                y_offset += im.height
+            combined.save(output_path, format="PNG")
+
+        if logger:
+            logger.debug(
+                "Rendered %d page(s) of %s to %s at %d DPI",
+                pages_to_render, source_path, output_path, dpi,
+            )
+    finally:
+        doc.close()
+
+    return output_path
+
+
+def _render_pillow(
+    source_path: str,
+    output_path: str,
+    *,
+    logger: Optional[logging.Logger] = None,
+) -> str:
+    """Convert image formats (TIFF, HEIC, JFIF) to PNG via Pillow."""
+    from PIL import Image as _Image
+
+    with _Image.open(source_path) as img:
+        # For multi-frame TIFFs, take just the first frame
+        if hasattr(img, "n_frames") and img.n_frames > 1:
+            img.seek(0)
+        rgb = img.convert("RGB") if img.mode not in {"RGB", "L", "RGBA"} else img
+        rgb.save(output_path, format="PNG")
+
+    if logger:
+        logger.debug("Converted %s to %s via Pillow", source_path, output_path)
+
+    return output_path
 

@@ -137,6 +137,49 @@ benchy eval \
 
 All existing flags (`--limit`, `--exit-policy`, `--run-id`, `--image-max-edge`, etc.) work with API mode. The same `run_outcome.json` and `run_summary.json` contracts apply.
 
+## Zero-Code Dataset Evaluation
+
+Agents can evaluate any dataset in `.data/` without writing Python. Datasets are auto-discovered with full metadata inference.
+
+### Evaluate a `.data/` dataset
+
+```bash
+# 1. Discover available datasets
+benchy datasets --json
+
+# 2. Smoke test
+benchy eval --dataset-name <name> --task-type <structured|classification|freeform> \
+  --provider openai --model-name gpt-4o --limit 3 --run-id <id>_smoke --exit-policy smoke
+
+# 3. Read run_outcome.json, verify passed
+# 4. Full run
+benchy eval --dataset-name <name> --task-type <type> \
+  --provider openai --model-name gpt-4o --run-id <id>_full --exit-policy strict
+```
+
+### Custom prompts
+
+Override prompts per-dataset without modifying any files:
+
+```bash
+benchy eval --dataset-name <name> --task-type <type> \
+  --provider openai --model-name gpt-4o \
+  --system-prompt "Your custom system instruction." \
+  --user-prompt-template "Your template with {text} and {schema} placeholders." \
+  --limit 5
+```
+
+For classification, available placeholders: `{text}`, `{choices}`.
+For extraction, available placeholders: `{text}`, `{schema}`.
+
+### After adapting a new dataset
+
+After placing a new dataset in `.data/` and validating it works:
+
+1. Write a `benchy.md` in the dataset directory with smoke test, full run, and custom prompt commands
+2. Verify the smoke test passes: `benchy eval --dataset-name <name> --task-type <type> --provider openai --model-name gpt-4o --limit 3`
+3. Follow `docs/DATASET_SPEC.md` for required files and column conventions
+
 ## Agent Rules
 
 - Parse JSON artifacts, not human logs.
