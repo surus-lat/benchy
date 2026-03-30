@@ -227,6 +227,33 @@ Without it, real document images (3000–5000px) get HTTP 400 and manifest as `a
 
 ---
 
+## Local Endpoints Without Authentication
+
+For local endpoints that don't require API authentication, set `api_key_required: false` in the provider config:
+
+```yaml
+# configs/systems/local-endpoint.yaml
+system_name: "local-endpoint"
+provider_type: "surus_factura"  # or http for generic HTTP
+
+surus_factura:
+  endpoint: "http://192.168.1.6:8000/v1/invoice/extract"
+  api_key_required: false
+  timeout: 60
+  image_max_edge: 2048
+  capabilities:
+    supports_multimodal: true
+    supports_schema: true
+    supports_files: true
+```
+
+Run with:
+```bash
+benchy eval --config configs/systems/local-endpoint.yaml --tasks document_extraction.facturas_argentinas --limit 5
+```
+
+---
+
 ## Config Architecture (How Defaults Flow)
 
 Understanding how config reaches the handler is critical for custom datasets:
