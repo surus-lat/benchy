@@ -36,9 +36,9 @@ while handlers and interfaces handle **how to evaluate it**.
 ### Prerequisites
 
 - Python 3.12+
-- CUDA-compatible GPU(s) for local vLLM (not required for cloud providers)
-- Docker (optional, for Prefect UI)
 - [uv](https://github.com/astral-sh/uv) (recommended, but optional - traditional venv + pip also works)
+- CUDA-compatible GPU(s) — only required for local vLLM inference
+- Docker (optional, for Prefect UI)
 
 ### Install
 
@@ -56,7 +56,7 @@ This will:
 Optional extras (comma-separated) and dataset skip:
 
 ```bash
-BENCHY_EXTRAS=translation,prefect BENCHY_SKIP_DATASET=1 bash setup.sh
+BENCHY_EXTRAS=local,translation BENCHY_SKIP_DATASET=1 bash setup.sh
 ```
 
 **Option 2: Manual setup with uv (recommended for developers)**
@@ -65,10 +65,13 @@ BENCHY_EXTRAS=translation,prefect BENCHY_SKIP_DATASET=1 bash setup.sh
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Create venv and install dependencies
+# Create venv and install dependencies (cloud providers only)
 uv venv --python 3.12
 source .venv/bin/activate
 uv sync
+
+# For local vLLM inference, add the local extra:
+uv sync --extra local
 ```
 
 **Option 3: Manual setup with traditional venv + pip**
@@ -81,11 +84,22 @@ source .venv/bin/activate
 # Upgrade pip
 pip install --upgrade pip setuptools wheel
 
-# Install dependencies
+# Install dependencies (cloud providers only)
 pip install -e .
+
+# For local vLLM inference, add the local extra:
+pip install -e '.[local]'
 ```
 
 **Optional extras**
+
+Local inference via vLLM (requires Linux + CUDA GPU):
+
+```bash
+pip install -e '.[local]'
+# or with uv:
+uv sync --extra local
+```
 
 Prefect orchestration (optional):
 
@@ -98,7 +112,7 @@ uv sync --extra prefect
 Translation metrics (only for translation tasks):
 
 ```bash
-pip install '.[translation]'
+pip install -e '.[translation]'
 # or with uv:
 uv sync --extra translation
 ```
@@ -218,11 +232,62 @@ benchy eval --config surus-remove-background --dataset your-dataset --limit 10
 benchy eval --config surus-remove-background --dataset ICM57 --limit 10
 ```
 
-## CLI Dataset Usage (New!)
+## CLI Dataset Usage
 
-Benchy now supports creating tasks directly from the CLI without writing code. You can evaluate custom datasets using three task types: **classification**, **structured extraction**, and **freeform generation**.
+Benchy supports creating tasks directly from the CLI without writing code. Drop a dataset in `.data/`, and evaluate it with a single command.
 
-### Quick Start Examples
+### Zero-Code Evaluation from `.data/`
+
+Parquet datasets in `.data/<name>/` are auto-discovered. Benchy reads `dataset_info.json` and `schema.json` to infer labels, ground-truth mappings, multimodal input, and schema — no flags needed beyond dataset name and task type.
+
+```bash
+# Document classification (labels auto-discovered from dataset_info.json)
+benchy eval --dataset-name my-doc-classification --task-type classification \
+  --provider openai --model-name gpt-4o --limit 3
+
+# Structured extraction (schema + GT mapping auto-discovered from schema.json)
+benchy eval --dataset-name my-extraction-dataset --task-type structured \
+  --provider openai --model-name gpt-4o --limit 3
+```
+
+**What happens automatically:**
+- Binary columns (`large_binary`) are materialized to disk and rendered to PNG for LLM providers
+- `schema.json` is converted to JSON Schema (if custom format) and sanitized for OpenAI strict mode
+- Ground-truth columns (`gt_*`) are mapped to expected output via schema annotations
+- Labels are inferred from `label_distribution` in `dataset_info.json`
+- Multimodal input is auto-enabled when binary columns are detected
+
+### Dataset Discovery
+
+```bash
+# List all datasets in .data/
+benchy datasets
+
+# Detailed view with schemas and labels
+benchy datasets --verbose
+
+# Machine-readable
+benchy datasets --json
+```
+
+### Custom Prompts Per Dataset
+
+Override the default prompt for any dataset:
+
+```bash
+# Custom system prompt for classification
+benchy eval --dataset-name my-doc-classification --task-type classification \
+  --provider openai --model-name gpt-4o --limit 5 \
+  --system-prompt "Classify documents based on the presence of a specific keyword."
+
+# Custom extraction prompt
+benchy eval --dataset-name my-extraction-dataset --task-type structured \
+  --provider openai --model-name gpt-4o --limit 5 \
+  --system-prompt "You are an expert document reader." \
+  --user-prompt-template "Read this document and extract fields.\n\nSchema:\n{schema}\n\nReturn valid JSON."
+```
+
+### Quick Start Examples (HuggingFace / Local)
 
 **Classification Task** (binary or multi-class):
 ```bash
@@ -254,17 +319,19 @@ benchy eval --model-name gpt-4o-mini --provider openai \
 ### Key Features
 
 - **Three Task Types**: Classification, Structured Extraction, Freeform Generation
-- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL files, or directory structures
+- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL/Parquet files, `.data/` auto-discovery
+- **Auto-Discovery**: Datasets in `.data/` auto-configure labels, schema, GT mapping, and multimodal input
+- **Document Rendering**: Binary blobs (PDF, TIFF, HEIC) rendered to PNG for LLM providers at configurable DPI
 - **Flexible Field Mapping**: Map your dataset fields to expected inputs/outputs
-- **Multimodal Support**: Add `--multimodal-input` for image-based tasks
+- **Custom Prompts**: Override system/user prompts per dataset via `--system-prompt` and `--user-prompt-template`
 - **Config Generation**: Save your CLI setup with `--save-config output.yaml` for reuse
 
 ### Common CLI Flags
 
 **Task Type & Dataset**:
 - `--task-type {classification,structured,freeform}` - Type of task to create
-- `--dataset-name <name>` - HuggingFace dataset or local path
-- `--dataset-source {auto,huggingface,local,directory}` - Dataset source (default: auto)
+- `--dataset-name <name>` - HuggingFace dataset, local path, or `.data/` dataset name
+- `--dataset-source {auto,huggingface,local,parquet,directory}` - Dataset source (default: auto)
 - `--dataset-split <split>` - Dataset split for HuggingFace (default: test)
 
 **Field Mappings**:
@@ -281,9 +348,12 @@ benchy eval --model-name gpt-4o-mini --provider openai \
 - `--dataset-schema-path <path>` - JSON file with schema
 - `--dataset-schema-json <json>` - Inline JSON schema
 
-**Multimodal**:
-- `--multimodal-input` - Enable multimodal input (images)
+**Multimodal & Document Rendering**:
+- `--multimodal-input` - Enable multimodal input (auto-enabled for binary parquet datasets)
 - `--multimodal-image-field <field>` - Image path field (default: image_path)
+- `--render-documents` / `--no-render-documents` - Control PDF/TIFF to PNG rendering (auto for LLM providers)
+- `--render-dpi <int>` - Rendering DPI (default: 200)
+- `--render-max-pages <int>` - Max pages to render per document (default: 1)
 
 **Prompts**:
 - `--system-prompt <text>` - Custom system prompt
@@ -388,8 +458,72 @@ benchy eval --model-name mymodel --provider openai  --tasks spanish --limit 2
 benchy eval --model-name mymodel --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
 ```
 
-### Benchmarking SURUS AI nodes
-Surus AI nodes are preconfigured with their relevant tasks. Remember to add the necesary SURUS_API_KEY in your .env
+### Benchmarking any API endpoint (Generic API mode)
+
+Benchy can benchmark arbitrary HTTP APIs directly from the CLI using `--api-url`. This lets you evaluate entire pipelines (not just individual models) by targeting any endpoint that accepts JSON and returns JSON.
+
+**New CLI flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--api-url <url>` | Target endpoint URL (sets provider to `api`) |
+| `--api-body-template <json>` | JSON body template with `{{field}}` placeholders from dataset samples |
+| `--api-response-path <path>` | Dot-notation path to extract output from the response |
+| `--api-method <method>` | HTTP method (default: `POST`) |
+| `--api-headers <json>` | Extra HTTP headers as a JSON object |
+
+**Template placeholders:**
+
+- `{{field}}` — plain string substitution from dataset sample
+- `{{field|base64_image}}` — reads an image file and encodes it as a base64 data URL
+- `{{field|json}}` — embeds the value as raw JSON (preserves dicts/lists)
+
+**Response path examples:**
+
+- `data` → `response["data"]`
+- `choices.0.message.content` → `response["choices"][0]["message"]["content"]`
+- *(omit for root)* → uses the entire response object
+
+**Examples:**
+
+```bash
+# Benchmark SURUS facturas API (image → structured invoice extraction)
+benchy eval \
+  --api-url "https://api.surus.ai/factura" \
+  --api-key-env SURUS_API_KEY \
+  --api-body-template '{"image": "{{image_path|base64_image}}"}' \
+  --api-response-path "data" \
+  --tasks document_extraction.facturas_argentinas \
+  --model-name "surus-factura-v1" \
+  --limit 10
+
+# Benchmark a text extraction API with schema
+benchy eval \
+  --api-url "https://my-api.com/extract" \
+  --api-key-env MY_API_KEY \
+  --api-body-template '{"text": "{{text}}", "schema": "{{schema|json}}"}' \
+  --api-response-path "result" \
+  --tasks spanish \
+  --model-name "my-extractor-v1" \
+  --limit 5
+
+# Benchmark with custom headers
+benchy eval \
+  --api-url "https://my-api.com/classify" \
+  --api-key-env MY_API_KEY \
+  --api-body-template '{"text": "{{text}}"}' \
+  --api-response-path "prediction" \
+  --api-headers '{"X-Version": "2"}' \
+  --tasks spanish.spam_detection \
+  --model-name "my-classifier-v2" \
+  --limit 10
+```
+
+The `--model-name` parameter acts as a label for the system under test in output artifacts. Auth is handled via `--api-key-env` (environment variable name) or `--api-key` (direct value). All existing flags like `--limit`, `--tasks`, `--exit-policy`, `--image-max-edge`, etc. work with API mode.
+
+### Benchmarking SURUS AI nodes (preconfigured)
+
+Surus AI nodes are also available as preconfigured systems with their relevant tasks. Remember to add the necessary SURUS_API_KEY in your .env:
 
 ```bash
 # surus extraction endpoint
@@ -584,6 +718,12 @@ These flags help diagnose evaluation failures and guide configuration adjustment
 
 ```
 benchy/
+├── .data/                    # Auto-discovered datasets (see docs/DATASET_SPEC.md)
+│   └── <dataset-name>/
+│       ├── data/test.parquet # Evaluation data
+│       ├── dataset_info.json # Metadata, labels, features
+│       ├── schema.json       # Extraction schema (optional)
+│       └── benchy.md         # Run commands
 ├── configs/
 │   ├── config.yaml          # Global settings and task groups
 │   ├── models/              # Model configs (vLLM or cloud)
@@ -633,6 +773,10 @@ This generates per-model summaries and leaderboard tables under `outputs/publish
 
 ### For Users
 - `docs/evaluating_models.md` - Running benchmarks and understanding results
+- `docs/CLI_DATASET_USAGE.md` - Creating tasks from the CLI without code
+
+### For Dataset Builders
+- `docs/DATASET_SPEC.md` - **Dataset specification for zero-code evaluation** (recommended read!)
 
 ### For Contributors
 - `docs/contribute_tasks.md` - **Adding new tasks with the handler system** (recommended read!)

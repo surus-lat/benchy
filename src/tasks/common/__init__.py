@@ -133,7 +133,12 @@ from .utils.text_utils import (
 )
 
 # Dataset adapters and task config (for CLI-driven tasks)
-from .dataset_adapters import DatasetAdapter, validate_dataset_config
+from .dataset_adapters import (
+    DatasetAdapter,
+    list_data_datasets,
+    resolve_dataset_name,
+    validate_dataset_config,
+)
 from .task_config_schema import (
     TASK_TYPE_SCHEMAS,
     validate_task_config,
