@@ -293,6 +293,114 @@ task_configs:
 
 ---
 
+---
+
+## Generic API Benchmarking
+
+Benchmark arbitrary HTTP API endpoints without writing Python. Uses the `api` provider type automatically.
+
+### Required flags
+
+| Flag | Description |
+|------|-------------|
+| `--api-url <url>` | Target endpoint URL (sets provider to `api`) |
+| `--api-body-template <json>` | JSON template with `{{field}}` placeholders from dataset samples |
+| `--model-name <label>` | Label for the system under test (used in output artifacts) |
+| `--tasks <task...>` | Task(s) providing dataset and metrics |
+
+### Optional flags
+
+| Flag | Description |
+|------|-------------|
+| `--api-response-path <path>` | Dot-notation path to extract output (e.g. `data`, `choices.0.message.content`) |
+| `--api-method <method>` | HTTP method (default: `POST`) |
+| `--api-headers <json>` | Extra headers as JSON object |
+| `--api-key-env <var>` | Environment variable holding auth token (default: `API_KEY`) |
+| `--api-key <key>` | Direct API key value |
+
+### Template placeholders
+
+- `{{field}}` — string substitution from dataset sample
+- `{{field|base64_image}}` — image file path → base64 data URL
+- `{{field|json}}` — embed native JSON (preserves dicts/lists)
+
+### Canonical workflow
+
+```bash
+# 1. Smoke run
+benchy eval \
+  --api-url "https://api.example.com/extract" \
+  --api-key-env MY_API_KEY \
+  --api-body-template '{"image": "{{image_path|base64_image}}"}' \
+  --api-response-path "data" \
+  --tasks document_extraction.facturas_argentinas \
+  --model-name "my-pipeline-v1" \
+  --limit 5 --run-id smoke_api --exit-policy smoke
+
+# 2. Read run_outcome.json, verify passed/degraded
+
+# 3. Full run
+benchy eval \
+  --api-url "https://api.example.com/extract" \
+  --api-key-env MY_API_KEY \
+  --api-body-template '{"image": "{{image_path|base64_image}}"}' \
+  --api-response-path "data" \
+  --tasks document_extraction.facturas_argentinas \
+  --model-name "my-pipeline-v1" \
+  --run-id full_api --exit-policy strict
+```
+
+All existing flags (`--limit`, `--exit-policy`, `--run-id`, `--image-max-edge`, etc.) work with API mode.
+
+---
+
+## Zero-Code Dataset Evaluation
+
+Evaluate any dataset in `.data/` without writing Python. Datasets are auto-discovered with full metadata inference.
+
+### Discover datasets
+
+```bash
+benchy datasets --json
+```
+
+### Evaluate a `.data/` dataset
+
+```bash
+# 1. Smoke test
+benchy eval --dataset-name <name> --task-type <structured|classification|freeform> \
+  --provider openai --model-name gpt-4o --limit 3 --run-id <id>_smoke --exit-policy smoke
+
+# 2. Read run_outcome.json, verify passed
+# 3. Full run
+benchy eval --dataset-name <name> --task-type <type> \
+  --provider openai --model-name gpt-4o --run-id <id>_full --exit-policy strict
+```
+
+### Custom prompts
+
+Override prompts per-dataset without modifying any files:
+
+```bash
+benchy eval --dataset-name <name> --task-type <type> \
+  --provider openai --model-name gpt-4o \
+  --system-prompt "Your custom system instruction." \
+  --user-prompt-template "Your template with {text} and {schema} placeholders." \
+  --limit 5
+```
+
+For classification, available placeholders: `{text}`, `{choices}`.
+For extraction, available placeholders: `{text}`, `{schema}`.
+
+### After adapting a new dataset
+
+1. Place dataset in `.data/`
+2. Validate: `benchy eval --dataset-name <name> --task-type <type> --provider openai --model-name gpt-4o --limit 3`
+3. Write a `benchy.md` in the dataset directory with smoke/full/custom-prompt commands
+4. Follow `docs/DATASET_SPEC.md` for required files and column conventions
+
+---
+
 ## Adding New Providers or Tasks
 
 If your evaluation needs a new model provider or benchmark task, use the dedicated skills first:
