@@ -14,13 +14,14 @@ The Extraction Quality Score (EQS) is the primary metric, combining:
 - Hallucination rate (does the model add spurious fields?)
 """
 
+import copy
 import logging
 import re
 import hashlib
 import json
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from jsonschema import validate, ValidationError
 
@@ -255,6 +256,106 @@ class MetricsCalculator:
             canonical = str(schema)
         return hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:12]
 
+    def _unordered_array_rules(self) -> Dict[str, Dict[str, Any]]:
+        """Return normalized unordered-array matching rules keyed by field path."""
+        raw_rules = self.config.get("metrics", {}).get("unordered_arrays", {})
+        if isinstance(raw_rules, list):
+            return {str(path): {} for path in raw_rules if path}
+        if isinstance(raw_rules, dict):
+            normalized: Dict[str, Dict[str, Any]] = {}
+            for path, options in raw_rules.items():
+                if not path:
+                    continue
+                normalized[str(path)] = options if isinstance(options, dict) else {}
+            return normalized
+        return {}
+
+    def _canonical_sort_value(self, value: Any) -> str:
+        """Build a stable sort key for arbitrary structured values."""
+        try:
+            return json.dumps(value, sort_keys=True, ensure_ascii=True, default=str)
+        except (TypeError, ValueError):
+            return str(value)
+
+    def _extract_key_tuple(self, item: Any, key_fields: List[str]) -> Tuple[Any, ...]:
+        """Extract a tuple key from a dict item for alignment."""
+        if not isinstance(item, dict):
+            return tuple(item for _ in key_fields)
+        return tuple(item.get(field) for field in key_fields)
+
+    def _align_unordered_array_items(
+        self,
+        predicted_items: List[Any],
+        expected_items: List[Any],
+        rule: Dict[str, Any],
+    ) -> List[Any]:
+        """Reorder predicted items to align with expected items for scoring."""
+        key_fields = rule.get("key_fields", [])
+        if isinstance(key_fields, str):
+            key_fields = [key_fields]
+        key_fields = [str(field) for field in key_fields if field]
+
+        remaining = list(predicted_items)
+        aligned: List[Any] = []
+
+        for expected_item in expected_items:
+            match_index: Optional[int] = None
+
+            if key_fields:
+                expected_key = self._extract_key_tuple(expected_item, key_fields)
+                for idx, candidate in enumerate(remaining):
+                    if self._extract_key_tuple(candidate, key_fields) == expected_key:
+                        match_index = idx
+                        break
+            else:
+                expected_sort_value = self._canonical_sort_value(expected_item)
+                for idx, candidate in enumerate(remaining):
+                    if self._canonical_sort_value(candidate) == expected_sort_value:
+                        match_index = idx
+                        break
+
+            if match_index is None:
+                continue
+
+            aligned.append(remaining.pop(match_index))
+
+        if key_fields:
+            remaining.sort(key=lambda item: self._extract_key_tuple(item, key_fields))
+        else:
+            remaining.sort(key=self._canonical_sort_value)
+
+        aligned.extend(remaining)
+        return aligned
+
+    def _apply_unordered_array_matching(
+        self,
+        predicted: Any,
+        expected: Any,
+    ) -> Tuple[Any, Any]:
+        """Return copies with configured unordered arrays aligned for scoring."""
+        rules = self._unordered_array_rules()
+        if not rules or not isinstance(predicted, dict) or not isinstance(expected, dict):
+            return predicted, expected
+
+        aligned_prediction = copy.deepcopy(predicted)
+        aligned_expected = copy.deepcopy(expected)
+
+        def _walk(pred_node: Any, exp_node: Any, current_path: str = "") -> None:
+            rule = rules.get(current_path)
+            if rule and isinstance(pred_node, list) and isinstance(exp_node, list):
+                reordered = self._align_unordered_array_items(pred_node, exp_node, rule)
+                pred_node[:] = reordered
+                return
+
+            if isinstance(pred_node, dict) and isinstance(exp_node, dict):
+                for key in exp_node.keys() | pred_node.keys():
+                    next_path = f"{current_path}.{key}" if current_path else str(key)
+                    if key in pred_node and key in exp_node:
+                        _walk(pred_node[key], exp_node[key], next_path)
+
+        _walk(aligned_prediction, aligned_expected)
+        return aligned_prediction, aligned_expected
+
     def calculate_all(
         self,
         prediction: Dict,
@@ -343,6 +444,11 @@ class MetricsCalculator:
             metrics["date_format_conversions"] = normalization_stats["date_format_conversions"]
             metrics["normalization_penalty"] = self._compute_normalization_penalty(
                 normalization_stats["null_string_conversions"]
+            )
+
+            normalized_prediction, normalized_expected = self._apply_unordered_array_matching(
+                normalized_prediction,
+                normalized_expected,
             )
 
             # Check schema validity

@@ -271,6 +271,52 @@ def test_metrics_calculator_merges_config():
     assert calc is not None
 
 
+def test_structured_handler_load_reads_dataset_metrics_config(tmp_path):
+    """StructuredHandler should autoload dataset metrics config from data_dir."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "cronograma": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "fecha": {"type": "string"},
+                        "hora": {"type": "string"},
+                    },
+                },
+            }
+        },
+    }
+    metrics_config = {
+        "unordered_arrays": {
+            "cronograma": {
+                "key_fields": ["fecha", "hora"],
+            }
+        }
+    }
+
+    (tmp_path / "schema.json").write_text(json.dumps(schema), encoding="utf-8")
+    (tmp_path / "metrics_config.json").write_text(json.dumps(metrics_config), encoding="utf-8")
+
+    handler = SimpleStructuredHandler(
+        {
+            "dataset": {
+                "name": str(tmp_path),
+                "source": "directory",
+                "schema_json": json.dumps(schema),
+            }
+        }
+    )
+    handler.data_dir = tmp_path
+    handler.load_dataset = lambda: []
+
+    handler.load()
+
+    assert handler.dataset_metrics_config == metrics_config
+    assert handler.metrics_calculator.config["metrics"]["unordered_arrays"] == metrics_config["unordered_arrays"]
+
+
 def test_build_additional_artifacts_writes_field_diagnostics(tmp_path):
     """Structured handler writes field diagnostics artifacts from per-sample metrics."""
     handler = SimpleStructuredHandler()
