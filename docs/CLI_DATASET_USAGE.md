@@ -103,9 +103,20 @@ benchy eval --model-name gpt-4o-mini --provider openai \
 
 ## Dataset Sources
 
-Benchy can load datasets from three sources:
+Benchy can load datasets from four sources:
 
-### 1. HuggingFace Hub
+### 1. `.data/` Auto-Discovery (Recommended)
+
+Place parquet datasets in `.data/<name>/` and Benchy auto-discovers everything:
+
+```bash
+--dataset-name my-extraction-dataset    # Matches .data/my-extraction-dataset/
+--task-type structured                   # Schema, labels, GT mapping auto-configured
+```
+
+Benchy reads `dataset_info.json` and `schema.json` to auto-configure labels, ground-truth mappings, multimodal input, and document rendering. See `docs/DATASET_SPEC.md` for the full specification.
+
+### 2. HuggingFace Hub
 
 Load datasets directly from HuggingFace:
 
@@ -115,16 +126,19 @@ Load datasets directly from HuggingFace:
 --dataset-split test
 ```
 
-### 2. Local JSONL Files
+### 3. Local JSONL / Parquet Files
 
-Load from local JSONL files:
+Load from local files:
 
 ```bash
 --dataset-name ./data/my_dataset.jsonl
 --dataset-source local  # or 'auto' (default)
+
+--dataset-name ./data/my_dataset.parquet
+--dataset-source parquet
 ```
 
-### 3. Directory Structures
+### 4. Directory Structures
 
 Load from directories (useful for multimodal tasks):
 
@@ -506,8 +520,41 @@ Check the output for:
 - Expected prompt format
 - Metric calculation
 
+## Document Rendering
+
+For datasets with binary document columns (PDF, TIFF, HEIC), Benchy can render documents to PNG images before sending to LLM providers:
+
+- **Auto-enabled** for LLM providers (openai, anthropic, google, etc.) when binary columns are detected
+- **Disabled** for custom API endpoints (`--api-url`) which may accept raw files
+- **Configurable** via `--render-documents` / `--no-render-documents`, `--render-dpi`, `--render-max-pages`
+
+```bash
+# Override rendering settings
+benchy eval --dataset-name my-extraction-dataset --task-type structured \
+  --provider openai --model-name gpt-4o \
+  --render-dpi 300 --render-max-pages 2 --limit 5
+```
+
+Requires `pymupdf` for PDF rendering:
+
+```bash
+uv pip install pymupdf
+# or: uv sync --extra document
+```
+
+## Building Datasets for Benchy
+
+See `docs/DATASET_SPEC.md` for the complete specification on how to build datasets that work with Benchy's zero-code evaluation. Key points:
+
+- Place datasets in `.data/<dataset-name>/data/test.parquet`
+- Include `dataset_info.json` with features and label distribution
+- Include `schema.json` with `gt_field` annotations for extraction tasks
+- Write a `benchy.md` with run commands
+- Validate with a smoke test before publishing
+
 ## Next Steps
 
+- See the dataset specification: `docs/DATASET_SPEC.md`
 - See handler documentation for task-specific details: `src/tasks/common/`
 - Read the architecture guide: `docs/architecture.md`
 - Explore example configs: `configs/templates/`

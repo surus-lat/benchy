@@ -10,7 +10,7 @@ from .....common.dataset_utils import download_huggingface_dataset, load_jsonl_d
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / ".data" / "bluex"
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".data" / "portuguese" / "bluex"
 DEFAULT_DESCRIPTION = (
     "As perguntas a seguir são questões de múltipla escolha de provas de vestibular "
     "de universidades brasileiras, selecione a única alternativa correta e responda "

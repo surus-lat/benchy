@@ -67,9 +67,10 @@ class Flores(TranslationHandler):
             self.language_pairs = self.config.get("language_pairs", self.language_pairs)
             self.split = self.config.get("split", self.split)
         
-        # Data directory
-        self.data_dir = Path(__file__).parent / ".data" / "flores"
-        self.cache_dir = Path(__file__).parent / "cache"
+        # Data directory — stored under repo-root/.data/translation/
+        _repo_root = Path(__file__).parent.parent.parent.parent
+        self.data_dir = _repo_root / ".data" / "translation" / "flores"
+        self.cache_dir = _repo_root / ".data" / "translation" / "cache"
     
     def load_dataset(self) -> List[Dict]:
         """Load FLORES translation dataset.

@@ -15,7 +15,7 @@ from .....common.dataset_utils import load_jsonl_dataset, save_to_jsonl
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / ".data" / "faquad_nli"
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".data" / "portuguese" / "faquad_nli"
 DEFAULT_DESCRIPTION = (
     "Abaixo estão pares de pergunta e resposta. Para cada par, você deve julgar se a "
     "resposta responde à pergunta de maneira satisfatória e aparenta estar correta. "
