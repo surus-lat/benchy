@@ -263,6 +263,18 @@ class StructuredHandler(BaseHandler):
                 self.dataset_metrics_config = json.load(f)
                 logger.info("Loaded dataset-specific metrics config from %s", metrics_config_file)
 
+        # For ad-hoc tasks the handler data_dir is .data/common/, not the dataset dir.
+        # Also check .data/<dataset-name>/metrics_config.json when dataset is auto-discovered.
+        if not self.dataset_metrics_config and self.config:
+            dataset_name = self.config.get("dataset", {}).get("name", "")
+            if dataset_name:
+                from .dataset_adapters import _repo_data_dir
+                candidate = _repo_data_dir() / dataset_name / "metrics_config.json"
+                if candidate.exists():
+                    with open(candidate, "r", encoding="utf-8") as f:
+                        self.dataset_metrics_config = json.load(f)
+                    logger.info("Loaded dataset-specific metrics config from %s", candidate)
+
         super().load()
 
     def _deep_merge(self, base: Dict, override: Dict) -> None:
