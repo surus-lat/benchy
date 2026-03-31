@@ -8,7 +8,9 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -22,6 +24,230 @@ from .protocols import BaseTask, BaseInterface, check_compatibility
 from .output_diagnostics import analyze_output, aggregate_diagnostics
 
 logger = logging.getLogger(__name__)
+
+PERFORMANCE_METRIC_CANDIDATES = (
+    "document_extraction_score",
+    "overall_extraction_quality_score",
+    "extraction_quality_score",
+    "field_f1_partial",
+    "accuracy",
+    "exact_match",
+    "bleu",
+    "chrf",
+    "comet",
+    "score",
+)
+PERFORMANCE_METRIC_EXCLUDE_KEYS = {
+    "sample_id",
+    "valid",
+    "error",
+    "error_type",
+    "schema_fingerprint",
+}
+
+
+def _coerce_numeric_metric(value: Any) -> Optional[float]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if math.isnan(numeric) or math.isinf(numeric):
+            return None
+        return numeric
+    return None
+
+
+def _select_primary_performance_metric(per_sample_metrics: List[Dict[str, Any]]) -> Optional[str]:
+    available_counts: Dict[str, int] = {}
+
+    for metric in per_sample_metrics:
+        if not isinstance(metric, dict):
+            continue
+        for key, value in metric.items():
+            if key in PERFORMANCE_METRIC_EXCLUDE_KEYS:
+                continue
+            if _coerce_numeric_metric(value) is None:
+                continue
+            available_counts[key] = available_counts.get(key, 0) + 1
+
+    if not available_counts:
+        return None
+
+    for key in PERFORMANCE_METRIC_CANDIDATES:
+        if key in available_counts:
+            return key
+
+    return sorted(
+        available_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )[0][0]
+
+
+def _compute_quantile(sorted_values: List[float], q: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+
+    position = (len(sorted_values) - 1) * q
+    lower_idx = int(math.floor(position))
+    upper_idx = int(math.ceil(position))
+    lower = sorted_values[lower_idx]
+    upper = sorted_values[upper_idx]
+    if lower_idx == upper_idx:
+        return float(lower)
+    weight = position - lower_idx
+    return float(lower + (upper - lower) * weight)
+
+
+def _performance_bucket(value: float, *, q1: float, median: float, q3: float) -> str:
+    if value <= q1:
+        return "q1_bottom"
+    if value <= median:
+        return "q2_lower_mid"
+    if value <= q3:
+        return "q3_upper_mid"
+    return "q4_top"
+
+
+def build_performance_summary(
+    per_sample_metrics: List[Dict[str, Any]],
+    *,
+    top_k: int = 10,
+) -> Dict[str, Any]:
+    total_samples = len(per_sample_metrics)
+    primary_metric = _select_primary_performance_metric(per_sample_metrics)
+    if not primary_metric:
+        return {
+            "status": "unavailable",
+            "reason": "no_numeric_metric",
+            "total_samples": total_samples,
+        }
+
+    metric_rows: List[Dict[str, Any]] = []
+    for metric in per_sample_metrics:
+        if not isinstance(metric, dict):
+            continue
+        value = _coerce_numeric_metric(metric.get(primary_metric))
+        if value is None:
+            continue
+        metric_rows.append(
+            {
+                "sample_id": metric.get("sample_id"),
+                "value": value,
+                "valid": bool(metric.get("valid", True)),
+            }
+        )
+
+    if not metric_rows:
+        return {
+            "status": "unavailable",
+            "reason": "primary_metric_not_populated",
+            "primary_metric": primary_metric,
+            "total_samples": total_samples,
+        }
+
+    ordered_values = sorted(row["value"] for row in metric_rows)
+    q1 = _compute_quantile(ordered_values, 0.25)
+    median = _compute_quantile(ordered_values, 0.50)
+    q3 = _compute_quantile(ordered_values, 0.75)
+
+    ascending_rows = sorted(
+        metric_rows,
+        key=lambda row: (row["value"], str(row.get("sample_id") or "")),
+    )
+    descending_rows = sorted(
+        metric_rows,
+        key=lambda row: (-row["value"], str(row.get("sample_id") or "")),
+    )
+
+    return {
+        "status": "ok",
+        "primary_metric": primary_metric,
+        "direction": "higher_is_better",
+        "total_samples": total_samples,
+        "samples_with_metric": len(metric_rows),
+        "samples_missing_metric": max(0, total_samples - len(metric_rows)),
+        "quartiles": {
+            "min": float(ordered_values[0]),
+            "q1": q1,
+            "median": median,
+            "q3": q3,
+            "max": float(ordered_values[-1]),
+        },
+        "bottom_quartile_threshold": q1,
+        "top_quartile_threshold": q3,
+        "lowest_samples": ascending_rows[:top_k],
+        "highest_samples": descending_rows[:top_k],
+    }
+
+
+def build_per_sample_metrics_artifact(
+    *,
+    model_name: str,
+    task_name: str,
+    timestamp: str,
+    per_sample_metrics: List[Dict[str, Any]],
+    performance_summary: Dict[str, Any],
+) -> Dict[str, Any]:
+    primary_metric = performance_summary.get("primary_metric")
+    quartiles = performance_summary.get("quartiles") or {}
+    q1 = _coerce_numeric_metric(quartiles.get("q1"))
+    median = _coerce_numeric_metric(quartiles.get("median"))
+    q3 = _coerce_numeric_metric(quartiles.get("q3"))
+
+    ranking_lookup: Dict[str, Dict[str, Any]] = {}
+    if performance_summary.get("status") == "ok" and primary_metric:
+        all_ranked_rows = sorted(
+            [
+                {
+                    "sample_id": metric.get("sample_id"),
+                    "value": float(metric.get(primary_metric)),
+                }
+                for metric in per_sample_metrics
+                if isinstance(metric, dict) and _coerce_numeric_metric(metric.get(primary_metric)) is not None
+            ],
+            key=lambda row: (row["value"], str(row.get("sample_id") or "")),
+        )
+        metric_count = len(all_ranked_rows)
+        for index, row in enumerate(all_ranked_rows, start=1):
+            ranking_lookup[str(row.get("sample_id"))] = {
+                "rank_ascending": index,
+                "rank_descending": metric_count - index + 1,
+                "percentile": (index - 1) / (metric_count - 1) if metric_count > 1 else 1.0,
+                "value": row["value"],
+            }
+
+    entries: List[Dict[str, Any]] = []
+    for metric in per_sample_metrics:
+        if not isinstance(metric, dict):
+            continue
+        entry = deepcopy(metric)
+        sample_id = entry.get("sample_id")
+        if primary_metric and sample_id is not None and str(sample_id) in ranking_lookup:
+            ranking = ranking_lookup[str(sample_id)]
+            entry["performance_metric"] = primary_metric
+            entry["performance_value"] = ranking["value"]
+            entry["performance_rank_ascending"] = ranking["rank_ascending"]
+            entry["performance_rank_descending"] = ranking["rank_descending"]
+            entry["performance_percentile"] = ranking["percentile"]
+            if q1 is not None and median is not None and q3 is not None:
+                entry["performance_bucket"] = _performance_bucket(
+                    ranking["value"],
+                    q1=q1,
+                    median=median,
+                    q3=q3,
+                )
+        entries.append(entry)
+
+    return {
+        "model": model_name,
+        "task": task_name,
+        "timestamp": timestamp,
+        "total_samples": len(entries),
+        "performance_summary": performance_summary,
+        "entries": entries,
+    }
 
 
 class BenchmarkRunner:
@@ -130,6 +356,7 @@ class BenchmarkRunner:
                     aggregate["total_samples"] = len(prior_metrics)
                     aggregate["total_duration"] = 0.0
                     aggregate["throughput"] = 0.0
+                    aggregate["performance_summary"] = build_performance_summary(prior_metrics)
                     self._log_summary(aggregate)
                     return {
                         "per_sample_metrics": prior_metrics,
@@ -301,6 +528,7 @@ class BenchmarkRunner:
         counts, rates = aggregate_diagnostics(diagnostics_entries, run_samples=run_samples)
         aggregate["diagnostic_counts"] = counts
         aggregate["diagnostic_rates"] = rates
+        aggregate["performance_summary"] = build_performance_summary(results["per_sample_metrics"])
         results["aggregate_metrics"] = aggregate
         
         self._log_summary(aggregate)
@@ -378,7 +606,30 @@ class BenchmarkRunner:
                 else:
                     parts.append(f"{cls}={count}")
             logger.info("diagnostic_summary: %s", ", ".join(parts))
-        
+
+        performance_summary = metrics.get("performance_summary")
+        if isinstance(performance_summary, dict) and performance_summary.get("status") == "ok":
+            metric_name = performance_summary.get("primary_metric")
+            quartiles = performance_summary.get("quartiles") or {}
+            logger.info(
+                "performance_summary: metric=%s min=%.4f q1=%.4f median=%.4f q3=%.4f max=%.4f samples=%s/%s",
+                metric_name,
+                float(quartiles.get("min", 0.0)),
+                float(quartiles.get("q1", 0.0)),
+                float(quartiles.get("median", 0.0)),
+                float(quartiles.get("q3", 0.0)),
+                float(quartiles.get("max", 0.0)),
+                performance_summary.get("samples_with_metric", 0),
+                performance_summary.get("total_samples", 0),
+            )
+            lowest_samples = performance_summary.get("lowest_samples") or []
+            if lowest_samples:
+                lowest_summary = ", ".join(
+                    f"{sample.get('sample_id')}={float(sample.get('value', 0.0)):.4f}"
+                    for sample in lowest_samples[:5]
+                )
+                logger.info("lowest_samples: %s", lowest_summary)
+
         logger.info("=" * 60)
 
 
@@ -513,6 +764,10 @@ def save_results(
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_name = model_name.replace("/", "_")
+    performance_summary = results.get("aggregate_metrics", {}).get("performance_summary")
+    if not isinstance(performance_summary, dict):
+        performance_summary = build_performance_summary(results.get("per_sample_metrics", []))
+        results.setdefault("aggregate_metrics", {})["performance_summary"] = performance_summary
     
     # Save metrics JSON
     metrics_file = output_dir / f"{safe_name}_{timestamp}_metrics.json"
@@ -524,6 +779,35 @@ def save_results(
             "metrics": results["aggregate_metrics"],
         }, f, indent=2)
     logger.info(f"Saved metrics to {metrics_file}")
+
+    per_sample_metrics = results.get("per_sample_metrics", [])
+    if per_sample_metrics:
+        per_sample_metrics_file = output_dir / f"{safe_name}_{timestamp}_per_sample_metrics.json"
+        per_sample_payload = build_per_sample_metrics_artifact(
+            model_name=model_name,
+            task_name=task_name,
+            timestamp=timestamp,
+            per_sample_metrics=per_sample_metrics,
+            performance_summary=performance_summary,
+        )
+        with open(per_sample_metrics_file, "w", encoding="utf-8") as f:
+            json.dump(per_sample_payload, f, indent=2, default=str)
+        logger.info(f"Saved per-sample metrics to {per_sample_metrics_file}")
+
+        performance_summary_file = output_dir / f"{safe_name}_{timestamp}_performance_summary.json"
+        with open(performance_summary_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "model": model_name,
+                    "task": task_name,
+                    "timestamp": timestamp,
+                    "performance_summary": performance_summary,
+                },
+                f,
+                indent=2,
+                default=str,
+            )
+        logger.info(f"Saved performance summary to {performance_summary_file}")
     
     # Save samples if requested
     if log_samples and results.get("samples"):
@@ -558,10 +842,30 @@ def save_results(
         f.write("Metrics:\n")
         f.write("-" * 40 + "\n")
         for key, value in results["aggregate_metrics"].items():
+            if isinstance(value, dict):
+                continue
             if isinstance(value, float):
                 f.write(f"  {key}: {value:.4f}\n")
             else:
                 f.write(f"  {key}: {value}\n")
+        if performance_summary.get("status") == "ok":
+            quartiles = performance_summary.get("quartiles") or {}
+            f.write("\nPerformance Summary:\n")
+            f.write("-" * 40 + "\n")
+            f.write(f"  primary_metric: {performance_summary.get('primary_metric')}\n")
+            f.write(f"  samples_with_metric: {performance_summary.get('samples_with_metric', 0)}\n")
+            f.write(f"  min: {float(quartiles.get('min', 0.0)):.4f}\n")
+            f.write(f"  q1: {float(quartiles.get('q1', 0.0)):.4f}\n")
+            f.write(f"  median: {float(quartiles.get('median', 0.0)):.4f}\n")
+            f.write(f"  q3: {float(quartiles.get('q3', 0.0)):.4f}\n")
+            f.write(f"  max: {float(quartiles.get('max', 0.0)):.4f}\n")
+            lowest_samples = performance_summary.get("lowest_samples") or []
+            if lowest_samples:
+                f.write("  lowest_samples:\n")
+                for sample in lowest_samples[:5]:
+                    f.write(
+                        f"    - {sample.get('sample_id')}: {float(sample.get('value', 0.0)):.4f}\n"
+                    )
         f.write("=" * 60 + "\n")
     logger.info(f"Saved report to {report_file}")
 
