@@ -6,6 +6,8 @@ description: Add a new benchmark task or task group to benchy. Covers handler se
 
 Benchy uses **handler-based tasks**: inherit from a format handler, declare config, override only what you need. Most tasks are 30–50 lines of code.
 
+> **Quick alternative:** For evaluating a dataset without writing Python, use the zero-code dataset evaluation workflow via `benchy eval --dataset-name <name> --task-type <type>`. See the `evaluate` skill for details.
+
 ---
 
 ## Step 0 — Choose Your Handler

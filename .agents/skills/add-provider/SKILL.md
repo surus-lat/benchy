@@ -66,7 +66,13 @@ tasks:
 
 ### Step 3 — CLI wiring (only if adding a new provider TYPE)
 
-If this is a completely new provider type (not openai/together/anthropic/alibaba/google), update `src/benchy_cli_eval.py`:
+If this is a completely new provider type (not one of the existing ones below), update `src/benchy_cli_eval.py`.
+
+Existing model provider types: `openai`, `anthropic`, `together`, `alibaba`, `google`
+Existing system provider types: `surus`, `surus_ocr`, `surus_factura`, `surus_classify`, `surus_remove_background`
+Special: `api` — generic API benchmarking via `--api-url` (no config file needed, see evaluate skill)
+
+Steps:
 
 1. Add to `PROVIDER_SPECS`:
    ```python
