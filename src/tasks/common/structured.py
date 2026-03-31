@@ -153,6 +153,7 @@ class StructuredHandler(BaseHandler):
         
         super().__init__(config)
 
+        self.dataset_metrics_config: Optional[Dict[str, Any]] = None
         # Lazy initialization of metrics calculator
         self._metrics_calc = None
     
@@ -184,7 +185,7 @@ class StructuredHandler(BaseHandler):
                 # If the schema uses our custom "fields" array format, convert it
                 if "fields" in raw and isinstance(raw["fields"], list):
                     from .dataset_adapters import _convert_custom_schema
-                    self._global_schema, _ = _convert_custom_schema(raw)
+                    self._global_schema, *_ = _convert_custom_schema(raw)
                 else:
                     self._global_schema = raw
             else:
@@ -245,12 +246,24 @@ class StructuredHandler(BaseHandler):
             metrics_cfg: Dict[str, Any] = copy.deepcopy(self.metrics_config) if self.metrics_config else {}
             if self.config and "metrics" in self.config and isinstance(self.config["metrics"], dict):
                 self._deep_merge(metrics_cfg, self.config["metrics"])
+            if self.dataset_metrics_config and isinstance(self.dataset_metrics_config, dict):
+                self._deep_merge(metrics_cfg, self.dataset_metrics_config)
 
             # Check if strict mode is enabled
             strict = metrics_cfg.get("strict", False)
             
             self._metrics_calc = MetricsCalculator({"metrics": metrics_cfg}, strict=strict)
         return self._metrics_calc
+
+    def load(self) -> None:
+        """Load dataset metrics config, then load the dataset."""
+        metrics_config_file = self.data_dir / "metrics_config.json"
+        if metrics_config_file.exists():
+            with open(metrics_config_file, "r", encoding="utf-8") as f:
+                self.dataset_metrics_config = json.load(f)
+                logger.info("Loaded dataset-specific metrics config from %s", metrics_config_file)
+
+        super().load()
 
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         for key, value in override.items():

@@ -29,26 +29,32 @@ def _repo_data_dir() -> Path:
 
 def _convert_custom_schema(
     raw_schema: Dict[str, Any],
-) -> tuple[Dict[str, Any], Dict[str, str]]:
+) -> tuple[Dict[str, Any], Dict[str, str], Dict[str, str]]:
     """Convert a custom benchy schema (with ``fields`` array) to JSON Schema.
 
-    Also extracts the ground-truth column mapping so the adapter can build
-    the ``expected`` dict from dataset columns.
+    Also extracts the ground-truth column mapping and field type mapping so the
+    adapter can build the ``expected`` dict from dataset columns and coerce GT
+    values to the correct Python type.
 
     Returns:
-        (json_schema, gt_mapping) where *gt_mapping* maps extraction field
-        names to dataset column names (e.g. ``{"numero_de_orden": "gt_numero_de_orden"}``).
+        (json_schema, gt_mapping, type_mapping) where *gt_mapping* maps extraction
+        field names to dataset column names and *type_mapping* maps field names to
+        their declared schema type (e.g. ``{"items": "array"}``).
     """
     properties: Dict[str, Any] = {}
     required: List[str] = []
     gt_mapping: Dict[str, str] = {}
+    type_mapping: Dict[str, str] = {}
 
     for field in raw_schema.get("fields", []):
         fname = field["name"]
-        prop: Dict[str, Any] = {"type": field.get("type", "string")}
+        field_type = field.get("type", "string")
+        prop: Dict[str, Any] = {"type": field_type}
         if "description" in field:
             prop["description"] = field["description"]
         properties[fname] = prop
+
+        type_mapping[fname] = field_type
 
         if field.get("required", False):
             required.append(fname)
@@ -64,29 +70,36 @@ def _convert_custom_schema(
     if required:
         json_schema["required"] = required
 
-    return json_schema, gt_mapping
+    return json_schema, gt_mapping, type_mapping
 
 
 def _extract_gt_mapping_from_json_schema(
     schema: Dict[str, Any],
     _prefix: str = "",
-) -> Dict[str, str]:
+) -> tuple[Dict[str, str], Dict[str, str]]:
     """Walk a standard JSON Schema and extract ``gt_field`` annotations.
 
-    Returns a flat mapping of *dot-notation field path* → *dataset column name*.
+    Returns:
+        (gt_mapping, type_mapping) where *gt_mapping* is a flat mapping of
+        dot-notation field path → dataset column name and *type_mapping* maps
+        each field path to its declared schema type (e.g. ``"array"``).
     Also strips ``gt_field``, ``ground_truth_available``, ``evaluation_note``,
     and ``db_source`` keys from the schema in-place so the resulting object is
     a clean JSON Schema suitable for sending to an LLM.
     """
     gt_mapping: Dict[str, str] = {}
+    type_mapping: Dict[str, str] = {}
     _annotation_keys = {"gt_field", "ground_truth_available", "evaluation_note", "db_source"}
 
     props = schema.get("properties")
     if not isinstance(props, dict):
-        return gt_mapping
+        return gt_mapping, type_mapping
 
     for name, prop in props.items():
         path = f"{_prefix}.{name}" if _prefix else name
+
+        # Collect field type
+        type_mapping[path] = prop.get("type", "string")
 
         # Collect GT annotation
         gt_col = prop.get("gt_field")
@@ -99,18 +112,22 @@ def _extract_gt_mapping_from_json_schema(
 
         # Recurse into nested objects
         if prop.get("type") == "object":
-            gt_mapping.update(_extract_gt_mapping_from_json_schema(prop, _prefix=path))
+            sub_gt, sub_types = _extract_gt_mapping_from_json_schema(prop, _prefix=path)
+            gt_mapping.update(sub_gt)
+            type_mapping.update(sub_types)
 
         # Recurse into array items
         items = prop.get("items")
         if isinstance(items, dict) and items.get("type") == "object":
-            gt_mapping.update(_extract_gt_mapping_from_json_schema(items, _prefix=path))
+            sub_gt, sub_types = _extract_gt_mapping_from_json_schema(items, _prefix=path)
+            gt_mapping.update(sub_gt)
+            type_mapping.update(sub_types)
 
     # Strip annotation keys at schema root level too
     for k in _annotation_keys:
         schema.pop(k, None)
 
-    return gt_mapping
+    return gt_mapping, type_mapping
 
 
 def resolve_dataset_name(name: str) -> tuple[str, Dict[str, Any]]:
@@ -173,18 +190,22 @@ def resolve_dataset_name(name: str) -> tuple[str, Dict[str, Any]]:
 
         # Convert custom schema format (fields array) to JSON Schema + GT mapping
         if "fields" in raw_schema and isinstance(raw_schema["fields"], list):
-            json_schema, gt_mapping = _convert_custom_schema(raw_schema)
+            json_schema, gt_mapping, type_mapping = _convert_custom_schema(raw_schema)
             extra["_json_schema"] = json_schema
             if gt_mapping:
                 extra["_ground_truth_mapping"] = gt_mapping
+            if type_mapping:
+                extra["_field_type_mapping"] = type_mapping
         elif "properties" in raw_schema:
             # Standard JSON Schema — extract gt_field annotations in-place
             import copy
             clean_schema = copy.deepcopy(raw_schema)
-            gt_mapping = _extract_gt_mapping_from_json_schema(clean_schema)
+            gt_mapping, type_mapping = _extract_gt_mapping_from_json_schema(clean_schema)
             extra["_json_schema"] = clean_schema
             if gt_mapping:
                 extra["_ground_truth_mapping"] = gt_mapping
+            if type_mapping:
+                extra["_field_type_mapping"] = type_mapping
 
     # Resolve to the parquet data directory or the dataset root
     parquet_subdir = data_dir / "data"
@@ -736,14 +757,39 @@ class DatasetAdapter:
         if gt_mapping:
             # Build expected dict from ground-truth columns (extraction datasets).
             # Dot-notation keys (e.g. "encabezado.ugl_dependencia") become nested dicts.
+            field_type_mapping = dataset_config.get("_field_type_mapping", {})
             expected: Dict[str, Any] = {}
             for field_name, gt_col in gt_mapping.items():
-                if gt_col in raw_sample and raw_sample[gt_col] is not None:
-                    parts = field_name.split(".")
-                    target = expected
-                    for part in parts[:-1]:
-                        target = target.setdefault(part, {})
-                    target[parts[-1]] = raw_sample[gt_col]
+                if gt_col not in raw_sample or raw_sample[gt_col] is None:
+                    continue
+                value = raw_sample[gt_col]
+                # When the schema declares the field as an array but the parquet
+                # column stores a JSON-serialised string, parse it before comparison
+                # so the comparison logic sees a list on both sides.
+                if field_type_mapping.get(field_name) == "array" and isinstance(value, str):
+                    try:
+                        parsed = json.loads(value)
+                        if isinstance(parsed, list):
+                            value = parsed
+                        else:
+                            logger.warning(
+                                "GT field %r: json.loads returned %s, expected list — "
+                                "treating as GT data error, skipping field",
+                                field_name, type(parsed).__name__,
+                            )
+                            continue
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "GT field %r: string value is not valid JSON — "
+                            "treating as GT data error, skipping field",
+                            field_name,
+                        )
+                        continue
+                parts = field_name.split(".")
+                target = expected
+                for part in parts[:-1]:
+                    target = target.setdefault(part, {})
+                target[parts[-1]] = value
             if expected:
                 sample["expected"] = expected
         elif output_field in raw_sample:
