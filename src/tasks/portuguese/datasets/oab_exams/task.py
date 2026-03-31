@@ -10,7 +10,7 @@ from .....common.dataset_utils import download_huggingface_dataset, load_jsonl_d
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / ".data" / "oab_exams"
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".data" / "portuguese" / "oab_exams"
 DEFAULT_DESCRIPTION = (
     "As perguntas a seguir são questões de múltipla escolha do Exame de Ordem da Ordem "
     "dos Advogados do Brasil (OAB), selecione a única alternativa correta e responda "

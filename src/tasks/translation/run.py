@@ -22,9 +22,10 @@ from .metrics import load_comet_model
 
 logger = logging.getLogger(__name__)
 
-# Data and cache directories relative to this module
-DATA_DIR = Path(__file__).parent / '.data'
-CACHE_DIR = Path(__file__).parent / 'cache'
+# Data and cache directories under repo-root/.data/translation/
+_repo_root = Path(__file__).parent.parent.parent.parent
+DATA_DIR = _repo_root / '.data' / 'translation'
+CACHE_DIR = _repo_root / '.data' / 'translation' / 'cache'
 
 
 def _prepare_translation_task(subtask_name: str, context: TaskGroupContext):

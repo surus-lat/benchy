@@ -5,6 +5,11 @@ import ast
 import yaml
 
 def test_facturas_dataset_repo_id_matches_metadata():
+    """
+    Verify that the dataset repository identifier declared in the FacturasArgentinas source matches the repository derived from the metadata and the expected repository id.
+    
+    This test extracts the `dataset_repo_id` declared on the `FacturasArgentinas` class, reads the `facturas_argentinas` subtask metadata (accepting `URL`, `url`, `Url`, or `dataset_url`), derives the repository identifier from the metadata URL, and asserts that the two identifiers match and equal "mauroibz/facturas_argentinas_2".
+    """
     with open("src/tasks/document_extraction/facturas_argentinas.py", "r", encoding="utf-8") as handle:
         tree = ast.parse(handle.read())
 
@@ -28,7 +33,14 @@ def test_facturas_dataset_repo_id_matches_metadata():
     with open("src/tasks/document_extraction/metadata.yaml", "r", encoding="utf-8") as handle:
         metadata = yaml.safe_load(handle) or {}
 
-    url = metadata["subtasks"]["facturas_argentinas"]["dataset_url"]
+    task_metadata = metadata["subtasks"]["facturas_argentinas"]
+    url = (
+        task_metadata.get("URL")
+        or task_metadata.get("url")
+        or task_metadata.get("Url")
+        or task_metadata.get("dataset_url")
+    )
+    assert url is not None
     repo_from_url = url.rsplit("/datasets/", 1)[-1].strip("/")
 
     assert dataset_repo_id == repo_from_url

@@ -10,7 +10,7 @@ from .....common.dataset_utils import download_huggingface_dataset, load_jsonl_d
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / ".data" / "assin2_rte"
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".data" / "portuguese" / "assin2_rte"
 DEFAULT_DESCRIPTION = (
     "Abaixo estão pares de premissa e hipótese. Para cada par, indique se a "
     "hipótese pode ser inferida a partir da premissa, responda apenas com \"Sim\" "

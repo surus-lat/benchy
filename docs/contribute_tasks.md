@@ -581,7 +581,7 @@ See real-world examples in:
 - `src/tasks/spanish/` - Multiple choice tasks with Spanish text
 - `src/tasks/portuguese/` - MCQ and regression tasks
 - `src/tasks/structured_extraction/` - JSON extraction from text
-- `src/tasks/image_extraction/` - Document extraction from images
+- `src/tasks/document_extraction/` - Document extraction from images
 - `src/tasks/_template_handler/` - Annotated templates
 
 ## Getting Help

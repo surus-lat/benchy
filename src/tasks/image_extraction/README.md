@@ -65,6 +65,11 @@ Dataset-specific metrics configuration. If present, overrides task-level metrics
 
 ```json
 {
+  "unordered_arrays": {
+    "cronograma": {
+      "key_fields": ["fecha", "hora"]
+    }
+  },
   "numeric_string_fields": ["punto_de_venta", "numero_de_comprobante"],
   "ignored_fields": ["IVA", "IBB"],
   "partial_matching": {
@@ -91,6 +96,7 @@ The structured extraction metrics support additional, task-tunable knobs via `me
 
 - `extraction_quality_score.weights`: weights for `extraction_quality_score` (EQS)
 - `document_extraction_score.weights`: weights for `document_extraction_score` (DES), emphasizing numeric correctness
+- `unordered_arrays`: field-path map for non-positional array-of-object scoring (for example `cronograma`)
 - `numeric_string_fields`: list of field-path patterns to treat as numeric IDs (digits-only exact match, critical on mismatch)
   - Supports `[]` for any array index and `*` wildcards (e.g. `items[].codigo`, `emisor.cuit`)
 - `critical_string_fields`: list of string field-path patterns to treat as critical on mismatch (useful for identity swaps)
@@ -173,6 +179,11 @@ Metrics configuration is **dataset-specific** and should be placed in `.data/met
 
 ```json
 {
+  "unordered_arrays": {
+    "cronograma": {
+      "key_fields": ["fecha", "hora"]
+    }
+  },
   "numeric_string_fields": ["punto_de_venta", "numero_de_comprobante"],
   "ignored_fields": ["IVA", "IBB"],
   "partial_matching": {
@@ -208,6 +219,7 @@ For a new schema, the metrics system automatically handles:
 - String leniency via configurable thresholds
 
 **Configuration updates needed (in `.data/metrics_config.json`):**
+- `unordered_arrays`: Arrays of objects whose order should not affect scoring
 - `numeric_string_fields`: String fields that should be compared as integers (e.g., zero-padded IDs)
 - `ignored_fields`: Fields in schema but not in expected data (e.g., intermediate calculations like `IVA`, `IBB` that sum to `total_impuestos`)
 

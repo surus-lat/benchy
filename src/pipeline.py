@@ -49,6 +49,7 @@ SUMMARY_SKIP_KEYS = {
 SUMMARY_INCLUDE_DICT_KEYS = {
     "diagnostic_counts",
     "diagnostic_rates",
+    "performance_summary",
 }
 RUN_OUTCOME_SCHEMA_VERSION = "1.0"
 
@@ -94,6 +95,8 @@ def _build_artifacts(
         "probe_summary": _artifact_ref(str(model_root / "probe_summary.txt")),
         "log_file": _artifact_ref(log_file_path),
         "task_status_glob": str(model_root / "*/task_status.json"),
+        "task_per_sample_metrics_glob": str(model_root / "*" / "*_per_sample_metrics.json"),
+        "task_performance_summary_glob": str(model_root / "*" / "*_performance_summary.json"),
     }
 
 

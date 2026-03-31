@@ -445,3 +445,103 @@ def test_huggingface_cache_includes_field_mapping_fingerprint(tmp_path, monkeypa
 
     cache_files = sorted(cache_dir.glob("org_dataset_test_*.jsonl"))
     assert len(cache_files) == 2
+
+
+# Array GT coercion tests
+
+def test_normalize_sample_coerces_string_gt_to_list_for_array_field():
+    """GT string column is json.loads'd into a list when schema type is array."""
+    adapter = DatasetAdapter()
+    raw_sample = {
+        "doc_id": "1",
+        "content": "some text",
+        "gt_items": '["alpha", "beta"]',
+    }
+    config = {
+        "id_field": "doc_id",
+        "input_field": "content",
+        "_ground_truth_mapping": {"items": "gt_items"},
+        "_field_type_mapping": {"items": "array"},
+    }
+    result = adapter._normalize_sample(raw_sample, config, 0)
+    assert result is not None
+    assert result["expected"]["items"] == ["alpha", "beta"]
+
+
+def test_normalize_sample_leaves_native_list_gt_unchanged():
+    """A GT column that is already a list is not modified."""
+    adapter = DatasetAdapter()
+    raw_sample = {
+        "doc_id": "1",
+        "content": "some text",
+        "gt_items": ["alpha", "beta"],
+    }
+    config = {
+        "id_field": "doc_id",
+        "input_field": "content",
+        "_ground_truth_mapping": {"items": "gt_items"},
+        "_field_type_mapping": {"items": "array"},
+    }
+    result = adapter._normalize_sample(raw_sample, config, 0)
+    assert result is not None
+    assert result["expected"]["items"] == ["alpha", "beta"]
+
+
+def test_normalize_sample_skips_array_field_when_gt_is_invalid_json():
+    """An array GT field whose string value is not valid JSON is silently dropped."""
+    adapter = DatasetAdapter()
+    raw_sample = {
+        "doc_id": "1",
+        "content": "some text",
+        "gt_items": "not-json",
+        "gt_name": "valid_name",
+    }
+    config = {
+        "id_field": "doc_id",
+        "input_field": "content",
+        "_ground_truth_mapping": {"items": "gt_items", "name": "gt_name"},
+        "_field_type_mapping": {"items": "array", "name": "string"},
+    }
+    result = adapter._normalize_sample(raw_sample, config, 0)
+    assert result is not None
+    # Unparseable array field dropped, other fields still present
+    assert "items" not in result["expected"]
+    assert result["expected"]["name"] == "valid_name"
+
+
+def test_normalize_sample_skips_array_field_when_json_is_not_a_list():
+    """An array GT field whose JSON parses to non-list is dropped as a GT error."""
+    adapter = DatasetAdapter()
+    raw_sample = {
+        "doc_id": "1",
+        "content": "some text",
+        "gt_items": '{"key": "value"}',
+    }
+    config = {
+        "id_field": "doc_id",
+        "input_field": "content",
+        "_ground_truth_mapping": {"items": "gt_items"},
+        "_field_type_mapping": {"items": "array"},
+    }
+    result = adapter._normalize_sample(raw_sample, config, 0)
+    assert result is not None
+    assert "items" not in result.get("expected", {})
+
+
+def test_normalize_sample_no_type_mapping_leaves_string_as_is():
+    """Without _field_type_mapping, a string GT value is stored unchanged."""
+    adapter = DatasetAdapter()
+    raw_sample = {
+        "doc_id": "1",
+        "content": "some text",
+        "gt_items": '["alpha"]',
+    }
+    config = {
+        "id_field": "doc_id",
+        "input_field": "content",
+        "_ground_truth_mapping": {"items": "gt_items"},
+        # No _field_type_mapping → no coercion
+    }
+    result = adapter._normalize_sample(raw_sample, config, 0)
+    assert result is not None
+    assert result["expected"]["items"] == '["alpha"]'

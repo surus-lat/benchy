@@ -11,6 +11,62 @@ def _is_valid_required_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
+def _resolve_ref(root: Dict, ref: str) -> Any:
+    """Resolve a JSON pointer ``$ref`` against *root*.
+
+    Only handles internal references of the form ``#/a/b/c``.
+    Returns ``None`` if the path cannot be resolved.
+    """
+    if not ref.startswith("#/"):
+        return None
+    parts = ref[2:].split("/")
+    node: Any = root
+    for part in parts:
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            return None
+    return node
+
+
+def _resolve_inline_refs(obj: Any, root: Dict) -> None:
+    """Recursively replace ``$ref`` pointers with the referenced sub-schema.
+
+    Only resolves refs that point *inside* the schema itself (``#/...``).
+    Top-level ``$defs``/``definitions`` refs are left alone as OpenAI
+    supports those.
+    """
+    if not isinstance(obj, dict):
+        return
+
+    props = obj.get("properties")
+    if isinstance(props, dict):
+        for key in list(props.keys()):
+            val = props[key]
+            if isinstance(val, dict) and "$ref" in val:
+                ref = val["$ref"]
+                # Only resolve non-$defs refs
+                if ref.startswith("#/") and not (
+                    ref.startswith("#/$defs/") or ref.startswith("#/definitions/")
+                ):
+                    resolved = _resolve_ref(root, ref)
+                    if resolved is not None:
+                        props[key] = copy.deepcopy(resolved)
+            # Recurse
+            _resolve_inline_refs(props[key], root)
+
+    # Also recurse into items, $defs, definitions, etc.
+    for sub_key in ("items", "additionalProperties"):
+        sub = obj.get(sub_key)
+        if isinstance(sub, dict):
+            _resolve_inline_refs(sub, root)
+    for defs_key in ("$defs", "definitions"):
+        defs = obj.get(defs_key)
+        if isinstance(defs, dict):
+            for d in defs.values():
+                _resolve_inline_refs(d, root)
+
+
 def unwrap_openai_response_format_schema(schema: Dict) -> Dict:
     """Unwrap an OpenAI-style response_format json_schema wrapper into a plain JSON Schema.
 
@@ -60,9 +116,13 @@ def sanitize_schema_for_openai_strict(schema: Dict) -> Dict:
             logger.debug(f"Removing top-level {combiner} for OpenAI strict mode compatibility")
             schema.pop(combiner, None)
     
+    # Resolve inline $ref pointers that aren't top-level $defs
+    # (OpenAI strict mode only allows $ref to top-level definitions)
+    _resolve_inline_refs(schema, schema)
+
     # Recursively sanitize the schema
     _sanitize_recursive_strict(schema)
-    
+
     return schema
 
 
@@ -107,8 +167,7 @@ def _sanitize_recursive_strict(obj: Any) -> None:
         
         # Make all properties required for strict mode
         if "properties" in obj and isinstance(obj["properties"], dict):
-            if "required" not in obj:
-                obj["required"] = list(obj["properties"].keys())
+            obj["required"] = list(obj["properties"].keys())
     
     # Fix invalid "required" inside properties
     if "properties" in obj and isinstance(obj["properties"], dict):

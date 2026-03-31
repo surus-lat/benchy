@@ -149,15 +149,16 @@ class BaseHandler:
 
     def _resolve_data_dir(self) -> Path:
         """Resolve the data directory for this task.
-        
+
         Returns:
-            Path to .data directory adjacent to the task module
+            Path to .data/<task_group> directory at the repo root
         """
-        # Use class module location to find task directory
         import inspect
         module_file = inspect.getfile(self.__class__)
-        task_dir = Path(module_file).parent
-        return task_dir / ".data"
+        task_group = Path(module_file).parent.name
+        # base.py lives at src/tasks/common/base.py; repo root is 4 levels up
+        repo_root = Path(__file__).parent.parent.parent.parent
+        return repo_root / ".data" / task_group
 
     def load(self) -> None:
         """Load the dataset."""
@@ -177,7 +178,16 @@ class BaseHandler:
             from .dataset_adapters import DatasetAdapter
             logger.info("Using DatasetAdapter for config-driven dataset loading")
             adapter = DatasetAdapter()
-            return adapter.load(self.config["dataset"], self.data_dir)
+            raw_samples = adapter.load(self.config["dataset"], self.data_dir)
+
+            # Run handler preprocessing so subclasses can inject fields
+            # (e.g. StructuredHandler adds schema, MultipleChoiceHandler adds choices)
+            processed = []
+            for idx, raw_sample in enumerate(raw_samples):
+                sample = self.preprocess_sample(raw_sample, idx)
+                if sample is not None:
+                    processed.append(sample)
+            return processed
         
         # EXISTING: Legacy behavior for class-based tasks
         # Check for cached data first

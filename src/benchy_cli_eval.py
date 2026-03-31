@@ -44,11 +44,11 @@ PROVIDER_SPECS = {
     },
     "surus_ocr": {
         "config_key": "surus_ocr",
-        "log": "Using SURUS AI OCR provider for image extraction tasks",
+        "log": "Using SURUS AI OCR provider for document extraction tasks",
     },
     "surus_factura": {
         "config_key": "surus_factura",
-        "log": "Using SURUS AI Factura provider for image extraction tasks",
+        "log": "Using SURUS AI Factura provider for document extraction tasks",
     },
     "surus_classify": {
         "config_key": "surus_classify",
@@ -70,9 +70,17 @@ PROVIDER_SPECS = {
         "config_key": "google",
         "log": "Using Google cloud provider for model: {model_name}",
     },
+    "api": {
+        "config_key": "api",
+        "log": "Using generic API provider targeting: {model_name}",
+    },
 }
 
 MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google"}
+DEPRECATED_TASKS: Dict[str, str] = {
+    "image_extraction": "document_extraction",
+}
+
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -161,6 +169,15 @@ def _load_tasks_file(path: str) -> list:
 
 
 def _dedupe_tasks(tasks: list) -> list:
+    """
+    Remove duplicate task names while preserving their first-seen order.
+    
+    Parameters:
+        tasks (list): Sequence of task name strings (may contain duplicates).
+    
+    Returns:
+        list: A list of task names with duplicates removed, preserving the original order of first occurrences.
+    """
     seen = set()
     ordered = []
     for task_name in tasks:
@@ -171,13 +188,73 @@ def _dedupe_tasks(tasks: list) -> list:
     return ordered
 
 
+def _find_deprecated_tasks(tasks: list[str]) -> list[str]:
+    """
+    Identify deprecated top-level task groups present in a list of task identifiers.
+    
+    Parameters:
+        tasks (list[str]): Task identifiers (e.g., "group.task" or "task"). Each task's top-level group is taken as the substring before the first dot.
+    
+    Returns:
+        list[str]: Sorted list of deprecated top-level group names found in `tasks`.
+    """
+    found: set[str] = set()
+    for task_name in tasks:
+        group_name = str(task_name).split(".", 1)[0]
+        if group_name in DEPRECATED_TASKS:
+            found.add(group_name)
+    return sorted(found)
+
+
+def _reject_deprecated_tasks(tasks: list[str], source: str) -> None:
+    """
+    Abort execution if any deprecated top-level task groups appear in the provided task list.
+    
+    Checks the given tasks for top-level groups listed in DEPRECATED_TASKS and, if any are found, raises SystemExit with a message that lists the deprecated groups and their suggested replacements.
+    
+    Parameters:
+        tasks (list[str]): Sequence of task identifiers (e.g., "group.task" or "task") to scan for deprecated top-level groups.
+        source (str): Human-readable label describing where the tasks originated (used in the raised error message).
+    
+    Raises:
+        SystemExit: If one or more deprecated task groups are detected; the exception message lists the deprecated names and recommended replacements.
+    """
+    deprecated = _find_deprecated_tasks(tasks)
+    if not deprecated:
+        return
+
+    replacements = ", ".join(
+        f"'{name}' -> '{DEPRECATED_TASKS[name]}'" for name in deprecated
+    )
+    raise SystemExit(
+        f"Deprecated task(s) provided via {source}: {', '.join(deprecated)}. "
+        f"Use: {replacements}. Legacy task names are no longer supported."
+    )
+
+
 def resolve_provider_config(
     config: dict,
     provider_type: str,
     model_name: str,
     gpu_manager,
 ):
-    """Resolve provider config and vLLM server config for a provider type."""
+    """
+    Resolve the provider-specific configuration and, for vLLM providers, construct a vLLM server configuration.
+    
+    Parameters:
+        config (dict): Full application configuration mapping.
+        provider_type (str): Provider type key used to look up provider-specific settings.
+        model_name (str): Model name used for informational logging when available.
+        gpu_manager: GPU manager used to obtain CUDA device information for vLLM server construction.
+    
+    Returns:
+        tuple:
+            provider_config (dict): The provider-specific configuration section (empty dict if missing).
+            vllm_server_config (VLLMServerConfig | None): A VLLMServerConfig built from the provider config when provider_type is "vllm"; otherwise `None`.
+    
+    Raises:
+        ValueError: If `provider_type` is not recognized.
+    """
     provider_spec = PROVIDER_SPECS.get(provider_type)
     if not provider_spec:
         raise ValueError(f"Unknown provider type: {provider_type}")
@@ -355,7 +432,9 @@ def _build_cli_only_config(
     *,
     config_manager: ConfigManager,
 ) -> tuple[Dict[str, Any], Optional[str]]:
-    if args.provider:
+    if args.api_url:
+        provider_type = "api"
+    elif args.provider:
         provider_type = args.provider
     elif args.model_path or args.vllm_config:
         provider_type = "vllm"
@@ -412,6 +491,49 @@ def _build_cli_only_config(
         if "api_endpoint" not in provider_config:
             provider_config["api_endpoint"] = _default_api_endpoint("vllm")
         config["vllm"] = provider_config
+    elif provider_type == "api":
+        if not args.api_url:
+            raise ValueError("--api-url is required for generic API benchmarking")
+        if not args.api_body_template:
+            raise ValueError("--api-body-template is required for generic API benchmarking")
+        if not args.model_name:
+            raise ValueError(
+                "Missing required --model-name for API benchmarking. "
+                "Use this as a label for the system under test."
+            )
+
+        import json as _json
+        extra_headers = {}
+        if args.api_headers:
+            try:
+                extra_headers = _json.loads(args.api_headers)
+            except _json.JSONDecodeError as exc:
+                raise ValueError(f"--api-headers is not valid JSON: {exc}") from exc
+
+        api_config: Dict[str, Any] = {
+            "endpoint": args.api_url,
+            "body_template": args.api_body_template,
+            "timeout": args.timeout or 120,
+            "max_retries": args.max_retries or 3,
+        }
+        if args.api_method:
+            api_config["http_method"] = args.api_method
+        if args.api_response_path:
+            api_config["response_path"] = args.api_response_path
+        if extra_headers:
+            api_config["headers"] = extra_headers
+        if args.api_key_env:
+            api_config["api_key_env"] = args.api_key_env
+        if args.api_key:
+            api_config["api_key"] = args.api_key
+        if args.image_max_edge:
+            api_config["image_max_edge"] = args.image_max_edge
+        if args.max_concurrent:
+            api_config["max_concurrent"] = args.max_concurrent
+
+        config["model"] = {"name": args.model_name}
+        config["provider_type"] = "api"
+        config["api"] = api_config
     else:
         if not args.model_name:
             raise ValueError("Missing required --model-name for OpenAI-compatible runs")
@@ -660,7 +782,7 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         "--dataset",
         type=str,
         default=None,
-        help="Dataset name to use for tasks (e.g., ICM57, kapaxia). Task must support dataset configuration.",
+        help="(Deprecated, use --dataset-name) Dataset name to use for tasks.",
     )
     
     # Task type and dataset configuration (for ad-hoc tasks)
@@ -675,12 +797,16 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         "--dataset-name",
         type=str,
         default=None,
-        help="Dataset name or path (HuggingFace dataset, local JSONL, or directory)",
+        help=(
+            "Dataset name or path. Accepts: .data/<name> shortcut (auto-discovers "
+            "parquet, schema.json, labels), HuggingFace id (org/dataset), local "
+            "JSONL file, parquet file/dir, or directory."
+        ),
     )
     parser.add_argument(
         "--dataset-source",
         type=str,
-        choices=["auto", "huggingface", "local", "directory"],
+        choices=["auto", "huggingface", "local", "parquet", "directory"],
         default="auto",
         help="Dataset source type (default: auto-detect)",
     )
@@ -764,6 +890,36 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="Field name for image paths in multimodal tasks (default: image_path)",
     )
     
+    # Document rendering
+    parser.add_argument(
+        "--render-documents",
+        action="store_true",
+        default=False,
+        help=(
+            "Render PDFs/TIFFs to images before sending to the model. "
+            "Auto-enabled for LLM providers (openai, anthropic, etc). "
+            "Disable with --no-render-documents for APIs that accept raw files."
+        ),
+    )
+    parser.add_argument(
+        "--no-render-documents",
+        action="store_true",
+        default=False,
+        help="Disable document-to-image rendering (keep raw PDF/TIFF files).",
+    )
+    parser.add_argument(
+        "--render-dpi",
+        type=int,
+        default=None,
+        help="DPI for document-to-image rendering (default: 200).",
+    )
+    parser.add_argument(
+        "--render-max-pages",
+        type=int,
+        default=None,
+        help="Max pages to render per document (default: 1 = first page only).",
+    )
+
     # Prompts
     parser.add_argument(
         "--system-prompt",
@@ -778,6 +934,49 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="User prompt template with {field} placeholders",
     )
     
+    # Generic API benchmarking
+    parser.add_argument(
+        "--api-url",
+        type=str,
+        default=None,
+        help=(
+            "Target URL for generic API benchmarking. Sets provider to 'api'. "
+            "Example: --api-url https://api.surus.ai/factura"
+        ),
+    )
+    parser.add_argument(
+        "--api-method",
+        type=str,
+        default=None,
+        help="HTTP method for API requests (default: POST).",
+    )
+    parser.add_argument(
+        "--api-body-template",
+        type=str,
+        default=None,
+        help=(
+            "JSON body template with {{field}} placeholders from dataset samples. "
+            "Filters: {{field|base64_image}} (image→data URL), {{field|json}} (embed dict/list). "
+            "Example: '{\"image\": \"{{image_path|base64_image}}\"}'"
+        ),
+    )
+    parser.add_argument(
+        "--api-response-path",
+        type=str,
+        default=None,
+        help=(
+            "Dot-notation path to extract output from API response. "
+            "Example: 'data' extracts response[\"data\"]; "
+            "'choices.0.message.content' for nested traversal."
+        ),
+    )
+    parser.add_argument(
+        "--api-headers",
+        type=str,
+        default=None,
+        help="Extra HTTP headers as JSON object. Example: '{\"X-Custom\": \"value\"}'",
+    )
+
     # Config generation
     parser.add_argument(
         "--save-config",
@@ -877,26 +1076,84 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
 
 def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     """Build dataset configuration from CLI arguments.
-    
+
+    When the dataset name matches a directory inside ``.data/``, metadata is
+    auto-discovered from ``dataset_info.json`` and ``schema.json``.  Explicit
+    CLI flags always win over auto-discovered values.
+
     Args:
         args: Parsed CLI arguments
-        
+
     Returns:
         Dataset configuration dict
     """
-    dataset_config = {}
-    
+    from .tasks.common.dataset_adapters import resolve_dataset_name
+
+    dataset_config: Dict[str, Any] = {}
+    raw_name: Optional[str] = None
+
     # Basic dataset info
     if args.dataset_name:
-        dataset_config["name"] = args.dataset_name
+        raw_name = args.dataset_name
     elif args.dataset:  # Backward compatibility with old --dataset flag
-        dataset_config["name"] = args.dataset
-    
-    if args.dataset_source:
+        raw_name = args.dataset
+
+    # Auto-discover from .data/ and merge inferred metadata
+    extra_config: Dict[str, Any] = {}
+    if raw_name:
+        resolved_name, extra_config = resolve_dataset_name(raw_name)
+        dataset_config["name"] = resolved_name
+
+        # Merge auto-discovered source (parquet, directory, …)
+        if "source" in extra_config and args.dataset_source == "auto":
+            dataset_config["source"] = extra_config["source"]
+
+        # Auto-attach schema.json if no explicit schema flag given
+        if (
+            "schema_path" in extra_config
+            and not args.dataset_schema_path
+            and not args.dataset_schema_field
+            and not args.dataset_schema_json
+        ):
+            dataset_config["schema_path"] = extra_config["schema_path"]
+
+        # Pass through converted JSON Schema for structured tasks
+        if "_json_schema" in extra_config:
+            dataset_config["_json_schema"] = extra_config["_json_schema"]
+
+        # Pass through ground-truth column mapping for extraction datasets
+        if "_ground_truth_mapping" in extra_config:
+            dataset_config["_ground_truth_mapping"] = extra_config["_ground_truth_mapping"]
+
+        # Auto-enable multimodal for datasets with binary columns (documents)
+        if extra_config.get("_has_binary") and not args.multimodal_input:
+            dataset_config["multimodal_input"] = True
+            logger.info(
+                "Auto-enabled multimodal input (binary column '%s' detected)",
+                extra_config.get("_binary_field", "unknown"),
+            )
+
+        # Auto-infer labels for classification if none given explicitly
+        if (
+            "_inferred_labels" in extra_config
+            and not args.dataset_labels
+        ):
+            dataset_config["_inferred_labels"] = extra_config["_inferred_labels"]
+
+    # Always include source — explicit CLI flag overrides auto-discovery
+    if args.dataset_source and args.dataset_source != "auto":
         dataset_config["source"] = args.dataset_source
+    elif "source" not in dataset_config:
+        dataset_config["source"] = args.dataset_source  # "auto" by default
     if args.dataset_split:
         dataset_config["split"] = args.dataset_split
-    
+
+    # Document rendering options
+    if getattr(args, "render_dpi", None):
+        dataset_config["render_dpi"] = args.render_dpi
+    if getattr(args, "render_max_pages", None):
+        dataset_config["render_max_pages"] = args.render_max_pages
+
     # Field mappings
     if args.dataset_input_field:
         dataset_config["input_field"] = args.dataset_input_field
@@ -904,7 +1161,7 @@ def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
         dataset_config["output_field"] = args.dataset_output_field
     if args.dataset_id_field:
         dataset_config["id_field"] = args.dataset_id_field
-    
+
     # Classification-specific
     if args.dataset_label_field:
         dataset_config["label_field"] = args.dataset_label_field
@@ -912,7 +1169,7 @@ def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
         dataset_config["labels"] = args.dataset_labels
     if args.dataset_choices_field:
         dataset_config["choices_field"] = args.dataset_choices_field
-    
+
     # Structured extraction specific
     if args.dataset_schema_field:
         dataset_config["schema_field"] = args.dataset_schema_field
@@ -920,13 +1177,13 @@ def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
         dataset_config["schema_path"] = args.dataset_schema_path
     if args.dataset_schema_json:
         dataset_config["schema_json"] = args.dataset_schema_json
-    
+
     # Multimodal support
     if args.multimodal_input:
         dataset_config["multimodal_input"] = True
     if args.multimodal_input and args.multimodal_image_field:
         dataset_config["multimodal_image_field"] = args.multimodal_image_field
-    
+
     return dataset_config
 
 
@@ -979,21 +1236,35 @@ def _build_adhoc_task_config(
         Task configuration dict
     """
     from .tasks.common import validate_task_config, apply_defaults
-    
+
+    # Promote auto-discovered metadata into the dataset config so handlers
+    # can use it without extra CLI flags.
+    dc = dict(dataset_config)
+
+    # Inferred labels → classification labels
+    if task_type == "classification" and "_inferred_labels" in dc and "labels" not in dc:
+        import json as _json
+        dc["labels"] = _json.dumps(dc["_inferred_labels"])
+
+    # Strip CLI-only internal keys (keep _ground_truth_mapping, _json_schema
+    # which are needed by the adapter and handler at load time)
+    _cli_only_keys = {"_inferred_labels", "_label_distribution", "_features", "_dataset_info"}
+    dc = {k: v for k, v in dc.items() if k not in _cli_only_keys}
+
     # Build base config
     config = {
-        "dataset": dataset_config,
+        "dataset": dc,
     }
-    
+
     # Add prompts if provided
     if system_prompt:
         config["system_prompt"] = system_prompt
     if user_prompt_template:
         config["user_prompt_template"] = user_prompt_template
-    
+
     # Apply defaults for task type
     config = apply_defaults(task_type, config)
-    
+
     # Validate configuration
     errors = validate_task_config(task_type, config)
     if errors:
@@ -1001,11 +1272,29 @@ def _build_adhoc_task_config(
         raise ValueError(
             f"Invalid task configuration for type '{task_type}':\n{error_msg}"
         )
-    
+
     return config
 
 
 def run_eval(args: argparse.Namespace) -> int:
+    """
+    Run the benchmark evaluation flow based on parsed CLI arguments.
+    
+    Execute configuration loading/merging, provider and GPU setup, task selection (including ad-hoc task creation),
+    optional Prefect registration or vLLM test mode, and then invoke the benchmark pipeline.
+    
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments as produced by add_eval_arguments; used to build/override
+            configuration, select tasks, control registration/test modes, and set operational flags.
+    
+    Returns:
+        int: Process exit code (0 on success unless the pipeline returns a non-zero exit_code in its result).
+    
+    Raises:
+        SystemExit: On invalid CLI combinations or missing requirements (e.g., conflicting --log-samples flags,
+            --output-path model without --model-path, no tasks to run after overrides, Prefect not available when
+            --register is requested, or test mode used with a non-vLLM provider).
+    """
     load_dotenv()
 
     if args.log_samples and args.no_log_samples:
@@ -1103,7 +1392,19 @@ def run_eval(args: argparse.Namespace) -> int:
     
     # Build dataset config from CLI arguments (supports both old --dataset and new flags)
     dataset_config = _build_dataset_config_from_args(args)
-    
+
+    # Auto-enable document→image rendering for LLM providers (they only accept
+    # images, not raw PDFs).  Custom API providers (surus, api) that handle raw
+    # files keep render_documents=False unless the user explicitly opts in via
+    # --render-documents.
+    if "render_documents" not in dataset_config:
+        if dataset_config.get("multimodal_input") and provider_type in MODEL_PROVIDER_TYPES:
+            dataset_config["render_documents"] = True
+    if getattr(args, "render_documents", False):
+        dataset_config["render_documents"] = True
+    if getattr(args, "no_render_documents", False):
+        dataset_config["render_documents"] = False
+
     # Handle ad-hoc task creation via --task-type
     adhoc_task_name = None
     if args.task_type:
@@ -1155,6 +1456,7 @@ def run_eval(args: argparse.Namespace) -> int:
         task_defaults_overrides = {**provider_task_defaults, **task_defaults_overrides}
 
     config_tasks = config.get("tasks", ["spanish", "portuguese"])
+    _reject_deprecated_tasks(config_tasks, "config")
     tasks_override = []
     
     # If ad-hoc task was created, use it
@@ -1169,6 +1471,7 @@ def run_eval(args: argparse.Namespace) -> int:
             for group_entry in args.task_group:
                 tasks_override.extend(_parse_tasks_arg(group_entry))
     tasks_override = _dedupe_tasks(tasks_override)
+    _reject_deprecated_tasks(tasks_override, "CLI task overrides")
 
     is_system_provider = provider_type not in MODEL_PROVIDER_TYPES
 
@@ -1195,6 +1498,7 @@ def run_eval(args: argparse.Namespace) -> int:
         raise SystemExit("No tasks to run after applying task overrides.")
 
     tasks_to_run = config_manager.expand_task_groups(tasks_to_run, central_config)
+    _reject_deprecated_tasks(tasks_to_run, "resolved task list")
 
     compatibility_mode = args.compatibility
     if compatibility_mode is None:
