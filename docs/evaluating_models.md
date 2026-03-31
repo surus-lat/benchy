@@ -171,3 +171,9 @@ Structured-output concessions (applies to structured handlers):
 - Use small limits to validate configs and providers before full runs.
 - Keep API keys in `.env` and never commit them.
 - If a task is skipped, check the log for capability mismatch details.
+
+## Further Reading
+
+- Dataset format and auto-discovery: `docs/DATASET_SPEC.md`
+- Scoring metrics and how to configure them: `docs/SCORING.md`
+- Zero-code CLI evaluation: `docs/CLI_DATASET_USAGE.md`
