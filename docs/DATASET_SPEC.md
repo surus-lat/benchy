@@ -13,11 +13,12 @@ Place datasets under `.data/<dataset-name>/` at the repo root:
       train.parquet        # Optional
       validation.parquet   # Optional
       test.parquet         # Required (default eval split)
-    dataset_info.json      # Required — metadata and column descriptions
+    dataset_info.json      # Required - metadata and column descriptions
     schema.json            # Required for extraction tasks, optional for classification
-    benchy.md              # Required — run commands and dataset description
-    README.md              # Optional — provenance, methodology notes
-    manifest.json          # Optional — build manifest for reproducibility
+    metrics_config.json    # Optional - dataset-specific scoring overrides
+    benchy.md              # Required - run commands and dataset description
+    README.md              # Optional - provenance, methodology notes
+    manifest.json          # Optional - build manifest for reproducibility
 ```
 
 ## Required Files
@@ -119,6 +120,82 @@ Every dataset must include a `benchy.md` with:
 
 See the `.data/` directory for reference examples.
 
+### `metrics_config.json` (optional)
+
+Use `metrics_config.json` for dataset-specific evaluation behavior. This file is loaded automatically from `.data/<dataset-name>/metrics_config.json` for zero-code `structured` and multimodal/document extraction datasets.
+
+Typical uses:
+
+- Make specific arrays order-insensitive during scoring
+- Compare selected string fields as digits-only numeric IDs
+- Ignore schema-valid fields that should not affect the score
+- Tune partial-matching thresholds and score weights for a dataset
+- Adjust field-diagnostics report verbosity
+
+Example:
+
+```json
+{
+  "unordered_arrays": {
+    "cronograma": {
+      "key_fields": ["fecha", "hora"]
+    }
+  },
+  "numeric_string_fields": ["telefono", "n_de_beneficio"],
+  "ignored_fields": ["metadata.*"],
+  "partial_matching": {
+    "string": {
+      "exact_threshold": 0.95,
+      "partial_threshold": 0.50
+    },
+    "number": {
+      "relative_tolerance": 0.001,
+      "absolute_tolerance": 1e-6
+    }
+  },
+  "document_extraction_score": {
+    "weights": {
+      "numeric_precision_rate": 0.50,
+      "field_f1_partial": 0.35,
+      "schema_validity": 0.15
+    }
+  },
+  "field_diagnostics": {
+    "enabled": true,
+    "max_examples_per_field": 10
+  }
+}
+```
+
+Supported keys:
+
+- `unordered_arrays`: map of field path -> options for non-positional array scoring
+- `unordered_arrays.<path>.key_fields`: fields used to align predicted and expected array items
+- `ignored_fields`: field-path patterns excluded from scoring
+- `numeric_string_fields`: field-path patterns compared as digits-only values
+- `critical_string_fields`: field-path patterns treated as critical when mismatched
+- `partial_credit`: weight assigned to partial matches in `field_f1_partial`
+- `strict`: enables stricter matching thresholds globally
+- `partial_matching.string.*`: string thresholds and weights
+- `partial_matching.number.*`: numeric tolerances
+- `normalization.case_sensitive`
+- `normalization.normalize_whitespace`
+- `normalization.unicode_normalize`
+- `normalization_penalty.null_string_to_null`
+- `normalization_penalty.max`
+- `extraction_quality_score.weights.*`
+- `document_extraction_score.weights.*`
+- `field_diagnostics.enabled`
+- `field_diagnostics.max_examples_per_field`
+- `field_diagnostics.max_fields_in_report`
+- `field_diagnostics.max_value_chars`
+
+Notes:
+
+- Field-path patterns support exact paths plus `[]` for array wildcards and `*` wildcards.
+- `unordered_arrays` is especially useful for arrays of objects where order is not meaningful in downstream systems.
+- `metrics_config.json` overrides task-level/default metrics for that dataset only.
+
 ## Parquet Column Conventions
 
 ### Common columns
@@ -170,6 +247,7 @@ Before considering a dataset ready:
 - [ ] Extraction: every `gt_field` value matches an actual parquet column name
 - [ ] Binary datasets: `input_file_extension` column present for correct rendering
 - [ ] `data/test.parquet` exists and is the evaluation split
+- [ ] Optional: `metrics_config.json` exists when dataset-specific scoring rules are needed
 - [ ] `benchy.md` has working smoke test command
 - [ ] Smoke test passes: `benchy eval --dataset-name <name> --task-type <type> --provider openai --model-name gpt-4o --limit 3`
 
@@ -186,3 +264,5 @@ Before considering a dataset ready:
 5. **Sparse ground truth**: Fields with `ground_truth_available: false` are excluded from evaluation. Mark them explicitly in the schema rather than leaving `gt_field` empty.
 
 6. **Labels as integers vs strings**: The `label` column value must match the `label_distribution` keys exactly. If parquet stores `0`/`1` but `label_distribution` has `"positive"`/`"negative"`, samples will be skipped.
+
+7. **Positional array scoring when order is irrelevant**: Arrays of objects are scored positionally unless you opt into `unordered_arrays` in `metrics_config.json`. Use this for fields like `cronograma` when entry presence matters more than order.
