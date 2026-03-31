@@ -184,7 +184,7 @@ class StructuredHandler(BaseHandler):
                 # If the schema uses our custom "fields" array format, convert it
                 if "fields" in raw and isinstance(raw["fields"], list):
                     from .dataset_adapters import _convert_custom_schema
-                    self._global_schema, _ = _convert_custom_schema(raw)
+                    self._global_schema, *_ = _convert_custom_schema(raw)
                 else:
                     self._global_schema = raw
             else:
