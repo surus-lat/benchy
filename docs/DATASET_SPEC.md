@@ -128,38 +128,75 @@ Typical uses:
 
 - Make specific arrays order-insensitive during scoring
 - Compare selected string fields as digits-only numeric IDs
-- Ignore schema-valid fields that should not affect the score
+- Ignore schema-valid fields that should not affect the score (e.g. systematic GT errors)
+- Split fields into **reliable** (bounded GT) and **freeform** (noisy GT) tiers for separate reporting
+- Apply normalization to names and addresses before comparing (accents, abbreviations, word order)
 - Tune partial-matching thresholds and score weights for a dataset
 - Adjust field-diagnostics report verbosity
 
-Example:
+#### Minimal example
 
 ```json
 {
   "unordered_arrays": {
-    "cronograma": {
-      "key_fields": ["fecha", "hora"]
+    "cronograma": { "key_fields": ["fecha", "hora"] }
+  }
+}
+```
+
+#### Full example with tiered evaluation
+
+For document extraction tasks where some fields have reliable GT (enums, integers, dates) and others were manually typed and may contain abbreviations, accent inconsistencies, or word-order variation:
+
+```json
+{
+  "unordered_arrays": {
+    "cronograma": { "key_fields": ["fecha", "hora"] }
+  },
+
+  "ignored_fields": ["es_autovalido"],
+
+  "field_tiers": {
+    "reliable": [
+      "practica_a_realizar",
+      "tipo_vehiculo",
+      "trayecto",
+      "edad",
+      "cant_de_traslados",
+      "cronograma[].fecha",
+      "cronograma[].hora"
+    ],
+    "freeform": [
+      "apellido_y_nombre",
+      "origen.domicilio",
+      "origen.localidad",
+      "destino.domicilio",
+      "destino.localidad"
+    ]
+  },
+
+  "freeform_normalization": {
+    "strip_accents": true,
+    "word_order_insensitive": true,
+    "abbreviations": {
+      "av.": "avenida",
+      "avda.": "avenida",
+      "bv.": "boulevard",
+      "dr.": "doctor",
+      "gral.": "general",
+      "b°": "barrio",
+      "s/n": "sin numero"
     }
   },
-  "numeric_string_fields": ["telefono", "n_de_beneficio"],
-  "ignored_fields": ["metadata.*"],
-  "partial_matching": {
-    "string": {
-      "exact_threshold": 0.95,
-      "partial_threshold": 0.50
-    },
-    "number": {
-      "relative_tolerance": 0.001,
-      "absolute_tolerance": 1e-6
-    }
-  },
+
   "document_extraction_score": {
     "weights": {
-      "numeric_precision_rate": 0.50,
-      "field_f1_partial": 0.35,
-      "schema_validity": 0.15
+      "reliable_f1_partial": 0.70,
+      "schema_validity": 0.15,
+      "inverted_hallucination": 0.15
     }
   },
+
   "field_diagnostics": {
     "enabled": true,
     "max_examples_per_field": 10
@@ -167,34 +204,71 @@ Example:
 }
 ```
 
-Supported keys:
+This produces three separate scores per run:
 
-- `unordered_arrays`: map of field path -> options for non-positional array scoring
-- `unordered_arrays.<path>.key_fields`: fields used to align predicted and expected array items
-- `ignored_fields`: field-path patterns excluded from scoring
-- `numeric_string_fields`: field-path patterns compared as digits-only values
-- `critical_string_fields`: field-path patterns treated as critical when mismatched
-- `partial_credit`: weight assigned to partial matches in `field_f1_partial`
-- `strict`: enables stricter matching thresholds globally
-- `partial_matching.string.*`: string thresholds and weights
-- `partial_matching.number.*`: numeric tolerances
-- `normalization.case_sensitive`
-- `normalization.normalize_whitespace`
-- `normalization.unicode_normalize`
-- `normalization_penalty.null_string_to_null`
-- `normalization_penalty.max`
-- `extraction_quality_score.weights.*`
-- `document_extraction_score.weights.*`
-- `field_diagnostics.enabled`
-- `field_diagnostics.max_examples_per_field`
-- `field_diagnostics.max_fields_in_report`
-- `field_diagnostics.max_value_chars`
+| Output metric | Meaning |
+|---|---|
+| `document_extraction_score` | Headline score — driven by `reliable_f1_partial` per the configured weights |
+| `reliable_f1_partial` | F1 on bounded-GT fields only (enum, integer, date) — interpretable and actionable |
+| `freeform_f1_partial_gt_limited` | F1 on freeform fields after normalization — labeled GT-limited, informational only |
 
-Notes:
+A 50% headline that mixes enum accuracy with noisy-GT address accuracy is not interpretable. Use `field_tiers` to separate them.
 
-- Field-path patterns support exact paths plus `[]` for array wildcards and `*` wildcards.
-- `unordered_arrays` is especially useful for arrays of objects where order is not meaningful in downstream systems.
-- `metrics_config.json` overrides task-level/default metrics for that dataset only.
+See `docs/SCORING.md` for full metric definitions, formulas, and when to use each.
+
+#### All supported keys
+
+**Array scoring**
+- `unordered_arrays`: map of field path → options for non-positional array scoring
+- `unordered_arrays.<path>.key_fields`: fields used to align array items by value rather than position
+
+**Field filtering**
+- `ignored_fields`: field-path patterns excluded from all scoring. Use for fields with known systematic GT errors — the model still must output these fields (schema validation still applies), but they don't affect any score.
+- `numeric_string_fields`: field-path patterns compared as digits-only (strips dashes, spaces, slashes before comparing)
+- `critical_string_fields`: field-path patterns always marked as critical severity when mismatched
+
+**Tiered evaluation**
+- `field_tiers.reliable`: field-path patterns for reliable fields (bounded GT — enum, integer, date, boolean with trustworthy GT). Exact match is meaningful.
+- `field_tiers.freeform`: field-path patterns for freeform fields (noisy GT — names, addresses). Scored after normalization; results labeled GT-limited.
+- Fields not in either tier are scored normally and tagged `unclassified`.
+
+**Freeform normalization** (applied only to `field_tiers.freeform` fields)
+- `freeform_normalization.strip_accents`: remove diacritics before comparing so `Córdoba` matches `CORDOBA` (default: false)
+- `freeform_normalization.word_order_insensitive`: sort tokens before comparing so `Marin Dora Antonia` matches `Dora Antonia Marin` (default: false)
+- `freeform_normalization.abbreviations`: dict of `"abbr.": "expansion"` pairs applied before accent stripping, e.g. `{"av.": "avenida"}`
+
+**String matching** (applied to all string fields)
+- `partial_credit`: weight for partial matches in `field_f1_partial` (default: 0.3)
+- `strict`: tighten all string and array matching thresholds globally (boolean)
+- `partial_matching.string.exact_threshold`: composite score ≥ this → exact (default: 0.95)
+- `partial_matching.string.partial_threshold`: composite score ≥ this → partial (default: 0.50)
+- `partial_matching.string.token_overlap_weight`: weight of token-set F1 in composite (default: 0.5)
+- `partial_matching.string.levenshtein_weight`: weight of Levenshtein similarity (default: 0.3)
+- `partial_matching.string.containment_weight`: weight of containment score (default: 0.2)
+
+**Numeric matching**
+- `partial_matching.number.relative_tolerance`: relative tolerance for numeric equality (default: 0.001)
+- `partial_matching.number.absolute_tolerance`: absolute tolerance for near-zero values (default: 1e-6)
+
+**String normalization** (applied to all string fields before comparison)
+- `normalization.case_sensitive`: preserve case (default: false)
+- `normalization.normalize_whitespace`: collapse multiple spaces (default: true)
+- `normalization.unicode_normalize`: NFKD decomposition + strip combining chars, removes accents (default: true)
+
+**Score weights**
+- `extraction_quality_score.weights`: weights for EQS — supported keys: `schema_validity`, `field_f1_partial`, `inverted_hallucination`
+- `document_extraction_score.weights`: weights for DES — when this key is present, **only** the listed weights are used (no defaults are added). Supported weight keys: `reliable_f1_partial`, `field_f1_partial`, `numeric_precision_rate`, `schema_validity`, `inverted_hallucination`, `inverted_critical_error_rate`. Weights should sum to 1.0.
+
+**Field diagnostics**
+- `field_diagnostics.enabled`: write per-field accuracy report (default: true)
+- `field_diagnostics.max_examples_per_field`: error examples per field (default: 20)
+- `field_diagnostics.max_fields_in_report`: cap on fields in report (default: unlimited)
+- `field_diagnostics.max_value_chars`: truncate long values in examples (default: 200)
+
+**Notes**
+- Field-path patterns: exact paths (`origen.domicilio`), `[]` for any array index (`cronograma[].fecha`), `*` as wildcard.
+- `metrics_config.json` overrides task-level defaults for that dataset only.
+- `normalization.unicode_normalize: true` (default) strips all combining characters after NFKD decomposition, so `Córdoba` normalizes to `cordoba`. This affects all string fields. Disable only if accent distinctions are semantically meaningful in your dataset.
 
 ## Parquet Column Conventions
 
@@ -266,3 +340,7 @@ Before considering a dataset ready:
 6. **Labels as integers vs strings**: The `label` column value must match the `label_distribution` keys exactly. If parquet stores `0`/`1` but `label_distribution` has `"positive"`/`"negative"`, samples will be skipped.
 
 7. **Positional array scoring when order is irrelevant**: Arrays of objects are scored positionally unless you opt into `unordered_arrays` in `metrics_config.json`. Use this for fields like `cronograma` when entry presence matters more than order.
+
+8. **Mixing field types in one headline score**: A single score that combines boolean/enum accuracy with noisy-GT address accuracy is not interpretable. When your extraction task has both bounded fields (enums, integers, dates) and freeform fields (names, addresses from manual data entry), define `field_tiers` in `metrics_config.json` and set `document_extraction_score.weights.reliable_f1_partial` as the headline weight. The freeform tier score is still reported separately as `freeform_f1_partial_gt_limited`.
+
+9. **Systematic GT errors in boolean/enum fields**: If a boolean or enum field shows near-0% accuracy, check whether the GT is systematically wrong (e.g. defaulted to True by a data-entry system) rather than assuming the model is bad. Look at the `field_diagnostics` report: if the model always predicts one value and GT always says another, and a sample of images confirms the model is correct, add that field to `ignored_fields` and document the reason. Do not include it in the reliable tier.

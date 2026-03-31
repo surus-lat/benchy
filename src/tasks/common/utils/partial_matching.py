@@ -45,6 +45,7 @@ class PartialMatcher:
         self.string_config = self.config.get("string", {})
         self.number_config = self.config.get("number", {})
         self.normalization = config.get("metrics", {}).get("normalization", {})
+        self.freeform_normalization = config.get("metrics", {}).get("freeform_normalization", {})
         self.strict = strict
 
     def compare_values(self, predicted: Any, expected: Any) -> Tuple[str, float]:
@@ -303,5 +304,78 @@ class PartialMatcher:
         if self.normalization.get("unicode_normalize", True):
             import unicodedata
             s = unicodedata.normalize('NFKD', s)
+            # Strip combining characters so accented chars match plain ASCII
+            # e.g. "Córdoba" → "cordoba", "CÓRDOBA" → "cordoba"
+            s = ''.join(c for c in s if not unicodedata.combining(c))
         return s
+
+    def _normalize_freeform(self, s: str) -> str:
+        """Enhanced normalization for freeform fields (names, addresses).
+
+        Applies abbreviation expansion, accent stripping, and optionally
+        word-order normalization on top of standard string normalization.
+        Configured via metrics.freeform_normalization in the config dict.
+        """
+        import re
+        import unicodedata
+
+        freeform_cfg = self.freeform_normalization
+
+        # Lowercase + collapse whitespace
+        s = s.lower()
+        s = " ".join(s.split())
+
+        # Abbreviation expansion (before accent stripping so abbreviations match)
+        abbrs = freeform_cfg.get("abbreviations", {})
+        for abbr, expansion in abbrs.items():
+            # Word-boundary-aware: match abbreviation not preceded/followed by word chars
+            pattern = r'(?<![a-z\xc0-\xff])' + re.escape(abbr) + r'(?![a-z\xc0-\xff])'
+            s = re.sub(pattern, expansion, s, flags=re.IGNORECASE)
+
+        # Strip accents (NFKD + remove combining chars)
+        s = unicodedata.normalize('NFKD', s)
+        s = ''.join(c for c in s if not unicodedata.combining(c))
+
+        # Collapse whitespace again after expansion
+        s = " ".join(s.split())
+
+        # Word-order insensitive: sort tokens alphabetically
+        if freeform_cfg.get("word_order_insensitive", False):
+            s = ' '.join(sorted(s.split()))
+
+        return s
+
+    def compare_freeform_values_with_severity(self, predicted: Any, expected: Any) -> Tuple[str, float, str]:
+        """Compare values with enhanced freeform normalization for noisy-GT fields.
+
+        Applies abbreviation expansion and word-order normalization before scoring.
+        Falls back to standard comparison for non-string types.
+
+        Returns:
+            Tuple of (match_type, score, error_severity)
+        """
+        if not isinstance(predicted, str) or not isinstance(expected, str):
+            return self._compare_values_with_severity(predicted, expected)
+
+        if predicted is None or expected is None:
+            return self._compare_values_with_severity(predicted, expected)
+
+        pred_norm = self._normalize_freeform(predicted)
+        exp_norm = self._normalize_freeform(expected)
+
+        if pred_norm == exp_norm:
+            return ('exact', 1.0, 'none')
+
+        # Run composite scoring on freeform-normalized strings
+        score = self._composite_score(pred_norm, exp_norm)
+
+        exact_threshold = float(self.string_config.get("exact_threshold", 0.95))
+        partial_threshold = float(self.string_config.get("partial_threshold", 0.50))
+
+        if score >= exact_threshold:
+            return ('exact', score, 'none')
+        elif score >= partial_threshold:
+            return ('partial', score, 'minor')
+        else:
+            return ('incorrect', score, 'minor')
 

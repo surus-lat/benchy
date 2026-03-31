@@ -555,7 +555,7 @@ See `docs/DATASET_SPEC.md` for the complete specification on how to build datase
 ## Next Steps
 
 - See the dataset specification: `docs/DATASET_SPEC.md`
+- Understand scoring metrics and how to configure them: `docs/SCORING.md`
 - See handler documentation for task-specific details: `src/tasks/common/`
 - Read the architecture guide: `docs/architecture.md`
 - Explore example configs: `configs/templates/`
-- Learn about metrics: Check handler class documentation

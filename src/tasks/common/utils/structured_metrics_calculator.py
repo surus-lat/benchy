@@ -411,6 +411,9 @@ class MetricsCalculator:
             "normalization_penalty": 0.0,
             "null_string_conversions": 0,
             "date_format_conversions": 0,
+            # Tiered scores (-1.0 = tier not configured/present)
+            "reliable_f1_partial": -1.0,
+            "freeform_f1_partial": -1.0,
         }
 
         # If connectivity error, mark differently and return early
@@ -633,10 +636,23 @@ class MetricsCalculator:
             critical_string_fields = [critical_string_fields]
         critical_string_fields = [str(p) for p in critical_string_fields if p]
 
+        # Tiered evaluation: reliable (bounded GT) vs freeform (noisy GT)
+        field_tiers = self.config.get("metrics", {}).get("field_tiers", {})
+        reliable_fields_patterns = field_tiers.get("reliable", [])
+        freeform_fields_patterns = field_tiers.get("freeform", [])
+
+        def _get_tier(key: str) -> str:
+            if reliable_fields_patterns and _matches_any_pattern(key, reliable_fields_patterns):
+                return "reliable"
+            if freeform_fields_patterns and _matches_any_pattern(key, freeform_fields_patterns):
+                return "freeform"
+            return "unclassified"
+
         results = {}
 
         # Compare expected fields
         for key, exp_value in exp_fields.items():
+            tier = _get_tier(key)
             if key in pred_fields:
                 pred_value = pred_fields[key]
                 if numeric_string_fields and _matches_any_pattern(key, numeric_string_fields):
@@ -646,6 +662,10 @@ class MetricsCalculator:
                         match_type, score, severity = ("exact", 1.0, "none")
                     else:
                         match_type, score, severity = ("incorrect", 0.0, "critical")
+                elif tier == "freeform" and isinstance(exp_value, str) and isinstance(pred_value, str):
+                    match_type, score, severity = self.partial_matcher.compare_freeform_values_with_severity(
+                        pred_value, exp_value
+                    )
                 else:
                     match_type, score, severity = self.partial_matcher.compare_values_with_severity(pred_value, exp_value)
                     if (
@@ -670,6 +690,7 @@ class MetricsCalculator:
                     "type_match": type_match,
                     "error_severity": severity,
                     "is_numeric": is_numeric,
+                    "tier": tier,
                     "predicted": pred_value,
                     "expected": exp_value,
                 }
@@ -681,6 +702,7 @@ class MetricsCalculator:
                     "type_match": False,
                     "error_severity": "critical",  # Missed fields are critical
                     "is_numeric": isinstance(exp_value, (int, float)) and not isinstance(exp_value, bool),
+                    "tier": tier,
                     "predicted": None,
                     "expected": exp_value,
                 }
@@ -697,6 +719,7 @@ class MetricsCalculator:
                     "type_match": False,
                     "error_severity": "critical",  # Spurious fields are critical (hallucination)
                     "is_numeric": isinstance(pred_value, (int, float)) and not isinstance(pred_value, bool),
+                    "tier": _get_tier(key),
                     "predicted": pred_value,
                     "expected": None,
                 }
@@ -730,9 +753,17 @@ class MetricsCalculator:
         # For composite score tracking
         composite_scores = []
 
+        # Per-tier counters for tiered evaluation reporting
+        tier_counts: Dict[str, Dict[str, int]] = {
+            "reliable": {"exact": 0, "partial": 0, "incorrect": 0, "missed": 0, "spurious": 0, "total_expected": 0, "total_predicted": 0},
+            "freeform": {"exact": 0, "partial": 0, "incorrect": 0, "missed": 0, "spurious": 0, "total_expected": 0, "total_predicted": 0},
+        }
+
         # Process each field result
         for field_key, result in field_results.items():
             match_type = result["match_type"]
+            tier = result.get("tier", "unclassified")
+
             if match_type == "exact":
                 exact_count += 1
             elif match_type == "partial":
@@ -763,6 +794,16 @@ class MetricsCalculator:
                 numeric_fields_total += 1
                 if match_type == "exact":
                     numeric_fields_correct += 1
+
+            # Per-tier tracking (reliable / freeform)
+            if tier in tier_counts:
+                tc = tier_counts[tier]
+                if match_type in ("exact", "partial", "incorrect", "missed"):
+                    tc["total_expected"] += 1
+                    tc[match_type] += 1
+                elif match_type == "spurious":
+                    tc["total_predicted"] += 1
+                    tc["spurious"] += 1
 
         # Calculate F1 scores
         total_expected = len(exp_fields)
@@ -800,6 +841,24 @@ class MetricsCalculator:
         # Numeric Precision Rate
         numeric_precision_rate = numeric_fields_correct / numeric_fields_total if numeric_fields_total > 0 else 1.0
 
+        # Per-tier F1 scores (reliable = bounded GT; freeform = noisy GT)
+        def _tier_f1(tc: Dict[str, int]) -> float:
+            n_exp = tc["total_expected"]
+            n_pred = tc["total_expected"] + tc["total_predicted"]  # predicted = exp-side + spurious-only
+            if n_exp == 0:
+                return -1.0  # sentinel: tier not present in this sample
+            correct = tc["exact"] + partial_credit * tc["partial"]
+            # Use total_expected as denominator for both P and R (spurious tracked separately)
+            recall = correct / n_exp
+            # Predicted count = all fields that the model produced for this tier
+            pred_count = tc["exact"] + tc["partial"] + tc["incorrect"] + tc["spurious"]
+            precision = correct / pred_count if pred_count > 0 else 0.0
+            denom = precision + recall
+            return (2 * precision * recall / denom) if denom > 0 else 0.0
+
+        reliable_f1 = _tier_f1(tier_counts["reliable"])
+        freeform_f1 = _tier_f1(tier_counts["freeform"])
+
         return {
             "field_f1_partial": f1_partial,
             "field_f1_strict": f1_strict,
@@ -825,6 +884,9 @@ class MetricsCalculator:
             "numeric_precision_rate": numeric_precision_rate,
             "numeric_fields_total": numeric_fields_total,
             "numeric_fields_correct": numeric_fields_correct,
+            # Tiered scores (-1.0 means tier not present in this sample)
+            "reliable_f1_partial": reliable_f1,
+            "freeform_f1_partial": freeform_f1,
         }
 
     def _calculate_eqs(self, metrics: Dict) -> float:
@@ -858,25 +920,45 @@ class MetricsCalculator:
           0.50 * numeric_precision_rate +
           0.35 * field_f1_partial +
           0.15 * schema_validity
+
+        When field_tiers are configured, `reliable_f1_partial` can be used as a
+        weight key to score only on bounded-GT fields (enum, integer, date).
+        Freeform fields are still reported separately but excluded from headline score.
         """
         weights = self.config.get("metrics", {}).get("document_extraction_score", {}).get("weights", {}) or {}
 
-        numeric_weight = float(weights.get("numeric_precision_rate", weights.get("numeric_precision", 0.50)))
-        f1_weight = float(weights.get("field_f1_partial", 0.35))
-        validity_weight = float(weights.get("schema_validity", 0.15))
-        anti_halluc_weight = float(weights.get("inverted_hallucination", 0.0))
-        anti_critical_weight = float(weights.get("inverted_critical_error_rate", 0.0))
+        # Map each weight key to the metric value it reads from
+        _metric_map = {
+            "numeric_precision_rate": lambda m: float(m.get("numeric_precision_rate", 1.0)),
+            "numeric_precision": lambda m: float(m.get("numeric_precision_rate", 1.0)),
+            "field_f1_partial": lambda m: float(m.get("field_f1_partial", 0.0)),
+            "schema_validity": lambda m: float(m.get("schema_validity", 0.0)),
+            "inverted_hallucination": lambda m: 1.0 - float(m.get("hallucination_rate", 0.0)),
+            "inverted_critical_error_rate": lambda m: 1.0 - float(m.get("critical_error_rate", 0.0)),
+            "reliable_f1_partial": lambda m: max(0.0, float(m.get("reliable_f1_partial", 0.0))),
+        }
 
-        score = (
-            numeric_weight * float(metrics.get("numeric_precision_rate", 1.0))
-            + f1_weight * float(metrics.get("field_f1_partial", 0.0))
-            + validity_weight * float(metrics.get("schema_validity", 0.0))
-        )
-
-        if anti_halluc_weight:
-            score += anti_halluc_weight * (1.0 - float(metrics.get("hallucination_rate", 0.0)))
-        if anti_critical_weight:
-            score += anti_critical_weight * (1.0 - float(metrics.get("critical_error_rate", 0.0)))
+        if weights:
+            # When explicit weights are configured, use ONLY those — no defaults mixed in
+            score = 0.0
+            for key, w in weights.items():
+                w = float(w)
+                if not w:
+                    continue
+                if key == "reliable_f1_partial":
+                    # Skip if this tier was not present in the sample (-1.0 sentinel)
+                    r_f1 = float(metrics.get("reliable_f1_partial", -1.0))
+                    if r_f1 >= 0.0:
+                        score += w * r_f1
+                elif key in _metric_map:
+                    score += w * _metric_map[key](metrics)
+        else:
+            # Default formula (no explicit weights configured)
+            score = (
+                0.50 * float(metrics.get("numeric_precision_rate", 1.0))
+                + 0.35 * float(metrics.get("field_f1_partial", 0.0))
+                + 0.15 * float(metrics.get("schema_validity", 0.0))
+            )
 
         return max(0.0, min(1.0, score))
 
@@ -1041,6 +1123,18 @@ class MetricsCalculator:
                 avg_numeric_precision = 1.0  # No numeric fields means 100% precision
                 total_numeric_fields = 0
                 total_numeric_correct = 0
+
+            # Tiered F1: average only over samples where the tier is present (value >= 0)
+            reliable_samples = [m for m in valid_metrics if m.get("reliable_f1_partial", -1.0) >= 0.0]
+            freeform_samples = [m for m in valid_metrics if m.get("freeform_f1_partial", -1.0) >= 0.0]
+            avg_reliable_f1 = (
+                sum(m["reliable_f1_partial"] for m in reliable_samples) / len(reliable_samples)
+                if reliable_samples else None
+            )
+            avg_freeform_f1 = (
+                sum(m["freeform_f1_partial"] for m in freeform_samples) / len(freeform_samples)
+                if freeform_samples else None
+            )
         else:
             avg_f1_partial = avg_f1_strict = 0.0
             avg_precision_partial = avg_recall_partial = 0.0
@@ -1052,6 +1146,8 @@ class MetricsCalculator:
             avg_numeric_precision = 0.0
             total_numeric_fields = 0
             total_numeric_correct = 0
+            avg_reliable_f1 = None
+            avg_freeform_f1 = None
 
         avg_normalization_penalty = (
             sum(float(m.get("normalization_penalty", 0.0)) for m in valid_metrics) / len(valid_metrics)
@@ -1195,4 +1291,9 @@ class MetricsCalculator:
             "normalization_penalty": avg_normalization_penalty,
             "null_string_conversions": total_null_string_conversions,
             "date_format_conversions": total_date_format_conversions,
+            # Tiered evaluation scores
+            # reliable_f1_partial: score on enum/integer/date fields with trustworthy GT
+            # freeform_f1_partial_gt_limited: score on name/address fields (noisy GT, informational only)
+            "reliable_f1_partial": avg_reliable_f1,
+            "freeform_f1_partial_gt_limited": avg_freeform_f1,
         }
