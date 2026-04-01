@@ -463,6 +463,8 @@ class BenchmarkRunner:
 
                 if isinstance(metrics, dict):
                     metrics.setdefault("sample_id", sample.get("id"))
+                    if sample.get("record_id") is not None:
+                        metrics.setdefault("record_id", sample["record_id"])
 
                 results["per_sample_metrics"].append(metrics)
                 metrics_by_id[sample["id"]] = metrics
