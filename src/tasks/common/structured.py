@@ -265,15 +265,30 @@ class StructuredHandler(BaseHandler):
 
         # For ad-hoc tasks the handler data_dir is .data/common/, not the dataset dir.
         # Also check .data/<dataset-name>/metrics_config.json when dataset is auto-discovered.
+        # resolve_dataset_name() returns the full path to the parquet subdir, so we walk
+        # up parent directories from there looking for metrics_config.json.
         if not self.dataset_metrics_config and self.config:
             dataset_name = self.config.get("dataset", {}).get("name", "")
             if dataset_name:
+                from pathlib import Path as _Path
                 from .dataset_adapters import _repo_data_dir
-                candidate = _repo_data_dir() / dataset_name / "metrics_config.json"
-                if candidate.exists():
-                    with open(candidate, "r", encoding="utf-8") as f:
-                        self.dataset_metrics_config = json.load(f)
-                    logger.info("Loaded dataset-specific metrics config from %s", candidate)
+                data_root = _repo_data_dir()
+                # Try the name as a path first (it may be an absolute path from resolve_dataset_name)
+                candidate_base = _Path(dataset_name)
+                if not candidate_base.is_absolute():
+                    candidate_base = data_root / dataset_name
+                # Walk up from candidate_base until we leave .data/, checking each dir
+                search_dir = candidate_base if candidate_base.is_dir() else candidate_base.parent
+                while True:
+                    candidate = search_dir / "metrics_config.json"
+                    if candidate.exists():
+                        with open(candidate, "r", encoding="utf-8") as f:
+                            self.dataset_metrics_config = json.load(f)
+                        logger.info("Loaded dataset-specific metrics config from %s", candidate)
+                        break
+                    if search_dir == data_root or not str(search_dir).startswith(str(data_root)):
+                        break
+                    search_dir = search_dir.parent
 
         super().load()
 
@@ -336,6 +351,11 @@ class StructuredHandler(BaseHandler):
         image_path = raw_sample.get("image_path") or raw_sample.get("file_path")
         if image_path and self.requires_multimodal:
             result["image_path"] = str(image_path)
+
+        # Preserve the original parquet record_id so it appears in per-sample
+        # metrics and can be used to reconstruct dataset subsets after a run.
+        if "record_id" in raw_sample and raw_sample["record_id"] is not None:
+            result["record_id"] = raw_sample["record_id"]
 
         return result
 
