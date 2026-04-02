@@ -1052,6 +1052,14 @@ def _build_dataset_config_from_args(args: argparse.Namespace) -> Dict[str, Any]:
         if "_ground_truth_mapping" in extra_config:
             dataset_config["_ground_truth_mapping"] = extra_config["_ground_truth_mapping"]
 
+        # Pass through field type mapping (needed to parse JSON-encoded array GT columns)
+        if "_field_type_mapping" in extra_config:
+            dataset_config["_field_type_mapping"] = extra_config["_field_type_mapping"]
+
+        # Auto-apply dataset-level system_prompt if no CLI override
+        if "system_prompt" in extra_config and not args.system_prompt:
+            args.system_prompt = extra_config["system_prompt"]
+
         # Auto-enable multimodal for datasets with binary columns (documents)
         if extra_config.get("_has_binary") and not args.multimodal_input:
             dataset_config["multimodal_input"] = True

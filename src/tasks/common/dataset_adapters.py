@@ -180,6 +180,10 @@ def resolve_dataset_name(name: str) -> tuple[str, Dict[str, Any]]:
 
         extra["_dataset_info"] = info
 
+        # Propagate dataset-level system_prompt if declared in dataset_info.json
+        if "system_prompt" in info:
+            extra["system_prompt"] = info["system_prompt"]
+
     # Auto-attach schema.json and extract ground-truth mappings
     schema_path = data_dir / "schema.json"
     if schema_path.exists():
@@ -785,6 +789,17 @@ class DatasetAdapter:
                             field_name,
                         )
                         continue
+                # Coerce float GT values to int when the schema declares integer.
+                # Parquet stores integers as float64 (e.g. 15048346280700.0 → 15048346280700).
+                field_type = field_type_mapping.get(field_name, "")
+                is_integer_field = field_type == "integer" or (
+                    isinstance(field_type, list) and "integer" in field_type
+                )
+                if is_integer_field and isinstance(value, float) and not (value != value):  # not NaN
+                    value = int(value)
+                elif is_integer_field and isinstance(value, str) and value.strip().lstrip("-").isdigit():
+                    value = int(value.strip())
+
                 parts = field_name.split(".")
                 target = expected
                 for part in parts[:-1]:
