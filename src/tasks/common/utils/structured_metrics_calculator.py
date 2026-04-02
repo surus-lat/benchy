@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DMY_DASH_DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")
 _DMY_SLASH_DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+_TIME_HM_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 def _field_pattern_to_regex(pattern: str) -> str:
     """Convert a field path pattern to a regex.
@@ -151,6 +152,15 @@ class MetricsCalculator:
                         return True
         return False
 
+    def _canonicalize_time_string(self, value: str) -> str:
+        """Normalize H:MM → HH:MM (zero-pad the hour)."""
+        m = _TIME_HM_RE.match(value.strip())
+        if m:
+            hour, minute = int(m.group(1)), int(m.group(2))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return f"{hour:02d}:{minute:02d}"
+        return value
+
     def _canonicalize_date_string(self, value: str) -> str:
         """Canonicalize accepted date formats to YYYY-MM-DD."""
         candidate = value.strip()
@@ -233,6 +243,12 @@ class MetricsCalculator:
                 if canonical != value:
                     stats["date_format_conversions"] += 1
                 return canonical
+
+            # Normalize H:MM → HH:MM for time-like strings regardless of schema hints.
+            # This handles fields like cronograma[*].hora where schema has no format specifier.
+            time_canonical = self._canonicalize_time_string(stripped)
+            if time_canonical != stripped:
+                return time_canonical
 
         return value
 

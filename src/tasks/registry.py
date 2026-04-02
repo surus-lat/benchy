@@ -703,8 +703,11 @@ def discover_and_run_handler_task(
 
     # Check if this is an ad-hoc task
     if task_ref.startswith("_adhoc_"):
-        # Build spec for ad-hoc task
-        adhoc_config = task_config.get("task_configs", {}).get(task_ref, {})
+        # Build spec for ad-hoc task.
+        # Ad-hoc tasks store their config under the "main" subtask key,
+        # not under the task_ref name.
+        tc = task_config.get("task_configs", {})
+        adhoc_config = tc.get(task_ref) or tc.get("main") or {}
         if not adhoc_config:
             # Try to get from defaults (for CLI-created tasks)
             adhoc_config = task_config.get("defaults", {})
