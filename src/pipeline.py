@@ -147,6 +147,7 @@ def _run_logged_task(
     api_endpoint: str,
     generation_config: Optional[Dict[str, Any]],
     compatibility_mode: str,
+    no_resume: bool = False,
 ) -> Dict[str, Any]:
     """Wrapper so each benchy task shows up as a Prefect task run."""
     if not is_handler_based_task(task_name):
@@ -161,6 +162,7 @@ def _run_logged_task(
         limit=limit,
         provider_config=provider_config,
         compatibility_mode=compatibility_mode,
+        no_resume=no_resume,
     )
 
 
@@ -595,6 +597,7 @@ def benchmark_pipeline(
     organization: Optional[str] = None,
     url: Optional[str] = None,
     vllm_config: Optional[VLLMServerConfig] = None,
+    no_resume: bool = False,
 ) -> Dict[str, Any]:
     """
     Complete benchmarking pipeline for vLLM and cloud providers.
@@ -854,6 +857,7 @@ def benchmark_pipeline(
                 api_endpoint=api_endpoint,
                 generation_config=generation_config,
                 compatibility_mode=compatibility_mode,
+                no_resume=no_resume,
             )
 
         # Step 4: Gather results

@@ -80,6 +80,7 @@ class SubtaskContext:
     subtask_output_dir: Path
     limit: Optional[int]
     compatibility_mode: str
+    no_resume: bool = False
     shared: Any = None
 
 
@@ -101,6 +102,7 @@ def run_task_group(
     limit: Optional[int] = None,
     provider_config: Optional[Dict[str, Any]] = None,
     compatibility_mode: str = "skip",
+    no_resume: bool = False,
 ) -> Dict[str, Any]:
     """Run a task group using a shared execution flow.
 
@@ -212,6 +214,7 @@ def run_task_group(
                 subtask_output_dir=subtask_output_dir,
                 limit=limit,
                 compatibility_mode=compatibility_mode,
+                no_resume=no_resume,
                 shared=shared_state,
             )
 
@@ -253,6 +256,7 @@ def run_task_group(
                     subtask_output_dir=subtask_output_dir,
                     limit=limit,
                     compatibility_mode=compatibility_mode,
+                    no_resume=no_resume,
                     shared=shared_state,
                 )
 
@@ -396,7 +400,7 @@ async def _run_default_subtask_async(spec: TaskGroupSpec, context: SubtaskContex
     }
 
     runner = BenchmarkRunner(task_instance, interface, runner_config)
-    results = await runner.run(limit=context.limit, no_resume=False)
+    results = await runner.run(limit=context.limit, no_resume=context.no_resume)
 
     # Get task answer type for special handling (e.g., image artifacts)
     task_answer_type = getattr(task_instance, "answer_type", None)
