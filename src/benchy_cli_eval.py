@@ -524,6 +524,7 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--log-samples", action="store_true", help="Enable sample logging for all tasks")
     parser.add_argument("--no-log-samples", action="store_true", help="Disable sample logging for all tasks")
     parser.add_argument("--run-id", type=str, default=None, help="Run ID for organizing outputs")
+    parser.add_argument("--no-resume", action="store_true", default=False, help="Ignore existing checkpoints and rerun from scratch")
     parser.add_argument(
         "--tasks",
         nargs="+",
@@ -1475,6 +1476,7 @@ def run_eval(args: argparse.Namespace) -> int:
         organization=organization,
         url=url,
         vllm_config=vllm_server_config,
+        no_resume=getattr(args, "no_resume", False),
     )
     
     # Save config if requested

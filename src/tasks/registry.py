@@ -679,6 +679,7 @@ def discover_and_run_handler_task(
     limit: Optional[int] = None,
     provider_config: Optional[Dict[str, Any]] = None,
     compatibility_mode: str = "skip",
+    no_resume: bool = False,
 ) -> Dict[str, Any]:
     """Discover and run a convention-based handler task.
     
@@ -750,6 +751,7 @@ def discover_and_run_handler_task(
         limit=limit,
         provider_config=provider_config,
         compatibility_mode=compatibility_mode,
+        no_resume=no_resume,
     )
 
 

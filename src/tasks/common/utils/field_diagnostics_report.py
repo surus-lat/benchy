@@ -221,6 +221,7 @@ def build_field_diagnostics_report(
             "fingerprints_seen": schema_fingerprints,
         },
         "fields": capped_fields,
+        "all_fields": expected_fields,  # uncapped, used for summary table
         "hallucinated_only_fields": capped_hallucinated_fields,
         "omitted_fields": omitted_fields,
         "omitted_hallucinated_fields": omitted_hallucinated_fields,
@@ -243,18 +244,85 @@ def render_field_diagnostics_text(report: Dict[str, Any], examples_per_field: in
     schema_info = report.get("schema", {})
     lines: List[str] = []
 
-    lines.append("=" * 60)
+    lines.append("=" * 80)
     lines.append("FIELD DIAGNOSTICS REPORT")
-    lines.append("=" * 60)
+    lines.append("=" * 80)
     lines.append(f"Samples analyzed: {summary.get('samples_with_field_results', 0)}")
     lines.append(f"Schema fingerprint: {schema_info.get('fingerprint') or 'n/a'}")
     lines.append(f"Fields analyzed: {summary.get('fields_analyzed', 0)}")
     lines.append(f"Overall exact accuracy: {_pct(summary.get('exact_accuracy_overall'))}")
     lines.append("")
-    lines.append("WORST FIELDS (LOWEST EXACT ACCURACY)")
-    lines.append("-" * 60)
 
+    # ---- Field accuracy summary table ----
+    # Use all_fields (uncapped) for the summary; fall back to capped fields
+    all_fields = report.get("all_fields") or report.get("fields", []) or []
     fields = report.get("fields", []) or []
+    lines.append("FIELD ACCURACY SUMMARY")
+    lines.append("-" * 80)
+    header = f"{'Field':<40} {'Exact%':>7} {'Partial%':>9} {'Wrong':>6} {'Miss':>5} {'TypeErr':>8} {'N':>6}"
+    lines.append(header)
+    lines.append("-" * 80)
+
+    import re as _re
+
+    # Collapse array indices for the summary table (cronograma[0].fecha -> cronograma[*].fecha)
+    collapsed: dict[str, dict[str, int]] = {}
+    for field in all_fields:
+        raw_key = field["field"]
+        norm_key = _re.sub(r"\[\d+\]", "[*]", raw_key)
+        bucket = collapsed.setdefault(norm_key, {
+            "exact": 0, "partial": 0, "incorrect": 0,
+            "missing": 0, "spurious": 0, "type_mismatch": 0, "total": 0,
+        })
+        bucket["exact"] += field.get("exact_count", 0)
+        bucket["partial"] += field.get("partial_count", 0)
+        bucket["incorrect"] += field.get("incorrect_count", 0)
+        bucket["missing"] += field.get("missing_count", 0)
+        bucket["spurious"] += field.get("spurious_count", 0)
+        bucket["type_mismatch"] += field.get("type_mismatch_count", 0)
+        bucket["total"] += field.get("expected_count", 0)
+
+    # Sort by exact% ascending (worst first)
+    sorted_fields = sorted(
+        collapsed.items(),
+        key=lambda item: (item[1]["exact"] / max(item[1]["total"], 1), -item[1]["total"]),
+    )
+
+    perfect = good = ok = poor = 0
+    for field_key, s in sorted_fields:
+        n = s["total"]
+        if n == 0:
+            continue
+        exact_pct = s["exact"] / n * 100
+        partial_pct = s["partial"] / n * 100
+        wrong = s["incorrect"] + s["spurious"]
+
+        flag = ""
+        if exact_pct >= 99:
+            perfect += 1
+        elif exact_pct >= 80:
+            good += 1
+        elif exact_pct >= 60:
+            ok += 1
+            flag = " !"
+        else:
+            poor += 1
+            flag = " !!"
+
+        lines.append(
+            f"{field_key:<40} {exact_pct:>6.1f}% {partial_pct:>8.1f}% {wrong:>6} {s['missing']:>5} {s['type_mismatch']:>8} {n:>6}{flag}"
+        )
+
+    lines.append("")
+    lines.append(
+        f"Summary: {perfect} perfect (>=99%), {good} good (80-99%), "
+        f"{ok} ok (60-80%), {poor} poor (<60%)"
+    )
+    lines.append("")
+
+    # ---- Detailed per-field error examples (existing behavior) ----
+    lines.append("FIELD ERROR DETAILS (LOWEST EXACT ACCURACY)")
+    lines.append("-" * 80)
     if not fields:
         lines.append("No field-level diagnostics available.")
     else:
