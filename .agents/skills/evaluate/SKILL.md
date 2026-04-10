@@ -93,14 +93,18 @@ For system providers, `--tasks` is intersected against the config's declared tas
 ## Useful Flags
 
 ```
---limit N          Samples per task (fast smoke tests)
---run-id NAME      Custom run folder name (enables resume)
---log-samples      Force sample logging for all tasks
---batch-size N     Override default batch size
---image-max-edge N Downscale images to N px max edge (multimodal)
---compatibility    warn|skip|error — how to handle incompatible tasks
---output-path      Override output base dir (or 'model' for side-by-side)
---save-config FILE Persist CLI params as reusable YAML
+--limit N               Samples per task (fast smoke tests)
+--run-id NAME           Custom run folder name (enables resume)
+--log-samples           Force sample logging for all tasks
+--batch-size N          Override default batch size
+--image-max-edge N     Downscale images to N px max edge (multimodal)
+--render-dpi N          DPI for document rendering (default: 200)
+--render-max-pages N    Max pages per document (default: 10)
+--render-documents      Render PDFs to images (default for LLM providers)
+--no-render-documents  Send raw files without rendering (for custom APIs)
+--compatibility         warn|skip|error — how to handle incompatible tasks
+--output-path           Override output base dir (or 'model' for side-by-side)
+--save-config FILE      Persist CLI params as reusable YAML
 ```
 
 ---
@@ -392,12 +396,52 @@ benchy eval --dataset-name <name> --task-type <type> \
 For classification, available placeholders: `{text}`, `{choices}`.
 For extraction, available placeholders: `{text}`, `{schema}`.
 
+### Dataset source options
+
+| Flag | Description |
+|------|-------------|
+| `--dataset-name <name>` | Dataset name from `.data/` (auto-discovered) |
+| `--dataset-source <path>` | Custom path to dataset directory (bypasses auto-discovery) |
+
 ### After adapting a new dataset
 
-1. Place dataset in `.data/`
+1. Place dataset in `.data/<dataset-name>/`
 2. Validate: `benchy eval --dataset-name <name> --task-type <type> --provider openai --model-name gpt-4o --limit 3`
 3. Write a `benchy.md` in the dataset directory with smoke/full/custom-prompt commands
 4. Follow `docs/DATASET_SPEC.md` for required files and column conventions
+
+---
+
+## Dataset-Specific Metrics Configuration
+
+For zero-code evaluation, create `.data/<dataset-name>/metrics_config.json` to customize scoring behavior per dataset:
+
+```json
+{
+  "unordered_arrays": {
+    "field_name": {
+      "key_fields": ["field1", "field2"]
+    }
+  },
+  "numeric_string_fields": ["invoice_number", "phone"],
+  "ignored_schema_fields": ["internal_id", "metadata"],
+  "partial_matching": {
+    "string": {
+      "exact_threshold": 0.95,
+      "partial_threshold": 0.50
+    }
+  }
+}
+```
+
+| Option | Purpose |
+|--------|---------|
+| `unordered_arrays` | Compare arrays as sets, ignoring order |
+| `numeric_string_fields` | Compare strings as digits (ignore formatting) |
+| `ignored_schema_fields` | Exclude fields from scoring |
+| `partial_matching` | Override default string match thresholds |
+
+This file is auto-loaded for `structured` and multimodal/document extraction tasks.
 
 ---
 
