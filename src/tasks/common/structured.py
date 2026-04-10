@@ -153,6 +153,7 @@ class StructuredHandler(BaseHandler):
         
         super().__init__(config)
 
+        self.dataset_metrics_config: Optional[Dict[str, Any]] = None
         # Lazy initialization of metrics calculator
         self._metrics_calc = None
     
@@ -172,13 +173,21 @@ class StructuredHandler(BaseHandler):
         if "schema_field" in dataset_config:
             self.schema_field = dataset_config["schema_field"]
         
-        # Schema loading (from path or inline JSON)
-        if "schema_path" in dataset_config:
+        # Schema loading (from pre-converted JSON Schema, path, or inline JSON)
+        if "_json_schema" in dataset_config:
+            # Pre-converted by resolve_dataset_name (custom schema.json → JSON Schema)
+            self._global_schema = dataset_config["_json_schema"]
+        elif "schema_path" in dataset_config:
             from pathlib import Path
             schema_path = Path(dataset_config["schema_path"])
             if schema_path.exists():
-                with open(schema_path) as f:
-                    self._global_schema = json.load(f)
+                raw = json.load(open(schema_path))
+                # If the schema uses our custom "fields" array format, convert it
+                if "fields" in raw and isinstance(raw["fields"], list):
+                    from .dataset_adapters import _convert_custom_schema
+                    self._global_schema, *_ = _convert_custom_schema(raw)
+                else:
+                    self._global_schema = raw
             else:
                 self._global_schema = None
                 message = (
@@ -237,12 +246,24 @@ class StructuredHandler(BaseHandler):
             metrics_cfg: Dict[str, Any] = copy.deepcopy(self.metrics_config) if self.metrics_config else {}
             if self.config and "metrics" in self.config and isinstance(self.config["metrics"], dict):
                 self._deep_merge(metrics_cfg, self.config["metrics"])
+            if self.dataset_metrics_config and isinstance(self.dataset_metrics_config, dict):
+                self._deep_merge(metrics_cfg, self.dataset_metrics_config)
 
             # Check if strict mode is enabled
             strict = metrics_cfg.get("strict", False)
             
             self._metrics_calc = MetricsCalculator({"metrics": metrics_cfg}, strict=strict)
         return self._metrics_calc
+
+    def load(self) -> None:
+        """Load dataset metrics config, then load the dataset."""
+        metrics_config_file = self.data_dir / "metrics_config.json"
+        if metrics_config_file.exists():
+            with open(metrics_config_file, "r", encoding="utf-8") as f:
+                self.dataset_metrics_config = json.load(f)
+                logger.info("Loaded dataset-specific metrics config from %s", metrics_config_file)
+
+        super().load()
 
     def _deep_merge(self, base: Dict, override: Dict) -> None:
         for key, value in override.items():
@@ -291,12 +312,20 @@ class StructuredHandler(BaseHandler):
             )
             return None
 
-        return {
+        result = {
             "id": f"{self.get_task_name()}_{idx}",
             "text": str(text),
             "schema": schema,
             "expected": expected,
         }
+
+        # Propagate image_path for multimodal workflows so the interface
+        # can encode the image as base64 instead of embedding the path as text.
+        image_path = raw_sample.get("image_path") or raw_sample.get("file_path")
+        if image_path and self.requires_multimodal:
+            result["image_path"] = str(image_path)
+
+        return result
 
     def get_prompt(self, sample: Dict[str, Any]) -> Tuple[str, str]:
         """Build prompts for structured extraction tasks.
@@ -312,19 +341,30 @@ class StructuredHandler(BaseHandler):
         schema = sample.get("schema", {})
         schema_str = json.dumps(schema, indent=2) if schema else ""
 
+        # When image_path is present the image is sent as a multimodal
+        # attachment by the interface — don't embed the file path as text.
+        is_multimodal = "image_path" in sample
+        input_text = "" if is_multimodal else sample.get("text", "")
+
         # Use custom template if provided
         if hasattr(self, "user_prompt_template") and "{schema}" in self.user_prompt_template:
             user_prompt = self.user_prompt_template.format(
-                text=sample.get("text", ""), schema=schema_str
+                text=input_text, schema=schema_str
             )
         else:
-            # Default structured extraction format
-            user_prompt = (
-                f"{sample.get('text', '')}\n\n"
-                f"Extract information following this schema:\n"
-                f"{schema_str}\n\n"
-                f"Return valid JSON matching the schema exactly."
-            )
+            if is_multimodal:
+                user_prompt = (
+                    f"Extract information from this document following this schema:\n"
+                    f"{schema_str}\n\n"
+                    f"Return valid JSON matching the schema exactly."
+                )
+            else:
+                user_prompt = (
+                    f"{input_text}\n\n"
+                    f"Extract information following this schema:\n"
+                    f"{schema_str}\n\n"
+                    f"Return valid JSON matching the schema exactly."
+                )
 
         return self.system_prompt, user_prompt
 

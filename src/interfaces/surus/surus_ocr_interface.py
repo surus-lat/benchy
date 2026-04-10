@@ -1,4 +1,4 @@
-"""SURUS AI interface for /ocr endpoint (image extraction)."""
+"""SURUS AI interface for /ocr endpoint (document extraction)."""
 
 import json
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class SurusOCRInterface(HTTPInterface):
-    """Interface for SURUS AI /ocr endpoint for image extraction.
+    """Interface for SURUS AI /ocr endpoint for document extraction.
 
     This interface handles multimodal (image) inputs, converting local
     image files to base64 data URLs for the API.
@@ -40,16 +40,21 @@ class SurusOCRInterface(HTTPInterface):
         logger.info(f"SURUS /ocr endpoint: {self.endpoint}")
 
     def prepare_request(self, sample: Dict, task) -> Dict:
-        """Prepare request for SURUS OCR endpoint.
-
-        Handles image_path from image_extraction task samples.
-
-        Args:
-            sample: Raw sample with image_path, schema, expected, etc.
-            task: Task instance (not used for HTTP, but kept for interface consistency)
-
+        """
+        Constructs the payload for the SURUS /ocr request from a document_extraction sample.
+        
+        Parameters:
+            sample (Dict): Sample dictionary containing at least the keys:
+                - "image_path": path or URL to the image
+                - "schema": JSON schema describing expected extraction
+                - "id": sample identifier
+            task: Task instance (unused by this interface; present for interface consistency)
+        
         Returns:
-            Dict formatted for this interface's generate_batch()
+            Dict: Payload with keys:
+                - "image_path": value from sample["image_path"]
+                - "schema": value from sample["schema"]
+                - "sample_id": value from sample["id"]
         """
         return {
             "image_path": sample["image_path"],

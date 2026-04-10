@@ -10,7 +10,7 @@ from .....common.dataset_utils import download_huggingface_dataset, load_jsonl_d
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / ".data" / "assin2_sts"
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".data" / "portuguese" / "assin2_sts"
 DEFAULT_DESCRIPTION = (
     "Abaixo estão pares de frases que você deve avaliar o grau de similaridade. "
     "Dê uma pontuação entre 1,0 e 5,0, sendo 1,0 pouco similar e 5,0 muito similar.\n\n"

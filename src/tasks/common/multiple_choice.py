@@ -376,7 +376,7 @@ class MultipleChoiceHandler(BaseHandler):
 
         expected_idx = self.label_to_index[label_value]
 
-        return {
+        result = {
             "id": f"{self.get_task_name()}_{idx}",
             "text": str(text),
             "expected": expected_idx,
@@ -385,6 +385,13 @@ class MultipleChoiceHandler(BaseHandler):
             "label_to_index": dict(self.label_to_index),
             "label_value": label_value,
         }
+
+        # Propagate image_path for multimodal workflows.
+        image_path = raw_sample.get("image_path") or raw_sample.get("file_path")
+        if image_path and self.requires_multimodal:
+            result["image_path"] = str(image_path)
+
+        return result
 
     def _coerce_label(self, value: Any) -> Any:
         """Coerce label to the correct type based on labels dict keys.
@@ -423,18 +430,29 @@ class MultipleChoiceHandler(BaseHandler):
             sample.get("choices", []), sample.get("choice_labels")
         )
 
+        # When image_path is present the image is sent as a multimodal
+        # attachment — don't embed the file path as text.
+        is_multimodal = "image_path" in sample
+        input_text = "" if is_multimodal else sample.get("text", "")
+
         # Use custom template if provided, otherwise default format
         if hasattr(self, "user_prompt_template") and "{choices}" in self.user_prompt_template:
             user_prompt = self.user_prompt_template.format(
-                text=sample.get("text", ""), choices=choices_text
+                text=input_text, choices=choices_text
             )
         else:
-            # Default multiple choice format
-            user_prompt = (
-                f"{sample.get('text', '')}\n\n"
-                f"Options:\n{choices_text}\n\n"
-                f"Answer (label only):"
-            )
+            if is_multimodal:
+                user_prompt = (
+                    f"Classify this document.\n\n"
+                    f"Options:\n{choices_text}\n\n"
+                    f"Answer (label only):"
+                )
+            else:
+                user_prompt = (
+                    f"{input_text}\n\n"
+                    f"Options:\n{choices_text}\n\n"
+                    f"Answer (label only):"
+                )
 
         return self.system_prompt, user_prompt
 

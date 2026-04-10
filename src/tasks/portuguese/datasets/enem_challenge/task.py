@@ -10,7 +10,7 @@ from .....common.dataset_utils import download_huggingface_dataset, load_jsonl_d
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent.parent.parent / ".data" / "enem_challenge"
+DATA_DIR = Path(__file__).parent.parent.parent.parent.parent.parent / ".data" / "portuguese" / "enem_challenge"
 DEFAULT_DESCRIPTION = (
     "As perguntas a seguir são questões de múltipla escolha do Exame Nacional do Ensino "
     "Médio (ENEM), selecione a única alternativa correta e responda apenas com as letras "

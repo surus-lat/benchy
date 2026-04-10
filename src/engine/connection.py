@@ -89,6 +89,14 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["raw_payload"],
     ),
+    "api": InterfaceCapabilities(
+        supports_multimodal=True,
+        supports_logprobs=False,
+        supports_schema=True,
+        supports_files=True,
+        supports_streaming=False,
+        request_modes=["raw_payload"],
+    ),
     "http": InterfaceCapabilities(
         supports_multimodal=False,
         supports_logprobs=False,
@@ -287,6 +295,15 @@ def build_connection_info(
         connection_info["api_key_env"] = provider_config.get("api_key_env", "SURUS_API_KEY")
         connection_info["use_structured_outputs"] = False
     
+    elif provider_type == "api":
+        connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url"))
+        connection_info["api_key_env"] = provider_config.get("api_key_env", "API_KEY")
+        connection_info["use_structured_outputs"] = False
+        # Pass through API-specific config for GenericAPIInterface.
+        for key in ("body_template", "response_path", "http_method", "headers"):
+            if key in provider_config:
+                connection_info[key] = provider_config[key]
+
     elif provider_type == "google":
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url", "https://generativelanguage.googleapis.com/v1"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "GOOGLE_API_KEY")
@@ -321,7 +338,31 @@ def get_interface_for_provider(
     Returns:
         Interface instance
     """
-    if provider_type == "surus":
+    if provider_type == "api":
+        from ..interfaces.generic_api_interface import GenericAPIInterface
+        api_config = {
+            "api": {
+                "endpoint": connection_info["base_url"],
+                "api_key_env": connection_info.get("api_key_env", "API_KEY"),
+                "timeout": connection_info.get("timeout", 120),
+                "max_retries": connection_info.get("max_retries", 3),
+                "body_template": connection_info.get("body_template"),
+                "response_path": connection_info.get("response_path"),
+                "http_method": connection_info.get("http_method", "POST"),
+                "headers": connection_info.get("headers"),
+                "image_max_edge": connection_info.get("image_max_edge"),
+                "capabilities": connection_info.get("capabilities"),
+            }
+        }
+        if connection_info.get("api_key"):
+            import os
+            os.environ.setdefault(
+                connection_info.get("api_key_env", "API_KEY"),
+                connection_info["api_key"],
+            )
+        return GenericAPIInterface(api_config, model_name, "api")
+
+    elif provider_type == "surus":
         from ..interfaces.surus.surus_interface import SurusInterface
         # SurusInterface has its own config format, adapt connection_info
         surus_config = {

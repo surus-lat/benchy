@@ -235,6 +235,103 @@ def test_calculate_all_with_arrays(default_config):
     assert metrics["extraction_quality_score"] == 1.0
 
 
+def test_calculate_all_with_array_object_order_is_positional_by_default(default_config):
+    """Array-of-object matching stays positional unless explicitly configured otherwise."""
+    calc = MetricsCalculator(default_config)
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "cronograma": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "fecha": {"type": "string"},
+                        "hora": {"type": "string"},
+                    },
+                    "required": ["fecha", "hora"],
+                },
+            }
+        },
+        "required": ["cronograma"],
+    }
+
+    expected = {
+        "cronograma": [
+            {"fecha": "2026-03-10", "hora": "09:00"},
+            {"fecha": "2026-03-11", "hora": "10:00"},
+        ]
+    }
+    predicted = {
+        "cronograma": [
+            {"fecha": "2026-03-11", "hora": "10:00"},
+            {"fecha": "2026-03-10", "hora": "09:00"},
+        ]
+    }
+
+    metrics = calc.calculate_all(predicted, expected, schema)
+
+    assert metrics["exact_match"] is False
+    assert metrics["match_distribution"]["exact"] == 0
+    assert metrics["field_results"]["cronograma[0].fecha"]["match_type"] == "incorrect"
+    assert metrics["field_results"]["cronograma[1].fecha"]["match_type"] == "incorrect"
+
+
+def test_calculate_all_with_unordered_array_objects_via_key_fields(default_config):
+    """Configured unordered array paths align predicted items by key fields."""
+    config = {
+        "metrics": {
+            **default_config["metrics"],
+            "unordered_arrays": {
+                "cronograma": {
+                    "key_fields": ["fecha", "hora"],
+                }
+            },
+        }
+    }
+    calc = MetricsCalculator(config)
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "cronograma": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "fecha": {"type": "string"},
+                        "hora": {"type": "string"},
+                        "nota": {"type": "string"},
+                    },
+                    "required": ["fecha", "hora"],
+                },
+            }
+        },
+        "required": ["cronograma"],
+    }
+
+    expected = {
+        "cronograma": [
+            {"fecha": "2026-03-10", "hora": "09:00", "nota": "A"},
+            {"fecha": "2026-03-11", "hora": "10:00", "nota": "B"},
+        ]
+    }
+    predicted = {
+        "cronograma": [
+            {"fecha": "2026-03-11", "hora": "10:00", "nota": "B"},
+            {"fecha": "2026-03-10", "hora": "09:00", "nota": "A"},
+        ]
+    }
+
+    metrics = calc.calculate_all(predicted, expected, schema)
+
+    assert metrics["exact_match"] is True
+    assert metrics["match_distribution"]["incorrect"] == 0
+    assert metrics["field_results"]["cronograma[0].fecha"]["match_type"] == "exact"
+    assert metrics["field_results"]["cronograma[1].fecha"]["match_type"] == "exact"
+
+
 # Aggregation Tests
 
 def test_aggregate_metrics_across_samples(default_config, simple_schema):
