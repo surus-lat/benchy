@@ -1,0 +1,48 @@
+benchmark:
+  name: action
+  description: the benchmark measures the performance of the extracion task, where
+    the input data is an email and the output data is a json with the important fields.
+  task:
+    type: extraction
+    input:
+      type: text
+      description: captures and extracts the business important information from an
+        email from a customer
+    output:
+      type: structured
+      fields:
+      - name: name
+        type: string
+        required: true
+      - name: last name
+        type: string
+        required: true
+      - name: date
+        type: string
+        required: true
+      - name: profession
+        type: string
+        required: true
+      - name: item they are interested
+        type: string
+        required: true
+      - name: data attached?
+        type: string
+        required: true
+      - name: recipient
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: generate
+    count: 10
+    seed_description: examples of emails from customers asking for a service and sending
+      an attachment
+  target:
+    type: model
+    provider: together
+    model: Kimi K2.5

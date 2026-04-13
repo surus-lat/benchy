@@ -1,0 +1,38 @@
+benchmark:
+  name: request-by-email
+  description: a benchmark to test the performance of the extraction task with input
+    emails from customers asking for a service and as output the correct schema extracted
+  task:
+    type: extraction
+    input:
+      type: text
+      description: extracts the relevant information from an email
+    output:
+      type: structured
+      fields:
+      - name: sender_full-name
+        type: string
+        required: true
+      - name: recipient_full-name
+        type: string
+        required: true
+      - name: clients-request
+        type: string
+        required: true
+      - name: data-attached?
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: generate
+    count: 10
+    seed_description: examples of customers requesting an ambulance for programmed
+      treatments to their medical provider
+  target:
+    type: model
+    provider: together
+    model: moonshotai/Kimi-K2.5
