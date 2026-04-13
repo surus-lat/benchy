@@ -315,14 +315,22 @@ def _collect_target(benchmark_name: str) -> Dict[str, Any]:
         target["type"] = "model"
         provider_choice = _choose(
             "Which provider?",
-            ["OpenAI", "Anthropic", "Together", "Google", "Other (type manually)"],
+            ["Together", "OpenAI", "Anthropic", "Google", "Other (type manually)"],
+            default=1,
         )
-        provider_map = {1: "openai", 2: "anthropic", 3: "together", 4: "google"}
+        provider_map = {1: "together", 2: "openai", 3: "anthropic", 4: "google"}
+        model_defaults = {
+            "together": "moonshotai/Kimi-K2.5",
+            "openai": "gpt-4o",
+            "anthropic": "claude-sonnet-4-5",
+            "google": "gemini-2.0-flash",
+        }
         if provider_choice in provider_map:
             target["provider"] = provider_map[provider_choice]
         else:
             target["provider"] = _ask("Provider name")
-        target["model"] = _ask("Model name (e.g. gpt-4o, claude-sonnet-4-5)")
+        model_hint = model_defaults.get(target["provider"], "moonshotai/Kimi-K2.5")
+        target["model"] = _ask(f"Model name", default=model_hint)
         sp = input("  System prompt (optional, press Enter to skip): ").strip()
         if sp:
             target["system_prompt"] = sp
@@ -334,8 +342,8 @@ def _collect_target(benchmark_name: str) -> Dict[str, Any]:
 
     else:
         target["type"] = "model"
-        target["provider"] = "openai"
-        target["model"] = "gpt-4o"
+        target["provider"] = "together"
+        target["model"] = "moonshotai/Kimi-K2.5"
         target["_placeholder"] = True
 
     return target

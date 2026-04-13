@@ -23,9 +23,9 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 # Generator model — not user-configurable; internal engine detail
-_GENERATOR_MODEL = "gpt-4o-mini"
-_GENERATOR_BASE_URL = "https://api.openai.com/v1"
-_GENERATOR_API_KEY_ENV = "OPENAI_API_KEY"
+_GENERATOR_MODEL = "google/gemma-4-31B-it"
+_GENERATOR_BASE_URL = "https://api.together.xyz/v1"
+_GENERATOR_API_KEY_ENV = "TOGETHER_API_KEY"
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +95,15 @@ async def _generate_one(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.9,
             max_tokens=1024,
-            response_format={"type": "json_object"},
         )
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or ""
+        # Strip markdown code fences if the model wrapped the JSON
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
         result = json.loads(content)
         print(f"\rGenerated {idx}/{total}...", end="", flush=True)
         return result
@@ -121,8 +127,8 @@ async def _generate_all(prompt: str, count: int) -> List[Dict[str, Any]]:
     api_key = os.environ.get(_GENERATOR_API_KEY_ENV)
     if not api_key:
         raise ValueError(
-            f"Data generation requires the {_GENERATOR_API_KEY_ENV} environment variable. "
-            "Set it in your .env file or export it before running."
+            f"Data generation requires {_GENERATOR_API_KEY_ENV} to be set. "
+            "Add it to your .env file: TOGETHER_API_KEY=<your-key>"
         )
 
     client = AsyncOpenAI(api_key=api_key, base_url=_GENERATOR_BASE_URL)
@@ -221,7 +227,7 @@ def generate_data(
     if not valid:
         raise ValueError(
             "No valid examples were generated. "
-            "Check your task spec and that OPENAI_API_KEY is set."
+            "Check your task spec and that TOGETHER_API_KEY is set and valid."
         )
 
     samples = [_normalize(s, i) for i, s in enumerate(valid)]
