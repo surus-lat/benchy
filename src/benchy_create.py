@@ -320,7 +320,7 @@ def _collect_target(benchmark_name: str) -> Dict[str, Any]:
         )
         provider_map = {1: "together", 2: "openai", 3: "anthropic", 4: "google"}
         model_defaults = {
-            "together": "moonshotai/Kimi-K2.5",
+            "together": "google/gemma-4-31B-it",
             "openai": "gpt-4o",
             "anthropic": "claude-sonnet-4-5",
             "google": "gemini-2.0-flash",
@@ -329,7 +329,7 @@ def _collect_target(benchmark_name: str) -> Dict[str, Any]:
             target["provider"] = provider_map[provider_choice]
         else:
             target["provider"] = _ask("Provider name")
-        model_hint = model_defaults.get(target["provider"], "moonshotai/Kimi-K2.5")
+        model_hint = model_defaults.get(target["provider"], "google/gemma-4-31B-it")
         target["model"] = _ask(f"Model name", default=model_hint)
         sp = input("  System prompt (optional, press Enter to skip): ").strip()
         if sp:
@@ -343,7 +343,7 @@ def _collect_target(benchmark_name: str) -> Dict[str, Any]:
     else:
         target["type"] = "model"
         target["provider"] = "together"
-        target["model"] = "moonshotai/Kimi-K2.5"
+        target["model"] = "google/gemma-4-31B-it"
         target["_placeholder"] = True
 
     return target

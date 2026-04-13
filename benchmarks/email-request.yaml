@@ -1,0 +1,43 @@
+benchmark:
+  name: email-request
+  description: an email requesting for a transporte for a patient of the client, request
+    to the provider of this services, has an attachment with a form for the request.
+  task:
+    type: extraction
+    input:
+      type: text
+      description: checks an email, verifies if it's a request for a ambulance transport
+        service, extracts all the useful informnd data attachments
+    output:
+      type: structured
+      fields:
+      - name: sender_full-name
+        type: string
+        required: true
+      - name: recipient
+        type: string
+        required: true
+      - name: is it a request?
+        type: string
+        required: true
+      - name: request details
+        type: string
+        required: true
+      - name: date
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: generate
+    count: 10
+    seed_description: examples of emails from clients requesting for a ambulance transport
+      for a given patient, including relevant information and 1 or more attachments.
+      the output is a json with the relevant fields
+  target:
+    type: model
+    provider: together
+    model: google/gemma-4-31B-it
