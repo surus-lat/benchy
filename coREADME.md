@@ -6,6 +6,13 @@ The second layer does not change the engine. It is a translation system.
 
 ---
 
+## Benchmark stages
+1. define benchmark: the task you want to solve, and which is the input and output
+2. exam design: how is the task's performance going to be scored? --> this is the scoring function of the benchmark. 
+3. data and model configs: which data and model are you going to use for the benchmark? (this later will be ai system agnostic, i.e. will be able to work with one model, a  workflow of many models, or an agent). 
+
+
+
 ## The Core Idea
 
 A benchmark has exactly four things. Always four, never more:
@@ -221,17 +228,26 @@ One hard constraint: image and document input tasks cannot be synthesized. The g
 
 ## Agent Skills
 
-Seven SKILL.md files encode the canonical agent workflow for each stage of the second layer. Agents should consult these before acting — they are the authoritative guide to what to ask, what to produce, and what to write into `benchmark.yaml`.
+SKILL.md files encode the canonical agent workflow for each stage of the second layer. Agents should consult these before acting — they are the authoritative guide to what to ask, what to produce, and what to write into `benchmark.yaml`.
+
+Skills map directly to the three benchmark stages:
 
 ```
-.agents/skills/
-├── define-task/        Stage 1 — task: section
-├── define-scoring/     Stage 2 — scoring: section
-├── configure-model/    Stage 3a — target: section
-├── setup-data/         Stage 3b — data: section
-├── synthesize-data/    utility — generate examples from spec
-├── run-benchmark/      execution — validate + smoke + full run
-└── read-results/       communication — plain-English result summary
+Stage 1 — Define benchmark (task, input, output)
+  └── define-task          fills task: section
+
+Stage 2 — Exam design (scoring function)
+  └── define-scoring       fills scoring: section
+
+Stage 3 — Data & model configuration
+  ├── configure-model      fills target: section
+  ├── setup-data           fills data: section (existing data)
+  └── synthesize-data      fills data: section (generate synthetic examples)
+
+Post-definition
+  ├── validate             pre-flight check before running
+  ├── run-benchmark        validate → smoke → full run
+  └── read-results         plain-English result summary
 ```
 
 Each skill is standalone and operates on a benchmark spec file. When the project has a single spec, skills auto-discover it. When multiple specs exist, pass the path explicitly. They can be run in any order. If the file doesn't exist when a skill runs, the skill creates it with only its section populated.

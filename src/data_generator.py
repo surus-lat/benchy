@@ -58,8 +58,8 @@ def _build_prompt(spec: Dict[str, Any]) -> str:
             f"Output fields:\n{field_lines}\n\n"
             "Generate ONE realistic and varied example.\n"
             "Return a JSON object with exactly two keys:\n"
-            '  "text": (string) a realistic input for this task\n'
-            '  "expected": (object) the correct extracted fields as a JSON object\n\n'
+            '  "input": (string) a realistic input for this task\n'
+            '  "expected_output": (object) the correct extracted fields as a JSON object\n\n'
             "Make the example varied — mix different values, formats, and edge cases."
         )
     else:
@@ -67,8 +67,8 @@ def _build_prompt(spec: Dict[str, Any]) -> str:
             f"Output type: {output_type}\n\n"
             "Generate ONE realistic and varied example.\n"
             "Return a JSON object with exactly two keys:\n"
-            '  "text": (string) a realistic input for this task\n'
-            '  "expected": (string) the correct output\n\n'
+            '  "input": (string) a realistic input for this task\n'
+            '  "expected_output": (string) the correct output\n\n'
             "Make the example varied — mix different values and phrasings."
         )
 
@@ -88,31 +88,39 @@ async def _generate_one(
     prompt: str,
     idx: int,
     total: int,
+    max_retries: int = 3,
 ) -> Optional[Dict[str, Any]]:
-    try:
-        response = await client.chat.completions.create(
-            model=_GENERATOR_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.9,
-            max_tokens=1024,
-        )
-        content = response.choices[0].message.content or ""
-        # Strip markdown code fences if the model wrapped the JSON
-        content = content.strip()
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = await client.chat.completions.create(
+                model=_GENERATOR_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.9,
+                max_tokens=1024,
+            )
+            content = response.choices[0].message.content or ""
+            # Strip markdown code fences if the model wrapped the JSON
             content = content.strip()
-        result = json.loads(content)
-        print(f"\rGenerated {idx}/{total}...", end="", flush=True)
-        return result
-    except json.JSONDecodeError as exc:
-        print(f"\nWarning: example {idx} had invalid JSON: {exc}", file=sys.stderr)
-        return None
-    except Exception as exc:
-        print(f"\nWarning: example {idx} failed: {exc}", file=sys.stderr)
-        return None
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+                content = content.strip()
+            result = json.loads(content)
+            print(f"\rGenerated {idx}/{total}...", end="", flush=True)
+            return result
+        except json.JSONDecodeError as exc:
+            if attempt < max_retries:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            print(f"\nWarning: example {idx} had invalid JSON after {max_retries} attempts: {exc}", file=sys.stderr)
+            return None
+        except Exception as exc:
+            if attempt < max_retries:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            print(f"\nWarning: example {idx} failed after {max_retries} attempts: {exc}", file=sys.stderr)
+            return None
 
 
 async def _generate_all(prompt: str, count: int) -> List[Dict[str, Any]]:
@@ -145,13 +153,12 @@ def _validate_sample(sample: Dict[str, Any], fields: List[Dict[str, Any]]) -> bo
     """Return True if sample has the required structure."""
     if not isinstance(sample, dict):
         return False
-    has_input = "text" in sample or "input" in sample
-    if not has_input:
+    if "input" not in sample:
         return False
-    if "expected" not in sample:
+    if "expected_output" not in sample:
         return False
     if fields:
-        expected = sample.get("expected")
+        expected = sample.get("expected_output")
         if not isinstance(expected, dict):
             return False
         # All required fields must be present
@@ -164,8 +171,8 @@ def _validate_sample(sample: Dict[str, Any], fields: List[Dict[str, Any]]) -> bo
 def _normalize(sample: Dict[str, Any], idx: int) -> Dict[str, Any]:
     return {
         "id": str(idx),
-        "text": sample.get("text") or sample.get("input", ""),
-        "expected": sample.get("expected", ""),
+        "input": sample.get("input", ""),
+        "expected_output": sample.get("expected_output", ""),
     }
 
 

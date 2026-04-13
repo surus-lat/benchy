@@ -1,0 +1,31 @@
+benchmark:
+  name: holi
+  description: holi
+  task:
+    type: extraction
+    input:
+      type: text
+      description: holi
+    output:
+      type: structured
+      fields:
+      - name: name
+        type: string
+        required: true
+      - name: last name
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: local
+    count: 10
+    seed_description: emails requesting assistance
+    path: .data/holi/train.jsonl
+  target:
+    type: model
+    provider: together
+    model: google/gemma-4-31B-it

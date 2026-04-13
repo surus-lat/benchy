@@ -30,7 +30,7 @@ The user wants to test a named model.
 
 Ask:
 - Which provider? (OpenAI, Anthropic, Together, Google, other)
-- Which model name? (e.g., gpt-4o, claude-sonnet-4-5)
+- Which model name? (e.g., google/gemma-4-31B-it on Together, gpt-4o on OpenAI, claude-sonnet-4-5 on Anthropic)
 - System prompt? (optional)
 
 **Path 3 — A local model** (running on their machine)
@@ -79,8 +79,8 @@ target:
 # Path 2 — Named model
 target:
   type: model
-  provider: openai              # openai | anthropic | together | google | alibaba
-  model: gpt-4o
+  provider: together            # openai | anthropic | together | google | alibaba
+  model: google/gemma-4-31B-it
   system_prompt: "Extract invoice fields and return as JSON."
 
 # Path 3 — Local server

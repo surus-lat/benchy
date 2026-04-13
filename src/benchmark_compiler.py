@@ -157,6 +157,10 @@ def _build_dataset_config(
         dc["source"] = "huggingface"
         dc["split"] = data_section.get("split", "test")
 
+    # Second-layer data uses input/expected_output keys
+    dc["input_field"] = "input"
+    dc["output_field"] = "expected_output"
+
     # Multimodal
     if is_multimodal:
         dc["multimodal_input"] = True

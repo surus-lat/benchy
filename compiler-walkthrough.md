@@ -330,8 +330,8 @@ The resulting spec:
 
   target:
     type: model
-    provider: openai
-    model: gpt-4o-mini
+    provider: together
+    model: google/gemma-4-31B-it
     system_prompt: "You are a helpful customer support agent."
 ```
 
@@ -429,7 +429,7 @@ benchmark:
     # Named model
     type: model
     provider: openai | anthropic | together | google
-    model: gpt-4o
+    model: google/gemma-4-31B-it  # default; any provider model works
     system_prompt: "Optional system prompt"
 
     # Local server

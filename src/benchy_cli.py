@@ -7,8 +7,12 @@ import json
 import sys
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
+
 from .config_loader import load_config
 from .config_manager import ConfigManager
+
+load_dotenv()
 
 
 def _print_json(data: Any) -> None:
