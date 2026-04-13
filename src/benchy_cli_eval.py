@@ -985,6 +985,20 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
         help="Save CLI parameters as reusable YAML config file",
     )
 
+    # Second-layer benchmark spec
+    parser.add_argument(
+        "--benchmark",
+        type=str,
+        default=None,
+        metavar="YAML_PATH",
+        help=(
+            "Path to a benchmark.yaml spec file (second-layer interface). "
+            "Compiles the spec and runs it — no other config flags needed. "
+            "Default path: ./benchmark.yaml. "
+            "Example: benchy eval --benchmark benchmark.yaml --limit 5"
+        ),
+    )
+
 
 def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str], bool]:
     """Return (merged_config, model_path_override, used_config_file)."""
@@ -1276,6 +1290,128 @@ def _build_adhoc_task_config(
     return config
 
 
+def _any_benchmark_exists() -> bool:
+    """Return True if any benchmark spec can be auto-discovered."""
+    from pathlib import Path
+    return (
+        Path("benchmark.yaml").exists()
+        or (Path("benchmarks").exists() and any(Path("benchmarks").glob("*.yaml")))
+    )
+
+
+def _resolve_benchmark_path(benchmark_arg: Optional[str]) -> str:
+    """Resolve the benchmark spec path with auto-discovery fallback.
+
+    Priority:
+    1. Explicit --benchmark <path>  → use as-is
+    2. benchmark.yaml at root       → use (backward compat)
+    3. benchmarks/*.yaml            → use if exactly one found
+    4. Multiple found               → SystemExit listing candidates
+    5. None found                   → SystemExit with hint
+    """
+    if benchmark_arg not in (None, True):
+        return benchmark_arg
+
+    from pathlib import Path
+    candidates: list[str] = []
+    if Path("benchmark.yaml").exists():
+        candidates.append("benchmark.yaml")
+    if Path("benchmarks").exists():
+        candidates.extend(sorted(str(p) for p in Path("benchmarks").glob("*.yaml")))
+
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        listing = "\n".join(f"  benchy eval --benchmark {c}" for c in candidates)
+        raise SystemExit(
+            f"Multiple benchmark specs found. Pass --benchmark to choose one:\n{listing}"
+        )
+    raise SystemExit(
+        "No benchmark spec found. Run 'benchy create' or pass --benchmark <path>."
+    )
+
+
+def _apply_benchmark_to_args(args: argparse.Namespace) -> None:
+    """Compile benchmark.yaml and inject its values into args in-place.
+
+    This lets the rest of run_eval handle the compiled benchmark exactly as if
+    the user had passed the equivalent CLI flags directly.
+    """
+    from .benchmark_compiler import compile_benchmark
+
+    yaml_path = _resolve_benchmark_path(args.benchmark)
+    compiled = compile_benchmark(yaml_path)
+
+    # --- Task type & dataset ---
+    args.task_type = compiled.internal_task_type
+    dc = compiled.dataset_config
+
+    # Inject dataset name
+    args.dataset_name = dc.get("name", "")
+    args.dataset = None  # clear deprecated field
+
+    # Inject schema if provided by compiler
+    if "schema_json" in dc and not getattr(args, "dataset_schema_json", None):
+        args.dataset_schema_json = dc["schema_json"]
+
+    # Inject multimodal flags
+    if dc.get("multimodal_input"):
+        args.multimodal_input = True
+        args.multimodal_image_field = dc.get("multimodal_image_field", "image_path")
+
+    # Inject labels for classification
+    if "labels" in dc and not getattr(args, "dataset_labels", None):
+        args.dataset_labels = dc["labels"]
+
+    # Inject data source override
+    if dc.get("source") and dc["source"] != "auto":
+        args.dataset_source = dc["source"]
+    if dc.get("split"):
+        args.dataset_split = dc["split"]
+
+    # --- Prompts ---
+    if compiled.system_prompt and not getattr(args, "system_prompt", None):
+        args.system_prompt = compiled.system_prompt
+    if compiled.user_prompt_template and not getattr(args, "user_prompt_template", None):
+        args.user_prompt_template = compiled.user_prompt_template
+
+    # --- Target: inject provider/model config into args ---
+    tc = compiled.target_config
+    provider_type = tc.get("provider_type", "openai")
+    model_name = tc.get("model", {}).get("name", "")
+
+    if provider_type == "api":
+        api_cfg = tc.get("api", {})
+        args.api_url = api_cfg.get("endpoint", "")
+        args.api_body_template = api_cfg.get("body_template", '{"input": "{{text}}"}')
+        if "response_path" in api_cfg:
+            args.api_response_path = api_cfg["response_path"]
+        if "headers" in api_cfg:
+            import json as _json
+            args.api_headers = _json.dumps(api_cfg["headers"])
+        if "api_key_env" in api_cfg:
+            args.api_key_env = api_cfg["api_key_env"]
+        args.model_name = model_name
+        # api_url triggers provider_type=api in _build_cli_only_config
+    else:
+        args.provider = provider_type
+        args.model_name = model_name
+        # For local endpoints, base_url overrides the provider default
+        if provider_type == "openai" and "openai" in tc:
+            openai_cfg = tc["openai"]
+            if "base_url" in openai_cfg and not getattr(args, "base_url", None):
+                args.base_url = openai_cfg["base_url"]
+
+    logger.info(
+        "Compiled benchmark '%s': task_type=%s, dataset=%s, provider=%s, model=%s",
+        compiled.name,
+        compiled.internal_task_type,
+        dc.get("name", ""),
+        provider_type,
+        model_name,
+    )
+
+
 def run_eval(args: argparse.Namespace) -> int:
     """
     Run the benchmark evaluation flow based on parsed CLI arguments.
@@ -1296,6 +1432,21 @@ def run_eval(args: argparse.Namespace) -> int:
             --register is requested, or test mode used with a non-vLLM provider).
     """
     load_dotenv()
+
+    # Second-layer: compile benchmark spec and inject into args before any other processing.
+    # Triggers when --benchmark is passed explicitly OR when a spec can be auto-discovered
+    # and no other provider/config flags indicate a developer-mode eval.
+    _benchmark_explicit = getattr(args, "benchmark", None) is not None
+    _benchmark_implicit = (
+        not _benchmark_explicit
+        and not getattr(args, "config", None)
+        and not getattr(args, "config_ref", None)
+        and not getattr(args, "api_url", None)
+        and not getattr(args, "task_type", None)
+        and _any_benchmark_exists()
+    )
+    if _benchmark_explicit or _benchmark_implicit:
+        _apply_benchmark_to_args(args)
 
     if args.log_samples and args.no_log_samples:
         raise SystemExit("Cannot specify both --log-samples and --no-log-samples")
