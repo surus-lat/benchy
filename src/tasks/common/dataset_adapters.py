@@ -218,6 +218,16 @@ def resolve_dataset_name(name: str) -> tuple[str, Dict[str, Any]]:
         extra["source"] = "parquet"
         return str(data_dir), extra
 
+    # JSONL directory: resolve to the concrete file so callers never receive a
+    # directory path for a local source.  Generated data always lands in
+    # train.jsonl; prefer that, otherwise take the first JSONL found.
+    jsonl_files = sorted(data_dir.glob("*.jsonl"))
+    if jsonl_files:
+        train_jsonl = data_dir / "train.jsonl"
+        resolved = train_jsonl if train_jsonl.exists() else jsonl_files[0]
+        extra["source"] = "local"
+        return str(resolved), extra
+
     return str(data_dir), extra
 
 

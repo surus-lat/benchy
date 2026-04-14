@@ -1,13 +1,13 @@
 benchmark:
   name: email-request
-  description: an email requesting for a transporte for a patient of the client, request
-    to the provider of this services, has an attachment with a form for the request.
+  description: benchmark for extracion of relevant information from emails from customers
+    asking for ambulance transport request
   task:
     type: extraction
     input:
       type: text
-      description: checks an email, verifies if it's a request for a ambulance transport
-        service, extracts all the useful informnd data attachments
+      description: reads emails and extracts the relevant information in a structured
+        format
     output:
       type: structured
       fields:
@@ -17,13 +17,13 @@ benchmark:
       - name: recipient
         type: string
         required: true
-      - name: is it a request?
+      - name: number of ambulance transports needed
         type: string
         required: true
-      - name: request details
+      - name: date when transports need to be delivered
         type: string
         required: true
-      - name: date
+      - name: medical-unit
         type: string
         required: true
   scoring:
@@ -32,12 +32,14 @@ benchmark:
     numeric_tolerance: 0.0
     case_sensitive: false
   data:
-    source: generate
+    source: local
     count: 10
-    seed_description: examples of emails from clients requesting for a ambulance transport
-      for a given patient, including relevant information and 1 or more attachments.
-      the output is a json with the relevant fields
+    seed_description: emails from clients requesting ambulance transport with the
+      data detailed in the extraction schema field names
+    path: .data/email-request/train.jsonl
   target:
     type: model
     provider: together
     model: google/gemma-4-31B-it
+    system_prompt: You are an expert information extractor for a medical transport
+      company
