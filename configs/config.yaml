@@ -63,6 +63,12 @@ task_groups:
     tasks:
       - "document_extraction"
   
+  audit:
+    description: "Medical transfer audit pipeline benchmarks"
+    tasks:
+      - "audit.policy_eval"
+      - "audit.recommendation"
+
   # Example of additional task groups you can define:
   # language_only:
   #   description: "Language evaluation tasks only"
