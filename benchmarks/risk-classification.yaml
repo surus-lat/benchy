@@ -1,0 +1,28 @@
+benchmark:
+  name: risk-classification
+  description: this benchmark classifies assets into risks categories
+  task:
+    type: classification
+    input:
+      type: text
+      description: reads and analyzes many assests and classifies each of them into
+        a risk category
+    output:
+      type: label
+      labels:
+      - low_risk
+      - mid_risk
+      - high_risk
+  scoring:
+    type: binary
+    case_sensitive: false
+  data:
+    source: local
+    count: 10
+    seed_description: crypto asset, grwoth stock, govermnent bond
+    path: .data/risk-classification/train.jsonl
+  target:
+    type: model
+    provider: together
+    model: google/gemma-4-31B-it
+    system_prompt: you are an expert asset risk classifier

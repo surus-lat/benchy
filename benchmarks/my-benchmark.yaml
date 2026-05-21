@@ -1,0 +1,38 @@
+benchmark:
+  name: my-benchmark
+  description: extract critical data from written forms
+  task:
+    type: extraction
+    input:
+      type: text
+      description: reads technical forms and extracts key information
+    output:
+      type: structured
+      fields:
+      - name: profession
+        type: string
+        required: true
+      - name: task
+        type: string
+        required: true
+      - name: date
+        type: string
+        required: true
+      - name: name
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: local
+    count: 2
+    seed_description: technical form about an ambulance status
+    path: .data/my-benchmark/train.jsonl
+  target:
+    type: model
+    provider: together
+    model: google/gemma-4-31B-it
+    system_prompt: you are an expert extractor

@@ -1,0 +1,34 @@
+benchmark:
+  name: email-extraction
+  description: extracts relevant information from emails
+  task:
+    type: extraction
+    input:
+      type: text
+      description: extracts useful information
+    output:
+      type: structured
+      fields:
+      - name: email
+        type: string
+        required: true
+      - name: username
+        type: string
+        required: true
+      - name: request
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: generate
+    count: 2
+    seed_description: emails from customers requesor a transport
+  target:
+    type: model
+    provider: together
+    model: google/gemma-4-31B-it
+    system_prompt: You are an expert email information extractor

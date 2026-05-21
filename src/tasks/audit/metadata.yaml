@@ -1,0 +1,16 @@
+name: audit
+display_name: Audit AI Pipeline
+description: Medical transfer audit pipeline — policy evaluation and recommendation synthesis
+
+capability_requirements:
+  requires_logprobs: optional
+  requires_multimodal: none
+  requires_schema: required
+  requires_files: none
+  requires_streaming: optional
+
+subtasks:
+  policy_eval:
+    description: Evaluates transfer data against 7 medical audit policies in a single batched LLM call, returning per-policy compliance status
+  recommendation:
+    description: Synthesizes policy evaluation results into a final audit recommendation (accept / reject / downgrade / ask_for_justification)
