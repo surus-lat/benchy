@@ -1,0 +1,38 @@
+benchmark:
+  name: form-extraction
+  description: extract relevant information from forms
+  task:
+    type: extraction
+    input:
+      type: text
+      description: reads technical forms and extracts structured information
+    output:
+      type: structured
+      fields:
+      - name: profesion
+        type: string
+        required: true
+      - name: date
+        type: string
+        required: true
+      - name: intent
+        type: string
+        required: true
+      - name: name
+        type: string
+        required: true
+  scoring:
+    type: per_field
+    partial_credit: true
+    numeric_tolerance: 0.0
+    case_sensitive: false
+  data:
+    source: local
+    count: 1
+    seed_description: technical form for ambulance maintanance
+    path: .data/form-extraction/train.jsonl
+  target:
+    type: model
+    provider: together
+    model: google/gemma-4-31B-it
+    system_prompt: you are an expert extractor
