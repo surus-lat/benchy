@@ -79,6 +79,15 @@ together:
     max_tokens: 2048
 ```
 
+**Alibaba Cloud (DashScope):**
+```yaml
+alibaba:
+  provider_config: alibaba
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+```
+
 **vLLM (two GPUs, multimodal):**
 ```yaml
 vllm:
