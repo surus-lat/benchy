@@ -771,9 +771,16 @@ This generates per-model summaries and leaderboard tables under `outputs/publish
 
 ## Documentation
 
+### Getting Started
+- `docs/tutorial-getting-started.md` - **Step-by-step: install → first evaluation result** (start here!)
+
 ### For Users
 - `docs/evaluating_models.md` - Running benchmarks and understanding results
 - `docs/CLI_DATASET_USAGE.md` - Creating tasks from the CLI without code
+- `docs/reference-cli.md` - **Complete CLI reference for all commands and flags**
+- `docs/reference-config.md` - YAML config format reference
+- `docs/reference-tasks.md` - All available tasks and what they measure
+- `docs/reference-output-artifacts.md` - Output file schemas (`run_outcome.json`, etc.)
 
 ### For Dataset Builders
 - `docs/DATASET_SPEC.md` - **Dataset specification for zero-code evaluation** (recommended read!)
@@ -784,6 +791,7 @@ This generates per-model summaries and leaderboard tables under `outputs/publish
 - `src/tasks/_template_handler/README.md` - Complete task examples and patterns
 
 ### Architecture & Internals
+- `docs/explanation-architecture.md` - **Why Benchy is designed the way it is** (design rationale)
 - `docs/architecture.md` - System design and component interaction
 - `docs/GENERATION_CONFIG.md` - Generation parameters and sampling
 - `docs/VLLM_VERSION_MANAGEMENT.md` - Managing vLLM versions
