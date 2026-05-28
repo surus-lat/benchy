@@ -37,6 +37,9 @@ runs, and fatal pipeline failures after run directory initialization.
 |-------|------|-------------|
 | `schema_version` | string | Artifact schema version (e.g., `"1.0"`) |
 | `benchy_version` | string | Benchy package version |
+| `model` | string | Model name used in the run |
+| `run_id` | string | Run identifier matching the output directory name |
+| `timestamp` | string | ISO 8601 timestamp when the run finished |
 | `status` | string | Overall run status: `passed`, `degraded`, `failed`, `partial` |
 | `exit_policy` | string | Exit policy used: `relaxed`, `smoke`, `strict` |
 | `exit_code` | int | Recommended process exit code (0 = success) |
@@ -49,6 +52,7 @@ runs, and fatal pipeline failures after run directory initialization.
 | `invocation` | object | Redacted CLI invocation context |
 | `artifacts` | object | Indexed paths to output files |
 | `errors` | array | Structured error records for fatal failures |
+| `diagnostics` | object | Aggregated diagnostic counts across all tasks |
 
 ### `git` object
 
@@ -152,6 +156,7 @@ individual task folders.
 {
   "run_id": "run_20260528_143012",
   "model": "gpt-4o-mini",
+  "timestamp": "2026-05-28T14:42:07",
   "tasks": {
     "spanish": {
       "status": "passed",
@@ -167,7 +172,8 @@ individual task folders.
       "valid_samples": 80,
       "error_rate": 0.0
     }
-  }
+  },
+  "diagnostics": {}
 }
 ```
 
@@ -198,62 +204,74 @@ Machine-readable output of the probe system. Written to
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `schema_version` | string | Artifact schema version (e.g., `"1.0"`) |
+| `benchy_version` | string | Benchy package version |
 | `model` | string | Model name |
-| `provider` | string | Provider name |
-| `probed_at` | string | ISO 8601 timestamp |
-| `profile` | string | Probe profile used (e.g., `quick`) |
-| `capabilities` | object | Detected capabilities (see below) |
-| `risk_flags` | array | Risk flags (see below) |
-| `schema_transports` | object | Structured output support details |
-| `probe_duration_s` | float | Total probe duration |
-
-### `capabilities` object
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `supports_multimodal` | bool | Image inputs accepted |
-| `supports_logprobs` | bool | Log probabilities available |
-| `supports_schema` | bool | Structured output supported and reliable |
-| `max_tokens_param_name` | string | `"max_tokens"` or `"max_completion_tokens"` |
-| `api_endpoint` | string | Detected endpoint type (`chat` or `completions`) |
+| `provider_type` | string | Provider name (e.g., `openai`, `vllm`) |
+| `base_url` | string | API base URL that was probed |
+| `run_id` | string | Run identifier |
+| `started_at` | string | ISO 8601 timestamp when the probe started |
+| `ended_at` | string | ISO 8601 timestamp when the probe finished |
+| `status` | string | Overall probe status: `passed`, `degraded`, `failed` |
+| `modes` | object | Request mode results (`chat`, `completions`, `logprobs`) |
+| `schema_transports` | object | Structured output support details (see below) |
+| `selected_api_endpoint` | string | Chosen request mode for this model (`chat` or `completions`) |
+| `selected_schema_transport` | string/null | Chosen schema transport (`structured_outputs`, `response_format`, or null) |
+| `api_endpoint_requested` | string | Endpoint mode requested in config (e.g., `auto`) |
+| `schema_transport_requested` | string | Schema transport requested in config |
+| `schema_transport_forced` | bool | Whether schema transport was forced via `--use-structured-outputs` |
+| `checks` | object | Per-check results (`access_readiness`, `multimodal`, `truncation`, `param_support`) |
+| `risk_flags` | object | Boolean risk flags (see below) |
+| `provider_fingerprint` | object | Server metadata collected during probe |
+| `errors` | array | Global errors encountered during probing |
+| `test_plan` | object | What checks were run and their pass criteria |
+| `known_blindspots` | object | Documented limitations of the probe |
 
 ### `schema_transports` object
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `structured_outputs` | string | `usable`, `accepted_but_unreliable`, `unsupported_or_failed`, `not_tested` |
-| `response_format` | string | Same vocabulary as above |
+| `structured_outputs` | object | Result for `structured_outputs` transport |
+| `response_format` | object | Result for `response_format` transport |
 
-### Risk flags vocabulary
+Each transport result has a `status` of `ok`, `degraded`, or `failed`.
 
-| Flag | Meaning |
-|------|---------|
-| `truncation_risk` | Model produces repetition patterns when hitting token limits |
-| `repetition_risk` | Model shows degenerate repetition behavior |
-| `schema_unreliable` | Structured output accepted by API but quality is unreliable |
-| `multimodal_unreliable` | Image inputs may not be reliably supported |
+### `risk_flags` object
+
+| Flag | Type | Meaning |
+|------|------|---------|
+| `truncation_risk` | bool | Model produces repetition patterns when hitting token limits |
+| `repetition_risk` | bool | Model shows degenerate repetition behavior |
+| `schema_unreliable` | bool | Structured output accepted by API but quality is unreliable |
+| `multimodal_unreliable` | bool | Image inputs may not be reliably supported |
 
 ### Example
 
 ```json
 {
+  "schema_version": "1.0",
+  "benchy_version": "0.1.0",
   "model": "gpt-4o-mini",
-  "provider": "openai",
-  "probed_at": "2026-05-28T14:30:00Z",
-  "profile": "quick",
-  "capabilities": {
-    "supports_multimodal": true,
-    "supports_logprobs": true,
-    "supports_schema": true,
-    "max_tokens_param_name": "max_tokens",
-    "api_endpoint": "chat"
+  "provider_type": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "run_id": "probe_20260528_143000",
+  "started_at": "2026-05-28T14:30:00Z",
+  "ended_at": "2026-05-28T14:30:42Z",
+  "status": "passed",
+  "selected_api_endpoint": "chat",
+  "selected_schema_transport": "structured_outputs",
+  "risk_flags": {
+    "truncation_risk": false,
+    "schema_unreliable": false,
+    "repetition_risk": false,
+    "multimodal_unreliable": false
   },
-  "risk_flags": [],
   "schema_transports": {
-    "structured_outputs": "usable",
-    "response_format": "usable"
+    "structured_outputs": {"status": "ok"},
+    "response_format": {"status": "ok"}
   },
-  "probe_duration_s": 42.1
+  "checks": {},
+  "errors": []
 }
 ```
 

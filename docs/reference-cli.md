@@ -8,6 +8,9 @@ Complete reference for the `benchy` command-line interface.
 |---------|-------------|
 | `benchy eval` | Run a benchmark evaluation |
 | `benchy probe` | Test model capabilities without a full evaluation |
+| `benchy tasks` | List available tasks and task groups |
+| `benchy providers` | List available providers (from `configs/providers/`) |
+| `benchy models` | List available model configs (from `configs/models/`) |
 | `benchy datasets` | List auto-discovered datasets in `.data/` |
 
 ---
@@ -29,7 +32,7 @@ One of the following is required to identify the model or system:
 | Flag | Description |
 |------|-------------|
 | `--config CONFIG` | Path or name of a config file (searches `configs/models/`, `configs/systems/`, etc.) |
-| `--provider PROVIDER` | Provider name: `openai`, `anthropic`, `together`, `google`, `vllm`, `api` |
+| `--provider PROVIDER` | Provider name: `openai`, `anthropic`, `together`, `alibaba`, `google`, `vllm` |
 | `--model-name MODEL` | Model identifier sent in API requests (e.g., `gpt-4o-mini`) |
 | `--model-path PATH` | Local model path for vLLM (triggers local inference) |
 | `--base-url URL` | OpenAI-compatible endpoint URL (e.g., `http://localhost:8000/v1`) |
@@ -54,7 +57,7 @@ Task names can be:
 
 | Flag | Description |
 |------|-------------|
-| `--dataset NAME` | Dataset name to use for tasks that support multiple datasets |
+| `--dataset NAME` | **(Deprecated)** Use `--dataset-name` instead |
 | `--dataset-name NAME` | Dataset name for zero-code CLI evaluation (HuggingFace or `.data/`) |
 | `--dataset-source SOURCE` | Source: `auto`, `huggingface`, `local`, `parquet`, `directory` (default: `auto`) |
 | `--dataset-split SPLIT` | HuggingFace dataset split (default: `test`) |
@@ -63,6 +66,7 @@ Task names can be:
 | `--dataset-id-field FIELD` | Sample ID field (auto-generated if missing) |
 | `--dataset-labels JSON` | Label mapping for classification: `'{"0": "No", "1": "Yes"}'` |
 | `--dataset-label-field FIELD` | Label field name (default: `label`) |
+| `--dataset-choices-field FIELD` | Field containing per-sample answer choices (for classification) |
 | `--dataset-schema-field FIELD` | Schema field in dataset (for structured extraction) |
 | `--dataset-schema-path PATH` | JSON file containing schema (for structured extraction) |
 | `--dataset-schema-json JSON` | Inline JSON schema string |
@@ -118,9 +122,12 @@ Template placeholder syntax in `--api-body-template`:
 | `--run-id NAME` | Custom run folder name (default: timestamp-based) |
 | `--output-path PATH` | Base path for output (default: `outputs/benchmark_outputs`) |
 | `--log-samples` | Force sample-level logging for all tasks |
+| `--no-log-samples` | Disable sample-level logging for all tasks |
+| `--batch-size INT` | Batch size for task runners (default: task-level default, usually 20) |
 | `--test` | Start vLLM server without running tasks (vLLM only) |
 | `--exit-policy POLICY` | Process exit behavior: `relaxed`, `smoke`, `strict` |
 | `--save-config PATH` | Save CLI parameters as a reusable YAML config file |
+| `--verbose` / `-v` | Enable verbose logging |
 
 ### Model parameters
 
@@ -129,6 +136,15 @@ Template placeholder syntax in `--api-body-template`:
 | `--max-tokens INT` | Maximum output tokens per request |
 | `--max-tokens-param-name NAME` | Override the max tokens parameter name (e.g., `max_completion_tokens`) |
 | `--temperature FLOAT` | Sampling temperature |
+| `--timeout INT` | Request timeout in seconds |
+| `--max-retries INT` | Maximum retry attempts for API requests |
+| `--max-concurrent INT` | Maximum concurrent API requests |
+| `--api-endpoint MODE` | Request mode: `auto` (default), `chat`, `completions` |
+| `--use-structured-outputs` / `--no-use-structured-outputs` | Enable/disable guided JSON schema via `extra_body.structured_outputs` (recommended for local vLLM) |
+| `--probe-mode MODE` | Capability detection: `skip` (default, use inline probe) or `auto` (run full probe before eval) |
+| `--compatibility MODE` | Incompatible task handling: `warn`, `skip`, or `error` |
+| `--organization TEXT` | Organization metadata stored in run artifacts |
+| `--url TEXT` | URL metadata stored in run artifacts |
 
 ### Exit policies
 
@@ -192,20 +208,21 @@ to debug configuration issues.
 ### Synopsis
 
 ```bash
-benchy probe [--provider PROVIDER] [--model-name MODEL] [OPTIONS]
+benchy probe --model-name MODEL [--provider PROVIDER] [OPTIONS]
 ```
 
 ### Options
 
 | Flag | Description |
 |------|-------------|
-| `--provider PROVIDER` | Provider name (e.g., `openai`, `together`) |
-| `--model-name MODEL` | Model identifier |
+| `--model-name MODEL` | **(Required)** Model identifier to probe |
+| `--provider PROVIDER` | Provider name: `openai`, `anthropic`, `together`, `alibaba`, `vllm` |
 | `--base-url URL` | OpenAI-compatible endpoint URL |
 | `--api-key KEY` | Explicit API key |
 | `--api-key-env VAR` | Environment variable for the API key |
 | `--profile PROFILE` | Probe profile: `quick` (default, 30–60s) |
-| `--global-timeout INT` | Maximum probe duration in seconds (default: 120) |
+| `--global-timeout INT` | Maximum probe duration in seconds (default: 180) |
+| `--image-max-edge INT` | Max image edge for multimodal capability test (optional) |
 | `--run-id NAME` | Custom run folder name |
 | `--output-path PATH` | Base path for probe output (default: `outputs/probe_outputs`) |
 
@@ -237,6 +254,88 @@ benchy probe --base-url http://localhost:8001/v1 --model-name mymodel
 # Probe with longer timeout
 benchy probe --provider openai --model-name gpt-5-mini \
   --profile quick --global-timeout 180
+```
+
+---
+
+## `benchy tasks`
+
+List available tasks and task groups discovered by Benchy.
+
+### Synopsis
+
+```bash
+benchy tasks [OPTIONS]
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--verbose` / `-v` | Expand task groups to show individual subtasks |
+| `--json` | Machine-readable JSON output |
+
+### Examples
+
+```bash
+# List all task groups and tasks
+benchy tasks
+
+# Show subtasks within each group
+benchy tasks --verbose
+
+# JSON output for scripts
+benchy tasks --json
+```
+
+---
+
+## `benchy providers`
+
+List available providers discovered from `configs/providers/`.
+
+### Synopsis
+
+```bash
+benchy providers [OPTIONS]
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Machine-readable JSON output |
+
+### Examples
+
+```bash
+benchy providers
+benchy providers --json
+```
+
+---
+
+## `benchy models`
+
+List available model configs discovered from `configs/models/`.
+
+### Synopsis
+
+```bash
+benchy models [OPTIONS]
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Machine-readable JSON output |
+
+### Examples
+
+```bash
+benchy models
+benchy models --json
 ```
 
 ---
@@ -281,6 +380,7 @@ benchy datasets --json
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `TOGETHER_API_KEY` | Together AI API key |
 | `GOOGLE_API_KEY` | Google AI API key |
+| `DASHSCOPE_API_KEY` | Alibaba Cloud DashScope API key |
 | `SURUS_API_KEY` | Surus AI API key |
 | `BENCHY_ENABLE_PREFECT` | Set to `1` to enable Prefect workflow tracking |
 | `BENCHY_EXTRAS` | Comma-separated extras for `setup.sh` (e.g., `local,translation`) |
