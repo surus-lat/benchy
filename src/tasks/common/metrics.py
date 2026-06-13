@@ -250,8 +250,78 @@ class PearsonCorrelation:
         
         if denominator == 0:
             return {"pearson": 0.0}
-        
+
         corr = numerator / denominator
         if not math.isfinite(corr):
             return {"pearson": 0.0}
         return {"pearson": max(-1.0, min(1.0, corr))}
+
+
+@dataclass(frozen=True)
+class WordErrorRate(ScalarMetric):
+    """Word Error Rate (WER) for transcription tasks.
+
+    Lower is better; 1.0 means no overlap. Returns 1.0 (worst score) for
+    empty/None inputs and when jiwer raises unexpectedly.
+    """
+
+    name: str = "wer"
+
+    def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        if not prediction or not expected:
+            return 1.0
+        try:
+            import jiwer
+        except ImportError as exc:
+            raise ImportError(
+                "jiwer is required for WordErrorRate. Install with: pip install 'benchy[transcription]'"
+            ) from exc
+        try:
+            return float(jiwer.wer(str(expected), str(prediction)))
+        except Exception:
+            return 1.0
+
+    def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
+        import math
+        scores = [
+            entry.get(self.name)
+            for entry in values
+            if isinstance(entry.get(self.name), (int, float))
+            and not math.isnan(entry.get(self.name))
+        ]
+        return {self.name: sum(scores) / len(scores) if scores else 1.0}
+
+
+@dataclass(frozen=True)
+class CharErrorRate(ScalarMetric):
+    """Character Error Rate (CER) for transcription tasks.
+
+    Lower is better; 1.0 means no overlap. Returns 1.0 (worst score) for
+    empty/None inputs and when jiwer raises unexpectedly.
+    """
+
+    name: str = "cer"
+
+    def compute(self, prediction: Any, expected: Any, sample: Dict[str, Any]) -> float:
+        if not prediction or not expected:
+            return 1.0
+        try:
+            import jiwer
+        except ImportError as exc:
+            raise ImportError(
+                "jiwer is required for CharErrorRate. Install with: pip install 'benchy[transcription]'"
+            ) from exc
+        try:
+            return float(jiwer.cer(str(expected), str(prediction)))
+        except Exception:
+            return 1.0
+
+    def aggregate(self, values: List[Dict[str, Any]]) -> Dict[str, Any]:
+        import math
+        scores = [
+            entry.get(self.name)
+            for entry in values
+            if isinstance(entry.get(self.name), (int, float))
+            and not math.isnan(entry.get(self.name))
+        ]
+        return {self.name: sum(scores) / len(scores) if scores else 1.0}

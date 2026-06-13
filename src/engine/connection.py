@@ -113,6 +113,15 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["chat"],
     ),
+    "openai_audio": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=False,
+        supports_streaming=False,
+        supports_audio=True,
+        request_modes=["audio"],
+    ),
 }
 
 _CAPABILITY_FIELDS = [
@@ -121,6 +130,7 @@ _CAPABILITY_FIELDS = [
     "supports_schema",
     "supports_files",
     "supports_streaming",
+    "supports_audio",
     "supports_batch",
 ]
 
@@ -439,7 +449,11 @@ def get_interface_for_provider(
         # Use generic GoogleInterface (similar to OpenAIInterface pattern)
         from ..interfaces.google.google_interface import GoogleInterface
         return GoogleInterface(connection_info, model_name)
-    
+
+    elif provider_type == "openai_audio":
+        from ..interfaces.openai_audio_interface import OpenAIAudioInterface
+        return OpenAIAudioInterface(connection_info, model_name)
+
     else:
         # Use OpenAIInterface for vllm/openai-compatible providers.
         from ..interfaces.openai_interface import OpenAIInterface
