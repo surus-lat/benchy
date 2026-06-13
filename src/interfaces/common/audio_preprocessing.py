@@ -23,3 +23,16 @@ def save_audio_array(array: np.ndarray, sampling_rate: int, output_path: Path) -
     except ImportError:
         from scipy.io.wavfile import write as wav_write
         wav_write(str(output_path), sampling_rate, (np.array(array) * 32767).astype(np.int16))
+
+
+def save_audio_bytes(data: bytes, output_path: Path) -> None:
+    """Persist raw audio file bytes (e.g. a WAV/FLAC payload from HF parquet).
+
+    Skips if the file already exists. Used when datasets are streamed with
+    ``Audio(decode=False)`` so we avoid pulling in heavy decoders (torchcodec,
+    torch) just to round-trip what's already a valid audio container.
+    """
+    if output_path.exists():
+        return
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(data)

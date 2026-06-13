@@ -6,9 +6,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from datasets import load_dataset
+from datasets import Audio, load_dataset
 
-from ...interfaces.common.audio_preprocessing import save_audio_array
+from ...interfaces.common.audio_preprocessing import save_audio_bytes
 from ._transcription_handler import TranscriptionHandler
 
 logger = logging.getLogger(__name__)
@@ -44,17 +44,15 @@ class FleursPtBr(TranscriptionHandler):
             self.dataset_name,
             self.dataset_config,
             split=self.split,
-            trust_remote_code=True,
         )
+        # Stream raw audio bytes instead of decoded arrays — avoids pulling in
+        # torchcodec/torch just to re-encode bytes that are already valid WAV.
+        ds = ds.cast_column("audio", Audio(decode=False))
 
         samples: List[Dict[str, Any]] = []
         for item in ds:
             audio_path = self.data_dir / f"{item['id']}.wav"
-            save_audio_array(
-                item["audio"]["array"],
-                item["audio"]["sampling_rate"],
-                audio_path,
-            )
+            save_audio_bytes(item["audio"]["bytes"], audio_path)
             samples.append(
                 {
                     "id": f"{self.locale}_{item['id']}",

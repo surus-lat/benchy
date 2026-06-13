@@ -27,26 +27,36 @@ def test_load_dataset_returns_expected_sample_shape(tmp_path: Path, monkeypatch)
     fake_items = [
         {
             "id": 1,
-            "audio": {"array": [0.0, 0.1, 0.2], "sampling_rate": 16000},
+            "audio": {"bytes": b"RIFF....WAVE1", "path": "1.wav"},
             "transcription": "hola mundo",
         },
         {
             "id": 2,
-            "audio": {"array": [0.3, 0.2, 0.1], "sampling_rate": 16000},
+            "audio": {"bytes": b"RIFF....WAVE2", "path": "2.wav"},
             "transcription": "buenos dias",
         },
     ]
 
+    class _Castable:
+        def __init__(self, items):
+            self._items = items
+
+        def cast_column(self, *args, **kwargs):  # noqa: ARG002
+            return self
+
+        def __iter__(self):
+            return iter(self._items)
+
     saved_paths: list[Path] = []
 
-    def fake_save(array, sampling_rate, output_path):  # noqa: ARG001
+    def fake_save(data, output_path):  # noqa: ARG001
         saved_paths.append(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(b"wav")
+        output_path.write_bytes(data)
 
     # Patch the import sites used inside the subtask module, not the origin module.
-    with patch("src.tasks.transcription.fleurs_es_latam.load_dataset", return_value=fake_items), \
-         patch("src.tasks.transcription.fleurs_es_latam.save_audio_array", side_effect=fake_save):
+    with patch("src.tasks.transcription.fleurs_es_latam.load_dataset", return_value=_Castable(fake_items)), \
+         patch("src.tasks.transcription.fleurs_es_latam.save_audio_bytes", side_effect=fake_save):
         task = FleursEsLatam()
         task.data_dir = tmp_path  # redirect cache into pytest tmp_path
         samples = task.load_dataset()
