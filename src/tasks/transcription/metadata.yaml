@@ -1,0 +1,48 @@
+name: transcription
+display_name: Transcription
+description: Automatic speech recognition (ASR) evaluation on Latin American Spanish and Brazilian Portuguese
+
+long_description: |
+  Speech-to-text evaluation for the LatamBoard leaderboard. Models are scored on
+  the FLEURS test split for Latin American Spanish (es_419) and Brazilian
+  Portuguese (pt_br) using Word Error Rate (WER) as the primary metric. Each
+  subtask streams the locale's audio from HuggingFace, caches it as WAV under
+  .data/transcription/<locale>/, and ships it to the configured audio endpoint
+  (e.g. OpenAI's /v1/audio/transcriptions for whisper-1). Predictions and
+  references are lowercased and whitespace-normalized before scoring.
+
+capability_requirements:
+  requires_audio: required
+  requires_logprobs: none
+  requires_multimodal: none
+  requires_schema: none
+  requires_files: none
+  requires_streaming: optional
+
+subtasks:
+  fleurs_es_latam:
+    description: FLEURS Latin American Spanish (es_419) test split
+    dataset_url: https://huggingface.co/datasets/google/fleurs
+    locale: es_419
+    language: es
+  fleurs_pt_br:
+    description: FLEURS Brazilian Portuguese (pt_br) test split
+    dataset_url: https://huggingface.co/datasets/google/fleurs
+    locale: pt_br
+    language: pt
+
+metrics:
+  primary: wer
+  secondary:
+    - cer
+    - exact_match
+
+  descriptions:
+    wer: "Word Error Rate (0-1, lower is better; 1.0 indicates no overlap)"
+    cer: "Character Error Rate (0-1, lower is better; 1.0 indicates no overlap)"
+    exact_match: "Fraction of predictions that exactly match the reference after normalization"
+
+notes: |
+  Audio is cached to disk on first run; subsequent runs reuse the WAVs.
+  Per-locale WER/CER are surfaced under `per_locale` in the aggregated metrics.
+  Install audio deps with: pip install 'benchy[transcription]'
