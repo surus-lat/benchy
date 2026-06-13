@@ -56,6 +56,10 @@ translation = [
     "sacrebleu>=2.3.0",
     "unbabel-comet>=2.0.0"
 ]
+transcription = [
+    "jiwer>=3.0.0",
+    "soundfile>=0.12.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
