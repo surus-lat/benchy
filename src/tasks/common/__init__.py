@@ -87,6 +87,8 @@ from .metrics import (
     MultipleChoiceAccuracy,
     MeanSquaredError,
     PearsonCorrelation,
+    WordErrorRate,
+    CharErrorRate,
 )
 
 # Image metric utilities
@@ -171,6 +173,8 @@ __all__ = [
     "MultipleChoiceAccuracy",
     "MeanSquaredError",
     "PearsonCorrelation",
+    "WordErrorRate",
+    "CharErrorRate",
     # Image metric utilities
     "decode_base64_image",
     "coerce_prediction_to_image_bytes",
