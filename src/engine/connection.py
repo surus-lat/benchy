@@ -370,8 +370,21 @@ def get_interface_for_provider(
         model_name: Name of the model
         
     Returns:
-        Interface instance
+        Interface instance (or an Adapter — same shape from the caller's
+        perspective; BenchmarkRunner consumes either via the prepare_request
+        + generate_batch contract).
     """
+    # Adapter routing — see docs/superpowers/specs/2026-06-19-adapter-layer-design.md.
+    # BaseAdapter and BaseInterface have the same surface so the Task layer
+    # doesn't care which it gets. Import is lazy to break a package init cycle
+    # (engine package init imports connection, which would import adapters,
+    # which would import engine.protocols).
+    adapter_name = connection_info.get("adapter")
+    if adapter_name:
+        from src.adapters import get_adapter
+        adapter_config = connection_info.get(adapter_name, {})
+        return get_adapter(adapter_name, model_name, adapter_config)
+
     if provider_type == "api":
         from ..interfaces.generic_api_interface import GenericAPIInterface
         api_config = {
