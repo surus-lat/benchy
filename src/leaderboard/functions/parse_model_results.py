@@ -64,25 +64,13 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
                 config_data = yaml.safe_load(f)
 
             model_config = config_data.get("model", {})
-
-            # Extract model name from config
             full_model_name = model_config.get("name", model_dir.name)
-
-            # Extract organization if explicitly provided
             organization = model_config.get("organization")
-
-            # Extract URL if provided
             url = model_config.get("url")
 
-            # Extract publisher and model name
-            # Priority: 1) organization field, 2) split from model name, 3) unknown
             if organization:
                 publisher = organization
-                # If organization is set, model_name is just the name part
-                if "/" in full_model_name:
-                    model_name = full_model_name.split("/")[1]
-                else:
-                    model_name = full_model_name
+                model_name = full_model_name.split("/")[1] if "/" in full_model_name else full_model_name
             elif "/" in full_model_name:
                 publisher = full_model_name.split("/")[0]
                 model_name = full_model_name.split("/")[1]
@@ -95,17 +83,16 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
                 "publisher": publisher,
                 "full_model_name": full_model_name,
                 "organization": organization,
-                "url": url
+                "url": url,
             }
-
         except Exception as e:
             print(f"    Warning: Error reading run_config.yaml from {model_dir}: {e}")
 
-    # Fallback: try run_outcome.json
+    # Fallback: read from run_outcome.json (canonical since run_config.yaml was removed)
     outcome_file = model_dir / "run_outcome.json"
     if outcome_file.exists():
         try:
-            with open(outcome_file, 'r') as f:
+            with open(outcome_file, "r") as f:
                 outcome_data = json.load(f)
             full_model_name = outcome_data.get("model", model_dir.name)
             if "/" in full_model_name:
@@ -124,8 +111,7 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
         except Exception as e:
             print(f"    Warning: Error reading run_outcome.json from {model_dir}: {e}")
 
-    # Final fallback: use directory name
-    print(f"    Warning: No config files found in {model_dir}")
+    print(f"    Warning: No run_config.yaml or run_outcome.json found in {model_dir}")
     return {
         "model_name": model_dir.name,
         "publisher": "unknown",
@@ -236,7 +222,11 @@ def extract_scores_from_results(results_data: Dict, task_name: str = None, norma
 
 
 def _load_latest_summary(task_dir: Path) -> Optional[Dict[str, Any]]:
-    """Load the most recent *_summary.json file from a task directory."""
+    """Load the most recent *_summary.json file from a task directory.
+
+    Excludes *_performance_summary.json — that file has a different schema
+    and causes silent zero-score failures if loaded here.
+    """
     summary_files = sorted(
         f for f in task_dir.glob("*_summary.json")
         if not f.name.endswith("_performance_summary.json")
