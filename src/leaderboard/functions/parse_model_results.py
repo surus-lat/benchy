@@ -58,64 +58,81 @@ def extract_model_info_from_config(model_dir: Path) -> Dict[str, str]:
     """
     config_file = model_dir / "run_config.yaml"
     
-    if not config_file.exists():
-        print(f"    Warning: run_config.yaml not found in {model_dir}")
-        return {
-            "model_name": model_dir.name,
-            "publisher": "unknown",
-            "full_model_name": model_dir.name,
-            "organization": None,
-            "url": None
-        }
-    
-    try:
-        with open(config_file, 'r') as f:
-            config_data = yaml.safe_load(f)
-        
-        model_config = config_data.get("model", {})
-        
-        # Extract model name from config
-        full_model_name = model_config.get("name", model_dir.name)
-        
-        # Extract organization if explicitly provided
-        organization = model_config.get("organization")
-        
-        # Extract URL if provided
-        url = model_config.get("url")
-        
-        # Extract publisher and model name
-        # Priority: 1) organization field, 2) split from model name, 3) unknown
-        if organization:
-            publisher = organization
-            # If organization is set, model_name is just the name part
-            if "/" in full_model_name:
+    if config_file.exists():
+        try:
+            with open(config_file, 'r') as f:
+                config_data = yaml.safe_load(f)
+
+            model_config = config_data.get("model", {})
+
+            # Extract model name from config
+            full_model_name = model_config.get("name", model_dir.name)
+
+            # Extract organization if explicitly provided
+            organization = model_config.get("organization")
+
+            # Extract URL if provided
+            url = model_config.get("url")
+
+            # Extract publisher and model name
+            # Priority: 1) organization field, 2) split from model name, 3) unknown
+            if organization:
+                publisher = organization
+                # If organization is set, model_name is just the name part
+                if "/" in full_model_name:
+                    model_name = full_model_name.split("/")[1]
+                else:
+                    model_name = full_model_name
+            elif "/" in full_model_name:
+                publisher = full_model_name.split("/")[0]
                 model_name = full_model_name.split("/")[1]
             else:
+                publisher = "unknown"
                 model_name = full_model_name
-        elif "/" in full_model_name:
-            publisher = full_model_name.split("/")[0]
-            model_name = full_model_name.split("/")[1]
-        else:
-            publisher = "unknown"
-            model_name = full_model_name
-        
-        return {
-            "model_name": model_name,
-            "publisher": publisher,
-            "full_model_name": full_model_name,
-            "organization": organization,
-            "url": url
-        }
-        
-    except Exception as e:
-        print(f"    Warning: Error reading run_config.yaml from {model_dir}: {e}")
-        return {
-            "model_name": model_dir.name,
-            "publisher": "unknown",
-            "full_model_name": model_dir.name,
-            "organization": None,
-            "url": None
-        }
+
+            return {
+                "model_name": model_name,
+                "publisher": publisher,
+                "full_model_name": full_model_name,
+                "organization": organization,
+                "url": url
+            }
+
+        except Exception as e:
+            print(f"    Warning: Error reading run_config.yaml from {model_dir}: {e}")
+
+    # Fallback: try run_outcome.json
+    outcome_file = model_dir / "run_outcome.json"
+    if outcome_file.exists():
+        try:
+            with open(outcome_file, 'r') as f:
+                outcome_data = json.load(f)
+            full_model_name = outcome_data.get("model", model_dir.name)
+            if "/" in full_model_name:
+                publisher = full_model_name.split("/")[0]
+                model_name = full_model_name.split("/")[1]
+            else:
+                publisher = "unknown"
+                model_name = full_model_name
+            return {
+                "model_name": model_name,
+                "publisher": publisher,
+                "full_model_name": full_model_name,
+                "organization": None,
+                "url": None,
+            }
+        except Exception as e:
+            print(f"    Warning: Error reading run_outcome.json from {model_dir}: {e}")
+
+    # Final fallback: use directory name
+    print(f"    Warning: No config files found in {model_dir}")
+    return {
+        "model_name": model_dir.name,
+        "publisher": "unknown",
+        "full_model_name": model_dir.name,
+        "organization": None,
+        "url": None,
+    }
 
 def extract_metric_from_task_data(task_data: Dict, task_name: str = None, normalize_tasks: list = None) -> tuple[Optional[str], Optional[float], Optional[float]]:
     """Extract main metric, score, and stderr from task data."""
@@ -220,7 +237,10 @@ def extract_scores_from_results(results_data: Dict, task_name: str = None, norma
 
 def _load_latest_summary(task_dir: Path) -> Optional[Dict[str, Any]]:
     """Load the most recent *_summary.json file from a task directory."""
-    summary_files = sorted(task_dir.glob("*_summary.json"))
+    summary_files = sorted(
+        f for f in task_dir.glob("*_summary.json")
+        if not f.name.endswith("_performance_summary.json")
+    )
     if not summary_files:
         return None
     summary_file = summary_files[-1]
