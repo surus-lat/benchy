@@ -62,6 +62,7 @@ turn.
 | Skill | Purpose |
 |---|---|
 | [oracle-plan](./oracle-plan/SKILL.md) | Bidirectional algorithm to convert between a working implementation and a battle-tested design plan. Use for derived design docs and zero-wrong-turn plan execution. |
+| [best-part-is-no-part](./best-part-is-no-part/SKILL.md) | Audit design proposals against the principle that the cheapest, simplest part is the one you don't have — while preserving every capability. Catches gold plating disguised as best practice. |
 
 ## Authoring a new skill
 
