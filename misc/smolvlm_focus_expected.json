@@ -1,0 +1,178 @@
+{
+  "model": "smolvlm",
+  "description": "Expected behavior of smolvlm when identifying foreground and background elements given an image and focus parameter.",
+  "cases": [
+    {
+      "case_id": "BR-01",
+      "foreground": {
+        "objects": ["human"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-02",
+      "foreground": {
+        "objects": ["bottle", "sand", "flower"]
+      },
+      "background": {
+        "objects": ["background"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-03",
+      "foreground": {
+        "objects": ["dish"]
+      },
+      "background": {
+        "objects": ["background"],
+        "notes": "partially good"
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-06",
+      "foreground": {
+        "objects": ["person"]
+      },
+      "background": {
+        "objects": ["background"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-07",
+      "foreground": {
+        "objects": ["people"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-08",
+      "foreground": {
+        "objects": ["sign"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-09",
+      "foreground": {
+        "objects": ["cat"],
+        "notes": "animal also works"
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-10",
+      "foreground": null,
+      "background": {
+        "objects": ["background"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-11",
+      "foreground": {
+        "objects": ["tree", "base"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-12",
+      "foreground": {
+        "objects": ["animal"]
+      },
+      "background": {
+        "objects": ["background"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-13",
+      "foreground": {
+        "objects": ["animal"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-14",
+      "foreground": {
+        "objects": ["person"]
+      },
+      "background": {
+        "objects": ["background"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-15",
+      "foreground": {
+        "objects": ["person"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-16",
+      "foreground": {
+        "objects": ["coffee equipment", "mug", "table", "coffee bag"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-17",
+      "foreground": {
+        "objects": ["couch", "table", "plant", "flowerpot", "cushion", "floor", "carpet"]
+      },
+      "background": {
+        "objects": ["wall", "ceiling"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-18",
+      "foreground": null,
+      "background": {
+        "objects": ["background"]
+      },
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-19",
+      "foreground": {
+        "objects": ["person", "table", "bowl", "bubbles"],
+        "notes": "imperfect"
+      },
+      "background": {
+        "objects": ["floor", "ceiling", "walls", "paper"],
+        "notes": "imperfect"
+      },
+      "performance": "imperfect"
+    },
+    {
+      "case_id": "BR-20",
+      "foreground": {
+        "objects": ["head bubble"]
+      },
+      "background": null,
+      "performance": "perfect"
+    },
+    {
+      "case_id": "BR-21",
+      "foreground": {
+        "objects": ["people", "table", "toy"]
+      },
+      "background": {
+        "objects": ["wall", "window", "bookshelf", "floor"]
+      },
+      "performance": "perfect"
+    }
+  ]
+}
