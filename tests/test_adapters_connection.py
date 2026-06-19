@@ -52,3 +52,43 @@ def test_no_adapter_field_falls_through_to_legacy_routing():
             # that's fine — we only care that get_adapter wasn't touched.
             pass
     gated.assert_not_called()
+
+
+def test_voxtral_yaml_resolves_through_adapter_path():
+    """Loading the voxtral YAML wires connection_info to the voxtral_chat adapter."""
+    import yaml
+    from pathlib import Path
+
+    cfg_path = Path("configs/models/voxtral-mini-4b-transformers.yaml")
+    model_config = yaml.safe_load(cfg_path.read_text())
+
+    assert model_config.get("adapter") == "voxtral_chat", (
+        "Task 6 should have set adapter: voxtral_chat in the YAML"
+    )
+
+    from src.adapters.voxtral_chat import Adapter as VoxtralAdapter
+
+    connection_info = dict(model_config)
+    result = get_interface_for_provider(
+        "huggingface", connection_info, model_config["model"]["name"]
+    )
+    assert isinstance(result, VoxtralAdapter)
+
+
+def test_qwen3_asr_yaml_resolves_through_adapter_path():
+    """Same shape for Qwen3-ASR."""
+    import yaml
+    from pathlib import Path
+
+    cfg_path = Path("configs/models/qwen3-asr-0.6b-transformers.yaml")
+    model_config = yaml.safe_load(cfg_path.read_text())
+
+    assert model_config.get("adapter") == "qwen3_asr_chat"
+
+    from src.adapters.qwen3_asr_chat import Adapter as Qwen3Adapter
+
+    connection_info = dict(model_config)
+    result = get_interface_for_provider(
+        "huggingface", connection_info, model_config["model"]["name"]
+    )
+    assert isinstance(result, Qwen3Adapter)
