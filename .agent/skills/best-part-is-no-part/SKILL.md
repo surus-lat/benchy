@@ -64,10 +64,15 @@ plating. Cut it. Keep the capability.
   actual production incident, the historical incident is the
   justification — keep it, document the why.
 
-## The four lenses
+## The five lenses
 
 For each part you are tempted to add, ask each question in order. If
 any answer is yes, the part is suspect.
+
+Lenses 1–4 ask: *is the work already done by something present?*
+Lens 5 asks the consolidation question: *could many proposed parts
+be one part instead?* Both shapes reduce the part count without
+losing capability.
 
 ### 1. Does Python the language already provide this?
 
@@ -113,6 +118,43 @@ them — Python's duck typing is the unification.
 
 Inheritance and wrappers are for **shared implementation**, not for
 **shared shape**. Reach for them only when there is code to share.
+
+### 5. Can multiple proposed parts be combined into one part?
+
+The Musk reference: 10 tubes welded into a frame become 1 cast tube.
+A gigacast replaces 70 stamped panels. A structured wire harness
+replaces dozens of hand-built ones. Fewer, more sophisticated parts
+beat many simple parts when the small parts always travel together —
+each interface between parts is a failure point, a thing to test, a
+thing to keep in sync.
+
+The software cognate: when N proposed parts always run in sequence,
+always carry the same data, and are never invoked independently, they
+are one part fragmented across artificial boundaries. Combine them.
+
+| Multiple parts | One sophisticated part |
+|---|---|
+| `parse()` → `validate()` → `normalize()` always called in that order, results never used between steps | One `from_input(raw) -> parsed` method that does all three |
+| `connect()` → `authenticate()` → `prepare_session()` always called together | One `start_session()` |
+| `Logger`, `MetricsCollector`, `Tracer` each wrapping the same calls | One `Observer` that does all three |
+| 10 `ResultRowA`, `ResultRowB`, … dataclasses differing only in one field | One dataclass with a `kind: Enum` field, or a `dict`/`TypedDict` |
+| `WhisperWrapperAdapter`, `OpenAIWrapperAdapter`, `HTTPWrapperAdapter` all wrapping an existing Interface the same way | One `InterfaceWrapperAdapter(interface)` that takes any Interface (or, better, no wrapper at all — see Lens 4) |
+| Per-step exception types `ParseError`, `ValidateError`, `NormalizeError` that all mean "input was bad" | One `InputError` with a `step` field |
+| A factory + a builder + a config + an instance, all for one object | The constructor |
+
+**The risk to manage:** consolidation can degrade into god objects.
+"Single responsibility" does not mean "single line of code" — it means
+"single reason to change." A method that runs three sub-steps that
+always change together has one responsibility, even at 40 lines. A
+class that handles both billing and authentication has two
+responsibilities, no matter how short its methods are.
+
+Apply consolidation when the parts share a reason to change. Refuse it
+when they don't.
+
+**The diagnostic:** if removing one of the N parts would never make
+sense in isolation — if the part has no consumer that uses just it —
+the part is a fragment, and consolidation is the right move.
 
 ## Worked example: the adapter layer
 
@@ -179,6 +221,8 @@ This is the principle correctly applied.
 | "Tests are easier with this abstraction." | Untested code is the bigger problem. If the existing structure is hard to test, write the test against the existing structure and only abstract when a real test case demands it. |
 | "It's defensive programming." | Defensive against what? Name the failure mode. If you can't name it concretely, the defense is speculative and the part is gold plating. |
 | "Premature optimization is bad but this isn't optimization." | Premature *abstraction* is the same disease. Both add complexity for speculative future benefit. |
+| "Each method should do one thing — keep them tiny." | Single responsibility is about *reasons to change*, not *lines of code*. A 30-line method that runs three steps that always change together has one responsibility. Splitting it into three methods does not reduce responsibility — it fragments it. |
+| "Combining these would create a god object." | Only if you combine parts with different reasons to change. Parts that always travel together and always change together belong in one place. Test: does any consumer ever use just one of them? If no, fragmentation is the bug. |
 | "The cut capability wasn't really needed." | Stop. This is the trap. The principle says keep capabilities AND remove parts. If you find yourself arguing this, you have left the principle and are doing feature removal. Go back. |
 
 ## Red flags
@@ -198,8 +242,15 @@ Self-check signals that you are about to add a part you should not:
   have independently.
 - You catch yourself listing capabilities the new part "could
   provide" rather than capabilities it must provide today.
+- A sequence of N methods is always called in the same order, and no
+  consumer ever calls any single one in isolation.
+- N classes / N dataclasses / N enum variants differ only in a single
+  string or constant.
+- You feel the urge to write a "Coordinator" or "Orchestrator" whose
+  job is to call the small parts in the right order — the right order
+  IS the part.
 
-When any red flag fires, pause and walk the four lenses above before
+When any red flag fires, pause and walk the five lenses above before
 proceeding.
 
 ## The audit, condensed
@@ -239,10 +290,13 @@ When in the middle of a design session, the user (or you, mid-thought)
 can call: "audit this under best-part-is-no-part." Then:
 
 1. List every proposed part as a row in the audit table.
-2. For each row, walk the four lenses in order. Stop at the first yes.
-3. Re-check the rationalizations table for any cut you are about to
+2. For each row, walk lenses 1–4 in order. Stop at the first yes.
+3. After the per-part pass, run lens 5 across the *remaining* parts:
+   look for clusters that always travel together and consider
+   collapsing them into one more sophisticated part.
+4. Re-check the rationalizations table for any cut you are about to
    reverse.
-4. Re-check the red flags before committing.
-5. Restate every capability the original proposal claimed. Confirm the
+5. Re-check the red flags before committing.
+6. Restate every capability the original proposal claimed. Confirm the
    reduced design still delivers each one — naming the alternative
    delivery mechanism explicitly.
