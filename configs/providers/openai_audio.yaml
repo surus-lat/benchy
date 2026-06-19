@@ -1,0 +1,22 @@
+# OpenAI Whisper / audio transcription provider configuration.
+# Used by models that hit the /v1/audio/transcriptions endpoint.
+
+provider_type: openai_audio
+base_url: "https://api.openai.com/v1"
+api_key_env: "OPENAI_API_KEY"
+timeout: 120
+max_retries: 3
+
+# Rate limiting to avoid 429 errors. Whisper is per-minute-rate-limited;
+# keep concurrency low for safety.
+max_concurrent: 5
+
+# Provider capability flags for compatibility checks
+capabilities:
+  supports_audio: true
+  supports_multimodal: false
+  supports_schema: false
+  supports_files: false
+  supports_logprobs: false
+  supports_streaming: false
+  request_modes: ["audio"]

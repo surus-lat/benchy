@@ -19,6 +19,7 @@ class InterfaceCapabilities:
     supports_schema: bool = False
     supports_files: bool = False
     supports_streaming: bool = False
+    supports_audio: bool = False
     supports_batch: bool = True
     request_modes: Optional[List[str]] = None
 
@@ -40,6 +41,7 @@ class TaskCapabilityRequirements:
     requires_files: RequirementLevel = RequirementLevel.OPTIONAL
     requires_logprobs: RequirementLevel = RequirementLevel.OPTIONAL
     requires_streaming: RequirementLevel = RequirementLevel.OPTIONAL
+    requires_audio: RequirementLevel = RequirementLevel.OPTIONAL
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ def parse_interface_capabilities(
         supports_schema=payload.get("supports_schema", default_caps.supports_schema),
         supports_files=payload.get("supports_files", default_caps.supports_files),
         supports_streaming=payload.get("supports_streaming", default_caps.supports_streaming),
+        supports_audio=payload.get("supports_audio", default_caps.supports_audio),
         supports_batch=payload.get("supports_batch", default_caps.supports_batch),
         request_modes=payload.get("request_modes", default_caps.request_modes),
     )
@@ -304,6 +307,7 @@ def get_task_requirements(task: BaseTask) -> TaskCapabilityRequirements:
     requires_multimodal = getattr(task, "requires_multimodal", False)
     requires_schema = getattr(task, "requires_schema", False)
     requires_files = getattr(task, "requires_files", False)
+    requires_audio = getattr(task, "requires_audio", False)
     answer_type = getattr(task, "answer_type", None)
     requires_logprobs = getattr(task, "requires_logprobs", answer_type == "multiple_choice")
 
@@ -313,6 +317,7 @@ def get_task_requirements(task: BaseTask) -> TaskCapabilityRequirements:
         requires_files=RequirementLevel.REQUIRED if requires_files else requirements.requires_files,
         requires_logprobs=RequirementLevel.REQUIRED if requires_logprobs else requirements.requires_logprobs,
         requires_streaming=requirements.requires_streaming,
+        requires_audio=RequirementLevel.REQUIRED if requires_audio else requirements.requires_audio,
     )
 
     if isinstance(overrides, dict):
@@ -331,6 +336,9 @@ def get_task_requirements(task: BaseTask) -> TaskCapabilityRequirements:
             ),
             requires_streaming=_parse_requirement_level(
                 overrides.get("requires_streaming", requirements.requires_streaming)
+            ),
+            requires_audio=_parse_requirement_level(
+                overrides.get("requires_audio", requirements.requires_audio)
             ),
         )
 
@@ -356,6 +364,7 @@ def check_compatibility(task: BaseTask, interface: BaseInterface) -> Compatibili
     evaluate(requirements.requires_files, capabilities.supports_files, "file inputs")
     evaluate(requirements.requires_logprobs, capabilities.supports_logprobs, "logprobs")
     evaluate(requirements.requires_streaming, capabilities.supports_streaming, "streaming")
+    evaluate(requirements.requires_audio, capabilities.supports_audio, "audio inputs")
 
     return CompatibilityReport(
         compatible=not errors,
