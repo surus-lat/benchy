@@ -88,3 +88,31 @@ def test_check_compatibility_passes_when_audio_supported() -> None:
 
     assert report.compatible is True
     assert not any("audio" in err for err in report.errors)
+
+
+def test_openai_audio_provider_defaults_advertise_audio() -> None:
+    from src.engine.connection import PROVIDER_CAPABILITY_DEFAULTS
+
+    caps = PROVIDER_CAPABILITY_DEFAULTS["openai_audio"]
+    assert caps.supports_audio is True
+    assert caps.supports_multimodal is False
+
+
+def test_transformers_audio_provider_defaults_advertise_audio() -> None:
+    from src.engine.connection import PROVIDER_CAPABILITY_DEFAULTS
+
+    caps = PROVIDER_CAPABILITY_DEFAULTS["transformers_audio"]
+    assert caps.supports_audio is True
+    assert caps.supports_multimodal is False
+    assert caps.supports_schema is False
+
+
+def test_transformers_audio_provider_gates_audio_required_task() -> None:
+    from src.engine.connection import PROVIDER_CAPABILITY_DEFAULTS
+
+    class Task(_TaskBase):
+        requires_audio = True
+
+    interface = _Interface(PROVIDER_CAPABILITY_DEFAULTS["transformers_audio"])
+    report = check_compatibility(Task(), interface)
+    assert report.compatible is True

@@ -1,0 +1,14 @@
+model:
+  name: openai/whisper-small
+transformers_audio:
+  provider_config: transformers_audio  # Uses configs/providers/transformers_audio.yaml
+  supports_language_kwarg: true        # Whisper accepts generate_kwargs.language
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: huggingface
+  model_type: whisper
+  is_cloud: false
+  description: "openai/whisper-small via transformers pipeline (CPU-friendly, ~244M params)"

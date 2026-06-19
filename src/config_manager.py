@@ -47,7 +47,17 @@ class ConfigManager:
         elif 'alibaba' in model_config:
             self._merge_cloud_provider_config(model_config, 'alibaba')
             model_config['provider_type'] = 'alibaba'
-        
+
+        # Handle OpenAI Audio (Whisper) config merging
+        elif 'openai_audio' in model_config:
+            self._merge_cloud_provider_config(model_config, 'openai_audio')
+            model_config['provider_type'] = 'openai_audio'
+
+        # Handle in-process HuggingFace transformers ASR config merging
+        elif 'transformers_audio' in model_config:
+            self._merge_cloud_provider_config(model_config, 'transformers_audio')
+            model_config['provider_type'] = 'transformers_audio'
+
         # Handle vLLM config merging
         elif 'vllm' in model_config:
             vllm_config = model_config['vllm']

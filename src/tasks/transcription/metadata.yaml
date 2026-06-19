@@ -46,3 +46,10 @@ notes: |
   Audio is cached to disk on first run; subsequent runs reuse the WAVs.
   Per-locale WER/CER are surfaced under `per_locale` in the aggregated metrics.
   Install audio deps with: pip install 'benchy[transcription]'
+
+  Two ASR backends are supported:
+  - `openai_audio` hits a remote /v1/audio/transcriptions endpoint
+    (e.g. whisper-1 on api.openai.com). Requires OPENAI_API_KEY.
+  - `transformers_audio` runs the model in-process via the HuggingFace
+    transformers ASR pipeline. No HTTP server, no API key. First
+    invocation downloads weights from HuggingFace.
