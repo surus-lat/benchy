@@ -331,7 +331,13 @@ def build_connection_info(
     elif provider_type == "transformers_audio":
         # In-process HuggingFace ASR pipeline; no base_url, no auth.
         connection_info["use_structured_outputs"] = False
-        for key in ("device", "torch_dtype", "chunk_length_s", "supports_language_kwarg"):
+        for key in (
+            "device",
+            "torch_dtype",
+            "chunk_length_s",
+            "supports_language_kwarg",
+            "trust_remote_code",
+        ):
             if key in provider_config:
                 connection_info[key] = provider_config[key]
             elif key in model_config:

@@ -1,0 +1,18 @@
+model:
+  name: nvidia/canary-1b-flash
+transformers_audio:
+  provider_config: transformers_audio
+  # Canary does not accept Whisper-style generate_kwargs.language;
+  # language inference is automatic from audio.
+  supports_language_kwarg: false
+  # NVIDIA's HF integration ships custom modeling code.
+  trust_remote_code: true
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: huggingface
+  model_type: canary
+  is_cloud: false
+  description: "nvidia/canary-1b-flash via transformers pipeline (~883M params; en/de/es/fr)"

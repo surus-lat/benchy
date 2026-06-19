@@ -1,0 +1,16 @@
+model:
+  name: Qwen/Qwen3-ASR-0.6B
+transformers_audio:
+  provider_config: transformers_audio
+  # Qwen3-ASR uses a custom prompt-based interface, not Whisper's generate_kwargs.
+  supports_language_kwarg: false
+  trust_remote_code: true
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: huggingface
+  model_type: qwen3_asr
+  is_cloud: false
+  description: "Qwen/Qwen3-ASR-0.6B via transformers pipeline (~600M params, multilingual)"

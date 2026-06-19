@@ -130,6 +130,13 @@ def test_pipeline_initialized_with_provider_kwargs(fake_modules):
     assert kwargs["device"] == "cpu"
     assert kwargs["chunk_length_s"] == 15
     assert kwargs["torch_dtype"].name == "float16"
+    assert kwargs["trust_remote_code"] is False
+
+
+def test_pipeline_init_passes_trust_remote_code_when_opted_in(fake_modules):
+    _make_iface(trust_remote_code=True)
+    _args, kwargs = fake_modules["pipeline"].init_calls[0]
+    assert kwargs["trust_remote_code"] is True
 
 
 def test_device_auto_falls_back_to_cpu_when_no_accelerator(fake_modules):
