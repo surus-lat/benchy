@@ -196,11 +196,23 @@ metadata:
 Then pass the YAML name to `--models` in `run_asr_panel.py`.
 
 **Non-Whisper transformers ASR** (wav2vec2, MMS) — same shape but
-`supports_language_kwarg: false`. Custom-code models (Qwen3-ASR, Voxtral,
-Canary) additionally need `trust_remote_code: true`; these often don't
-auto-dispatch through `pipeline("automatic-speech-recognition", ...)` and
-may need a per-family interface. The repo has starter YAMLs for these but
-smoke runs revealed caveats — treat them as work-in-progress.
+`supports_language_kwarg: false`.
+
+**Custom-architecture models (Voxtral, Qwen3-ASR, Canary)** — these now go
+through dedicated adapters under `src/adapters/`. Set `adapter: <name>` in
+the model YAML instead of `transformers_audio:`. As of 2026-06-19:
+
+- `voxtral_chat` — wired but **BLOCKED upstream**: `transformers 4.57.6`
+  doesn't include `voxtral_realtime` even with `trust_remote_code=True`.
+  Fix: install `transformers` from GitHub main. Risky — verify it doesn't
+  break Whisper before merging.
+- `qwen3_asr_chat` — same status (`qwen3_asr` not in 4.57.6).
+- `canary_nemo` — not implemented; needs `nemo-toolkit[asr]`.
+
+The adapter layer itself is working end-to-end: routing flows through
+`connection.py`, lazy-load fires correctly, results come back in the
+standard `{output, raw, error, error_type}` shape. The block is in the
+underlying `transformers` package version.
 
 ---
 

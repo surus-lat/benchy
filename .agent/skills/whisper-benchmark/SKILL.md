@@ -197,11 +197,29 @@ Then pass the YAML name to `--models` in `run_asr_panel.py`.
 
 **Add a non-Whisper transformers ASR model** (wav2vec2, MMS) — same shape but
 set `supports_language_kwarg: false` so the interface doesn't pass Whisper-only
-`generate_kwargs`. Custom-code models (Qwen3-ASR, Voxtral, Canary) additionally
-need `trust_remote_code: true`. Note: these often don't auto-dispatch through
-`pipeline("automatic-speech-recognition", ...)` and may need a per-family
-interface. The repo has YAMLs for these but the smoke runs revealed
-compatibility caveats — flag this to the user and offer to scope a follow-up.
+`generate_kwargs`.
+
+**Non-Whisper architectures (Voxtral, Qwen3-ASR, Canary)** now have dedicated
+adapters under `src/adapters/`. As of 2026-06-19 (real-model end-to-end smoke):
+
+- `voxtral_chat` (adapter): **BLOCKED upstream** — `transformers 4.57.6` raises
+  `ValueError: model type 'voxtral_realtime' not recognized` at
+  `AutoConfig.from_pretrained`, even with `trust_remote_code=True`. The
+  adapter routing, lazy load, AutoConfig pre-load, and lifecycle all work
+  correctly — the architecture itself isn't yet in pinned `transformers`.
+  Fix: `pip install 'git+https://github.com/huggingface/transformers.git'`
+  (high blast radius, do not apply without confirming it doesn't break
+  Whisper).
+- `qwen3_asr_chat` (adapter): **BLOCKED upstream** — same root cause
+  (`model type 'qwen3_asr' not recognized`). Same fix applies.
+- `canary_nemo`: not yet implemented. Needs `nemo-toolkit[asr]` install
+  path.
+
+Use the adapter path by setting `adapter: <name>` in the model YAML and
+adding a block named after the adapter for its config knobs. See
+`docs/superpowers/specs/2026-06-19-adapter-layer-design.md` for the layer
+design and `docs/superpowers/plans/2026-06-19-adapter-layer-implementation.md`
+for the empirical wiring story (5 additional touch points beyond the spec).
 
 **Add a new dataset** — the FLEURS subtasks at
 `src/tasks/transcription/fleurs_es_latam.py` are the template. A new subtask
