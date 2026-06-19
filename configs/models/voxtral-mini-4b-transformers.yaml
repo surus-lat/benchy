@@ -1,10 +1,13 @@
 model:
   name: mistralai/Voxtral-Mini-4B-Realtime-2602
-transformers_audio:
-  provider_config: transformers_audio
-  # Voxtral is a multimodal LLM-style ASR; not Whisper-style.
-  supports_language_kwarg: false
+adapter: voxtral_chat
+voxtral_chat:
   trust_remote_code: true
+  # 4B params: fp32 = ~16 GB RAM, fp16 = ~8 GB. fp16 is mandatory on 16 GB Macs.
+  torch_dtype: float16
+  chat_prompt: "Transcribe this audio. Output only the transcription, no commentary."
+  max_new_tokens: 256
+  device: auto
 task_defaults:
   log_samples: true
 tasks:
@@ -13,4 +16,4 @@ metadata:
   provider: huggingface
   model_type: voxtral
   is_cloud: false
-  description: "mistralai/Voxtral-Mini-4B-Realtime-2602 via transformers pipeline (~4B params; en/fr/es/de/ru/zh/ja/it)"
+  description: "mistralai/Voxtral-Mini-4B-Realtime-2602 via voxtral_chat adapter (~4B params; en/fr/es/de/ru/zh/ja/it). fp16 required on <=16GB Macs."

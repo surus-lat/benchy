@@ -1,10 +1,12 @@
 model:
   name: Qwen/Qwen3-ASR-0.6B
-transformers_audio:
-  provider_config: transformers_audio
-  # Qwen3-ASR uses a custom prompt-based interface, not Whisper's generate_kwargs.
-  supports_language_kwarg: false
+adapter: qwen3_asr_chat
+qwen3_asr_chat:
   trust_remote_code: true
+  torch_dtype: float16
+  chat_prompt: "Please transcribe the audio."
+  max_new_tokens: 256
+  device: auto
 task_defaults:
   log_samples: true
 tasks:
@@ -13,4 +15,4 @@ metadata:
   provider: huggingface
   model_type: qwen3_asr
   is_cloud: false
-  description: "Qwen/Qwen3-ASR-0.6B via transformers pipeline (~600M params, multilingual)"
+  description: "Qwen/Qwen3-ASR-0.6B via qwen3_asr_chat adapter (~600M params, multilingual)."
