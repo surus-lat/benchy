@@ -127,7 +127,7 @@ def main() -> int:
             if rc == 0:
                 harvested = _harvest_metrics(run_dir, subtask)
                 if harvested:
-                    m = harvested["metrics"]
+                    m = harvested["metrics"].get("metrics", harvested["metrics"])
                     entry["wer"] = m.get("wer")
                     entry["cer"] = m.get("cer")
                     entry["exact_match"] = m.get("exact_match")
