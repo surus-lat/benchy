@@ -58,6 +58,14 @@ class ConfigManager:
             self._merge_cloud_provider_config(model_config, 'transformers_audio')
             model_config['provider_type'] = 'transformers_audio'
 
+        # Handle adapter-based routing (per
+        # docs/superpowers/specs/2026-06-19-adapter-layer-design.md).
+        # The connection.py branch consumes connection_info['adapter']
+        # and bypasses provider routing entirely; provider_type='adapter'
+        # is the sentinel that prevents the pipeline from starting vLLM.
+        elif 'adapter' in model_config:
+            model_config['provider_type'] = 'adapter'
+
         # Handle vLLM config merging
         elif 'vllm' in model_config:
             vllm_config = model_config['vllm']

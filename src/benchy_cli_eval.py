@@ -82,9 +82,19 @@ PROVIDER_SPECS = {
         "config_key": "api",
         "log": "Using generic API provider targeting: {model_name}",
     },
+    # Adapter-routed configs — config_key points at "adapter" so the
+    # adapter name string is what gets logged. The actual adapter config
+    # block is keyed by adapter name and consumed in connection.py.
+    # The "config_key" for adapter is a sentinel — resolve_provider_config
+    # special-cases it to return the adapter's own config block (a dict)
+    # instead of the adapter name string under config["adapter"].
+    "adapter": {
+        "config_key": "__adapter_block__",
+        "log": "Using adapter-routed provider for model: {model_name}",
+    },
 }
 
-MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google", "openai_audio", "transformers_audio"}
+MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google", "openai_audio", "transformers_audio", "adapter"}
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -211,7 +221,16 @@ def resolve_provider_config(
     if not provider_spec:
         raise ValueError(f"Unknown provider type: {provider_type}")
 
-    provider_config = config.get(provider_spec["config_key"], {})
+    if provider_type == "adapter":
+        # Pack provider_type and adapter name into provider_config so they
+        # flow through TaskGroupRunner -> build_connection_info, which only
+        # gets the provider_config block (not the full YAML).
+        adapter_name = config.get("adapter")
+        provider_config = dict(config.get(adapter_name, {}) or {})
+        provider_config["provider_type"] = "adapter"
+        provider_config["adapter"] = adapter_name
+    else:
+        provider_config = config.get(provider_spec["config_key"], {})
     log_message = provider_spec.get("log")
     if log_message:
         logger.info(log_message.format(model_name=model_name))
@@ -1008,15 +1027,19 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
         config["provider_type"] = args.provider
 
     provider_type = config.get("provider_type", "vllm")
-    provider_section = dict(config.get(provider_type) or {})
-    allow_base_url = provider_type in {"openai", "together", "anthropic", "alibaba", "google"}
-    allow_api_key = allow_base_url
-    config[provider_type] = _apply_cli_provider_overrides(
-        provider_section,
-        args,
-        allow_base_url=allow_base_url,
-        allow_api_key=allow_api_key,
-    )
+    # Adapter-routed configs put the adapter name string under "adapter" and
+    # the adapter config block under a key named after the adapter — there's
+    # no provider section to merge CLI overrides into.
+    if provider_type != "adapter":
+        provider_section = dict(config.get(provider_type) or {})
+        allow_base_url = provider_type in {"openai", "together", "anthropic", "alibaba", "google"}
+        allow_api_key = allow_base_url
+        config[provider_type] = _apply_cli_provider_overrides(
+            provider_section,
+            args,
+            allow_base_url=allow_base_url,
+            allow_api_key=allow_api_key,
+        )
 
     _apply_model_metadata(config, args)
 

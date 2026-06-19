@@ -208,7 +208,31 @@ def build_connection_info(
     """
     provider_config = provider_config or {}
     model_config = model_config or {}
-    
+
+    # Adapter-routed configs: the adapter owns transport, lifecycle, and
+    # dispatch. connection_info only needs to carry the adapter name and
+    # its config block; get_interface_for_provider's adapter branch reads
+    # them and ignores everything else. See
+    # docs/superpowers/specs/2026-06-19-adapter-layer-design.md.
+    if provider_type == "adapter":
+        # Adapter name + config travel inside provider_config (see
+        # resolve_provider_config in benchy_cli_eval.py). model_config is
+        # task defaults — not a source for the adapter name.
+        adapter_name = provider_config.get("adapter") or model_config.get("adapter")
+        if not adapter_name:
+            raise ValueError(
+                "provider_type='adapter' but no 'adapter' key in provider/model config"
+            )
+        adapter_block = {
+            k: v for k, v in provider_config.items()
+            if k not in ("provider_type", "adapter")
+        }
+        return {
+            "provider_type": "adapter",
+            "adapter": adapter_name,
+            adapter_name: adapter_block,
+        }
+
     # Build base connection info
     # Priority: provider_config (with model overrides) > task defaults (model_config)
     # This ensures model-specific requirements (like gpt-5-mini temperature) take precedence

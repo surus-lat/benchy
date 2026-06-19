@@ -1,5 +1,6 @@
 """Tests for the qwen3_asr_chat adapter — mocked, no real model load."""
 import asyncio
+import contextlib
 from unittest.mock import MagicMock, patch
 
 import torch
@@ -21,14 +22,20 @@ def _fake_processor():
     return p
 
 
-def test_qwen3_asr_chat_returns_standard_result_shape():
+@contextlib.contextmanager
+def _patched_loaders(model, processor):
     with patch(
-        "transformers.AutoModelForCausalLM.from_pretrained",
-        return_value=_fake_model(),
+        "transformers.AutoConfig.from_pretrained", return_value=MagicMock()
     ), patch(
-        "transformers.AutoProcessor.from_pretrained",
-        return_value=_fake_processor(),
-    ):
+        "transformers.AutoModelForCausalLM.from_pretrained", return_value=model
+    ) as model_load, patch(
+        "transformers.AutoProcessor.from_pretrained", return_value=processor
+    ) as proc_load:
+        yield model_load, proc_load
+
+
+def test_qwen3_asr_chat_returns_standard_result_shape():
+    with _patched_loaders(_fake_model(), _fake_processor()):
         from src.adapters.qwen3_asr_chat import Adapter
 
         adapter = Adapter(
@@ -54,13 +61,7 @@ def test_qwen3_asr_chat_captures_per_request_errors():
     bad_model.to.return_value = bad_model
     bad_model.generate.side_effect = ValueError("audio file not found")
 
-    with patch(
-        "transformers.AutoModelForCausalLM.from_pretrained",
-        return_value=bad_model,
-    ), patch(
-        "transformers.AutoProcessor.from_pretrained",
-        return_value=_fake_processor(),
-    ):
+    with _patched_loaders(bad_model, _fake_processor()):
         from src.adapters.qwen3_asr_chat import Adapter
 
         adapter = Adapter("Qwen/Qwen3-ASR-0.6B", {"device": "cpu"})
@@ -75,13 +76,7 @@ def test_qwen3_asr_chat_captures_per_request_errors():
 
 
 def test_qwen3_asr_chat_loads_model_lazily():
-    with patch(
-        "transformers.AutoModelForCausalLM.from_pretrained",
-        return_value=_fake_model(),
-    ) as model_load, patch(
-        "transformers.AutoProcessor.from_pretrained",
-        return_value=_fake_processor(),
-    ) as proc_load:
+    with _patched_loaders(_fake_model(), _fake_processor()) as (model_load, proc_load):
         from src.adapters.qwen3_asr_chat import Adapter
 
         adapter = Adapter("Qwen/Qwen3-ASR-0.6B", {"device": "cpu"})
