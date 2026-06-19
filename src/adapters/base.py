@@ -40,6 +40,13 @@ class BaseAdapter:
         peek, transform, or attach metadata before generate_batch."""
         return sample
 
+    async def test_connection(self, max_retries: int = 3, timeout: int = 30) -> bool:
+        """Lightweight readiness check called by BenchmarkRunner before
+        the first batch. Default: True — most adapters run in-process or
+        load lazily, so there's no connection to test. Override for
+        adapters that hit a remote endpoint."""
+        return True
+
     async def generate_batch(
         self,
         requests: list[dict[str, Any]],

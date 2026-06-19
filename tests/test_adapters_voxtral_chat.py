@@ -1,5 +1,6 @@
 """Tests for the voxtral_chat adapter — mocked, no real model load."""
 import asyncio
+import contextlib
 from unittest.mock import MagicMock, patch
 
 import torch
@@ -24,15 +25,22 @@ def _fake_processor():
     return p
 
 
+@contextlib.contextmanager
+def _patched_loaders(model, processor):
+    """Patch all three transformers loaders the adapter calls during _load."""
+    with patch(
+        "transformers.AutoConfig.from_pretrained", return_value=MagicMock()
+    ), patch(
+        "transformers.AutoModelForCausalLM.from_pretrained", return_value=model
+    ) as model_load, patch(
+        "transformers.AutoProcessor.from_pretrained", return_value=processor
+    ) as proc_load:
+        yield model_load, proc_load
+
+
 def test_voxtral_chat_returns_standard_result_shape():
     """One sample in → one {output, raw, error, error_type} out."""
-    with patch(
-        "transformers.AutoModelForCausalLM.from_pretrained",
-        return_value=_fake_model(),
-    ), patch(
-        "transformers.AutoProcessor.from_pretrained",
-        return_value=_fake_processor(),
-    ):
+    with _patched_loaders(_fake_model(), _fake_processor()):
         from src.adapters.voxtral_chat import Adapter
 
         adapter = Adapter(
@@ -60,13 +68,7 @@ def test_voxtral_chat_captures_per_request_errors():
     bad_model.to.return_value = bad_model
     bad_model.generate.side_effect = RuntimeError("CUDA OOM")
 
-    with patch(
-        "transformers.AutoModelForCausalLM.from_pretrained",
-        return_value=bad_model,
-    ), patch(
-        "transformers.AutoProcessor.from_pretrained",
-        return_value=_fake_processor(),
-    ):
+    with _patched_loaders(bad_model, _fake_processor()):
         from src.adapters.voxtral_chat import Adapter
 
         adapter = Adapter(
@@ -85,13 +87,7 @@ def test_voxtral_chat_captures_per_request_errors():
 
 def test_voxtral_chat_loads_model_lazily():
     """from_pretrained is not called until the first generate_batch."""
-    with patch(
-        "transformers.AutoModelForCausalLM.from_pretrained",
-        return_value=_fake_model(),
-    ) as model_load, patch(
-        "transformers.AutoProcessor.from_pretrained",
-        return_value=_fake_processor(),
-    ) as proc_load:
+    with _patched_loaders(_fake_model(), _fake_processor()) as (model_load, proc_load):
         from src.adapters.voxtral_chat import Adapter
 
         adapter = Adapter(

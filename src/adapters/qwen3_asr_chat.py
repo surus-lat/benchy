@@ -62,15 +62,22 @@ class Adapter(BaseAdapter):
 
     def _load(self) -> None:
         import torch
-        from transformers import AutoModelForCausalLM, AutoProcessor
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor
 
         dtype_name = _DTYPE_MAP[self.config.get("torch_dtype", "float16")]
         torch_dtype = getattr(torch, dtype_name)
         trust_remote_code = bool(self.config.get("trust_remote_code", True))
         device = _resolve_device(self.config.get("device", "auto"))
 
+        # Pre-load the config explicitly with trust_remote_code so AutoModel
+        # doesn't re-trigger the unknown-model_type rejection (qwen3_asr lives
+        # in custom code that needs trust_remote_code to be parsed).
+        hf_config = AutoConfig.from_pretrained(
+            self.model_name, trust_remote_code=trust_remote_code
+        )
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
+            config=hf_config,
             trust_remote_code=trust_remote_code,
             torch_dtype=torch_dtype,
         )
