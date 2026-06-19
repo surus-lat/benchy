@@ -1,0 +1,35 @@
+name: transformers_audio
+display_name: HuggingFace Transformers (in-process)
+description: HuggingFace transformers ASR pipeline running inside the benchy process
+
+# In-process HuggingFace transformers ASR provider.
+# Loads the model into the benchy process via transformers.pipeline.
+# No HTTP server, no auth, runs on CPU by default. Set `device: cuda` or
+# `device: mps` to use GPU/Metal acceleration.
+
+provider_type: transformers_audio
+
+device: auto              # auto | cpu | cuda | mps | cuda:0 ...
+torch_dtype: float32      # float32 | float16 | bfloat16
+chunk_length_s: 30        # audio chunk size; 30s matches Whisper's training window
+
+# In-process pipelines can't parallelize across requests the way HTTP can.
+# Default to serial execution; users with multi-GPU boxes can raise this.
+max_concurrent: 1
+timeout: 600              # CPU inference can be slow on large clips
+max_retries: 1
+
+capabilities:
+  supports_audio: true
+  supports_multimodal: false
+  supports_schema: false
+  supports_files: false
+  supports_logprobs: false
+  supports_streaming: false
+  request_modes:
+    - audio
+
+notes: |
+  First invocation downloads model weights from HuggingFace (no API key required
+  for public models). Subsequent runs use the HuggingFace cache.
+  Install the extras: pip install -e '.[transcription]'

@@ -1,0 +1,13 @@
+model:
+  name: whisper-1
+openai_audio:
+  provider_config: openai_audio  # Uses configs/providers/openai_audio.yaml
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: openai
+  model_type: whisper
+  is_cloud: true
+  description: "OpenAI Whisper-1 — multilingual speech-to-text via /v1/audio/transcriptions"

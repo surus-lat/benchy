@@ -113,6 +113,24 @@ PROVIDER_CAPABILITY_DEFAULTS = {
         supports_streaming=False,
         request_modes=["chat"],
     ),
+    "openai_audio": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=False,
+        supports_streaming=False,
+        supports_audio=True,
+        request_modes=["audio"],
+    ),
+    "transformers_audio": InterfaceCapabilities(
+        supports_multimodal=False,
+        supports_logprobs=False,
+        supports_schema=False,
+        supports_files=False,
+        supports_streaming=False,
+        supports_audio=True,
+        request_modes=["audio"],
+    ),
 }
 
 _CAPABILITY_FIELDS = [
@@ -121,6 +139,7 @@ _CAPABILITY_FIELDS = [
     "supports_schema",
     "supports_files",
     "supports_streaming",
+    "supports_audio",
     "supports_batch",
 ]
 
@@ -308,7 +327,16 @@ def build_connection_info(
         connection_info["base_url"] = provider_config.get("endpoint", provider_config.get("base_url", "https://generativelanguage.googleapis.com/v1"))
         connection_info["api_key_env"] = provider_config.get("api_key_env", "GOOGLE_API_KEY")
         connection_info["use_structured_outputs"] = False
-        
+
+    elif provider_type == "transformers_audio":
+        # In-process HuggingFace ASR pipeline; no base_url, no auth.
+        connection_info["use_structured_outputs"] = False
+        for key in ("device", "torch_dtype", "chunk_length_s", "supports_language_kwarg"):
+            if key in provider_config:
+                connection_info[key] = provider_config[key]
+            elif key in model_config:
+                connection_info[key] = model_config[key]
+
     else:
         # Generic HTTP provider
         connection_info["base_url"] = provider_config.get("base_url", provider_config.get("endpoint"))
@@ -439,7 +467,15 @@ def get_interface_for_provider(
         # Use generic GoogleInterface (similar to OpenAIInterface pattern)
         from ..interfaces.google.google_interface import GoogleInterface
         return GoogleInterface(connection_info, model_name)
-    
+
+    elif provider_type == "openai_audio":
+        from ..interfaces.openai_audio_interface import OpenAIAudioInterface
+        return OpenAIAudioInterface(connection_info, model_name)
+
+    elif provider_type == "transformers_audio":
+        from ..interfaces.transformers_audio_interface import TransformersAudioInterface
+        return TransformersAudioInterface(connection_info, model_name)
+
     else:
         # Use OpenAIInterface for vllm/openai-compatible providers.
         from ..interfaces.openai_interface import OpenAIInterface
