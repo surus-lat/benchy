@@ -1,0 +1,14 @@
+model:
+  name: openai/whisper-large-v3-turbo
+transformers_audio:
+  provider_config: transformers_audio
+  supports_language_kwarg: true
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: huggingface
+  model_type: whisper
+  is_cloud: false
+  description: "openai/whisper-large-v3-turbo via transformers pipeline (~809M params, ~8x faster than v3)"

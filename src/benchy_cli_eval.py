@@ -74,13 +74,17 @@ PROVIDER_SPECS = {
         "config_key": "openai_audio",
         "log": "Using OpenAI audio transcription provider for model: {model_name}",
     },
+    "transformers_audio": {
+        "config_key": "transformers_audio",
+        "log": "Using transformers in-process audio provider for model: {model_name}",
+    },
     "api": {
         "config_key": "api",
         "log": "Using generic API provider targeting: {model_name}",
     },
 }
 
-MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google", "openai_audio"}
+MODEL_PROVIDER_TYPES = {"vllm", "openai", "anthropic", "together", "alibaba", "google", "openai_audio", "transformers_audio"}
 CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "base_url": "https://api.openai.com/v1",
@@ -143,6 +147,15 @@ CLI_PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "timeout": 120,
         "max_retries": 3,
         "max_concurrent": 5,
+        "api_endpoint": "audio",
+    },
+    "transformers_audio": {
+        "device": "auto",
+        "torch_dtype": "float32",
+        "chunk_length_s": 30,
+        "timeout": 600,
+        "max_retries": 1,
+        "max_concurrent": 1,
         "api_endpoint": "audio",
     },
 }
@@ -578,7 +591,7 @@ def add_eval_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["vllm", "openai", "together", "anthropic", "alibaba", "google", "openai_audio"],
+        choices=["vllm", "openai", "together", "anthropic", "alibaba", "google", "openai_audio", "transformers_audio"],
         default=None,
         help="Provider type to use when no model config is provided (default: inferred).",
     )
