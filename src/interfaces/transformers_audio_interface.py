@@ -87,17 +87,19 @@ class TransformersAudioInterface:
         device = _resolve_device(connection_info.get("device", "auto"))
         dtype_name = connection_info.get("torch_dtype", "float32")
         chunk_length_s = connection_info.get("chunk_length_s", 30)
+        trust_remote_code = bool(connection_info.get("trust_remote_code", False))
 
         from transformers import pipeline
 
         torch_dtype = _resolve_dtype(dtype_name)
 
         logger.info(
-            "Loading transformers ASR pipeline (model=%s, device=%s, dtype=%s, chunk_length_s=%s)",
+            "Loading transformers ASR pipeline (model=%s, device=%s, dtype=%s, chunk_length_s=%s, trust_remote_code=%s)",
             model_name,
             device,
             dtype_name,
             chunk_length_s,
+            trust_remote_code,
         )
         self._pipeline = pipeline(
             "automatic-speech-recognition",
@@ -105,6 +107,7 @@ class TransformersAudioInterface:
             device=device,
             torch_dtype=torch_dtype,
             chunk_length_s=chunk_length_s,
+            trust_remote_code=trust_remote_code,
         )
         logger.info("Initialized TransformersAudioInterface for %s", model_name)
 

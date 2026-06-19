@@ -1,0 +1,16 @@
+model:
+  name: mistralai/Voxtral-Mini-4B-Realtime-2602
+transformers_audio:
+  provider_config: transformers_audio
+  # Voxtral is a multimodal LLM-style ASR; not Whisper-style.
+  supports_language_kwarg: false
+  trust_remote_code: true
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: huggingface
+  model_type: voxtral
+  is_cloud: false
+  description: "mistralai/Voxtral-Mini-4B-Realtime-2602 via transformers pipeline (~4B params; en/fr/es/de/ru/zh/ja/it)"
