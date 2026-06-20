@@ -56,6 +56,7 @@ turn.
 | Skill | What it benchmarks |
 |---|---|
 | [whisper-benchmark](./whisper-benchmark/SKILL.md) | Whisper-family ASR on FLEURS es_419 / pt_br locally on a Mac via `transformers_audio`. Includes the MPS large-v3 wedge fix. |
+| [qwen3-asr-howto](./qwen3-asr-howto/SKILL.md) | Run Qwen3-ASR (0.6B / 1.7B + ForcedAligner) locally via the `qwen-asr` PyPI package or via DashScope cloud. Covers the transformers<5.0 / Voxtral conflict. |
 
 ### Meta
 
