@@ -50,28 +50,6 @@ def test_load_latest_summary_picks_correct_summary(tmp_path):
     assert "per_subtask_metrics" in result
 
 
-# ---------------------------------------------------------------------------
-# Known issue — post-restructure
-# ---------------------------------------------------------------------------
-# Modern benchmark runs (April 2026+) write structured extraction output to
-#   model_dir/_adhoc_structured_<hash>/main/*_metrics.json
-# instead of the old
-#   model_dir/structured_extraction/*_summary.json
-#
-# The processor currently derives task_dir from load_task_config(), which
-# resolves to model_dir/structured_extraction/ and returns None when that
-# path is absent.  The fix (glob for _adhoc_structured_*/main as fallback)
-# is deferred until the repo restructure settles.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "structured_extraction_results_processor does not yet fall back to "
-        "_adhoc_structured_<hash>/main/ — fix deferred until repo restructure"
-    ),
-)
 def test_structured_extraction_processor_finds_adhoc_dirs(tmp_path):
     """Processor must find modern _adhoc_structured_<hash>/main/ output dirs.
 

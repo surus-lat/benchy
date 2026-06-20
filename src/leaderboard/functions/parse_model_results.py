@@ -662,16 +662,22 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
     
     task_name = task_config.get("name", "structured_extraction")
     print(f"    Processing {task_name} results...")
-    
+
     # Load task config to get output subdirectory
     task_config_file = load_task_config(task_name)
     output_subdir = task_config_file.get("output", {}).get("subdirectory", task_name)
-    
+
     # Look for results in the subdirectory
     task_dir = model_dir / output_subdir
     if not task_dir.exists():
-        print(f"    Warning: {task_name} results directory not found: {task_dir}")
-        return None
+        # Modern runs (April 2026+) write to _adhoc_structured_<hash>/main/ instead
+        adhoc_dirs = sorted(model_dir.glob("_adhoc_structured_*/main"))
+        if adhoc_dirs:
+            task_dir = adhoc_dirs[0]
+            print(f"    Using adhoc task directory: {task_dir.parent.name}/main")
+        else:
+            print(f"    Warning: {task_name} results directory not found: {task_dir}")
+            return None
 
     summary_data = _load_latest_summary(task_dir)
     if summary_data:
