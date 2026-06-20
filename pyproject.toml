@@ -59,10 +59,17 @@ translation = [
 transcription = [
     "jiwer>=3.0.0",
     "soundfile>=0.12.0",
-    "transformers>=4.45.0,<5.0",
+    # Whisper paths work on transformers >= 4.45. Voxtral support requires
+    # transformers >= 5.13 (not yet on PyPI as of 2026-06-20); install via:
+    #   uv pip install 'git+https://github.com/huggingface/transformers.git'
+    # The upper bound is removed to allow the from-git install to satisfy.
+    "transformers>=4.45.0",
     "torch>=2.4.0",
     "librosa>=0.10.0",
     "accelerate>=0.34.0",
+    # Required by VoxtralRealtimeProcessor's tokenizer. Only consumed when
+    # actually using Voxtral; safe to install on Whisper-only setups.
+    "mistral-common>=1.11.0",
 ]
 dev = [
     "pytest>=8.0.0",

@@ -27,7 +27,7 @@ def _patched_loaders(model, processor):
     with patch(
         "transformers.AutoConfig.from_pretrained", return_value=MagicMock()
     ), patch(
-        "transformers.AutoModelForCausalLM.from_pretrained", return_value=model
+        "transformers.AutoModelForSpeechSeq2Seq.from_pretrained", return_value=model
     ) as model_load, patch(
         "transformers.AutoProcessor.from_pretrained", return_value=processor
     ) as proc_load:

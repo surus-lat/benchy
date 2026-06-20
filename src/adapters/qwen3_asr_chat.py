@@ -62,20 +62,26 @@ class Adapter(BaseAdapter):
 
     def _load(self) -> None:
         import torch
-        from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor
+        from transformers import (
+            AutoConfig,
+            AutoModelForSpeechSeq2Seq,
+            AutoProcessor,
+        )
 
         dtype_name = _DTYPE_MAP[self.config.get("torch_dtype", "float16")]
         torch_dtype = getattr(torch, dtype_name)
         trust_remote_code = bool(self.config.get("trust_remote_code", True))
         device = _resolve_device(self.config.get("device", "auto"))
 
-        # Pre-load the config explicitly with trust_remote_code so AutoModel
-        # doesn't re-trigger the unknown-model_type rejection (qwen3_asr lives
-        # in custom code that needs trust_remote_code to be parsed).
+        # Pre-load the config explicitly with trust_remote_code. Qwen3-ASR
+        # isn't merged into stable transformers yet — relies on custom code
+        # in the HF repo. The model_type 'qwen3_asr' rejection happens here
+        # if the repo's auto_map doesn't resolve.
         hf_config = AutoConfig.from_pretrained(
             self.model_name, trust_remote_code=trust_remote_code
         )
-        self._model = AutoModelForCausalLM.from_pretrained(
+        # Qwen3-ASR is a speech-seq2seq model (audio → text).
+        self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
             self.model_name,
             config=hf_config,
             trust_remote_code=trust_remote_code,

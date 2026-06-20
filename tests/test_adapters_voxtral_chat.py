@@ -17,7 +17,9 @@ def _fake_model():
 
 def _fake_processor():
     p = MagicMock()
-    p.apply_chat_template.return_value = {
+    # The Voxtral processor is called like a function: processor(audio=...)
+    # Make the callable return the same {input_ids: ...} shape generate expects.
+    p.return_value = {
         # input length 3 — generate() returned 6 — so 3 new tokens decoded.
         "input_ids": torch.tensor([[10, 20, 30]]),
     }
@@ -27,14 +29,20 @@ def _fake_processor():
 
 @contextlib.contextmanager
 def _patched_loaders(model, processor):
-    """Patch all three transformers loaders the adapter calls during _load."""
+    """Patch the three transformers loaders + librosa.load.
+    Voxtral inference reads audio via librosa, so the mocked sample
+    paths won't hit the disk."""
+    import numpy as np
+
     with patch(
         "transformers.AutoConfig.from_pretrained", return_value=MagicMock()
     ), patch(
-        "transformers.AutoModelForCausalLM.from_pretrained", return_value=model
+        "transformers.AutoModelForSpeechSeq2Seq.from_pretrained", return_value=model
     ) as model_load, patch(
         "transformers.AutoProcessor.from_pretrained", return_value=processor
-    ) as proc_load:
+    ) as proc_load, patch(
+        "librosa.load", return_value=(np.zeros(16000, dtype=np.float32), 16000)
+    ):
         yield model_load, proc_load
 
 
