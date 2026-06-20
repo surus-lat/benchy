@@ -212,7 +212,16 @@ the model YAML instead of `transformers_audio:`. As of 2026-06-20:
   `transformers` (any version) and the repo ships no custom code,
   so `trust_remote_code` can't help. Adapter is wired and tested with
   mocks; ready the moment upstream lands the architecture.
-- `canary_nemo` — not implemented; needs `nemo-toolkit[asr]`.
+- `canary_nemo` — **working**. Requires `nemo-toolkit[asr] >= 2.7`.
+  Verified end-to-end: nvidia/canary-1b-flash CPU on FLEURS es_419 →
+  WER 0.069, CER 0.024 (best on the sample). Caveats: en/de/es/fr only
+  (no pt_br); NeMo ships a colliding `tests/` package — handled via
+  `tests/__init__.py`. Install:
+  ```bash
+  uv pip install 'nemo-toolkit[asr]'
+  # Re-upgrade transformers because NeMo will downgrade it:
+  uv pip install --upgrade 'git+https://github.com/huggingface/transformers.git'
+  ```
 
 The adapter layer itself works end-to-end: routing flows through
 `connection.py`, lazy-load fires correctly, results come back in the
