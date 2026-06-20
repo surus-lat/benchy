@@ -26,6 +26,7 @@ beyond standard shell, Python, and git.
 |---|---|
 | [run-benchmark](./run-benchmark/SKILL.md) | End-to-end: validate spec → smoke → full run → hand off to read-results. The wrapper most users want. |
 | [evaluate](./evaluate/SKILL.md) | Execute `benchy eval` against a model or system. Smoke→full workflow, config selection, exit policies. |
+| [push-to-latamboard](./push-to-latamboard/SKILL.md) | Merge new benchmark scores into the HuggingFace dataset and make them live on latamboard.surus.lat immediately. |
 | [validate](./validate/SKILL.md) | Pre-flight a benchmark spec before running. Reports errors in plain English and routes to the right fixer skill. |
 | [interpret-run](./interpret-run/SKILL.md) | Read `run_outcome.json` + `run_summary.json`. Status vocabulary, failure diagnosis, per-task breakdown. |
 | [read-results](./read-results/SKILL.md) | Translate benchmark results into plain English for a non-developer audience. |
