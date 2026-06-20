@@ -29,6 +29,7 @@ DEFAULT_MODELS = [
     "whisper-small-transformers",
     "whisper-large-v3-turbo-transformers",
     "whisper-large-v3-transformers",
+    "surus-whisper-large-v3-turbo-latam-transformers",
     "qwen3-asr-0.6b-transformers",
     "canary-1b-flash-transformers",
     "voxtral-mini-4b-transformers",
@@ -36,8 +37,23 @@ DEFAULT_MODELS = [
 LOCALE_TO_SUBTASK = {"es": "transcription.fleurs_es_latam", "pt": "transcription.fleurs_pt_br"}
 
 
-def _benchy_bin() -> str:
-    candidate = REPO_ROOT / ".venv" / "bin" / "benchy"
+def _benchy_bin_for_config(model_config: str) -> str:
+    """Pick the right .venv*/bin/benchy for a model based on its YAML's
+    `venv:` field. Falls back to .venv when the field is absent so existing
+    Whisper / Qwen / Canary configs keep working.
+    """
+    import yaml
+
+    cfg_path = REPO_ROOT / "configs" / "models" / f"{model_config}.yaml"
+    venv_rel = None
+    if cfg_path.exists():
+        try:
+            data = yaml.safe_load(cfg_path.read_text()) or {}
+            venv_rel = data.get("venv")
+        except Exception:
+            venv_rel = None
+    venv = REPO_ROOT / (venv_rel or ".venv")
+    candidate = venv / "bin" / "benchy"
     return str(candidate if candidate.exists() else "benchy")
 
 
@@ -48,7 +64,7 @@ def _run_one(
     extra_args: List[str],
 ) -> Tuple[int, Path]:
     cmd = [
-        _benchy_bin(),
+        _benchy_bin_for_config(model_config),
         "eval",
         "-c",
         model_config,
