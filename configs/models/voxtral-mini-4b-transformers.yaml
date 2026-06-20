@@ -1,6 +1,10 @@
 model:
   name: mistralai/Voxtral-Mini-4B-Realtime-2602
 adapter: voxtral_chat
+# Voxtral needs transformers >=5.13 + mistral-common. That env is incompatible
+# with qwen-asr (which pins transformers <5.0), so Voxtral has its own venv.
+# benchy will fail fast if you launch it from the wrong .venv*/bin/benchy.
+venv: .venv-vox
 voxtral_chat:
   trust_remote_code: true
   # 4B params: fp32 = ~16 GB RAM, fp16 = ~8 GB. fp16 is mandatory on <=16 GB Macs.

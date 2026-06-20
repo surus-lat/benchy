@@ -25,6 +25,34 @@ from .signal_utils import register_signal_handlers
 from .inference.vllm_config import VLLMServerConfig
 
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _check_required_venv(config: Dict[str, Any]) -> None:
+    """If the model config declares `venv:`, require benchy to be running
+    from that venv. Print a hint with the right invocation and exit non-zero
+    on mismatch. No-op when no `venv:` is declared.
+
+    The venv path is resolved relative to the repo root.
+    """
+    required = config.get("venv")
+    if not required:
+        return
+    required_path = (_REPO_ROOT / required).resolve()
+    current_path = Path(sys.prefix).resolve()
+    if current_path == required_path:
+        return
+    model_name = (config.get("model") or {}).get("name", "<unknown>")
+    suggested_argv = [str(required_path / "bin" / "benchy")] + sys.argv[1:]
+    sys.stderr.write(
+        f"\nERROR: model {model_name!r} requires venv {required} (config field 'venv:'),\n"
+        f"  but benchy is running from {current_path}.\n"
+        f"\n  Run instead:\n    {' '.join(suggested_argv)}\n"
+        f"\n  Build the venv if it doesn't exist: bash scripts/setup-venvs.sh\n\n"
+    )
+    sys.exit(2)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -1025,6 +1053,10 @@ def _load_or_build_config(args: argparse.Namespace) -> tuple[dict, Optional[str]
                 f"--provider {args.provider} conflicts with config provider_type {existing_provider_type}."
             )
         config["provider_type"] = args.provider
+
+    # Pre-flight: enforce the per-model venv pin if the YAML declares one.
+    # See scripts/setup-venvs.sh for the per-venv install commands.
+    _check_required_venv(config)
 
     provider_type = config.get("provider_type", "vllm")
     # Adapter-routed configs put the adapter name string under "adapter" and

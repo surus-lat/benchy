@@ -215,22 +215,48 @@ The adapter maps each FLEURS sample's ISO 639-1 code (`es`, `pt`, `en`,
 `Portuguese`, `English`, …). If the YAML pins `language:`, that wins. If
 neither is set, the model auto-detects.
 
-## Version conflict with Voxtral
+## Version conflict with Voxtral — and the two-venv solution
 
 `qwen-asr 0.0.6` pins `transformers <5.0`. `Voxtral` needs
 `transformers >=5.13`. They can't live in the same Python environment.
 
 | Stack | Whisper | Voxtral | Canary | Qwen3-ASR |
 |---|---|---|---|---|
-| `transformers >=5.13`, no `qwen-asr` | ✅ | ✅ | ✅ | ❌ load error |
-| `transformers <5.0` + `qwen-asr` | ✅ | ❌ AutoConfig error | ✅ | ✅ |
+| `transformers >=5.13`, no `qwen-asr` (.venv-vox) | ✅ | ✅ | ✅ | ❌ |
+| `transformers <5.0` + `qwen-asr` (.venv default) | ✅ | ❌ | ✅ | ✅ |
 
-Two workable paths:
-1. **Two venvs** — `.venv` for Whisper + Voxtral, `.venv-qwen` for
-   Whisper + Canary + Qwen3-ASR. Pick by run.
-2. **DashScope cloud adapter** — write a `qwen3_asr_dashscope` adapter
-   that hits Qwen's cloud endpoint. No local runtime, no version
-   conflict. Estimated ~60 LOC plus tests.
+**Benchy ships a two-venv setup that handles this automatically.**
+
+```bash
+# One-time setup — builds both venvs idempotently.
+bash scripts/setup-venvs.sh
+```
+
+After setup:
+
+```bash
+# Default venv covers Whisper + Canary + Qwen3-ASR:
+.venv/bin/benchy eval -c qwen3-asr-0.6b-transformers ...
+
+# Voxtral venv covers Whisper + Canary + Voxtral:
+.venv-vox/bin/benchy eval -c voxtral-mini-4b-transformers ...
+```
+
+Each model YAML that needs a specific venv declares `venv: <path>`.
+If you launch `benchy` from the wrong one, the CLI **pre-flight check
+fails fast** with the exact replacement command — no mysterious
+transformers import errors during inference.
+
+Convenience targets:
+
+```bash
+make setup-venvs    # build both
+make smoke-qwen     # .venv/bin/benchy ... qwen3-asr-0.6b
+make smoke-voxtral  # .venv-vox/bin/benchy ... voxtral-mini-4b
+```
+
+Alternative path (no second venv): write a `qwen3_asr_dashscope` cloud
+adapter (~60 LOC). The user already has `DASHSCOPE_API_KEY` set.
 
 ## Comparison numbers (FLEURS es_419, 1 sample, Mac)
 
