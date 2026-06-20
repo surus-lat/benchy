@@ -232,15 +232,20 @@ adding a block named after the adapter for its config knobs. See
 design and `docs/superpowers/plans/2026-06-19-adapter-layer-implementation.md`
 for the empirical wiring story.
 
-### Voxtral install
+### Voxtral install — use the dedicated `.venv-vox`
+
+Voxtral and Qwen3-ASR have incompatible `transformers` pins, so benchy
+ships a two-venv setup:
 
 ```bash
-# Whisper paths already work on the pinned transformers; this upgrade
-# enables Voxtral support.
-VIRTUAL_ENV=$(pwd)/.venv uv pip install \
-  'git+https://github.com/huggingface/transformers.git' \
-  'mistral-common>=1.11.0'
+bash scripts/setup-venvs.sh     # builds .venv (default) AND .venv-vox
+# Then run Voxtral specifically from .venv-vox:
+.venv-vox/bin/benchy eval -c voxtral-mini-4b-transformers ...
 ```
+
+The Voxtral YAML declares `venv: .venv-vox` and benchy's CLI pre-flight
+check will refuse a Voxtral run launched from the wrong venv. See the
+`qwen3-asr-howto` skill for the full conflict matrix.
 
 ### Canary install
 
