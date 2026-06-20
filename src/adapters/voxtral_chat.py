@@ -1,18 +1,22 @@
 """voxtral_chat adapter — Mistral Voxtral family ASR.
 
-Voxtral models are multimodal LLMs that accept audio via a chat
-template and emit text. They cannot be loaded through
-`transformers.pipeline("automatic-speech-recognition")` because
-their model_type ('voxtral_realtime') is not in the pipeline's
-auto-dispatch table even with trust_remote_code=True. This adapter
-calls AutoModelForCausalLM + AutoProcessor directly.
+Voxtral models are speech-seq2seq audio→text transcribers. They live
+in `transformers >= 5.13` and need `mistral-common` for the
+processor. The processor takes a raw audio array (not a chat
+template) and the model generates the transcription.
+
+Adapter pipeline:
+  1. librosa loads the audio at 16 kHz mono → numpy array
+  2. processor(audio=array) → input_ids + audio features
+  3. model.generate(**inputs)
+  4. processor.batch_decode(outputs) → transcription string
 
 Config knobs (read from `voxtral_chat:` block in the model YAML):
   trust_remote_code: bool (default True)
   torch_dtype: "float16" | "float32" | "bfloat16" (default "float16")
   device: "auto" | "cpu" | "cuda" | "mps" (default "auto")
-  chat_prompt: str (default "Transcribe this audio.")
   max_new_tokens: int (default 256)
+  sampling_rate: int (default 16000)
 """
 
 from __future__ import annotations
@@ -59,7 +63,11 @@ class Adapter(BaseAdapter):
 
     def _load(self) -> None:
         import torch
-        from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor
+        from transformers import (
+            AutoConfig,
+            AutoModelForSpeechSeq2Seq,
+            AutoProcessor,
+        )
 
         dtype_name = _DTYPE_MAP[self.config.get("torch_dtype", "float16")]
         torch_dtype = getattr(torch, dtype_name)
@@ -67,12 +75,13 @@ class Adapter(BaseAdapter):
         device = _resolve_device(self.config.get("device", "auto"))
 
         # Pre-load the config explicitly with trust_remote_code so AutoModel
-        # doesn't re-trigger the unknown-model_type rejection (voxtral_realtime,
-        # qwen3_asr, etc. live in custom code under trust_remote_code).
+        # doesn't re-trigger the unknown-model_type rejection. Voxtral lives
+        # in transformers >= 5.13 (was added after 4.57.6).
         hf_config = AutoConfig.from_pretrained(
             self.model_name, trust_remote_code=trust_remote_code
         )
-        self._model = AutoModelForCausalLM.from_pretrained(
+        # Voxtral is a speech-seq2seq model (audio → text), not causal LM.
+        self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
             self.model_name,
             config=hf_config,
             trust_remote_code=trust_remote_code,
@@ -93,26 +102,31 @@ class Adapter(BaseAdapter):
         if self._model is None:
             self._load()
 
-        prompt = self.config.get("chat_prompt", "Transcribe this audio.")
+        import librosa
+        import torch
+
         max_new_tokens = int(self.config.get("max_new_tokens", 256))
+        sampling_rate = int(self.config.get("sampling_rate", 16000))
+        model_dtype = next(self._model.parameters()).dtype
 
         results = []
         for req in requests:
             try:
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "audio", "audio": req["audio_path"]},
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ]
-                inputs = self._processor.apply_chat_template(
-                    messages,
-                    add_generation_prompt=True,
+                audio_array, _ = librosa.load(
+                    req["audio_path"], sr=sampling_rate, mono=True
+                )
+                inputs = self._processor(
+                    audio=audio_array,
+                    sampling_rate=sampling_rate,
                     return_tensors="pt",
                 )
+                # Cast float feature tensors to the model's dtype (fp16/bf16)
+                # so they match the model weights. Keep int tensors (input_ids,
+                # attention_mask) untouched.
+                inputs = {
+                    k: (v.to(model_dtype) if hasattr(v, "dtype") and v.dtype.is_floating_point else v)
+                    for k, v in inputs.items()
+                }
                 if self._device != "cpu":
                     inputs = {
                         k: v.to(self._device) if hasattr(v, "to") else v

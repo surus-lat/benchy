@@ -200,19 +200,34 @@ Then pass the YAML name to `--models` in `run_asr_panel.py`.
 
 **Custom-architecture models (Voxtral, Qwen3-ASR, Canary)** — these now go
 through dedicated adapters under `src/adapters/`. Set `adapter: <name>` in
-the model YAML instead of `transformers_audio:`. As of 2026-06-19:
+the model YAML instead of `transformers_audio:`. As of 2026-06-20:
 
-- `voxtral_chat` — wired but **BLOCKED upstream**: `transformers 4.57.6`
-  doesn't include `voxtral_realtime` even with `trust_remote_code=True`.
-  Fix: install `transformers` from GitHub main. Risky — verify it doesn't
-  break Whisper before merging.
-- `qwen3_asr_chat` — same status (`qwen3_asr` not in 4.57.6).
+- `voxtral_chat` — **working**. Requires `transformers >= 5.13`
+  (currently from git main, not yet on PyPI) plus `mistral-common`.
+  Verified end-to-end: Voxtral-Mini-4B on FLEURS es_419 → WER 0.103,
+  CER 0.018, real Spanish output. Force `device: cpu` on Mac (MPS
+  wedges on 4B inference, same pattern as `whisper-large-v3`).
+- `qwen3_asr_chat` — **blocked upstream**. The Qwen3-ASR repo wants
+  a `Qwen3ASRForConditionalGeneration` class that doesn't exist in
+  `transformers` (any version) and the repo ships no custom code,
+  so `trust_remote_code` can't help. Adapter is wired and tested with
+  mocks; ready the moment upstream lands the architecture.
 - `canary_nemo` — not implemented; needs `nemo-toolkit[asr]`.
 
-The adapter layer itself is working end-to-end: routing flows through
+The adapter layer itself works end-to-end: routing flows through
 `connection.py`, lazy-load fires correctly, results come back in the
-standard `{output, raw, error, error_type}` shape. The block is in the
-underlying `transformers` package version.
+standard `{output, raw, error, error_type}` shape.
+
+### Voxtral install
+
+```bash
+VIRTUAL_ENV=$(pwd)/.venv uv pip install \
+  'git+https://github.com/huggingface/transformers.git' \
+  'mistral-common>=1.11.0'
+```
+
+The whisper-tiny / large-v3-turbo / whisper-1 paths all still pass after
+this upgrade — confirmed via smoke run.
 
 ---
 

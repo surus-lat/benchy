@@ -200,26 +200,42 @@ set `supports_language_kwarg: false` so the interface doesn't pass Whisper-only
 `generate_kwargs`.
 
 **Non-Whisper architectures (Voxtral, Qwen3-ASR, Canary)** now have dedicated
-adapters under `src/adapters/`. As of 2026-06-19 (real-model end-to-end smoke):
+adapters under `src/adapters/`. As of 2026-06-20 (real-model end-to-end smoke):
 
-- `voxtral_chat` (adapter): **BLOCKED upstream** — `transformers 4.57.6` raises
-  `ValueError: model type 'voxtral_realtime' not recognized` at
-  `AutoConfig.from_pretrained`, even with `trust_remote_code=True`. The
-  adapter routing, lazy load, AutoConfig pre-load, and lifecycle all work
-  correctly — the architecture itself isn't yet in pinned `transformers`.
-  Fix: `pip install 'git+https://github.com/huggingface/transformers.git'`
-  (high blast radius, do not apply without confirming it doesn't break
-  Whisper).
-- `qwen3_asr_chat` (adapter): **BLOCKED upstream** — same root cause
-  (`model type 'qwen3_asr' not recognized`). Same fix applies.
-- `canary_nemo`: not yet implemented. Needs `nemo-toolkit[asr]` install
-  path.
+- `voxtral_chat` (adapter): **PASS** on `transformers >= 5.13` + `mistral-common`.
+  Real run: Voxtral-Mini-4B fp16 CPU on FLEURS es_419 → **WER 0.103, CER 0.018**,
+  recognizable Spanish transcription. The model loads through
+  `AutoModelForSpeechSeq2Seq` with `trust_remote_code=True`, and the processor
+  takes a raw audio array (librosa-loaded at 16 kHz mono). Mac MPS wedges
+  the same way it does for `whisper-large-v3` — force `device: cpu` in the
+  YAML on <=16 GB Macs (already set as default for the shipped config).
+- `qwen3_asr_chat` (adapter): **BLOCKED upstream — different root cause**.
+  Qwen3-ASR's config declares architecture `Qwen3ASRForConditionalGeneration`,
+  which doesn't exist in any transformers release, and the HF repo
+  (`Qwen/Qwen3-ASR-0.6B`) ships only weights + tokenizer config — no
+  `modeling_qwen3_asr.py` for `trust_remote_code` to consume. Genuine
+  upstream gap. Adapter is wired and tested with mocks; will work the
+  moment transformers ships the architecture (or the repo adds custom code).
+- `canary_nemo`: not yet implemented. Needs `nemo-toolkit[asr]` install path.
 
 Use the adapter path by setting `adapter: <name>` in the model YAML and
 adding a block named after the adapter for its config knobs. See
 `docs/superpowers/specs/2026-06-19-adapter-layer-design.md` for the layer
 design and `docs/superpowers/plans/2026-06-19-adapter-layer-implementation.md`
-for the empirical wiring story (5 additional touch points beyond the spec).
+for the empirical wiring story.
+
+### Voxtral install
+
+```bash
+# Whisper paths already work on the pinned transformers; this upgrade
+# enables Voxtral support.
+VIRTUAL_ENV=$(pwd)/.venv uv pip install \
+  'git+https://github.com/huggingface/transformers.git' \
+  'mistral-common>=1.11.0'
+```
+
+Verified non-regression: 389 unit tests still green; `whisper-tiny-transformers`
+smoke still passes through the legacy provider path after the upgrade.
 
 **Add a new dataset** — the FLEURS subtasks at
 `src/tasks/transcription/fleurs_es_latam.py` are the template. A new subtask

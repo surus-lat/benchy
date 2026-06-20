@@ -3,11 +3,14 @@ model:
 adapter: voxtral_chat
 voxtral_chat:
   trust_remote_code: true
-  # 4B params: fp32 = ~16 GB RAM, fp16 = ~8 GB. fp16 is mandatory on 16 GB Macs.
+  # 4B params: fp32 = ~16 GB RAM, fp16 = ~8 GB. fp16 is mandatory on <=16 GB Macs.
   torch_dtype: float16
-  chat_prompt: "Transcribe this audio. Output only the transcription, no commentary."
   max_new_tokens: 256
-  device: auto
+  # Apple Silicon: device='auto' resolves to mps, which wedges on
+  # Voxtral-4B inference (same uninterruptible-syscall pattern as
+  # whisper-large-v3). Force CPU for predictable behavior on Mac;
+  # set to cuda or auto on Linux+GPU.
+  device: cpu
 task_defaults:
   log_samples: true
 tasks:
