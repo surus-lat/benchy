@@ -1,21 +1,27 @@
-"""qwen3_asr_chat adapter — Qwen3-ASR family ASR.
+"""qwen3_asr_chat adapter — Qwen3-ASR family ASR via the `qwen-asr` package.
 
-Qwen3-ASR is an LLM-style ASR that accepts audio via the Qwen
-processor's chat template and emits text. Its model_type
-('qwen3_asr') is not in transformers' pipeline auto-dispatch even
-with trust_remote_code=True, so this adapter calls
-AutoModelForCausalLM + AutoProcessor directly.
+Qwen3-ASR ships its own runtime: the `qwen-asr` PyPI package, NOT
+`transformers` directly. The HF repo declares
+`Qwen3ASRForConditionalGeneration` as the architecture, which doesn't
+exist in any `transformers` release. `qwen_asr.Qwen3ASRModel` wraps
+the model with a dedicated `.transcribe(audio, language=...)` method.
 
-Structurally identical to voxtral_chat — when a third LLM-style
-ASR adapter shows up, extract a shared base per best-part-is-no-part
-lens 5. Not now — wait for the third instance to confirm the shape.
+The adapter name keeps the `_chat` suffix for YAML stability — the
+field `adapter: qwen3_asr_chat` is part of the public surface — but
+the implementation no longer uses a chat template.
+
+**Version conflict note:** `qwen-asr` 0.0.6 pins `transformers <5.0`
+while Voxtral needs `transformers >=5.13`. The two can't be active
+in the same Python environment. Pick the one you need for the run,
+or maintain two venvs.
 
 Config knobs (read from `qwen3_asr_chat:` block in the model YAML):
-  trust_remote_code: bool (default True)
-  torch_dtype: "float16" | "float32" | "bfloat16" (default "float16")
-  device: "auto" | "cpu" | "cuda" | "mps" (default "auto")
-  chat_prompt: str (default "Please transcribe the audio.")
+  dtype: "bfloat16" | "float16" | "float32" (default "bfloat16")
+  device_map: str (default "auto") — passed to qwen_asr.from_pretrained
+  language: str | None (default None — auto-detect; can force "Spanish")
+  max_inference_batch_size: int (default 32)
   max_new_tokens: int (default 256)
+  return_time_stamps: bool (default False)
 """
 
 from __future__ import annotations
@@ -37,18 +43,39 @@ _DTYPE_MAP = {
 }
 
 
-def _resolve_device(requested: str) -> str:
-    if requested != "auto":
-        return requested
-    try:
-        import torch
-    except ImportError:
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+# ISO 639-1 → Qwen3-ASR's human-readable language strings. None = auto-detect.
+_LANG_NAMES = {
+    "es": "Spanish",
+    "en": "English",
+    "zh": "Chinese",
+    "fr": "French",
+    "de": "German",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "ru": "Russian",
+    "ar": "Arabic",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "tr": "Turkish",
+    "hi": "Hindi",
+    "id": "Indonesian",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "cs": "Czech",
+    "ro": "Romanian",
+    "el": "Greek",
+    "hu": "Hungarian",
+    "fa": "Persian",
+    "ms": "Malay",
+    "sv": "Swedish",
+    "da": "Danish",
+    "fi": "Finnish",
+    "fil": "Filipino",
+    "yue": "Cantonese",
+    "mk": "Macedonian",
+}
 
 
 class Adapter(BaseAdapter):
@@ -57,43 +84,24 @@ class Adapter(BaseAdapter):
     def __init__(self, model_name: str, config: dict[str, Any]):
         super().__init__(model_name, config)
         self._model = None
-        self._processor = None
-        self._device = "cpu"
 
     def _load(self) -> None:
         import torch
-        from transformers import (
-            AutoConfig,
-            AutoModelForSpeechSeq2Seq,
-            AutoProcessor,
-        )
+        from qwen_asr import Qwen3ASRModel
 
-        dtype_name = _DTYPE_MAP[self.config.get("torch_dtype", "float16")]
+        dtype_name = _DTYPE_MAP[self.config.get("dtype", "bfloat16")]
         torch_dtype = getattr(torch, dtype_name)
-        trust_remote_code = bool(self.config.get("trust_remote_code", True))
-        device = _resolve_device(self.config.get("device", "auto"))
+        device_map = self.config.get("device_map", "auto")
+        max_batch = int(self.config.get("max_inference_batch_size", 32))
+        max_new = int(self.config.get("max_new_tokens", 256))
 
-        # Pre-load the config explicitly with trust_remote_code. Qwen3-ASR
-        # isn't merged into stable transformers yet — relies on custom code
-        # in the HF repo. The model_type 'qwen3_asr' rejection happens here
-        # if the repo's auto_map doesn't resolve.
-        hf_config = AutoConfig.from_pretrained(
-            self.model_name, trust_remote_code=trust_remote_code
-        )
-        # Qwen3-ASR is a speech-seq2seq model (audio → text).
-        self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        self._model = Qwen3ASRModel.from_pretrained(
             self.model_name,
-            config=hf_config,
-            trust_remote_code=trust_remote_code,
-            torch_dtype=torch_dtype,
+            dtype=torch_dtype,
+            device_map=device_map,
+            max_inference_batch_size=max_batch,
+            max_new_tokens=max_new,
         )
-        if device != "cpu":
-            self._model = self._model.to(device)
-        self._processor = AutoProcessor.from_pretrained(
-            self.model_name,
-            trust_remote_code=trust_remote_code,
-        )
-        self._device = device
 
     async def generate_batch(
         self,
@@ -102,39 +110,24 @@ class Adapter(BaseAdapter):
         if self._model is None:
             self._load()
 
-        prompt = self.config.get("chat_prompt", "Please transcribe the audio.")
-        max_new_tokens = int(self.config.get("max_new_tokens", 256))
+        config_lang = self.config.get("language")
+        return_ts = bool(self.config.get("return_time_stamps", False))
 
         results = []
         for req in requests:
             try:
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "audio", "audio": req["audio_path"]},
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ]
-                inputs = self._processor.apply_chat_template(
-                    messages,
-                    add_generation_prompt=True,
-                    return_tensors="pt",
+                lang = config_lang
+                if lang is None:
+                    iso = req.get("language")
+                    if iso:
+                        lang = _LANG_NAMES.get(iso, None)
+                transcribe_result = self._model.transcribe(
+                    audio=req["audio_path"],
+                    language=lang,
+                    return_time_stamps=return_ts,
                 )
-                if self._device != "cpu":
-                    inputs = {
-                        k: v.to(self._device) if hasattr(v, "to") else v
-                        for k, v in inputs.items()
-                    }
-                output_ids = self._model.generate(
-                    **inputs, max_new_tokens=max_new_tokens
-                )
-                input_len = inputs["input_ids"].shape[-1]
-                generated = output_ids[:, input_len:]
-                text = self._processor.batch_decode(
-                    generated, skip_special_tokens=True
-                )[0]
+                hyp = transcribe_result[0]
+                text = getattr(hyp, "text", str(hyp))
                 results.append(
                     {"output": text, "raw": text, "error": None, "error_type": None}
                 )
