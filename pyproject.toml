@@ -70,6 +70,10 @@ transcription = [
     # Required by VoxtralRealtimeProcessor's tokenizer. Only consumed when
     # actually using Voxtral; safe to install on Whisper-only setups.
     "mistral-common>=1.11.0",
+    # Required by the canary_nemo adapter (NVIDIA Canary ASR models).
+    # NeMo's tests/ package collides with our local tests/ — keep
+    # tests/__init__.py committed so pytest's pythonpath=["."] wins.
+    "nemo-toolkit[asr]>=2.7.0",
 ]
 dev = [
     "pytest>=8.0.0",

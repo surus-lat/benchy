@@ -216,7 +216,15 @@ adapters under `src/adapters/`. As of 2026-06-20 (real-model end-to-end smoke):
   `modeling_qwen3_asr.py` for `trust_remote_code` to consume. Genuine
   upstream gap. Adapter is wired and tested with mocks; will work the
   moment transformers ships the architecture (or the repo adds custom code).
-- `canary_nemo`: not yet implemented. Needs `nemo-toolkit[asr]` install path.
+- `canary_nemo` (adapter): **PASS** on `nemo-toolkit[asr] >= 2.7`.
+  Real run: nvidia/canary-1b-flash CPU on FLEURS es_419 → **WER 0.069, CER 0.024**
+  (best so far on the sample). Loads via NeMo's
+  `EncDecMultiTaskModel.from_pretrained` and calls
+  `model.transcribe(audio=[path], source_lang='es', target_lang='es',
+  pnc='yes')`. NeMo ships a colliding `tests/` package at site-packages
+  root — kept under control by `tests/__init__.py` + pytest
+  `pythonpath = ["."]`.
+  Canary-1b-flash supports en/de/es/fr only; pt_br will produce nonsense.
 
 Use the adapter path by setting `adapter: <name>` in the model YAML and
 adding a block named after the adapter for its config knobs. See
@@ -234,8 +242,19 @@ VIRTUAL_ENV=$(pwd)/.venv uv pip install \
   'mistral-common>=1.11.0'
 ```
 
-Verified non-regression: 389 unit tests still green; `whisper-tiny-transformers`
-smoke still passes through the legacy provider path after the upgrade.
+### Canary install
+
+```bash
+# Adds ~2 GB of NeMo deps. Re-install transformers from main afterward
+# because NeMo pins an older transformers and will downgrade it.
+VIRTUAL_ENV=$(pwd)/.venv uv pip install 'nemo-toolkit[asr]'
+VIRTUAL_ENV=$(pwd)/.venv uv pip install --upgrade \
+  'git+https://github.com/huggingface/transformers.git'
+```
+
+Verified non-regression after both installs: 394 unit tests green;
+`whisper-tiny-transformers` smoke still passes through the legacy provider
+path; Voxtral + Canary both produce real Spanish transcriptions.
 
 **Add a new dataset** — the FLEURS subtasks at
 `src/tasks/transcription/fleurs_es_latam.py` are the template. A new subtask
