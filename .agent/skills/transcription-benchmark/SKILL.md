@@ -23,9 +23,38 @@ comparative WER / CER table. Validated against this repo on 2026-06-20.
 endpoints. Everything below runs on the user's hardware so a colleague
 can reproduce results offline once the venvs are built.
 
-## The panel
+## The recommended benchmark (test these five)
 
-Eight models across four architectures. Adapter is the one the YAML uses
+These are the five configs to run for the **multi-architecture
+comparison** — the latest from each model family the repo supports.
+A colleague reproducing the benchmark should test exactly this set:
+
+1. `whisper-large-v3-turbo-transformers` — current Whisper baseline
+2. `surus-whisper-large-v3-turbo-latam-transformers` — Surus LATAM fine-tune
+3. `canary-1b-flash-transformers` — NVIDIA Canary
+4. `qwen3-asr-0.6b-transformers` — Qwen3-ASR
+5. `voxtral-mini-4b-transformers` — Mistral Voxtral (uses `.venv-vox`)
+
+One-shot:
+
+```bash
+.venv/bin/python scripts/run_asr_panel.py \
+  --limit 25 --locales es \
+  --models whisper-large-v3-turbo-transformers \
+           surus-whisper-large-v3-turbo-latam-transformers \
+           canary-1b-flash-transformers \
+           qwen3-asr-0.6b-transformers \
+           voxtral-mini-4b-transformers \
+  --skip-failures --run-id main_panel
+```
+
+Add `pt` to `--locales` for Portuguese coverage; note Canary only
+supports en/de/es/fr so its pt_br row will be high-WER nonsense.
+
+## The full panel (every config the repo ships)
+
+Eight configs across four architectures, including the smaller Whisper
+variants for size-quality exploration. Adapter is the one the YAML uses
 to load the model.
 
 | Config | HF repo | Adapter / interface | Venv |
