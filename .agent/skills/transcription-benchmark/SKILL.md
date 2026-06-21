@@ -1,29 +1,34 @@
 ---
 name: transcription-benchmark
 description: >
-  Use when the user wants to run the full multi-architecture transcription
+  Use when the user wants to run the local multi-architecture transcription
   benchmark on FLEURS Latin-American Spanish + Brazilian Portuguese across
   every supported model — Whisper variants (including the Surus LATAM
-  fine-tune), Voxtral, Qwen3-ASR, Canary, plus the whisper-1 cloud
-  baseline. Covers single-model smokes, full-panel runs across the
-  two-venv setup, and reading the comparative WER / CER table the runner
-  produces. Triggers on: "run the transcription benchmark", "benchmark
-  asr across models", "compare voxtral canary qwen whisper", "asr panel",
-  "fleurs panel", "latam asr benchmark".
+  fine-tune), Voxtral, Qwen3-ASR, and Canary. All inference runs on the
+  user's own hardware; no cloud APIs or paid endpoints. Covers
+  single-model smokes, full-panel runs across the two-venv setup, and
+  reading the comparative WER / CER table the runner produces. Triggers
+  on: "run the transcription benchmark", "benchmark asr across models",
+  "compare voxtral canary qwen whisper", "asr panel", "fleurs panel",
+  "latam asr benchmark".
 ---
 
-# Multi-architecture transcription benchmark
+# Multi-architecture transcription benchmark (local)
 
 End-to-end recipe for the canonical benchy ASR panel: every model below
-on FLEURS es_419 (and optionally pt_br), printed as a single comparative
-WER / CER table. Validated against this repo on 2026-06-20.
+runs locally on FLEURS es_419 (and optionally pt_br), printed as a single
+comparative WER / CER table. Validated against this repo on 2026-06-20.
+
+**Local-only by design.** No `whisper-1` cloud, no DashScope, no paid
+endpoints. Everything below runs on the user's hardware so a colleague
+can reproduce results offline once the venvs are built.
 
 ## The panel
 
-Nine models across five architectures. Adapter is the one the YAML uses
+Eight models across four architectures. Adapter is the one the YAML uses
 to load the model.
 
-| Config | HF repo (or cloud) | Adapter / interface | Venv |
+| Config | HF repo | Adapter / interface | Venv |
 |---|---|---|---|
 | `whisper-tiny-transformers` | `openai/whisper-tiny` | legacy `transformers_audio` | `.venv` |
 | `whisper-base-transformers` | `openai/whisper-base` | legacy `transformers_audio` | `.venv` |
@@ -31,7 +36,6 @@ to load the model.
 | `whisper-large-v3-transformers` | `openai/whisper-large-v3` | legacy `transformers_audio` | `.venv` (force CPU / fp16 on Mac) |
 | `whisper-large-v3-turbo-transformers` | `openai/whisper-large-v3-turbo` | legacy `transformers_audio` | `.venv` |
 | **`surus-whisper-large-v3-turbo-latam-transformers`** | **`surus-ai/whisper-large-v3-turbo-latam`** | legacy `transformers_audio` | `.venv` |
-| `whisper-1` | OpenAI cloud Whisper | legacy `openai_audio` | either |
 | `canary-1b-flash-transformers` | `nvidia/canary-1b-flash` | `canary_nemo` adapter | either |
 | `qwen3-asr-0.6b-transformers` | `Qwen/Qwen3-ASR-0.6B` | `qwen3_asr_chat` adapter | `.venv` |
 | `voxtral-mini-4b-transformers` | `mistralai/Voxtral-Mini-4B-Realtime-2602` | `voxtral_chat` adapter | **`.venv-vox`** |
@@ -55,8 +59,9 @@ Two venvs because Voxtral needs `transformers >=5.13` and `qwen-asr` pins
 `venv: <path>`; `benchy` pre-flight fails fast with the exact replacement
 command if you launch from the wrong one.
 
-For `whisper-1` cloud baseline, also set `OPENAI_API_KEY` in `.env`
-(the repo loads it on startup).
+No API keys, no `.env` setup needed — everything in this panel loads
+weights locally from HuggingFace on first run, then caches at
+`~/.cache/huggingface/`.
 
 ## Single-model smoke (sanity check before the panel)
 
@@ -78,12 +83,6 @@ make smoke-voxtral          # voxtral-mini-4b via .venv-vox
   --tasks transcription.fleurs_es_latam \
   --limit 1 --log-samples \
   --run-id surus_smoke --exit-policy smoke
-
-# Cloud Whisper baseline:
-.venv/bin/benchy eval -c whisper-1 \
-  --tasks transcription.fleurs_es_latam \
-  --limit 2 --log-samples \
-  --run-id whisper1_smoke --exit-policy smoke
 ```
 
 Pass criteria: exit 0, `Run status: passed`, `valid_samples == total_samples`,
@@ -137,8 +136,7 @@ broke.
 | Config | Locale | WER | CER | Notes |
 |---|---|---|---|---|
 | `whisper-large-v3-turbo-transformers` | es_419 | 0.089 | 0.027 | Best Whisper-family on this sample |
-| `whisper-1` (cloud) | es_419 | 0.091 | 0.015 | Cloud baseline |
-| `surus-whisper-large-v3-turbo-latam-transformers` | es_419 | 0.138 | 0.024 | 1-sample — fine-tune shines on accents not FLEURS |
+| `surus-whisper-large-v3-turbo-latam-transformers` | es_419 | 0.138 | 0.024 | 1-sample — fine-tune shines on accents, not FLEURS |
 | `canary-1b-flash-transformers` | es_419 | **0.069** | 0.024 | Best overall (n=1) |
 | `voxtral-mini-4b-transformers` | es_419 | 0.103 | 0.018 | CPU on Mac |
 | `qwen3-asr-0.6b-transformers` | es_419 | 0.138 | 0.036 | qwen-asr backend |
@@ -175,12 +173,11 @@ Unhealthy signals:
 |---|---|
 | `configs/models/whisper-*-transformers.yaml` | Whisper variant configs (5 of them) |
 | `configs/models/surus-whisper-large-v3-turbo-latam-transformers.yaml` | Surus LATAM fine-tune |
-| `configs/models/whisper-1.yaml` | Cloud Whisper baseline |
 | `configs/models/{canary-1b-flash,qwen3-asr-0.6b,voxtral-mini-4b}-transformers.yaml` | Adapter-routed models |
 | `scripts/run_asr_panel.py` | Panel runner — venv-aware via `_benchy_bin_for_config` |
 | `scripts/setup-venvs.sh` | Builds both venvs |
 | `Makefile` | Per-model `smoke-*` shortcuts + `setup-venvs` |
-| `src/interfaces/{openai_audio,transformers_audio}_interface.py` | Legacy interfaces (Whisper paths) |
+| `src/interfaces/transformers_audio_interface.py` | Legacy interface used by every local Whisper config |
 | `src/adapters/{canary_nemo,qwen3_asr_chat,voxtral_chat}.py` | The three adapters |
 | `src/tasks/transcription/fleurs_{es_latam,pt_br}.py` | Task definitions |
 
