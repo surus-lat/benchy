@@ -1,6 +1,13 @@
 name: structured_extraction
 display_name: Structured Extraction
 description: Structured data extraction using guided JSON schema
+group: structured_extraction
+group_metadata:
+  name: Structured Extraction
+  description: Structured JSON data extraction from text
+  description_en: Structured JSON data extraction from text
+  description_es: Extracción de datos estructurados en JSON
+  description_pt: Extração de dados estruturados em JSON
 
 capability_requirements:
   requires_logprobs: optional

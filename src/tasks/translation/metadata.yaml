@@ -1,6 +1,13 @@
 name: translation
 display_name: Translation
 description: Machine translation evaluation using OPUS and FLORES datasets
+group: translation
+group_metadata:
+  name: Translation
+  description: Machine translation between Spanish and Portuguese
+  description_en: Machine translation between Spanish and Portuguese
+  description_es: Traducción automática entre español y portugués
+  description_pt: Tradução automática entre espanhol e português
 
 long_description: |
   Comprehensive machine translation evaluation suite combining FLORES+ and OPUS-100 datasets 
