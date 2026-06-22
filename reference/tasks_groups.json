@@ -18,6 +18,17 @@
         "wnli_es",
         "xnli_es_spanish_bench"
       ]
+    },
+    "transcription": {
+      "name": "Transcription",
+      "description": "ASR evaluation on Latin American Spanish and Brazilian Portuguese",
+      "description_en": "ASR evaluation on Latin American Spanish and Brazilian Portuguese",
+      "description_es": "Evaluaci\u00f3n de reconocimiento de voz en espa\u00f1ol y portugu\u00e9s de Am\u00e9rica Latina",
+      "description_pt": "Avalia\u00e7\u00e3o de reconhecimento de voz em espanhol e portugu\u00eas latino-americano",
+      "subtasks": [
+        "fleurs_es_latam",
+        "fleurs_pt_br"
+      ]
     }
   }
 }
