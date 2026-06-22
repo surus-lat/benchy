@@ -1,0 +1,38 @@
+{
+  "model_name": "faster-whisper-small",
+  "publisher": "Systran",
+  "full_model_name": "Systran/faster-whisper-small",
+  "categories": {
+    "transcription": {
+      "model_name": "faster-whisper-small",
+      "task_scores": {
+        "fleurs_es_latam": {
+          "score": 0.9177,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "fleurs_es_latam",
+          "wer": 0.0823,
+          "cer": 0.0166
+        }
+      },
+      "category_scores": {
+        "transcription": {
+          "score": 0.9177,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "top_level_scores": {
+        "transcription": {
+          "score": 0.9177,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "overall_score": 0.9177,
+      "evaluation_time": "unknown"
+    }
+  }
+}

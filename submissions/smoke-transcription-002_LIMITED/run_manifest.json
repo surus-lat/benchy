@@ -1,0 +1,8 @@
+{
+  "run_id": "smoke-transcription-002_LIMITED",
+  "packaged_at": "2026-06-22T18:24:01Z",
+  "models": [
+    "Systran/faster-whisper-small"
+  ],
+  "model_count": 1
+}
