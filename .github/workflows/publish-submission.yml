@@ -1,0 +1,33 @@
+name: Publish submission to HuggingFace
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "submissions/**"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            huggingface_hub \
+            python-dotenv \
+            pyyaml \
+            pandas \
+            requests
+
+      - name: Publish submissions to HuggingFace
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python -m src.leaderboard.merge_and_publish --from-submissions
