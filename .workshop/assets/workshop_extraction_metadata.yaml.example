@@ -1,0 +1,14 @@
+name: workshop_extraction
+display_name: Workshop Extraction
+description: Structured extraction on paraloq with custom (stricter) scoring — workshop demo
+
+capability_requirements:
+  requires_logprobs: optional
+  requires_multimodal: none
+  requires_schema: preferred
+  requires_files: none
+
+subtasks:
+  extract:
+    description: Extract structured JSON from diverse text — custom-weighted EQS
+    url: https://huggingface.co/datasets/paraloq/json_data_extraction

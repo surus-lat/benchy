@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Workshop organizer's private rehearsal notes (not shipped to attendees)
+.workshop/rehearsal-notes.md
+
 # Python
 __pycache__/
 *.py[cod]

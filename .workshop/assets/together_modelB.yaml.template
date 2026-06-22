@@ -1,0 +1,26 @@
+# Workshop Together AI model — slot B: zai-org/GLM-5.2
+# See together_modelA.yaml.template for instructions.
+
+model:
+  name: zai-org/GLM-5.2
+
+together:
+  provider_config: together
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+
+task_defaults:
+  log_samples: true
+
+tasks:
+- structured_extraction
+- latam_board
+
+metadata:
+  max_context_length: 128000
+  supports_multimodal: false
+  supports_schema: true
+  provider: together
+  model_type: glm5
+  description: "GLM-5.2 via Together AI — small text model"

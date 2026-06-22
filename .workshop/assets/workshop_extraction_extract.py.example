@@ -1,0 +1,120 @@
+"""Workshop extraction task — paraloq dataset with custom (stricter) scoring.
+
+Same data as the production `structured_extraction/paraloq` task.
+Different scoring weights to demonstrate that scoring is a knob, not a fixed law.
+
+Production EQS weights:   schema_validity=0.2, field_f1_partial=0.6, inverted_hallucination=0.2
+Workshop EQS weights:     schema_validity=0.5, field_f1_partial=0.3, inverted_hallucination=0.2
+Workshop string matching: stricter exact_threshold (0.99) and partial_threshold (0.80)
+"""
+
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from ..common import (
+    CachedDatasetMixin,
+    StructuredHandler,
+    download_huggingface_dataset,
+    save_to_jsonl,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class Extract(CachedDatasetMixin, StructuredHandler):
+    """Workshop extraction subtask with reweighted EQS and stricter string matching."""
+
+    name = "extract"
+    display_name = "Workshop Extraction"
+    description = "Paraloq with reweighted EQS — workshop demo"
+
+    dataset_name = "paraloq/json_data_extraction"
+    split = "train"
+    dataset_file = "workshop_data.jsonl"
+
+    system_prompt = (
+        "You are a precise data extraction assistant. Extract information from "
+        "the provided text according to the given JSON schema. Only extract "
+        "information explicitly stated. Use null when absent."
+    )
+
+    metrics_config = {
+        "extraction_quality_score": {
+            "enabled": True,
+            "weights": {
+                "schema_validity": 0.5,
+                "field_f1_partial": 0.3,
+                "inverted_hallucination": 0.2,
+            },
+        },
+        "partial_matching": {
+            "string": {
+                "token_overlap_weight": 0.5,
+                "levenshtein_weight": 0.3,
+                "containment_weight": 0.2,
+                "exact_threshold": 0.99,
+                "partial_threshold": 0.80,
+            },
+            "number": {
+                "relative_tolerance": 0.001,
+                "absolute_tolerance": 1e-06,
+            },
+            "array": {
+                "method": "jaccard",
+                "partial_credit": True,
+            },
+        },
+        "normalization": {
+            "case_sensitive": False,
+            "normalize_whitespace": True,
+            "unicode_normalize": True,
+        },
+    }
+
+    def _download_and_cache(self, output_path: Path) -> None:
+        raw_samples = download_huggingface_dataset(
+            dataset_name=self.dataset_name,
+            split=self.split,
+            cache_dir=str(self.data_dir / "cache"),
+        )
+
+        processed = []
+        for idx, raw_sample in enumerate(raw_samples):
+            text = raw_sample.get("text", "")
+            schema_raw = raw_sample.get("schema", "{}")
+            item_raw = raw_sample.get("item", "{}")
+
+            try:
+                schema = json.loads(schema_raw) if isinstance(schema_raw, str) else schema_raw
+                expected = json.loads(item_raw) if isinstance(item_raw, str) else item_raw
+            except json.JSONDecodeError:
+                logger.warning(f"Sample {idx}: failed to parse schema/item, skipping")
+                continue
+
+            if len(text) > 20000:
+                text = text[:20000]
+
+            processed.append({
+                "id": f"{idx:06d}",
+                "text": text,
+                "schema": schema,
+                "expected": expected,
+            })
+
+        save_to_jsonl(processed, output_path)
+
+    def preprocess_sample(self, raw_sample: Dict[str, Any], idx: int) -> Optional[Dict[str, Any]]:
+        return raw_sample
+
+    def get_prompt(self, sample: Dict[str, Any]) -> tuple[str, str]:
+        schema = sample.get("schema", {})
+        schema_str = json.dumps(schema, indent=2) if schema else ""
+        user_prompt = (
+            f"Text:\n{sample.get('text', '')}\n\n"
+            f"Extract information according to this JSON schema:\n"
+            f"{schema_str}\n\n"
+            f"Output valid JSON matching the schema exactly."
+        )
+        return self.system_prompt, user_prompt
