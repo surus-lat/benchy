@@ -1,0 +1,199 @@
+{
+  "schema_version": "1.0",
+  "benchy_version": "0.1.0",
+  "model": "openai/whisper-large-v3-turbo",
+  "run_id": "20260619_013834_LIMITED",
+  "timestamp": "2026-06-19T01:40:06.053098",
+  "started_at": "2026-06-19T01:38:34.194269",
+  "ended_at": "2026-06-19T01:40:06.053098",
+  "duration_s": 91.858829,
+  "status": "passed",
+  "exit_policy": "relaxed",
+  "exit_code": 0,
+  "counts": {
+    "requested_tasks": 1,
+    "completed_tasks": 1,
+    "passed_tasks": 1,
+    "degraded_tasks": 0,
+    "skipped_tasks": 0,
+    "no_samples_tasks": 0,
+    "pending_tasks": 0,
+    "error_tasks": 0,
+    "failed_tasks": 0,
+    "non_passing_tasks": 0,
+    "requested_subtasks": 1,
+    "passed_subtasks": 1
+  },
+  "invocation": {
+    "argv": [
+      "/Users/dobleefe/benchy/.venv/bin/benchy",
+      "eval",
+      "-c",
+      "whisper-large-v3-turbo-transformers",
+      "--tasks",
+      "transcription.fleurs_es_latam",
+      "--limit",
+      "5",
+      "--log-samples"
+    ],
+    "cli_args": {
+      "command": "eval",
+      "config_ref": null,
+      "config": "whisper-large-v3-turbo-transformers",
+      "verbose": false,
+      "test": false,
+      "register": false,
+      "prefect_url": "http://localhost:4200/api",
+      "limit": 5,
+      "batch_size": null,
+      "log_samples": true,
+      "no_log_samples": false,
+      "run_id": null,
+      "no_resume": false,
+      "tasks": [
+        "transcription.fleurs_es_latam"
+      ],
+      "tasks_file": null,
+      "task_group": null,
+      "model_path": null,
+      "model_name": null,
+      "provider": null,
+      "base_url": null,
+      "api_key_env": null,
+      "api_key": null,
+      "timeout": null,
+      "max_retries": null,
+      "max_concurrent": null,
+      "temperature": null,
+      "max_tokens": null,
+      "max_tokens_param_name": null,
+      "api_endpoint": null,
+      "use_structured_outputs": null,
+      "probe_mode": "skip",
+      "image_max_edge": null,
+      "organization": null,
+      "url": null,
+      "vllm_config": null,
+      "compatibility": null,
+      "exit_policy": "relaxed",
+      "output_path": null,
+      "dataset": null,
+      "task_type": null,
+      "dataset_name": null,
+      "dataset_source": "auto",
+      "dataset_split": "test",
+      "dataset_input_field": null,
+      "dataset_output_field": null,
+      "dataset_id_field": null,
+      "dataset_label_field": null,
+      "dataset_labels": null,
+      "dataset_choices_field": null,
+      "dataset_schema_field": null,
+      "dataset_schema_path": null,
+      "dataset_schema_json": null,
+      "multimodal_input": false,
+      "multimodal_image_field": "image_path",
+      "render_documents": false,
+      "no_render_documents": false,
+      "render_dpi": null,
+      "render_max_pages": null,
+      "system_prompt": null,
+      "user_prompt_template": null,
+      "api_url": null,
+      "api_method": null,
+      "api_body_template": null,
+      "api_response_path": null,
+      "api_headers": null,
+      "save_config": null
+    },
+    "cwd": "/Users/dobleefe/benchy"
+  },
+  "git": {
+    "available": true,
+    "repo": "/Users/dobleefe/benchy",
+    "commit": "f08e48060dd24a255892e04b6a0032d00001a356",
+    "dirty": true
+  },
+  "artifacts": {
+    "model_output_dir": {
+      "path": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo",
+      "exists": true
+    },
+    "run_outcome": {
+      "path": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/run_outcome.json",
+      "exists": false
+    },
+    "run_summary": {
+      "path": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/run_summary.json",
+      "exists": true
+    },
+    "probe_report": {
+      "path": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/probe_report.json",
+      "exists": false
+    },
+    "probe_summary": {
+      "path": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/probe_summary.txt",
+      "exists": false
+    },
+    "log_file": {
+      "path": "logs/20260619_013834_LIMITED/benchy_openai_whisper-large-v3-turbo.log",
+      "exists": true
+    },
+    "task_status_glob": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/*/task_status.json",
+    "task_per_sample_metrics_glob": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/*/*_per_sample_metrics.json",
+    "task_performance_summary_glob": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/*/*_performance_summary.json"
+  },
+  "errors": [],
+  "tasks": {
+    "transcription.fleurs_es_latam": {
+      "task": "transcription.fleurs_es_latam",
+      "status": "passed",
+      "completed": true,
+      "task_output_dir": "/Users/dobleefe/benchy/outputs/benchmark_outputs/20260619_013834_LIMITED/whisper-large-v3-turbo/transcription",
+      "reason": null,
+      "summary": {
+        "total_samples": 5,
+        "valid_samples": 5,
+        "error_count": 0,
+        "error_rate": 0.0,
+        "invalid_response_rate": null,
+        "connectivity_error_rate": null,
+        "response_rate": null
+      },
+      "subtasks": {
+        "fleurs_es_latam": {
+          "status": "passed",
+          "reason": null,
+          "summary": {
+            "total_samples": 5,
+            "valid_samples": 5,
+            "error_count": 0,
+            "error_rate": 0.0,
+            "invalid_response_rate": null,
+            "connectivity_error_rate": null,
+            "response_rate": null
+          }
+        }
+      },
+      "updated_at": "2026-06-19T01:40:06.049613",
+      "diagnostics": {
+        "diagnostic_counts": {
+          "plain_text": 5
+        },
+        "diagnostic_rates": {
+          "plain_text_rate": 1.0
+        },
+        "run_samples": 5.0
+      }
+    }
+  },
+  "diagnostics": {
+    "counts": {
+      "plain_text": 5
+    },
+    "run_samples": 5,
+    "rates": {
+      "plain_text": 1.0
+    }
+  }
+}
