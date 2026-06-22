@@ -29,6 +29,23 @@ from src.leaderboard.functions.copy_reference_files import copy_reference_files
 from src.leaderboard.functions.upload_to_hf import upload_to_hf
 
 
+def _load_submission_summaries(submissions_dir: Path) -> dict:
+    """Load all model_summary.json files from submissions/*/models/*/model_summary.json."""
+    combined: dict = {}
+    if not submissions_dir.exists():
+        print("No submissions/ directory found")
+        return combined
+    for summary_file in sorted(submissions_dir.glob("*/models/*/model_summary.json")):
+        try:
+            data = json.loads(summary_file.read_text())
+            key = data.get("model_name") or summary_file.parent.name
+            combined[key] = data
+        except Exception as e:
+            print(f"  ⚠  Could not read {summary_file}: {e}")
+    print(f"Loaded {len(combined)} model summaries from submissions/")
+    return combined
+
+
 def merge_summaries(old: dict, new: dict) -> dict:
     """Merge two all_model_summaries dicts. New entries overwrite old for the same key."""
     return {**old, **new}
@@ -56,6 +73,12 @@ Examples:
         "--skip-process",
         action="store_true",
         help="Skip processing step (outputs/publish/ already exists)",
+    )
+
+    parser.add_argument(
+        "--from-submissions",
+        action="store_true",
+        help="Load summaries from submissions/*/models/*/model_summary.json instead of outputs/publish/",
     )
 
     return parser.parse_args()
@@ -103,8 +126,8 @@ def main() -> bool:
     args = parse_args()
 
     # Validate args
-    if not args.skip_process and not args.run_id:
-        print("Error: provide --run-id <run_id> or --skip-process")
+    if not args.from_submissions and not args.skip_process and not args.run_id:
+        print("Error: provide --run-id <run_id>, --skip-process, or --from-submissions")
         sys.exit(1)
 
     # Load environment
@@ -129,6 +152,10 @@ def main() -> bool:
     dataset_name = config["datasets"]["results"]
 
     # Step 1: (Optional) Process new run
+    if args.from_submissions and args.run_id:
+        print("Error: --from-submissions and --run-id are mutually exclusive")
+        return False
+
     if args.run_id and not args.skip_process:
         print(f"\nProcessing run ID: {args.run_id}")
         result = subprocess.run(
@@ -143,15 +170,18 @@ def main() -> bool:
     print("\nFetching existing summaries from Hugging Face ...")
     hf_summaries = _download_hf_summaries(dataset_name)
 
-    # Step 3: Load local summaries
-    local_summaries_path = publish_dir / "summaries" / "all_model_summaries.json"
-    if local_summaries_path.exists():
-        with open(local_summaries_path, "r") as f:
-            local_summaries = json.load(f)
-        print(f"Loaded {len(local_summaries)} local model summaries from {local_summaries_path}")
+    # Step 3: Load local summaries (from outputs/publish/ or submissions/)
+    if args.from_submissions:
+        local_summaries = _load_submission_summaries(_project_root / "submissions")
     else:
-        local_summaries = {}
-        print(f"No local summaries found at {local_summaries_path} — using empty dict")
+        local_summaries_path = publish_dir / "summaries" / "all_model_summaries.json"
+        if local_summaries_path.exists():
+            with open(local_summaries_path, "r") as f:
+                local_summaries = json.load(f)
+            print(f"Loaded {len(local_summaries)} local model summaries from {local_summaries_path}")
+        else:
+            local_summaries = {}
+            print(f"No local summaries found at {local_summaries_path} — using empty dict")
 
     # Step 4: Merge (local wins on conflict)
     merged = merge_summaries(hf_summaries, local_summaries)
