@@ -1,0 +1,38 @@
+{
+  "model_name": "whisper-large-v3-turbo",
+  "publisher": "openai",
+  "full_model_name": "openai/whisper-large-v3-turbo",
+  "categories": {
+    "transcription": {
+      "model_name": "whisper-large-v3-turbo",
+      "task_scores": {
+        "fleurs_es_latam": {
+          "score": 0.8915,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "fleurs_es_latam",
+          "wer": 0.1085,
+          "cer": 0.0247
+        }
+      },
+      "category_scores": {
+        "transcription": {
+          "score": 0.8915,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "top_level_scores": {
+        "transcription": {
+          "score": 0.8915,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "overall_score": 0.8915,
+      "evaluation_time": "unknown"
+    }
+  }
+}
