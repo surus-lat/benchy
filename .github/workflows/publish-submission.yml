@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "submissions/**"
+      - "src/tasks/**/metadata.yaml"
 
 jobs:
   publish:
