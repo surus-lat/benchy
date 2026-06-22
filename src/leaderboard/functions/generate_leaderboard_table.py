@@ -94,7 +94,17 @@ def create_leaderboard_table(summaries: List[Dict], config: Dict = None) -> List
         for task_name, task_config in task_definitions.items():
             if task_name in categories:
                 process_task_scores(row, task_name, categories[task_name], task_config)
-        
+
+        # Compute overall_latam_score: mean of available core category scores
+        overall_cols = [
+            f"{task_definitions[t].get('output_prefix', t)}_score"
+            for t in leaderboard_config.get("overall_score_categories", [])
+            if t in task_definitions
+        ]
+        available = [row[c] for c in overall_cols if isinstance(row.get(c), (int, float))]
+        if available:
+            row["overall_latam_score"] = round(sum(available) / len(available), 4)
+
         leaderboard_data.append(row)
     
     return leaderboard_data
