@@ -135,6 +135,13 @@ leaderboard:
       output_prefix: "document_extraction"
       metrics: ["composite_score", "eqs", "f1_partial"]  # Available metrics
       primary_metric: "composite_score"  # Which metric to use for scoring (composite_score_stats.mean)
+
+    transcription:
+      processor: "transcription_results_processor"
+      category_score_key: "transcription"
+      output_prefix: "transcription"
+      metrics: ["word_accuracy", "wer", "cer"]
+      primary_metric: "word_accuracy"  # 1 - WER, higher is better
     
     # Example of how to add a new task:
     # new_task:

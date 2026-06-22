@@ -886,6 +886,89 @@ def structured_extraction_results_processor(model_dir: Path, model_name: str, ta
         print(f"    Error processing {task_name} results from {metrics_file.name}: {e}")
         return None
 
+def transcription_results_processor(model_dir: Path, model_name: str, task_config: Dict) -> Optional[Dict[str, Any]]:
+    """Processor for transcription (ASR) tasks.
+
+    Reads *_metrics.json from each subtask dir (fleurs_es_latam, fleurs_pt_br).
+    Scores are stored as word_accuracy = 1 - WER so higher is better, consistent
+    with the rest of the leaderboard.
+    """
+    task_name = task_config.get("name", "transcription")
+    print(f"    Processing {task_name} results...")
+
+    task_config_file = load_task_config(task_name)
+    output_subdir = task_config_file.get("output", {}).get("subdirectory", task_name)
+
+    task_dir = model_dir / output_subdir
+    if not task_dir.exists():
+        print(f"    Warning: {task_name} results directory not found: {task_dir}")
+        return None
+
+    subtask_scores: Dict[str, Dict] = {}
+    for subtask_dir in sorted(task_dir.iterdir()):
+        if not subtask_dir.is_dir():
+            continue
+        metrics_files = sorted(
+            f for f in subtask_dir.glob("*_metrics.json")
+            if not f.name.endswith("_per_sample_metrics.json")
+        )
+        if not metrics_files:
+            continue
+        try:
+            with open(metrics_files[-1]) as f:
+                data = json.load(f)
+            metrics = data.get("metrics", data)
+            wer = metrics.get("wer")
+            if not isinstance(wer, (int, float)):
+                continue
+            word_accuracy = max(0.0, 1.0 - float(wer))
+            cer = metrics.get("cer", 0.0)
+            subtask_scores[subtask_dir.name] = {
+                "word_accuracy": round(word_accuracy, 4),
+                "wer": round(float(wer), 4),
+                "cer": round(float(cer), 4) if isinstance(cer, (int, float)) else 0.0,
+            }
+        except Exception as e:
+            print(f"    Warning: could not read {metrics_files[-1].name}: {e}")
+
+    if not subtask_scores:
+        print(f"    Warning: no valid transcription subtask metrics found in {task_dir}")
+        return None
+
+    overall = sum(s["word_accuracy"] for s in subtask_scores.values()) / len(subtask_scores)
+    category_key = task_config.get("category_score_key", task_name)
+
+    task_scores = {
+        name: {
+            "score": scores["word_accuracy"],
+            "stderr": 0.0,
+            "metric": "word_accuracy",
+            "alias": name,
+            "wer": scores["wer"],
+            "cer": scores["cer"],
+        }
+        for name, scores in subtask_scores.items()
+    }
+    category_scores = {
+        category_key: {
+            "score": round(overall, 4),
+            "stderr": 0.0,
+            "metric": "word_accuracy",
+            "alias": category_key,
+        }
+    }
+
+    print(f"    ✓ {task_name} results processed ({len(subtask_scores)} subtasks, avg word_accuracy={overall:.4f})")
+    return {
+        "model_name": model_name,
+        "task_scores": task_scores,
+        "category_scores": category_scores,
+        "top_level_scores": category_scores,
+        "overall_score": round(overall, 4),
+        "evaluation_time": "unknown",
+    }
+
+
 def get_task_processor(processor_type: str) -> callable:
     """Get the appropriate processor function based on type."""
     processors = {
@@ -893,6 +976,7 @@ def get_task_processor(processor_type: str) -> callable:
         "portuguese_results_processor": portuguese_results_processor,
         "translation_results_processor": translation_results_processor,
         "structured_extraction_results_processor": structured_extraction_results_processor,
+        "transcription_results_processor": transcription_results_processor,
     }
     return processors.get(processor_type, standard_results_processor)
 
