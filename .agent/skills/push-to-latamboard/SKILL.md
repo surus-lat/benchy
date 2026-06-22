@@ -126,6 +126,21 @@ print([m['model_name'] for m in data])
 
 ---
 
+## Transcription benchmarks
+
+Transcription results are fully supported. Scores are stored as
+`word_accuracy = 1 - WER` (higher is better, consistent with the rest of the
+leaderboard). Subtask columns are `transcription_fleurs_es_latam` and
+`transcription_fleurs_pt_br`.
+
+After pushing a transcription run, the latamboard frontend will:
+- Show a **Transcription** group in the filter sidebar (Landing page)
+- Show a **Transcription** section on the /tests page
+
+Both happen automatically — no frontend deploy needed.
+
+---
+
 ## What gets updated automatically vs. what needs a frontend redeploy
 
 | File | Fetch method | Auto-updates? |

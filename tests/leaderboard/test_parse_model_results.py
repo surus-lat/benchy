@@ -5,6 +5,7 @@ from src.leaderboard.functions.parse_model_results import (
     extract_model_info_from_config,
     _load_latest_summary,
     structured_extraction_results_processor,
+    transcription_results_processor,
 )
 
 
@@ -48,6 +49,42 @@ def test_load_latest_summary_picks_correct_summary(tmp_path):
 
     assert result is not None
     assert "per_subtask_metrics" in result
+
+
+def test_transcription_processor_reads_subtask_metrics(tmp_path):
+    """transcription_results_processor reads wer from each subtask dir and returns word_accuracy."""
+    model_dir = tmp_path / "faster-whisper-small"
+    model_dir.mkdir()
+    (model_dir / "run_outcome.json").write_text(json.dumps({"model": "Systran/faster-whisper-small"}))
+
+    for locale, wer in [("fleurs_es_latam", 0.10), ("fleurs_pt_br", 0.20)]:
+        subdir = model_dir / "transcription" / locale
+        subdir.mkdir(parents=True)
+        (subdir / f"model_20260621_{locale}_metrics.json").write_text(json.dumps({
+            "model": "Systran/faster-whisper-small",
+            "task": locale,
+            "metrics": {"wer": wer, "cer": wer / 2, "exact_match": 0.0},
+        }))
+
+    task_config = {"name": "transcription", "category_score_key": "transcription", "output_prefix": "transcription"}
+    result = transcription_results_processor(model_dir, "faster-whisper-small", task_config)
+
+    assert result is not None
+    assert "transcription" in result["category_scores"]
+    # word_accuracy = 1 - wer; average of (0.90, 0.80) = 0.85
+    assert abs(result["overall_score"] - 0.85) < 0.01
+    assert "fleurs_es_latam" in result["task_scores"]
+    assert "fleurs_pt_br" in result["task_scores"]
+    assert result["task_scores"]["fleurs_es_latam"]["score"] == pytest.approx(0.90, abs=0.001)
+
+
+def test_transcription_processor_returns_none_when_no_dir(tmp_path):
+    """Returns None gracefully when transcription dir is missing."""
+    model_dir = tmp_path / "some-model"
+    model_dir.mkdir()
+    task_config = {"name": "transcription", "category_score_key": "transcription"}
+    result = transcription_results_processor(model_dir, "some-model", task_config)
+    assert result is None
 
 
 def test_structured_extraction_processor_finds_adhoc_dirs(tmp_path):
