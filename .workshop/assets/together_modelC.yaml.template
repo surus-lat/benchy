@@ -1,0 +1,26 @@
+# Workshop Together AI model — slot C: openai/gpt-oss-20b
+# See together_modelA.yaml.template for instructions.
+
+model:
+  name: openai/gpt-oss-20b
+
+together:
+  provider_config: together
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+
+task_defaults:
+  log_samples: true
+
+tasks:
+- structured_extraction
+- latam_board
+
+metadata:
+  max_context_length: 131072
+  supports_multimodal: false
+  supports_schema: true
+  provider: together
+  model_type: gpt_oss
+  description: "openai/gpt-oss-20b via Together AI — 20B open model"

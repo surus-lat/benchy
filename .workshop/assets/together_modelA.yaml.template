@@ -1,0 +1,33 @@
+# Workshop Together AI model — slot A: google/gemma-3n-E4B-it
+#
+# Copied into configs/models/together_modelA.yaml at the start of Part 2.
+# If Together rotates this model out, swap `model.name` to a current ID and
+# update metadata. Confirm available models with:
+#
+#   curl -s https://api.together.xyz/v1/models \
+#     -H "Authorization: Bearer $TOGETHER_API_KEY" \
+#     | jq '.[] | select(.type=="chat") | {id, context_length, pricing}'
+
+model:
+  name: google/gemma-3n-E4B-it
+
+together:
+  provider_config: together  # references configs/providers/together.yaml
+  overrides:
+    temperature: 0.0
+    max_tokens: 4096
+
+task_defaults:
+  log_samples: true
+
+tasks:
+- structured_extraction
+- latam_board
+
+metadata:
+  max_context_length: 32768
+  supports_multimodal: true
+  supports_schema: true
+  provider: together
+  model_type: gemma3
+  description: "gemma-3n-E4B-it via Together AI — small multimodal model"
