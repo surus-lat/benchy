@@ -1,5 +1,14 @@
+name: portuguese
+display_name: Portuguese LATAM
 title: "Portuguese Language Benchmarks"
 description: "Comprehensive Portuguese NLP evaluation suite covering classification, regression, and multiple-choice tasks"
+group: latam_pr
+group_metadata:
+  name: Portuguese LATAM
+  description: Portuguese language tasks for Latin America
+  description_en: Portuguese language tasks for Latin America
+  description_es: Tareas en portugués para América Latina
+  description_pt: Tarefas em português para a América Latina
 
 subtasks:
   - assin2_rte
