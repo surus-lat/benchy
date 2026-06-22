@@ -14,6 +14,7 @@ DEFAULT_GROUP_ORDER = [
     "latam_es",
     "translation",
     "structured_extraction",
+    "transcription",
 ]
 
 
