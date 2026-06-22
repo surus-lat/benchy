@@ -10,7 +10,7 @@ paths:
 
 # Hugging Face datasets
 datasets:
-  results: "mauroibz/leaderboard-results"
+  results: "LatamBoard/leaderboard-results"
 
 # Default evaluation settings
 evaluation:
