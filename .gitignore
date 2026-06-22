@@ -45,6 +45,7 @@ logs/
 *.json
 !src/tasks/**/task.json
 !configs/**/*.json
+!submissions/**/*.json
 !configs/**/*.yaml
 *.csv
 *.parquet
@@ -69,3 +70,4 @@ Thumbs.db
 
 # Other
 test.py
+.gstack/
