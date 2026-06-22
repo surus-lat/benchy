@@ -1,6 +1,13 @@
 name: transcription
 display_name: Transcription
 description: Automatic speech recognition (ASR) evaluation on Latin American Spanish and Brazilian Portuguese
+group: transcription
+group_metadata:
+  name: Transcription
+  description: ASR evaluation on Latin American Spanish and Brazilian Portuguese
+  description_en: ASR evaluation on Latin American Spanish and Brazilian Portuguese
+  description_es: Evaluación de reconocimiento de voz en español y portugués de América Latina
+  description_pt: Avaliação de reconhecimento de voz em espanhol e português latino-americano
 
 long_description: |
   Speech-to-text evaluation for the LatamBoard leaderboard. Models are scored on
