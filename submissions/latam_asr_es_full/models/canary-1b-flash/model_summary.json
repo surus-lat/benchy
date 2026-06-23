@@ -1,0 +1,38 @@
+{
+  "model_name": "canary-1b-flash",
+  "publisher": "nvidia",
+  "full_model_name": "nvidia/canary-1b-flash",
+  "categories": {
+    "transcription": {
+      "model_name": "canary-1b-flash",
+      "task_scores": {
+        "fleurs_es_latam": {
+          "score": 0.8537,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "fleurs_es_latam",
+          "wer": 0.1463,
+          "cer": 0.0609
+        }
+      },
+      "category_scores": {
+        "transcription": {
+          "score": 0.8537,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "top_level_scores": {
+        "transcription": {
+          "score": 0.8537,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "overall_score": 0.8537,
+      "evaluation_time": "unknown"
+    }
+  }
+}
