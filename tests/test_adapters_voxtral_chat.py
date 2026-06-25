@@ -3,7 +3,11 @@ import asyncio
 import contextlib
 from unittest.mock import MagicMock, patch
 
-import torch
+import pytest
+
+pytest.importorskip("torch", reason="torch is required for voxtral_chat adapter tests")
+
+import torch  # noqa: E402
 
 
 def _fake_model():
