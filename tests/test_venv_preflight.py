@@ -5,7 +5,6 @@ The check lives in `src.benchy_cli_eval._check_required_venv`. It reads
 and `sys.exit(2)` with a hint if they don't match. No-op when `venv:` is
 absent.
 """
-from pathlib import Path
 
 import pytest
 

@@ -142,7 +142,7 @@ class TransformersAudioInterface:
             text = await asyncio.wait_for(
                 asyncio.to_thread(_run), timeout=self.timeout
             )
-        except asyncio.TimeoutError as exc:
+        except asyncio.TimeoutError:
             logger.warning("Transcription timeout for sample %s", sample_id)
             return {
                 "output": None,

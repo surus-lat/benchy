@@ -3,7 +3,6 @@ import pytest
 
 import src.adapters
 from src.adapters import list_adapters, get_adapter
-from src.adapters.base import BaseAdapter
 
 
 def test_list_adapters_excludes_base_and_underscore(monkeypatch, tmp_path):

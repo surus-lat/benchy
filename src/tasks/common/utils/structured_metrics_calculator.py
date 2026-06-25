@@ -860,7 +860,6 @@ class MetricsCalculator:
         # Per-tier F1 scores (reliable = bounded GT; freeform = noisy GT)
         def _tier_f1(tc: Dict[str, int]) -> float:
             n_exp = tc["total_expected"]
-            n_pred = tc["total_expected"] + tc["total_predicted"]  # predicted = exp-side + spurious-only
             if n_exp == 0:
                 return -1.0  # sentinel: tier not present in this sample
             correct = tc["exact"] + partial_credit * tc["partial"]
