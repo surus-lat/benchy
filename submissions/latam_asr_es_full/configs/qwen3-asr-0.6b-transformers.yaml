@@ -1,0 +1,22 @@
+model:
+  name: Qwen/Qwen3-ASR-0.6B
+adapter: qwen3_asr_chat
+qwen3_asr_chat:
+  # qwen-asr's recommended dtype. fp16 is also supported on CUDA/MPS.
+  dtype: bfloat16
+  # 'auto' resolves to mps on Mac, cuda on Linux+GPU. The qwen-asr package
+  # accepts any device_map string transformers accepts.
+  device_map: cpu
+  # Force Spanish for FLEURS es_419 (faster than auto-detect).
+  language: Spanish
+  max_inference_batch_size: 32
+  max_new_tokens: 256
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: qwen
+  model_type: qwen3_asr
+  is_cloud: false
+  description: "Qwen/Qwen3-ASR-0.6B via qwen3_asr_chat adapter (qwen-asr package, ~600M params, 30 languages + 22 Chinese dialects). NOTE: pins transformers<5.0, conflicts with Voxtral."

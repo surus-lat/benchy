@@ -1,0 +1,24 @@
+model:
+  name: nvidia/canary-1b-flash
+adapter: canary_nemo
+canary_nemo:
+  # Canary-1b-flash supports en/de/es/fr only. pt_br samples will produce
+  # nonsense — restrict the model to es when running FLEURS es_419.
+  source_lang: es
+  target_lang: es
+  pnc: "yes"
+  beam_size: 1
+  timestamps: false
+  batch_size: 1
+  # NeMo on Mac: MPS support is partial; CPU is safer for the smoke gate.
+  # On Linux + CUDA this should be 'auto' (resolves to cuda).
+  device: cpu
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: nvidia
+  model_type: canary
+  is_cloud: false
+  description: "nvidia/canary-1b-flash via canary_nemo adapter (~883M params; en/de/es/fr). Requires nemo-toolkit[asr]."

@@ -1,0 +1,14 @@
+model:
+  name: surus-ai/whisper-large-v3-turbo-latam
+transformers_audio:
+  provider_config: transformers_audio
+  supports_language_kwarg: true
+task_defaults:
+  log_samples: true
+tasks:
+- transcription
+metadata:
+  provider: huggingface
+  model_type: whisper
+  is_cloud: false
+  description: "surus-ai/whisper-large-v3-turbo-latam — continued fine-tune of openai/whisper-large-v3-turbo on Common Voice 17 Spanish (LATAM accents only). Per model card: WER 7.80% on Common Voice ES (vs 15.44% base), ~1.62x faster inference."
