@@ -3,7 +3,11 @@ import asyncio
 import contextlib
 import sys
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
+
+pytest.importorskip("torch", reason="torch is required for qwen3_asr_chat adapter tests")
 
 
 @contextlib.contextmanager

@@ -1,6 +1,3 @@
-import json
-import pytest
-from pathlib import Path
 from src.leaderboard.merge_and_publish import merge_summaries
 
 
