@@ -1,6 +1,5 @@
 import json
 import pytest
-from pathlib import Path
 from src.leaderboard.functions.parse_model_results import (
     extract_model_info_from_config,
     _load_latest_summary,
