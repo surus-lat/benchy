@@ -4,8 +4,11 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from src.interfaces.common.audio_preprocessing import save_audio_array, save_audio_bytes
+pytest.importorskip("soundfile", reason="soundfile is required for audio_preprocessing tests")
+
+from src.interfaces.common.audio_preprocessing import save_audio_array, save_audio_bytes  # noqa: E402
 
 
 def test_save_audio_array_writes_file(tmp_path: Path):
