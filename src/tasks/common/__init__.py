@@ -206,6 +206,8 @@ __all__ = [
     "format_score_with_comma",
     # Dataset adapters and task config (CLI support)
     "DatasetAdapter",
+    "list_data_datasets",
+    "resolve_dataset_name",
     "validate_dataset_config",
     "TASK_TYPE_SCHEMAS",
     "validate_task_config",

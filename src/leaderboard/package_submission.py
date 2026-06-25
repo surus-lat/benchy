@@ -76,8 +76,6 @@ def _write_readme(submission_dir: Path, run_id: str, model_entries: list[dict]) 
         for c in configs
     ) or "  # (model configs not found in configs/models/ — add them)"
 
-    process_line = f"  python -m src.leaderboard.process_all --run-id {run_id}"
-
     readme = f"""# Submission: {run_id}
 
 ## Models evaluated ({len(model_entries)})
@@ -171,10 +169,10 @@ def package_submission(run_id: str, skip_process: bool = False) -> Path:
 
     print(f"\n✅ Submission packaged → {submission_dir.relative_to(_project_root)}")
     print(f"   {len(model_entries)} model(s): {', '.join(e['model_name'] for e in model_entries)}")
-    print(f"\nNext steps:")
+    print("\nNext steps:")
     print(f"  git add submissions/{run_id}")
     print(f"  git commit -m 'submission: {run_id} ({len(model_entries)} models)'")
-    print(f"  git push && open a PR")
+    print("  git push && open a PR")
     return submission_dir
 
 

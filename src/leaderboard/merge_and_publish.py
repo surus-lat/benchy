@@ -99,7 +99,6 @@ def _download_hf_summaries(dataset_name: str) -> dict:
     """Download all_model_summaries.json from HF dataset. Returns empty dict if not found."""
     try:
         from huggingface_hub import hf_hub_download
-        from huggingface_hub.utils import EntryNotFoundError
 
         print(f"Downloading summaries from {dataset_name} ...")
         local_path = hf_hub_download(

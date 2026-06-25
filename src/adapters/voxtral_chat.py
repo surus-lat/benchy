@@ -103,7 +103,6 @@ class Adapter(BaseAdapter):
             self._load()
 
         import librosa
-        import torch
 
         max_new_tokens = int(self.config.get("max_new_tokens", 256))
         sampling_rate = int(self.config.get("sampling_rate", 16000))
