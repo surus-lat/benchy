@@ -14,3 +14,10 @@ And the engineering helpfulness here is on handling all the different ai-system 
 
 
 And the modules of benchy must follow this view of the benchmarking and ai development world. So there should be a module to define the task, one for the scoring function, one for the ai-system, and one for the data. The engineering must go hand in hand with how an ai developer has to think about benchmarks, and the step by step flow to create a new one. Engineering must not be a problem, but an aid to this view of the ai world. 
+
+
+
+And keep in mind that this is our whole ontology for ai: 
+/<task?>/<domain?>/<language?>
+
+an ai system is a program that performs a task, thus that's the root level, then a sublevel is the domain, then the third sublevel is the language. 
