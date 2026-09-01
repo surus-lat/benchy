@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src", "src.*"]
+include = ["benchy", "benchy.*", "src", "src.*"]
 
 [project]
 name = "benchy"
@@ -39,6 +39,7 @@ dependencies = [
 
 [project.scripts]
 benchy = "src.benchy_cli:main"
+benchy2 = "benchy.cli:main"
 
 [project.optional-dependencies]
 local = [
