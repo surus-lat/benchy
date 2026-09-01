@@ -1,5 +1,13 @@
 # Multi-Architecture ASR Benchmark Plan
 
+**Status (2026-06-19):** Phase 1 partially executed. `whisper-large-v3-turbo`
+smoked clean. The three custom-code models — Canary, Qwen3-ASR, Voxtral —
+all hit the same blocker: `AutoConfig.from_pretrained` rejects their model
+types (`fastconformer`, `qwen3_asr`, `voxtral_realtime`) before `pipeline()`
+can use `trust_remote_code=True`. Per-family interface code is required.
+Follow-up plan: `2026-06-19-asr-per-family-interfaces.md`. Phases 2 and 3
+of this plan are deferred until the follow-up lands.
+
 **Goal:** Produce a comparative WER / CER table across four ASR architectures
 on FLEURS Latin-American Spanish and Brazilian Portuguese, then codify the
 working procedure as a benchy agent skill.
