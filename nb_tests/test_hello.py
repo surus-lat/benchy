@@ -56,6 +56,13 @@ class TestPillarScoring:
     def test_good_stub_scores_perfect(self):
         assert run(bench(), system_specs()["good"])["score"] == 1.0
 
+    def test_grade_seam_accepts_any_callable(self):
+        # the escape hatch: any invoke(text)->pred, not just engine-compiled
+        # specs (real APIs, workflows, cached runs) must be gradable
+        from nb import grade
+        art = grade(bench(), lambda t: "pos")
+        assert art["score"] == 0.5
+
     def test_dumb_stub_scores_half(self):
         assert run(bench(), system_specs()["dumb"])["score"] == 0.5
 
