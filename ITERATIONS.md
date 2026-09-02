@@ -44,3 +44,8 @@
 # side a constant picks. `default` is metal: the constant system is the
 # degenerate keyword and the choice lives in the SPEC, as data. 20 tests.
 14 | pushed=compile-default(hardcode-neg) | broke=yes (the behavior pin only — score-blind on balanced exams) | verdict=BARE_METAL | loc=90 | concepts=5
+# c15: as_loss deletion-probed (last survived=0 concept). Removing it breaks
+# the test COLLECTION itself — the import IS the pin: the vision's headline
+# export cannot be inlined away; the optimizer consumes loss(system) directly.
+# No growth; survival-why moved to a # comment after the golem growled at +1 loc.
+15 | pushed=as_loss | broke=yes (import error — collection itself) | verdict=BARE_METAL | loc=90 | concepts=5
