@@ -64,11 +64,12 @@ def test_as_loss_ranks_dumb_above_good():
 
 
 def test_report_reads_the_graded_run():
+    # the artifact IS the report: it interprets alone (per-case detail + loss)
     _run("dumb")
-    r = _cli("report", "runs/sentiment-dumb.json")
-    assert r.returncode == 0, r.stderr
-    assert "score 0.500" in r.stdout and "loss 0.500" in r.stdout
-    assert "fail" in r.stdout and "pass" in r.stdout
+    a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
+    assert a["score"] == 0.5
+    fails = [c for c in a["cases"] if not c["score"]]
+    assert len(fails) == 3 and 1.0 - a["score"] == 0.5
 
 
 def test_new_scaffolds_then_runs():
