@@ -1,3 +1,3 @@
 # ITERATIONS
 
-`n | pushed=<target> | broke=yes|no | verdict=<...> | loc=<n> | concepts=<n>`
+1 | pushed=SCORES/AGGS vocab breadth + evaluate/run fusion + mod-dance in system() | broke=yes | verdict=NOISE_REMOVED | loc=53 | concepts=3

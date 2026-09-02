@@ -61,7 +61,8 @@ def test_receipt_has_per_case_scores_and_aggregate():
     assert len(r["cases"]) == 6
     for c in r["cases"]:
         assert set(c) >= {"in", "want", "got", "score"}
-    assert r["aggregate"] == "mean"
+    # the aggregate lives in the benchmark spec; the receipt carries its result
+    assert nb.load("/sentiment").spec["scoring"]["aggregate"] == "mean"
 
 
 def test_artifact_json_roundtrip(tmp_path):
@@ -87,5 +88,5 @@ def test_load_by_ontology_path():
 
 def test_system_is_just_a_callable():
     b = nb.load("/sentiment")
-    assert b.as_loss()(lambda text: "neg") == 1.0  # always-neg: 3/6 wrong
+    assert b.as_loss()(lambda text: "neg") == 0.5  # always-neg: 3/6 wrong
     assert b.as_loss()(lambda text: "pos") == 0.5
