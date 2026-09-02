@@ -11,3 +11,4 @@
 9 | pushed=save (only production caller was __main__; 3-line body inlined into CLI) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
 10 | pushed=artifact benchmark stamp (task stamp survived escalation — engine's only interpretation of task.json) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
 11 | pushed=CLI save-to-disk (stdout IS the artifact; runs/*.json unread third projection; test fixed forward) | broke=yes | verdict=NOISE_REMOVED | loc=66 | concepts=5
+12 | pushed=as_loss (2 ranking tests broke; NAMED vision invariant — restored, fusion rejected) | broke=yes | verdict=BARE_METAL | loc=66 | concepts=5

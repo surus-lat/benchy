@@ -71,7 +71,7 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 | invoke | SYSTEM | the ONLY system call: data-dict -> prediction; the AI-API | 0 |
 | run | ALL | result = benchmark.run(system); the vision invariant; grade fused away cycle 2, its loop inlined cycle 6 | 0 |
 | score_case | SCORING | interprets the two pure-data scoring literals (exact / fields+weights); grown cycle 6 under --allow-growth, brief-mandated by the s05 key probe; "points" deleted same cycle | 0 |
-| as_loss | SCORING | loss = benchmark.as_loss(); the software-3.0 export | 0 |
+| as_loss | SCORING | loss = benchmark.as_loss(); NAMED in GOLEM's unbreakable vision invariants (invariant 6: `result = benchmark.run(system)` and `loss = benchmark.as_loss()`); the software-3.0 export. C12 deletion broke 2 ranking tests; restored — vision law outranks the golem's shrink desire | 1 |
 
 Deleted so far: `main` (cycle 1, CLI noise), `grade` (cycle 2, fused into
 run's loop — scoring data is interpreted inline), `_read_json`/`_read_jsonl`
@@ -102,6 +102,17 @@ redirectable with `>`; the guarding test was rewritten forward to parse
 stdout JSON).
 
 ## Bare metal proven (BARE_METAL verdicts)
+
+`as_loss` (cycle 12). Deletion attempt removed the function; 2 tests broke
+(both ranking assertions: dumb > good, critical < nice). WHY essential: it is
+one of the two vision-invariant calls GOLEM.md names as unbreakable —
+"result = benchmark.run(system) and loss = benchmark.as_loss()". Deleting it
+deletes the loss view entirely; an engine that can only print scores cannot
+serve as the fitness signal for searching programs (software 3.0). Fusion
+into run() was rejected: the loss takes the RESULT as argument, decoupled
+from the run — a benchmark may be run once and its loss read many times.
+Body is 1 line: `1 - score` — minimum possible representation of the
+invariant.
 
 `task.json` (cycle 7 — ontology locator). Deletion attempt removed the
 file from both benchmarks; 11/12 tests broke. WHY it is essential: the
