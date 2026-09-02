@@ -41,12 +41,17 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | Taker | SYSTEM | the exam word for the AI-system: a name + answer(prompt). The primitive is the system-as-taker, not the model | 0 |
 | sit() | DATA | the taker takes the exam; the run itself — AND the resume: sit again over a workbox keeps the scribbles. One verb, two tempos | 1 |
 | as_loss | SCORING | the vision's headline: benchmark-as-loss-function for prompt optimizers. loss = 1 - score | 0 |
-| ReportCard | DATA | the graded artifact: per-page scores + aggregate, JSON. Evidence trace of one loss evaluation | 0 |
-| PageResult | DATA | one row of the report card: what was asked, answered, earned | 0 |
+| ReportCard | DATA | the graded artifact: per-page scores + aggregate, JSON. Evidence trace of one loss evaluation. Rows are plain dicts {page, answered, earned} — the card never re-states the page; the exam is the single source of it | 1 |
 | keyword_tally / always_pos | SYSTEM | the two stub takers: offline demo, no network, no keys. They prove the hall works and that scoring discriminates | 0 |
 | hall.main | — | the shell door: sit an exam from the CLI. Deleting it leaves the engine library-only, unusable from the terminal | 0 |
 | report (sit.py helper) | DATA | ~~fold results into the card~~ DELETED cycle 3: a two-line fold with one call site — inlined into sit() | gone |
 | _scribble/_read_scribble | DATA | workbox I/O: answer per page saved as soon as produced. The honesty of retake | 0 |
+
+- **PageResult** (cycle 5): a dataclass that was only ever converted to a dict
+  before writing the card. The rows are now built as plain dicts directly in
+  the sit loop — the card never re-states the page (prompt/expected/points
+  live in the exam; the row says only: which page, what was answered, what
+  was earned). One fewer class, −8 LOC.
 
 ## deletions (what the push proved to be noise)
 
