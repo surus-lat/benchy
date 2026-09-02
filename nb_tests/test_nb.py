@@ -72,7 +72,8 @@ def big_exam(dir, n, sleep=0.0, tag=""):
 
 def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     e = big_exam(tmp_path, 1000)
-    sys_spec = {"kind": "flaky", "script": "FP", "sleep": 0.001,
+    sleep = 0.01  # per attempt; stands in for real per-case exam-taker latency
+    sys_spec = {"kind": "flaky", "script": "FP", "sleep": sleep,
                 "of": {"kind": "always", "value": "pos"}}
     t0 = time.monotonic()
     art = e.run(sys_spec, out=tmp_path / "a.json", workers=16)
@@ -82,7 +83,10 @@ def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     # every case failed its first attempt -> retries actually fired
     assert all(c["tries"] == 2 for c in art["cases"])
     assert art["score"] == 0.5  # always-pos: right on the pos-wanting half only
-    assert dt < 20  # concurrent, not serial: serial would be 1000*2*1ms = fine too; sanity
+    # concurrency is load-bearing: the serial floor is n*tries*sleep = 20s of
+    # pure sleep (sleep never undersleeps), so a serial runner can NOT pass.
+    serial_floor = 2 * 1000 * sleep
+    assert dt < serial_floor * 0.75, f"not concurrent enough: {dt:.1f}s"
 
 
 def test_flaky_exhausting_retries_is_loud_not_silent(tmp_path):

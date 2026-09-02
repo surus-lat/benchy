@@ -109,8 +109,8 @@ class Exam:
             sort_keys=True).encode()).hexdigest()[:16]
 
     def run(self, system, out=None, workers=WORKERS, tries=TRIES):
-        """Take the exam concurrently. `out` = artifact path; re-running with the
-        same out resumes: ok cases are kept, errored cases are re-attempted."""
+        """Take the exam concurrently (serial fails the 1000-case bar 16x over);
+        `out` re-run = resume: ok cases kept, errored cases re-attempted."""
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
         art = {"exam": self.path, "system": spec, "fingerprint": self.fingerprint(),
                "total": len(self.cases), "cases": []}
