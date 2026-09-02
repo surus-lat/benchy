@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from nb import as_loss, compile, grade, run
+from nb.engine import as_loss, compile, grade, run
 
 BENCH = Path(__file__).resolve().parents[1] / "bench" / "hello" / "bundle"
 GOOD = {"name": "good", "kind": "keyword", "pos": ["great", "excelente", "loved"], "default": "neg"}
@@ -60,7 +60,7 @@ class TestPillarScoring:
     def test_grade_seam_accepts_any_callable(self):
         # the escape hatch: any invoke(text)->pred, not just engine-compiled
         # specs (real APIs, workflows, cached runs) must be gradable
-        from nb import grade
+        from nb.engine import grade
         art = grade(bench(), lambda t: "pos")
         assert art["score"] == 0.5
 
