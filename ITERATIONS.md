@@ -13,3 +13,4 @@
 7 | pushed=Taker.sit method | broke=no | verdict=HARD_PUSH | loc=185 | concepts=9
 8 | pushed=AnswerKey class+dead combine field | broke=yes | verdict=NOISE_REMOVED | loc=177 | concepts=8
 9 | pushed=write(filename)+EXAM_RULES+rule field | broke=no | verdict=HARD_PUSH | loc=173 | concepts=8
+10 | pushed=limit param (sit/as_loss/hall --limit) | broke=yes | verdict=NOISE_REMOVED | loc=171 | concepts=8

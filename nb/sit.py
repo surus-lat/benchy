@@ -52,8 +52,7 @@ class ReportCard:
         return path
 
 
-def sit(exam: Exam, taker: Taker, limit: int | None = None,
-        workbox: Path | None = None) -> ReportCard:
+def sit(exam: Exam, taker: Taker, workbox: Path | None = None) -> ReportCard:
     """The taker takes the exam: every page, graded page by page.
 
     workbox: a directory to scribble answers into as we go. The scribbles
@@ -61,7 +60,7 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
     every page — so an interrupted exam is resumed by sitting again:
     pages already answered are kept, only the rest are asked.
     """
-    pages = exam.pages if limit is None else exam.pages[:limit]
+    pages = exam.pages
     wb = Path(workbox) / "answers.json" if workbox is not None else None
     answers: dict = json.loads(wb.read_text()) if wb and wb.exists() else {}
     done: list[dict] = []
@@ -84,6 +83,6 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
                       taken_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
-def as_loss(exam: Exam, taker: Taker, limit: int = None) -> float:
+def as_loss(exam: Exam, taker: Taker) -> float:
     """The exam as a loss function over takers: sit, then 1 - score."""
-    return sit(exam, taker, limit=limit).loss
+    return sit(exam, taker).loss
