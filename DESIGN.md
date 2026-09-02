@@ -55,14 +55,21 @@ scoring is one inline interpretation, checked loud.)
 - cycle 5: SCORES/AGGS tables — deleted, replaced by one inline interpretation
   with a loud unknown-vocab check. First inline attempt was TOO SOFT (silent 0.0
   on unknown vocab = dishonest scoring); escalated to loud check. HARD_PUSH.
+- cycle 6: receipt `i` key (order is the index) + `spec.get("cases", [])` default
+  (missing cases crashed loudly anyway — the default was dead weight). Both deleted. HARD_PUSH.
+- cycle 7: `task` key in bench.json — the engine never interpreted it; the schema
+  is visible in the cases (in values show the input type, want values show the
+  output vocab). Deleted from the data. CAVEAT recorded: cases carry the task
+  only by EXAMPLE; a task-only description ("takes pdf, returns json fields")
+  with no cases yet cannot be expressed — noted for unify, not re-added. HARD_PUSH.
 
 ## queued deletion candidates (loudest first)
 
-1. receipt key minimality — `i`, `in`, `want`, `got`, `score`: is `i` needed
-   when cases list is ordered? is `want` derivable from input+task?
-2. `spec.get("cases", [])` default — empty benchmark = silent 0 loss; should it raise?
-3. `task` key in bench.json — the schema is declared but never interpreted;
-   either interpret it (validate outputs) or it is dead weight in the data.
-4. `1.0 - score` loss convention — could loss be the score itself with lower=better?
-   No: acceptance bar demands loss(dumb) > loss(good). Convention is bare metal.
-5. `system()` as a concept — could systems just be importables the caller passes?
+1. `ROOT` — filesystem anchor; could load() take a relative glob from CWD instead?
+2. `loss.trace` — is the receipt as a function attribute the right home? could
+   the loss RETURN (float, trace)? Bar says loss must be (System)->float, so
+   attribute is forced. Verify convention is bare metal.
+3. `1.0 - score` loss convention — acceptance bar demands loss(dumb) > loss(good);
+   lower=better is forced by the bar. Bare metal by fiat.
+4. `system()` concept — could systems be plain importables the caller passes?
+   The exec-loading is a convenience; try making the test call the stubs directly.
