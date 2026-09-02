@@ -80,7 +80,7 @@ def test_scorer_swap_needs_zero_engine_lines():
         return 0.0 if prediction == "pos" else 1.0
 
     exam = _exam()
-    swapped = Exam(exam.task, exam.cases, anti)
+    swapped = Exam(exam.cases, anti)
     assert swapped.run(_stub("good"))["score"] == 0.5
     assert swapped.run(_stub("dumb"))["score"] == 0.0
 
