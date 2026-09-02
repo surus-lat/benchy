@@ -1,31 +1,25 @@
 """nb — the engine. A benchmark is a directory; this interprets it.
-
-Pillars map 1:1 to files:
-  task.json -> Task, scoring.json -> Scoring, cases.jsonl -> Data,
-  systems/*.json -> System.
-
-Everything is data. Zero user Python. as_loss() = 1 - score.
-"""
+Files: task.json, scoring.json, cases.jsonl, systems/*.json (schema with
+examples in DESIGN.md). Everything is data; zero user Python."""
 import json
 from pathlib import Path
 
 
-def load(bench_dir):
-    """Interpret a benchmark directory: task.json + scoring.json + cases.jsonl."""
+def load(bench_dir, system=None):
+    """Interpret a benchmark directory; optional system is a NAME,
+    read from bench_dir/systems/<name>.json."""
     d = Path(bench_dir)
-    cases = [json.loads(l) for l in
-             (d / "cases.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
-    return {
+    b = {
         "task": json.loads((d / "task.json").read_text(encoding="utf-8")),
         "scoring": json.loads((d / "scoring.json").read_text(encoding="utf-8")),
-        "cases": cases,
+        "cases": [json.loads(l) for l in
+                  (d / "cases.jsonl").read_text(encoding="utf-8").splitlines()
+                  if l.strip()],
     }
-
-
-def load_system(bench_dir, system_name):
-    """A system is data too: bench_dir/systems/<name>.json"""
-    return json.loads((Path(bench_dir) / "systems" / f"{system_name}.json")
-                      .read_text(encoding="utf-8"))
+    if system is not None:
+        b["system"] = json.loads(
+            (d / "systems" / f"{system}.json").read_text(encoding="utf-8"))
+    return b
 
 
 def invoke(system, case):
@@ -40,13 +34,11 @@ def invoke(system, case):
 
 
 def run(bench_dir, system):
-    """result = benchmark.run(system) — the vision invariant.
-
-    Scoring is inline: the scoring.json data is simple enough
-    (exact match -> points, mean) that a separate grade() was noise.
-    Returns the graded artifact: per-case scores + aggregate.
-    """
-    bench = load(bench_dir)
+    """result = benchmark.run(system). system: NAME (str) or data dict.
+    Returns the graded artifact: per-case scores + aggregate."""
+    bench = load(bench_dir, system if isinstance(system, str) else None)
+    if isinstance(system, str):
+        system = bench["system"]
     scoring = bench["scoring"]
     if scoring["match"] != "exact":
         raise ValueError(f"unknown match: {scoring['match']}")
@@ -80,6 +72,6 @@ if __name__ == "__main__":
         print("usage: python3 nb/bench.py <bench_dir> <system>", file=sys.stderr)
         sys.exit(2)
     _d, _s = sys.argv[1], sys.argv[2]
-    _r = run(_d, load_system(_d, _s))
+    _r = run(_d, _s)
     save(_r, _d, _s)
     print(json.dumps(_r, indent=2))
