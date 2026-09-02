@@ -19,3 +19,4 @@
 12 | pushed=compile_systems (inlined into main; tests carry own helper) | broke=yes | verdict=NOISE_REMOVED | loc=229 | concepts=10
 13 | pushed=_backend_const (const == stub with empty rules; dumb-stub.json migrated) | broke=yes | verdict=NOISE_REMOVED | loc=224 | concepts=9
 14 | pushed=load task=spec alias + main dual error branches (names-or-all folded into the for) | broke=no | verdict=HARD_PUSH | loc=218 | concepts=9
+15 | pushed=as_loss (BARE_METAL: vision invariant, restored) then Benchmark class itself (dissolved to free run/as_loss over a tuple) | broke=yes | verdict=BARE_METAL | loc=207 | concepts=10

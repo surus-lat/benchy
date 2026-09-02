@@ -15,13 +15,13 @@ import json
 import sys
 from pathlib import Path
 
-from .benchmark import Benchmark
+from .benchmark import as_loss, run
 from .scoring import score
 from .system import compile_system
 
 
-def load(path) -> Benchmark:
-    """read one benchmark directory -> Benchmark (task+scoring+data)."""
+def load(path):
+    """read one benchmark directory -> (task, scoring, cases)."""
     d = Path(path)
     spec = json.loads((d / "task.json").read_text(encoding="utf-8"))
     scoring = json.loads((d / "scoring.json").read_text(encoding="utf-8"))
@@ -29,7 +29,7 @@ def load(path) -> Benchmark:
              for c in json.loads((d / "cases.json").read_text(encoding="utf-8"))]
     if not cases:
         raise ValueError("an exam needs at least one case")  # the data door guards shape
-    return Benchmark(spec, scoring, cases)
+    return (spec, scoring, cases)
 
 
 def main(argv=None) -> int:
@@ -47,7 +47,7 @@ def main(argv=None) -> int:
         if name not in systems:
             print(f"unknown system: {name!r} (have: {sorted(systems)})")
             return 2
-        print(json.dumps({"system": name, **bench.run(systems[name])}, indent=2))
+        print(json.dumps({"system": name, **run(bench, systems[name])}, indent=2))
     return 0  # a graded exam is a success; a dumb score is data, not an error
 
 

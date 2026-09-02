@@ -13,8 +13,8 @@ TASK      {"in": ..., "out": ...}             task.json — the program descript
 SCORING   score(spec, pred, expected) -> 0..1   spec = scoring.json dict (data)
 DATA      [(input, expected), ...]          cases.json — the exam; JSON on disk
 SYSTEM    compile_system(spec) -> callable  the compiler front door
-BENCH     Benchmark(t, s, cases).run(system)  the system is the ARGUMENT
-          Benchmark.as_loss() -> (System)->float   the exam AS a loss
+BENCH     run(bench, system) -> artifact    bench = (task, scoring, cases) tuple;
+          as_loss(bench) -> (System)->float  the system is always the ARGUMENT
 
 a benchmark on disk = a directory:
     task.json + scoring.json + cases.json + systems/*.json
@@ -28,9 +28,8 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | task (data) | TASK | the task.json dict IS the program description (in→out); the engine never interprets it — the SYSTEM compiles against it; without it the exam has no subject. Its class wrapper died; the data survived | 1 |
 | scoring (data) + score() | SCORING | the scoring.json dict IS the declaration (mode, weights); the free score(spec, pred, expected) -> 0..1 is the only place grades happen; grading is what makes a benchmark a loss function. The Scoring class that carried the dict died in cycle 11 | 1 |
 | exam (data) | DATA | the cases list [(input, expected), ...] IS the exam — distribution → point estimate happens in run's mean; the Exam class that wrapped it (empty-check + __iter__) died in cycle 10 | 1 |
-| Benchmark | TASK+DATA+SCORING | the exam as one value; the system is its argument, not a field | 0 |
-| Benchmark.run | BENCH | takes the exam: invoke per case, grade each, aggregate | 0 |
-| Benchmark.as_loss | SCORING/BENCH | (System)->float = 1 - run score; the exam AS a loss; the only loss (per-case aggregation lives in run's mean — a second as_loss was one-mean-away) | 0 |
+| run | TASK+DATA+SCORING | takes the exam: invoke per case, grade each, aggregate to the mean (distribution → point estimate). Was Benchmark.run; the class wrapper died in cycle 15 — free function over the (task, scoring, cases) tuple | 0 |
+| as_loss | SCORING/BENCH | (System)->float = 1 - run score; the exam AS a loss. **BARE_METAL badge (cycle 15)**: deleting it broke the loss-ranks-stubs acceptance bar AND GOLEM law 6 names `loss = benchmark.as_loss()` as an unbreakable vision invariant — the loss view IS the product. Restored immediately | 1 |
 | compile_system | SYSTEM | the compiler front door: spec (data) → callable | 1 |
 | invoke | SYSTEM | THE protocol: the callable itself — `system(input) -> pred`. Not a function; the shape of every backend's return value | 1 |
 | _backend_stub | SYSTEM | keyword-table backend; makes the exam offline-runnable. Absorbed `const` in cycle 13 (rules:{} + default == a constant), so it is also the dumbest possible system | 1 |
@@ -41,6 +40,19 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | main | BENCH | CLI: run a benchmark dir against its systems (the systems-dir compile is inlined here — the CLI is the only engine customer of systems/*.json). Cycle 14 killed its dual error branches: empty systems dir is a quiet zero-exam, the only error is an unknown name | 4 |
 
 ## deletions
+
+Removed in cycle 15: `as_loss` was ATTEMPTED first — it broke
+test_loss_ranks_stubs (the hello acceptance bar: loss(dumb) > loss(good))
+and GOLEM law 6 names it as an unbreakable vision invariant → restored =
+**BARE_METAL badge**. Escalation then deleted `Benchmark` the class
+entirely: the exam became a plain (task, scoring, cases) tuple and its
+two methods became the free functions `run(bench, system)` and
+`as_loss(bench)`. Zero behavior change, 23/23 still green, loc 218→207.
+The engine's LAST class is gone — the classes→data dissolution is
+total: the pillars survive as pure data, the operations as free
+functions, and nothing else exists. (The one visible-concept growth
+was sanctioned: methods that a class hides from the golem became
+honest public surface.)
 
 Removed in cycle 14: `load`'s `task = spec` alias (the TASK pillar is
 the dict passed straight to Benchmark — an alias line is not a
