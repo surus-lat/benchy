@@ -13,8 +13,8 @@
 - 46 loc, 3 concepts, 2 files, 0 deps — `nb/exam.py` (all behavior) + `nb/__main__.py` (2-line shim)
 - Public surface: 3 — `Exam` (+run, as_loss), `locate`, `main`
 - Engine: `python -m nb <root> <ontology_path> <system>` — offline, no pytest archaeology
-- Artifact: `{benchmark, cases[{input,expected,prediction,score}], score}` — pure facts; `loss` is a lens (1−score) derived at each consumer's seam
-- Benchmark: one tracked data file (`bench/hello/benchmark.json`) located by ontology path `/hello` — pure data, never required Python
+- Artifact: `{benchmark, cases[{input,expected,prediction,score}], score}` — pure facts; `loss` a lens (1−score) derived at consumers
+- Benchmark: one tracked data file (`bench/hello/benchmark.json`) at ontology path `/hello` — pure data, never Python
 
 ## Angle status
 
