@@ -16,6 +16,14 @@ in `bench/hello/`. Read VISION.md and IDEAS.md before cycle 1.
 
 ## s01 — loss-first
 
+STEERING ADDENDUM (2026-09-01, from seed.md — binding for all trees): the goal of
+this search is the SIMPLEST REPRESENTATION of benchy's ontology across the 4
+engineering pillars: program (task: input→output), scoring, exam (the data),
+compiler/ai-endpoint (the system). Serving complexity is LONG-TERM work, not
+bare metal — no local-llm serving machinery in the engine. The first real
+exam-taker is CLOUD (e.g. a foundational model via Together AI): a system spec
+in data, compiled by the system pillar — not engine code.
+
 Hypothesis: the benchmark IS a loss function over systems. `as_loss()` is
 not a feature; it is the identity, and everything else is derived from it.
 Start from `loss = benchmark.as_loss()`; make `run(system)` and the graded
