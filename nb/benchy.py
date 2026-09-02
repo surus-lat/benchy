@@ -18,24 +18,25 @@ from pathlib import Path
 # ---------------- SYSTEM pillar: the AI-API ----------------
 # A system is a program: invoked with a case, it predicts. Model, node,
 # workflow, agent — all plug in here through ONE protocol: f(in, ctx) -> out.
+# Data shapes: {"rule": {cls: [keywords]}, "default": cls} (a learned keyword
+# program; default-only = a constant system) and {"py": "file.py:func"} (the
+# escape hatch — python is not the interface).
 def invoke(system, inp, ctx=None):
-    """invoke a system: callable | spec dict (const | rule | py)."""
+    """invoke a system: callable | data spec (rule+default | py)."""
     if callable(system):
         return system(inp, ctx)
-    if "const" in system:                      # always the same prediction
-        return system["const"]
-    if "rule" in system:                       # learned keyword program: pure data
-        text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
-        for cls, keys in system["rule"].items():
-            if any(k.lower() in text.lower() for k in keys):
-                return cls
-        return system.get("default")
-    if "py" in system:                         # the escape hatch: "file.py:func"
-        f, fn = system["py"].rsplit(":", 1)    # python is not the interface
+    if "py" in system:                         # the escape hatch
+        f, fn = system["py"].rsplit(":", 1)
         spec = importlib.util.spec_from_file_location(f.replace("/", "_"), f)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return getattr(mod, fn)(inp, ctx)
+    if "rule" in system or "default" in system:
+        text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
+        for cls, keys in system.get("rule", {}).items():
+            if any(k.lower() in text.lower() for k in keys):
+                return cls
+        return system.get("default")
     raise ValueError(f"unknown system spec: {sorted(system)}")
 
 
