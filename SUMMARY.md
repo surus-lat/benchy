@@ -35,8 +35,7 @@ wins — a tuple can't carry a spec.**
 ## Most expensive mistake
 
 Half the search mistook annotation for contract: `core.py` lingered 8 cycles
-as a conventions docstring before c13 proved the values + tests already carry
-the spec — a spec written in three places is two places of drift risk.
+as a conventions docstring — a spec written in three places is two of drift risk.
 
 ## Advice for the other nine
 
