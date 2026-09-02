@@ -82,6 +82,9 @@ def run(benchmark: dict, system: dict) -> dict:
     return grade(benchmark, compile(system))
 
 
+# c15: deletion-probed — removing as_loss breaks the test collection
+# itself (the import IS the pin): the vision's headline export cannot
+# be inlined away; the optimizer consumes loss(system) directly.
 def as_loss(benchmark: dict) -> Callable[[dict], float]:
     """Export the benchmark as a loss over systems: loss(dumb) > loss(good)."""
     def loss(system: dict) -> float:
