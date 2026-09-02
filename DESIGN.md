@@ -40,6 +40,7 @@ unknown names fail loud, never silently score 0.
 | `want` in trace cases | SCORING+DATA | the artifact must be SELF-CONTAINED: without `want`, a failed case reads "wrong, but about what?" and no reader (human or software-3.0 optimizer) can interpret or learn from the trace without joining bench.json — which the artifact no longer names (path deleted, cycle 9). Derivable-from-source is not the bar; interpretable-alone is. | 1 |
 | `scoring` key in bench.json + its load-time check | SCORING | scoring is a pillar of the benchmark identity (law #6). The key is the seat where the author names the policy the engine implements; the check is live honesty code — unknown or missing scoring fails loud, never silently exact-match. Survived deletion because nothing guarded the guard (cycle 11); the guard test now exists. | 1 |
 | the inner `loss` closure | DATA+SCORING | not style — the only honest home for the receipt. `spec` must be captured at load time, and `loss.trace` must be PER-INSTANCE state: a module-level loss() would share one trace across every loaded benchmark (cycle 12 hoist attempt broke 8 tests). The closure IS the loss-first identity: load() returns the loss itself. | 1 |
+| `loss.trace` attribute | SCORING+DATA | the receipt's home. Cycle 13 moved it into the RETURN value (`(float, trace)`) — 7 tests broke: the pure-float contract (an optimizer calling loss(system) must get a scalar, nothing else — the vision's "new loss function for prompt-optimizers"), the artifact write, and the independence test. No alternative home survives: a kwarg leaks the receipt into the calling convention, module state clobbers between benchmarks (cycle 12). Per-instance attribute is the only home that is both per-benchmark and invisible to the caller. | 1 |
 
 (`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
 `system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
@@ -100,17 +101,28 @@ system is a callable and stdlib importlib is the loader.)
   shares one trace across every loaded benchmark. The closure is not style,
   it is the only honest home for the receipt. BARE_METAL (the inner closure);
   added a test proving two benchmarks keep independent traces.
+- cycle 13: `loss.trace` home — BARE_METAL. Moved the receipt into the return
+  value: `loss(system) -> (float, trace)`. 7 tests broke: test_loss_is_pure_float
+  (an optimizer calling loss(system) must receive a scalar — the vision exports
+  the benchmark as "a new loss function" for prompt-optimizers; a tuple poisons
+  every downstream `loss(s) < best` comparison), test_trace_is_json_artifact,
+  test_two_benchmarks_traces_are_independent, and 4 more. The artifact bar needs
+  the receipt accessible WITHOUT touching the loss signature — the signature IS
+  the software-3.0 interface. Alternatives enumerated and killed: kwarg
+  (leaks the receipt into the calling convention, a second public concept on the
+  one interface that must stay pure), module-level last-trace (clobbers between
+  benchmarks, cycle 12), separate public fn (same shared state + a new concept).
+  The per-instance attribute is the only home that is per-benchmark AND
+  invisible to the caller. Restored.
 
 ## queued deletion candidates (loudest first)
 
-1. `loss.trace` home — could the loss RETURN (float, trace)? Bar says loss
-   must be (System)->float, so the attribute is forced by fiat. Probe anyway:
-   does anything else about the trace convention survive scrutiny?
-2. `1.0 - score` loss convention — acceptance bar demands loss(dumb) > loss(good);
-   lower=better is forced by the bar. Bare metal by fiat. Try `score` AS the
-   loss (higher=better): breaks the ranking direction the bar names.
-3. `float(...)` cast on per-case score — is JSON-serializability of the trace
+1. `1.0 - score` loss convention — acceptance bar demands loss(dumb) >
+   loss(good); lower=better is forced by the bar. Bare metal by fiat. Try
+   `score` AS the loss (higher=better): breaks the ranking direction the bar
+   names.
+2. `float(...)` cast on per-case score — is JSON-serializability of the trace
    a real requirement (bar: artifact JSON) or a nicety? `got == want` yields
    numpy/bool surprises in real systems; the cast is tiny armor.
-4. `/` division by len(cases) — empty cases list = ZeroDivisionError. Loud
+3. `/` division by len(cases) — empty cases list = ZeroDivisionError. Loud
    crash is honest; is it? Probe: is empty-cases a valid benchmark?
