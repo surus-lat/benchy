@@ -49,9 +49,14 @@ def locate(bench_root, path):
     if not f.exists():
         raise LookupError(f"no benchmark with ontology path {path!r} under {bench_root}")
     data = json.loads(f.read_text())
-    unknown = set(data) - {"task", "cases"}
-    if unknown:
-        raise ValueError(f"{f}: unknown keys {sorted(unknown)} — an exam is {{task, cases}}")
+    # the exam is EXACTLY {task, cases} (cycle 9: was an unenforced claim —
+    # a task-less exam loaded fine while the error message promised the
+    # format; the exact-set check names the actual keys, so a missing
+    # pillar and a junk key are both diagnosable from one honest message).
+    # task content is the TAKER's business (the cloud compiler reads it to
+    # build prompts) — presence is load-time honesty, semantics stay free.
+    if set(data) != {"task", "cases"}:
+        raise ValueError(f"{f}: an exam is exactly {{task, cases}}; got {sorted(data)}")
     if not data["cases"]:
         raise ValueError(f"{f}: no cases — nothing to grade; add cases to benchmark.json")
     # exact-match scoring: 1 point per exact match (the hello bar); the

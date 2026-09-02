@@ -9,7 +9,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
-EXAM_DATA = '{"task": {"input": "", "output": ""}, "cases": []}'
+# cycle 9: the scaffold teaches a BLANK task object — any typed example is a
+# type-lie the engine does not check; honesty = presence, not semantics
+EXAM_DATA = '{"task": {}, "cases": []}'
 
 
 def _cli(*args, cwd=ROOT, env_nb=True):
@@ -61,6 +63,16 @@ def test_limit_is_the_smoke_valve():
     assert len(a["cases"]) == 4 and a["score"] == 0.75
 
 
+def test_artifact_names_its_own_scope():
+    # c10 (c2's open probe, test-first): a smoke run must not masquerade as
+    # a full run — the artifact interprets alone, so it carries the exam's
+    # size; graded prefix vs full exam is readable from the JSON itself,
+    # with no "absent key means full" convention to trust
+    _run("dumb", "--limit", "4")
+    a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
+    assert len(a["cases"]) == 4 and a["total"] == 6
+
+
 def test_as_loss_ranks_dumb_above_good():
     import importlib.util
     sys.path.insert(0, str(ROOT))
@@ -108,6 +120,23 @@ def test_unknown_system_is_loud():
     assert r.returncode != 0
 
 
+def test_missing_task_is_loud():
+    # an exam without its first pillar is not an exam — locate must enforce
+    # the {task, cases} format its own error message claims (c9: the
+    # scaffold task-lie probe; a teaching scaffold for an unenforced
+    # format is a false claim)
+    sys.path.insert(0, str(ROOT))
+    from nb.exam import locate
+    bad = ROOT / "bench" / "bad"
+    bad.mkdir(exist_ok=True)
+    (bad / "benchmark.json").write_text(json.dumps(
+        {"cases": [{"input": "x", "expected": "y"}]}))
+    with pytest.raises(ValueError, match="task"):
+        locate(ROOT / "bench", "/bad")
+    import shutil as _sh
+    _sh.rmtree(bad)
+
+
 def test_unknown_benchmark_key_is_loud():
     sys.path.insert(0, str(ROOT))
     from nb.exam import locate
@@ -115,7 +144,8 @@ def test_unknown_benchmark_key_is_loud():
     bad.mkdir(exist_ok=True)
     (bad / "benchmark.json").write_text(json.dumps(
         {"path": "/bad", "task": {}, "cases": [], "verbosity": 1}))
-    with pytest.raises(ValueError, match="unknown keys"):
+    # c9: one honest message diagnoses missing AND junk keys (exact-set check)
+    with pytest.raises(ValueError, match="exactly"):
         locate(ROOT / "bench", "/bad")
     shutil.rmtree(bad) if False else None
     import shutil as _sh
