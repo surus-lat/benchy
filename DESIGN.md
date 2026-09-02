@@ -25,16 +25,20 @@ word in it.
 benchy new <name>        bench/<name>/benchmark.json — a runnable scaffold
                             as pure data (zero cases -> loud refusal at load)
 benchy run <bench> <sys> [--limit N]
-                            locate by ontology path, the system takes the
-                            exam, graded artifact -> runs/<path>-<sys>.json
+                            locate by ontology path (the DIRECTORY is the
+                            address), the system takes the exam, graded
+                            artifact -> runs/<path>-<sys>.json
                             (the ontology path IS the artifact identity)
 
-benchmark.json           {path, task, cases} — the whole exam, pure data;
-                            unknown keys are loud (an exam is exactly this).
-                            task stays as taker-facing data: the cloud
-                            compiler reads it to build prompts; the engine
-                            passes it through untouched (cycle 1 deleted
-                            the engine's own task plumbing — a lens)
+benchmark.json           {task, cases} — the whole exam, pure data; unknown keys
+                            are loud (an exam is exactly this).  The DIRECTORY
+                            IS the ontology path (cycle 6 deleted the `path`
+                            data field — a second address; the walk existed
+                            only to reconcile it).  task stays as
+                            taker-facing data: the cloud compiler reads it
+                            to build prompts; the engine passes it through
+                            untouched (cycle 1 deleted the engine's own task
+                            plumbing — a lens)
 systems.py               the exam-takers, NOT part of the benchmark:
                             a system is any invoked program; the cloud
                             taker (steering addendum) joins here as a spec
@@ -54,9 +58,9 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
-| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both: tuple has no as_loss, shape leaked to cli | 1 |
-| locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme; the walk IS the registry; load-time honesty lives here | 0 |
-| run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence | 0 |
+| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both; cycle 7: grading is PURE (cases + scorer) — path/dir address bookkeeping died as lenses (identity composes at the write, in the CLI) | 2 |
+| locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme — the DIRECTORY is the address; flat lookup, load-time honesty (unknown keys / zero cases refused before anything runs); the walk+`path`-field died in c6 (a registry re-deriving the address is noise) | 1 |
+| run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone) | 1 |
 | new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load | 0 |
 | main | UX | dispatch + words-not-tracebacks; a CLI that raises stack traces at users is not a product | 0 |
 

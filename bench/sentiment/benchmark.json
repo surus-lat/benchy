@@ -1,5 +1,4 @@
 {
- "path": "/sentiment",
  "task": {"input": "text", "output": {"enum": ["pos", "neg"]}},
  "cases": [
   {"input": "this works great", "expected": "pos"},
