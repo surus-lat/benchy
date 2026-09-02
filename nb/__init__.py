@@ -13,6 +13,6 @@ from .scoring import Scoring
 from .data import Exam
 from .system import compile_system
 from .load import load, compile_systems
-from .benchmark import Benchmark, Case
+from .benchmark import Benchmark
 
 __all__ = ["Task", "Scoring", "Exam", "compile_system", "Benchmark"]

@@ -20,13 +20,13 @@ class Benchmark:
     def run(self, system) -> dict:
         """the system takes the exam. Returns the graded artifact."""
         per_case = []
-        for case in self.exam:
-            pred = system(case.input)
+        for inp, expected in self.exam:
+            pred = system(inp)
             per_case.append({
-                "input": case.input,
-                "expected": case.expected,
+                "input": inp,
+                "expected": expected,
                 "prediction": pred,
-                "score": self.scoring.score(pred, case.expected),
+                "score": self.scoring.score(pred, expected),
             })
         score = sum(c["score"] for c in per_case) / len(per_case)
         return {"score": score, "cases": per_case}
@@ -34,13 +34,5 @@ class Benchmark:
     def as_loss(self):
         """(System) -> float. The benchmark AS a loss function."""
         def loss(system):
-            return self.scoring.as_loss([c["score"] for c in self.run(system)["cases"]])
+            return 1.0 - self.run(system)["score"]
         return loss
-
-
-class Case:
-    """one exam case: input + expected. Data, not code."""
-
-    def __init__(self, input, expected):
-        self.input = input
-        self.expected = expected
