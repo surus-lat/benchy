@@ -9,6 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
+EXAM_DATA = '{"task": {"input": "", "output": ""}, "cases": []}'
 
 
 def _cli(*args, cwd=ROOT, env_nb=True):
@@ -30,9 +31,16 @@ def test_run_good_scores_one_and_writes_artifact():
     r = _run("good")
     out = ROOT / "runs" / f"sentiment-good.json"
     a = json.loads(out.read_text())
-    assert a["score"] == 1.0 and a["system"] == "good"
+    assert a["score"] == 1.0
     assert len(a["cases"]) == 6
-    assert a["benchmark"] == "/sentiment"
+
+
+def test_artifact_interprets_alone_it_carries_its_own_identity():
+    # the artifact IS the report (c4): it must name WHO took and WHICH exam
+    # — a JSON that leans on its filename does not interpret alone.
+    _run("good")
+    a = json.loads((ROOT / "runs" / "sentiment-good.json").read_text())
+    assert a["system"] == "good" and a["benchmark"] == "/sentiment"
 
 
 def test_run_dumb_scores_half():
@@ -54,13 +62,15 @@ def test_limit_is_the_smoke_valve():
 
 
 def test_as_loss_ranks_dumb_above_good():
+    import importlib.util
     sys.path.insert(0, str(ROOT))
     from nb.exam import locate
     exam = locate(ROOT / "bench", "/sentiment")
-    sys.path.insert(0, str(ROOT / "bench" / "hello"))
-    import systems
+    spec = importlib.util.spec_from_file_location("systems", ROOT / "bench" / "sentiment" / "systems.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
     loss = exam.as_loss()
-    assert loss(systems.dumb) > loss(systems.good)
+    assert loss(mod.dumb) > loss(mod.good)
 
 
 def test_report_reads_the_graded_run():
@@ -80,7 +90,9 @@ def test_new_scaffolds_then_runs():
         r = _cli("new", "sentiment_es", cwd=td)
         assert r.returncode == 0, r.stderr
         f = td / "bench" / "sentiment_es" / "benchmark.json"
-        assert json.loads(f.read_text())["path"] == "/sentiment_es"
+        # the scaffold is pure data: {task, cases} — the directory IS the
+        # ontology path (no `path` field; cycle 6)
+        assert json.loads(f.read_text()) == json.loads(EXAM_DATA)
         # the scaffold is immediately runnable (zero cases -> loud failure)
         r = _cli("run", "/sentiment_es", "todo", cwd=td)
         assert r.returncode != 0 and "no cases" in r.stderr

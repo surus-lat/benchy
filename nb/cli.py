@@ -17,9 +17,10 @@ from pathlib import Path
 
 from .exam import locate
 
-EXAM = '{"path": "/%s", "task": {"input": "", "output": ""}, "cases": []}\n'
-# the scaffold is pure data — a benchmark is data; the taker (systems.py) is
-# yours to write, next to the exam, where run looks for it
+EXAM = '{"task": {"input": "", "output": ""}, "cases": []}\n'
+# the scaffold is pure data — a benchmark is data; the ontology path is the
+# directory itself (cycle 6 killed the `path` field — a second address);
+# the taker (systems.py) is yours to write next to the exam, where run finds it
 
 
 def run(bench, system, limit=None):
@@ -28,16 +29,21 @@ def run(bench, system, limit=None):
     exam = locate("bench", bench)
     if limit:
         exam.cases = exam.cases[:limit]
-    spec = importlib.util.spec_from_file_location("systems", exam.dir / "systems.py")
+    d = Path("bench") / bench.lstrip("/")
+    spec = importlib.util.spec_from_file_location("systems", d / "systems.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if not hasattr(mod, system):
-        raise LookupError(f"no taker {system!r} in {exam.dir}/systems.py")
-    artifact = {"system": system, **exam.run(getattr(mod, system))}
+        raise LookupError(f"no taker {system!r} in {d}/systems.py")
+    # the artifact interprets alone (c4) so it carries its own identity —
+    # WHO took / WHICH exam — composed here, not in Exam: grading is pure
+    # (cases + score); identity belongs to the write, and the CLI already
+    # holds both addresses.  Exam.path/Exam.dir died as lenses (cycle 7).
+    artifact = {"system": system, "benchmark": bench, **exam.run(getattr(mod, system))}
     out = Path("runs") / f"{bench.lstrip('/').replace('/', '-')}-{system}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(artifact, indent=1) + "\n")
-    print(f"{artifact['benchmark']} · {system}: score={artifact['score']:.2f} "
+    print(f"{bench} · {system}: score={artifact['score']:.2f} "
           f"loss={1.0 - artifact['score']:.2f} -> {out}")
 
 
@@ -48,7 +54,7 @@ def new(name):
     if (d / "benchmark.json").exists():
         raise ValueError(f"{d}/benchmark.json already exists")
     d.mkdir(parents=True, exist_ok=True)
-    (d / "benchmark.json").write_text(EXAM % name)
+    (d / "benchmark.json").write_text(EXAM)
     print(f"{d}/  — add cases to benchmark.json, write systems.py, then: run /{name} <taker>")
 
 

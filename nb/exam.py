@@ -11,10 +11,13 @@ class Exam:
     # benchmark.run(system) / benchmark.as_loss()) and hides the exam's
     # internal shape; a 3-tuple leaked that shape to every caller (cli had
     # to destructure AND re-wrap, plus a run/run collision).
+    # cycle 7: the exam is PURE — cases + scoring.  path/dir attributes
+    # died: addresses are the caller's business (the CLI derives them from
+    # the ontology path it already holds); the artifact's identity fields
+    # died with them (the filename IS the identity, cycle 3's finding).
 
-    def __init__(self, cases, scorer, path="", dir=None):
+    def __init__(self, cases, scorer):
         self.cases, self.scorer = cases, scorer
-        self.path, self.dir = path, dir
 
     def run(self, system) -> dict:
         """The system takes the exam; returns the graded artifact (JSON-ready)."""
@@ -23,7 +26,7 @@ class Exam:
             prediction = system.invoke(case["input"])
             pages.append({**case, "prediction": prediction,
                           "score": self.scorer(case, prediction)})
-        return {"benchmark": self.path, "cases": pages,
+        return {"cases": pages,
                 "score": sum(p["score"] for p in pages) / len(pages)}
 
     def as_loss(self):
@@ -35,16 +38,24 @@ class Exam:
 
 def locate(bench_root, path):
     """Resolve an ontology path /<task?>/<domain?>/<language?> to its exam.
-    benchmark.json is the whole benchmark: {path, task, cases} — data only."""
-    for f in sorted(Path(bench_root).rglob("benchmark.json")):
-        data = json.loads(f.read_text())
-        unknown = set(data) - {"path", "task", "cases"}
-        if unknown:
-            raise ValueError(f"{f}: unknown keys {sorted(unknown)} — an exam is {{path, task, cases}}")
-        if data["path"] == path:
-            if not data["cases"]:
-                raise ValueError(f"{f}: no cases — nothing to grade; "
-                                 "add cases to benchmark.json")
-            exact = lambda case, prediction: float(prediction == case["expected"])
-            return Exam(data["cases"], exact, path, f.parent)
-    raise LookupError(f"no benchmark with ontology path {path!r} under {bench_root}")
+    benchmark.json is the whole benchmark: {task, cases} — data only."""
+    # flat lookup, no walk (cycle 6): the ontology path IS a directory path
+    # under bench/ — the vision's /<task?>/<domain?>/<language?> is literally
+    # the filesystem.  The walk existed only to reconcile the data's `path`
+    # field (a second address, cycle-3's crime repeated) with the directory;
+    # honest-by-construction beats a registry that re-derives the address,
+    # and a sibling benchmark can no longer break an unrelated locate.
+    f = Path(bench_root) / path.lstrip("/") / "benchmark.json"
+    if not f.exists():
+        raise LookupError(f"no benchmark with ontology path {path!r} under {bench_root}")
+    data = json.loads(f.read_text())
+    unknown = set(data) - {"task", "cases"}
+    if unknown:
+        raise ValueError(f"{f}: unknown keys {sorted(unknown)} — an exam is {{task, cases}}")
+    if not data["cases"]:
+        raise ValueError(f"{f}: no cases — nothing to grade; add cases to benchmark.json")
+    # exact-match scoring: 1 point per exact match (the hello bar); the
+    # task's output enum is what the cloud compiler reads — the engine
+    # never looks (cycle 1: the engine's task plumbing was a lens).
+    exact = lambda case, prediction: float(prediction == case["expected"])
+    return Exam(data["cases"], exact)
