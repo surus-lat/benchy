@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from .core import Case, Scored, Scorer, System, Task
+from .core import Case, Scored, System, Task
 
 
 def exact_match(case: Case, prediction: object) -> float:
@@ -14,13 +14,14 @@ def exact_match(case: Case, prediction: object) -> float:
     return float(prediction == case["expected"])
 
 
-SCORINGS: dict[str, Scorer] = {"exact_match": exact_match}
+SCORINGS = {"exact_match": exact_match}
+# data-declared scoring kinds; a scorer is any callable (case, prediction) -> float
 
 
 class Exam:
     """One benchmark.  run(system) grades a taker; as_loss() exports the loss."""
 
-    def __init__(self, task: Task, cases: list[Case], scorer: Scorer, path: str = ""):
+    def __init__(self, task: Task, cases: list[Case], scorer: "callable", path: str = ""):
         self.task, self.cases, self.scorer, self.path = task, cases, scorer, path
 
     def run(self, system: System) -> dict:

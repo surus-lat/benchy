@@ -5,7 +5,6 @@ contract layer: the records that flow between the pillars and the one
 runtime-checkable protocol an exam-taker must satisfy.  No behavior lives
 here — implementations are trivial one-liners elsewhere.
 """
-from collections.abc import Callable
 from typing import Protocol, TypedDict, runtime_checkable
 
 
@@ -44,6 +43,3 @@ class System(Protocol):
     def invoke(self, x: object) -> object: ...
 
 
-Scorer = Callable[[Case, object], float]
-"""Pillar SCORING — what good means: (case, prediction) -> verdict in [0, 1].
-A plain callable, not a class.  Also the loss atom: score = mean, loss = 1 - score."""
