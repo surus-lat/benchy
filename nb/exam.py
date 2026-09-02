@@ -13,10 +13,6 @@ def exact_match(case, prediction) -> float:
     return float(prediction == case["expected"])
 
 
-SCORINGS = {"exact_match": exact_match}
-# data-declared scoring kinds; a scorer is any callable (case, prediction) -> float
-
-
 class Exam:
     """One benchmark.  run(system) grades a taker; as_loss() exports the loss."""
 
@@ -45,7 +41,9 @@ class Exam:
 def load(bench_dir: str | Path) -> Exam:
     """Read a benchmark directory — benchmark.json is the whole exam, pure data."""
     data = json.loads((Path(bench_dir) / "benchmark.json").read_text())
-    return Exam(data["cases"], SCORINGS[data["scoring"]["kind"]], data["path"])
+    return Exam(data["cases"], exact_match, data["path"])
+# data-declared scoring kinds: deleted (cycle 6). Custom scoring = inject a
+# python scorer into Exam(cases, scorer); "exact_match" is the built-in default.
 
 
 def locate(bench_root: str | Path, path: str) -> Exam:
