@@ -96,12 +96,34 @@ def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     assert dt > ideal * 0.5, f"sleep work skipped: {dt:.3f}s vs ideal {ideal:.2f}s"
 
 
+def test_default_workers_is_a_real_default_not_serial(tmp_path):
+    # c15: the workers=8 default survived mutation (workers=1) across the
+    # WHOLE suite — every big test passed workers explicitly, so the
+    # default's VALUE was claimed-but-untested. The default must satisfy
+    # the same two-sided concurrency bounds when nobody passes it: the
+    # 1000-case flaky exam run with DEFAULT workers.
+    e = big_exam(tmp_path, 1000)
+    sys_spec = {"kind": "flaky", "fails": 1, "sleep": 0.01,
+                "of": {"kind": "always", "value": "pos"}}
+    t0 = time.monotonic()
+    art = e.run(sys_spec, out=tmp_path / "d.json")  # no workers, no tries
+    dt = time.monotonic() - t0
+    assert len(art["cases"]) == 1000
+    serial_floor = 2 * 1000 * 0.01
+    assert dt < serial_floor * 0.75, f"default run not concurrent: {dt:.1f}s"
+    ideal = serial_floor / 8
+    assert dt > ideal * 0.5, f"default run skipped sleep work: {dt:.3f}s"
+
+
 def test_flaky_exhausting_retries_is_loud_not_silent(tmp_path):
     e = big_exam(tmp_path, 4)
     art = e.run({"kind": "flaky", "fails": 99,
                  "of": {"kind": "always", "value": "pos"}}, tries=3)
     assert sum(c["status"] == "error" for c in art["cases"]) == 4
     assert all(c["status"] == "error" and "RuntimeError" in c["error"] for c in art["cases"])
+    # c15: the error record's `tries` is evidence — it says "we tried N
+    # times", so a reader distinguishes exhausted retries from zero tries.
+    assert all(c["tries"] == 3 for c in art["cases"])
 
 
 def test_resume_after_real_kill_loses_zero_work(tmp_path):
