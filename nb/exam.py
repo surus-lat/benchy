@@ -5,7 +5,6 @@ The only behavior in the engine: a for-loop over cases, a mean, and JSON I/O.
 import json
 import sys
 from pathlib import Path
-from typing import Callable
 
 
 def exact_match(case, prediction) -> float:
@@ -30,7 +29,7 @@ class Exam:
         return {"benchmark": self.path, "cases": pages,
                 "score": score, "loss": 1.0 - score}
 
-    def as_loss(self) -> Callable:
+    def as_loss(self):
         """The benchmark as a loss function over systems: lower is better."""
         def loss(system) -> float:
             return float(self.run(system)["loss"])

@@ -53,6 +53,12 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
   archaeology. The behavior (main) is metal; the FILE was noise: fusing it
   into exam.py + a 2-line __main__ shim kept the concept and shed 6 loc of
   import ceremony and docstring duplication.
+- artifact's `benchmark` identity field (cycle 11): deleting it broke two
+  tests. The artifact is graded EVIDENCE written to disk — once on disk,
+  nothing ties it to its exam except this field (filename/location identity
+  evaporates on copy). An unlabeled grade is a mean without an exam. The
+  old benchy's run_outcome.json carries run identity at top level for the
+  same reason: report-side reading needs self-describing data.
 
 ## deleted (noise — protocols that only had annotation-work)
 
@@ -77,5 +83,5 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
   the files it searched was a concept doing locate's job twice; the
   ontology path is the only address and locate the only constructor.
 
-Current: 4 concepts, 4 files, 63 loc.  Public surface (module names):
+Current: 4 concepts, 4 files, 62 loc.  Public surface (module names):
 exact_match, Exam (+run, as_loss), locate, main = 4.
