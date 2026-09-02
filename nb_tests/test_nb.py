@@ -223,16 +223,32 @@ def test_kill_during_heavy_write_never_leaves_torn_artifact(tmp_path):
 
 
 def test_weighted_scoring_is_data_not_code(tmp_path):
+    # weights codify the business hierarchy (IDEAS.md: one field is critical,
+    # others nice to have) — the hierarchy only exists if it RANKS systems:
+    # same correct-field count, different fields -> different loss order.
     d = tmp_path / "w"
     d.mkdir()
     (d / "exam.json").write_text(json.dumps({
         "scoring": { "weights": { "critical": 3.0, "nice": 1.0 } },
         "cases": [{"id": "w1", "input": "in",
-                   "want": {"critical": "x", "nice": "y"}}]}))
+                   "want": { "critical": "x", "nice": "y"}}]}))
     e = Exam(d)
     art = e.run({"kind": "always", "value": {"critical": "x", "nice": "x"}})
     assert art["cases"][0]["score"] == 0.75  # 3 of 4 weight on critical, right
     assert art["score"] == 0.75
+    # the hierarchy ranks: right-on-critical beats right-on-nice (1:1 fields)
+    crit = e.as_loss({"kind": "always", "value": {"critical": "x", "nice": "x"}})
+    nice = e.as_loss({"kind": "always", "value": {"critical": "z", "nice": "y"}})
+    assert crit < nice  # wrong-on-critical must lose, or the weights are a lie
+    # unweighted dict-want = per-field mean (weights default to 1)
+    d2 = tmp_path / "u"
+    d2.mkdir()
+    (d2 / "exam.json").write_text(json.dumps({
+        "cases": [{"id": "u1", "input": "in",
+                   "want": { "critical": "x", "nice": "y"}}]}))
+    e2 = Exam(d2)
+    art2 = e2.run({"kind": "always", "value": {"critical": "x", "nice": "x"}})
+    assert art2["score"] == 0.5  # 1 of 2 fields, no weights declared
 
 
 def test_loud_reject_of_want_outside_declared_out(tmp_path):
