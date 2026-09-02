@@ -1,6 +1,6 @@
 {
  "files": 2,
- "loc": 69,
+ "loc": 66,
  "deps": 0,
  "concepts": [
   "as_loss",
@@ -9,6 +9,6 @@
   "run",
   "score_case"
  ],
- "cycles": 9,
+ "cycles": 10,
  "why": null
 }
