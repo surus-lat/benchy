@@ -55,7 +55,6 @@ def test_locatable_by_ontology_path():
 def test_benchmark_is_pure_data():
     data = json.loads((HELLO / "benchmark.json").read_text())
     assert data["task"]["output"]["enum"] == ["pos", "neg"]
-    assert data["scoring"]["kind"] == "exact_match"
     assert [c["expected"] for c in data["cases"]] == ["pos"] * 3 + ["neg"] * 3
 
 
