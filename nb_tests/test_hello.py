@@ -60,6 +60,8 @@ def test_artifact_has_per_case_and_aggregate(exam):
     # interprets alone: one dumb case shows want vs got without the exam file
     c = rep["cases"][3]
     assert c["want"] == "neg" and c["got"] == "pos" and c["score"] == 0.0
+    # cycle 10: sample `id` deleted from data — the list index IS the case id
+    assert [c["id"] for c in rep["cases"]] == [0, 1, 2, 3, 4, 5]
 
 
 # --- the scoring lens: declared policy, loud -------------------------------------

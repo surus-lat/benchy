@@ -13,7 +13,10 @@ from pathlib import Path
 
 EXAM_KEYS = {"path", "task", "scoring", "samples", "systems"}
 SCORE_KEYS = {"match"}
-SAMPLE_KEYS = {"id", "input", "expected"}
+# cycle 10 deleted sample `id`: write-only metadata — echoed into the artifact
+# but never read. the list INDEX is the case id; the root record is
+# (input, expected). data got smaller, error messages now carry the input.
+SAMPLE_KEYS = {"input", "expected"}
 # cycle 8 escalation tried to drop "kind" from the key set (presence is
 # guaranteed by the kind gate) — broke: kind is a REAL key of the spec in
 # data, the loud check must see every key the file carries.
@@ -49,12 +52,12 @@ def load(path):
         raise ValueError(f"unknown scoring policy: {data['scoring']['match']!r}")
     if not isinstance(data["samples"], list) or not data["samples"]:
         raise ValueError(f"{where} samples must be a non-empty list")
-    for s in data["samples"]:
-        _check(SAMPLE_KEYS, s, f"{where} sample {s.get('id')!r}")
+    for i, s in enumerate(data["samples"]):
+        _check(SAMPLE_KEYS, s, f"{where} sample {i}")
         if not isinstance(s["input"], str):
-            raise ValueError(f"sample {s['id']!r} input must be text")
+            raise ValueError(f"sample {i} input must be text")
         if s["expected"] not in task:
-            raise ValueError(f"sample {s['id']!r} expected {s['expected']!r} not in task {task}")
+            raise ValueError(f"sample {i} expected {s['expected']!r} not in task {task}")
     if not isinstance(data["systems"], dict) or not data["systems"]:
         raise ValueError(f"{where} systems must be a non-empty dict of specs")
     for name, spec in data["systems"].items():
@@ -102,13 +105,16 @@ def run(exam, system):
     # cycle 9 deleted run's re-check of the policy: load already rejected any
     # match != "exact", a second gate was a duplicate of load's validation.
     cases = []
-    for s in exam["samples"]:
+    for i, s in enumerate(exam["samples"]):
         got = invoke(system, s["input"])
-        cases.append({"id": s["id"], "input": s["input"],
+        cases.append({"id": i, "input": s["input"],
                       "want": s["expected"], "got": got,
                       "score": 1.0 if got == s["expected"] else 0.0})
     score = sum(c["score"] for c in cases) / len(cases)
-    return {"path": exam["path"], "system": system, "cases": cases, "score": score}
+    # cycle 11 deleted the `path` and `system` echoes: unread — the caller
+    # passed the system and knows which exam it loaded. the report is evidence
+    # per case + aggregate, not a copy of its own arguments.
+    return {"cases": cases, "score": score}
 
 
 def as_loss(exam):
