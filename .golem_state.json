@@ -10,6 +10,6 @@
   "save",
   "score_case"
  ],
- "cycles": 5,
- "why": "C6 probe mandated by brief: weighted/partial scoring in pure data (fields+weights vocabulary); deleted points key same cycle"
+ "cycles": 7,
+ "why": null
 }
