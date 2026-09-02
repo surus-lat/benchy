@@ -1,10 +1,9 @@
-"""nb — benchy, bare metal, runner-first.
-
-An Exam is task + scoring + cases, locatable by its ontology path. A system
-(a JSON spec, data) TAKES the exam: the runner fans cases out over threads,
-retries failures, and rewrites the whole artifact after every completed case
-— so a kill loses nothing and the artifact IS the resume contract.
-"""
+# nb — benchy, bare metal, runner-first.
+#
+# An Exam is task + scoring + cases, locatable by its ontology path. A system
+# (a JSON spec, data) TAKES the exam: the runner fans cases out over threads,
+# retries failures, and rewrites the whole artifact after every completed case
+# — so a kill loses nothing and the artifact IS the resume contract.
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,10 +12,10 @@ from time import sleep
 
 
 def locate(path):
-    """Resolve an ontology path like '/sentiment' to its exam directory.
+    # resolve an ontology path like '/sentiment' to its exam directory.
     # survival: the tree IS the ontology — bench/sentiment/ literally is
     # /sentiment; no walk, no index file, no second address. c12: the root
-    # kwarg was unread cargo — no caller ever passed a different root."""
+    # kwarg was unread cargo — no caller ever passed a different root.
     d = Path("bench") / path.strip("/").replace("/", "-")
     if not (d / "exam.json").is_file():
         raise FileNotFoundError(f"no exam at {path!r} under bench/")
@@ -36,7 +35,7 @@ def _score(want, got, weights):
 
 
 def _compile(spec):
-    """System spec (data) -> invoke(input) -> prediction. The compiler pillar."""
+    # system spec (data) -> invoke(input) -> prediction. The compiler pillar.
     kind = spec["kind"]
     if kind == "always":
         return lambda text: spec["value"]
@@ -69,7 +68,7 @@ def _compile(spec):
 
 
 def _attempt(invoke, case, weights, tries):
-    """One case: invoke with up to `tries` attempts; returns graded evidence."""
+    # one case: invoke with up to `tries` attempts; returns graded evidence.
     rec = {"id": case["id"], "input": case["input"], "want": case["want"]}
     err = None
     for t in range(1, tries + 1):
@@ -84,14 +83,14 @@ def _attempt(invoke, case, weights, tries):
 
 
 def _write(out, art):
-    """Atomic artifact write: temp + rename — a kill never leaves torn JSON."""
+    # atomic artifact write: temp + rename — a kill never leaves torn JSON.
     tmp = out.with_name(out.name + ".tmp")
     tmp.write_text(json.dumps(art))
     os.replace(tmp, out)
 
 
 class Exam:
-    """The benchmark: task + scoring + cases. run(system) takes it, as_loss ranks systems."""
+    # the benchmark: task + scoring + cases. run(system) takes it, as_loss ranks systems.
 
     def __init__(self, dir):
         self.spec = json.loads((Path(dir) / "exam.json").read_text())
@@ -108,13 +107,13 @@ class Exam:
                     f"case {c['id']!r}: want {c['want']!r} outside declared out {outs}")
 
     def run(self, system, out=None, workers=8, tries=3):
-        """Take the exam concurrently (serial fails the 1000-case bar 16x over);
-        `out` re-run = resume: ok cases kept, errored cases re-attempted.
+        # take the exam concurrently (serial fails the 1000-case bar 16x over);
+        # `out` re-run = resume: ok cases kept, errored cases re-attempted.
         # survival (c12): out=None is the in-memory evaluation — the pure
         # read-only path. Forcing `out` broke 7 tests, 5 of them pure
         # scoring/loss evaluations (as_loss would need a throwaway path per
         # call: the optimizer seam turned stateful). The artifact is optional
-        # durability; the vision's run(system) has no out argument."""
+        # durability; the vision's run(system) has no out argument.
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
         # total = the exam size, fixed: score = sum/total makes the mid-run
         # value an honest lower bound (ungraded cases count 0), and the final
@@ -153,5 +152,5 @@ class Exam:
         return art
 
     def as_loss(self, system, **kw):
-        """The benchmark as a loss over systems: loss = 1 - exam score."""
+        # the benchmark as a loss over systems: loss = 1 - exam score.
         return 1.0 - self.run(system, **kw)["score"]
