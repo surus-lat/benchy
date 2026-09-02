@@ -94,12 +94,19 @@ def test_py_compiles_once_per_exam(bench, tmp_path):
     assert [r["score"] for r in a["cases"]] == [1.0] * 6
 
 
-# ---- scoring pillar ----
-def test_fields_scoring_weights_importance():
-    s = {"fields": {"total": 3, "tax": 1}}
+# ---- scoring pillar: ONE shape, derived from the output schema ----
+def test_weights_tune_importance():
+    # scoring is just a weights map over want's parts; absent = binary
+    s = {"total": 3, "tax": 1}
     assert grade(s, {"total": 1, "tax": 2}, {"total": 1, "tax": 2}) == 1.0
     assert grade(s, {"total": 1, "tax": 2}, {"total": 1, "tax": 9}) == 0.75  # 3/4
     assert grade(s, {"total": 1}, {"total": 2}) == 0.0
+
+
+def test_scalar_want_is_exact():
+    # a scalar want IS the one-part case: whole equality, no sentinel needed
+    assert grade(None, "pos", "pos") == 1.0
+    assert grade(None, "pos", "neg") == 0.0
 
 
 # ---- data pillar: ontology, resume, fan-out ----

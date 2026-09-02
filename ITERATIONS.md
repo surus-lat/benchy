@@ -12,3 +12,4 @@
 11 | pushed=exam() module fn (fused into Benchmark._exam method; artifact-build lives with its only caller) | broke=no | verdict=HARD_PUSH | loc=108 | concepts=5
 12 | pushed=CLI loss command (deleted: the run artifact carries loss; as_loss() the METHOD stays as vision law, the second verb was a duplicate interface) | broke=no | verdict=HARD_PUSH | loc=105 | concepts=5
 13 | pushed=Benchmark.load three-way resolution (dir/file ternary collapsed to a candidate list; ontology walk itself deleted) | broke=yes | verdict=BARE_METAL | loc=104 | concepts=5
+14 | pushed=grade 'exact' sentinel + {'fields'} wrapper (deleted: scoring derives from want's shape — a scalar want IS the one-part case; the scoring spec is a plain weights map, absent = binary) | broke=yes | verdict=NOISE_REMOVED | loc=102 | concepts=5

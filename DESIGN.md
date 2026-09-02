@@ -16,11 +16,15 @@ TASK     (no code)         — the task IS data: spec["task"] = in/out schema +
                             any want, so grading already scores it 0 — the
                             enum is the declared output space for optimizers,
                             not a gate the grader needs. ok() deleted (c4).
-SCORING  grade()           — 'exact' | {'fields': weights}. importance hierarchy.
+SCORING  grade()           — weights over the parts of want; absent = binary.
+                            A scalar want IS the one-part case: scoring
+                            derives from want's shape (the output schema,
+                            instantiated) — the spec is a plain weights
+                            map, no 'exact' sentinel, no wrapper (c14).
                             grade is the loss's atom.
-DATA     Benchmark/exam()  — bench.json = task + cases + scoring + systems.
-                            run(system) -> the graded artifact dict,
-                            as_loss() -> the same exam as a float.
+DATA     Benchmark/exam()  — bench.json = task + cases + systems (scoring
+                            weights optional). run(system) -> the graded
+                            artifact dict, as_loss() -> the same exam as a float.
 ```
 
 The invariants live in this shape with zero extra concepts:
@@ -43,7 +47,7 @@ filesystem — no registry object.
 | concept | pillar | why undeletable | survived |
 |---|---|---|---|
 | invoke | SYSTEM | the single AI-API protocol; every system shape plugs in here. Model/node/workflow/agent all become f(in,ctx)->out. const folded into default-only rule (c3). Rule+default data specs are the learned-program shapes it serves; py specs compile to a callable ONCE per exam in run() (c9 — per-case import reset module state, a real correctness bug). invoke() itself is now rule+default only. | 2 |
-| grade | SCORING | what good means; the atom of both score and loss. fields weights = importance hierarchy. Enum gates are noise here: an out-of-enum pred cannot match any want (ok() deleted, c4). | 1 |
+| grade | SCORING | what good means; the atom of both score and loss. ONE shape (c14): weights over the parts of want — want's shape IS the output schema instantiated (dict → per-field, scalar → whole equality), so the scoring spec is a plain weights map, absent = binary. IDEAS.md line 1 delivered: derive scoring from the schema, then tune weights. Enum gates are noise here: an out-of-enum pred cannot match any want (ok() deleted, c4); the 'exact' sentinel + {'fields'} wrapper deleted (c14 — broke the wrapper-format test, fixed forward: the tests guarded the noise). | 2 |
 | Benchmark._exam | DATA | builds the graded artifact dict: per-case rows + aggregate + loss. The dict IS the exam — Exam class deleted as noise (c2), the module-level exam() fn fused into its only caller (c11, HARD_PUSH: nothing broke, concept count dropped 6→5). No separate writer concept. | 4 |
 | Benchmark.run | DATA | the exam-taking loop; hosts resume + fan-out + artifact write — all one loop, no sub-concepts. py specs compile to a callable here, once per exam (moved from invoke in c9). The mid-run write is BARE METAL (c10): kill-safety is the resume contract — with only a final write, a kill leaves NO artifact and all graded work is lost (proved by test_kill_midrun_keeps_graded_work, written c10). | 3 |
 | Benchmark.as_loss | SCORING | vision: benchmark = a new loss function for software-3.0. loss(dumb) > loss(good) ranks systems. | 0 |
@@ -78,3 +82,9 @@ Remaining loudest things, in attack order:
    list (noise); the ontology walk itself is BARE METAL (acceptance bar:
    /sentiment must resolve — the walk IS the filesystem-as-registry made
    addressable by the vision's ontology).
+5. DONE c14 — grade's 'exact' sentinel + {'fields'} wrapper deleted
+   (NOISE_REMOVED — the wrapper-format test broke, fixed forward to the
+   one shape: scoring derives from want's shape, IDEAS.md line 1).
+   Remaining loudest for c15: _write (is a 5-line helper its own concept,
+   or does it fuse into run()?) and the two places that interpret system
+   specs (invoke's rule loop vs run()'s py-compile).
