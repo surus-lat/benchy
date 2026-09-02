@@ -67,6 +67,14 @@ class TestPillarScoring:
     def test_dumb_stub_scores_half(self):
         assert run(bench(), system_specs()["dumb"])["score"] == 0.5
 
+    def test_dumb_stub_is_always_pos(self):
+        # c14: GOLEM.md's acceptance bar says the dumb stub is "always pos",
+        # but only the 0.5 SCORE was pinned — the behavior was claimed but
+        # untested. pinned before the default-deletion probe: the dumb stub
+        # predicts pos on every case (the constant-pos function).
+        art = run(bench(), system_specs()["dumb"])
+        assert all(r["prediction"] == "pos" for r in art["cases"])
+
     def test_score_is_mean_of_per_case(self):
         art = run(bench(), system_specs()["dumb"])
         per_case = [r["score"] for r in art["cases"]]
