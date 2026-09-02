@@ -21,24 +21,17 @@ from pathlib import Path
 # Data shapes: {"rule": {cls: [keywords]}, "default": cls} (a learned keyword
 # program; default-only = a constant system) and {"py": "file.py:func"} (the
 # escape hatch — python is not the interface). py paths resolve from the
-# CWD, same as every other data file you point at by path.
+# CWD, same as every other data file you point at by path; run() compiles a
+# py spec to a callable ONCE per exam, never per case.
 def invoke(system, inp, ctx=None):
-    """invoke a system: callable | data spec (rule+default | py)."""
+    """invoke a system: callable | data spec (rule+default)."""
     if callable(system):
         return system(inp, ctx)
-    if "py" in system:                         # the escape hatch
-        f, fn = system["py"].rsplit(":", 1)
-        spec = importlib.util.spec_from_file_location(f.replace("/", "_"), f)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return getattr(mod, fn)(inp, ctx)
-    if "rule" in system or "default" in system:
-        text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
-        for cls, keys in system.get("rule", {}).items():
-            if any(k.lower() in text.lower() for k in keys):
-                return cls
-        return system.get("default")
-    raise ValueError(f"unknown system spec: {sorted(system)}")
+    text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
+    for cls, keys in system.get("rule", {}).items():
+        if any(k.lower() in text.lower() for k in keys):
+            return cls
+    return system.get("default")
 
 
 # ---------------- TASK pillar: the program description ----------------
@@ -109,6 +102,12 @@ class Benchmark:
         """exam = bench.run(system). resume-safe (out), concurrent (workers)."""
         if isinstance(system, str):
             system = self.systems[system]
+        if isinstance(system, dict) and "py" in system:   # compile ONCE per exam
+            f, fn = system["py"].rsplit(":", 1)
+            spec = importlib.util.spec_from_file_location(f.replace("/", "_"), f)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            system = getattr(mod, fn)
         cases = self.cases[:limit] if limit else self.cases
         done = {}
         if out and Path(out).exists():                   # RESUME: keep graded

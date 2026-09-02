@@ -7,3 +7,4 @@
 6 | pushed=name derivation + system label in artifact (deleted: artifact path IS the label; nothing reads artifact["system"]) | broke=no | verdict=HARD_PUSH | loc=122 | concepts=6
 7 | pushed=main() flag parser (deleted: out is a positional arg; limit/workers are engine kwargs, not a second CLI interface) | broke=yes | verdict=NOISE_REMOVED | loc=111 | concepts=6
 8 | pushed=Benchmark.spec/task attributes + ont property (deleted: engine keeps only what it uses; task spec stays pure data in bench.json) | broke=no | verdict=HARD_PUSH | loc=110 | concepts=6
+9 | pushed=py per-case dynamic import (moved to run(): compile py spec to callable ONCE per exam; invoke() now rule+default only) | broke=yes | verdict=NOISE_REMOVED | loc=108 | concepts=6

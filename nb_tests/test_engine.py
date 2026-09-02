@@ -83,6 +83,17 @@ def test_py_escape_hatch(bench, tmp_path):
     assert a["score"] == 0.5
 
 
+def test_py_compiles_once_per_exam(bench, tmp_path):
+    # module-level state proves run() compiled the py spec to a callable once:
+    # the counter carries across cases (pos,pos,pos then neg,neg,neg — every
+    # want matches). Per-case dynamic import would reset n each case: all-pos
+    # predictions, [1,1,1,0,0,0].
+    f = tmp_path / "count.py"
+    f.write_text("n = 0\ndef predict(inp, ctx=None):\n    global n\n    n += 1\n    return 'pos' if n <= 3 else 'neg'\n")
+    a = bench.run({"py": str(f) + ":predict"})
+    assert [r["score"] for r in a["cases"]] == [1.0] * 6
+
+
 # ---- scoring pillar ----
 def test_fields_scoring_weights_importance():
     s = {"fields": {"total": 3, "tax": 1}}
