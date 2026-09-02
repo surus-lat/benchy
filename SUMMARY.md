@@ -15,18 +15,17 @@
 - Scoring vocabulary: `exact` | `fields+weights` — loud-dispatched, unknown keys raise
 - System vocabulary: `constant` | `regex` — specs compiled to callables; a cloud endpoint is one more spec shape
 - Artifact bar: stdout (no resume requirement in this tree → no mid-run write; contrast s04)
-- Worked examples: bench/hello (exact, good=1.0 dumb=0.5) + bench/extract (weighted, extractor.json scores 1.0)
+- Worked examples: bench/hello (exact) + bench/extract (weighted, extractor.json scores 1.0)
 
 ## Angle status
 
 **SURVIVED — both escape-hatch probes closed at ZERO interface cost.**
-C6: weighted/partial scoring is pure data. C14: regex systems are pure
-data (keyword kind subsumed into alternation). The falsification condition
-(scoring complexity forcing Python into the interface) never triggered;
-honest growth widened the interpreted DATA vocabulary, never the interface.
-BARE_METAL: task.json (the ontology locator is data, c7), scoring.json
-(weights are genuinely interpreted, c8), as_loss (named vision invariant,
-c12).
+C6: weighted scoring is pure data. C14: regex systems are pure data
+(keyword kind subsumed into alternation). The falsification condition
+never triggered; honest growth widened the interpreted DATA vocabulary,
+never the interface. BARE_METAL: task.json (ontology locator is data, c7),
+scoring.json (weights genuinely interpreted, c8), as_loss (named vision
+invariant, c12).
 
 ## Best discovery
 
@@ -38,15 +37,15 @@ format where every key is interpreted is the honest benchmark-as-directory.
 
 The root `*.json` gitignore silently untracked the whole bench/ directory
 for 4 cycles — deliverables existed only on disk until 69d5d94 negated the
-pattern. Verify what git actually tracks, not what the working tree shows.
+pattern. Verify what git tracks, not what the working tree shows.
 
 ## Advice for the other nine
 
-This is the only tree where the scoring vocabulary grew HONESTLY under
+The only tree where the scoring vocabulary grew HONESTLY under
 --allow-growth — for the unified engine: scoring complexity belongs in
-interpreted data literals (weights maps, alternation), not in engine
-branches. Loud checks make that growth honest: the interpreter refuses
-until it actually reads the key.
+interpreted data literals (weights maps, alternation), not engine
+branches. Loud checks make growth honest: the interpreter refuses until it
+actually reads the key.
 
 ## One-line essence
 
