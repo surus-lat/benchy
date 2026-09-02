@@ -11,3 +11,4 @@
 6 | pushed=SCORINGS registry (scoring kind hardcoded in load; a registry of one entry was a fake choice, custom scoring rides the injected-scorer seam) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
 7 | pushed=scoring-kind-in-data (benchmark.json "scoring" block: dead data after registry deletion — dangling kind-string pointing at nothing; same data-noise disease s05 found) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
 8 | pushed=as_loss (delete the loss export) | broke=yes (test_loss_ranks_dumb_above_good: AttributeError — the acceptance bar itself demands as_loss() ranking the stubs) | verdict=BARE_METAL | loc=69 | concepts=5
+9 | pushed=load (fuse into locate: the ontology path becomes the one address; locate the only constructor; Exam carries its source dir for the CLI) | broke=no (tests updated to the located seam — locate was already the entry point in every test path) | verdict=HARD_PUSH | loc=69 | concepts=4

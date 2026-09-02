@@ -13,8 +13,8 @@ What survives is the contracts as CONVENTIONS carried by the values:
 scorer(case, pred)->float, system.invoke(x)->pred, case {input, expected},
 artifact {**case, prediction, score}.  Swapping any implementation still
 changes zero lines outside it — the seam is duck-typing on the convention,
-which is what contracts-first actually bought.  Public surface: 5 module
-names, not 10 types.
+which is what contracts-first actually bought.  Public surface: module
+names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
 
 ## shape
 
@@ -34,9 +34,8 @@ names, not 10 types.
 |---|---|---|---|
 | exact_match | SCORING | the dumbest scorer; the built-in default | 0 |
 | Exam | ALL | benchmark = data+scoring; system is the argument (run / as_loss — two vision invariants) | 2 |
-| load | DATA | a benchmark is data; the only directory reader | 0 |
-| locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>) | 1 |
-| main | UX | `python -m nb <bench> <system>`: runnable without pytest archaeology | 0 |
+| locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>); since cycle 9 the only constructor (load fused in) | 2 |
+| main | UX | `python -m nb <bench_root> <ontology_path> <system>`: runnable without pytest archaeology | 0 |
 
 ## bare metal (survived a deletion attempt)
 
@@ -68,6 +67,9 @@ names, not 10 types.
   became a dangling pointer once the registry died — data that looked like
   a choice but selected nothing. Custom scoring is injected python, not
   data-declared kinds (the s05 finding, confirmed here).
+- load (cycle 9, fused into locate): a separate loader after locate reads
+  the files it searched was a concept doing locate's job twice; the
+  ontology path is the only address and locate the only constructor.
 
-Current: 5 concepts, 4 files, 69 loc.  Public surface (module names):
-exact_match, Exam (+run, as_loss), load, locate, main = 5.
+Current: 4 concepts, 4 files, 69 loc.  Public surface (module names):
+exact_match, Exam (+run, as_loss), locate, main = 4.
