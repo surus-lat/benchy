@@ -17,3 +17,5 @@
 # metal, so fixed FORWARD: grade now refuses exam keys outside task.output.choices.
 # +2 engine loc under --allow-growth (refusion, not new concept). 17 tests.
 8 | pushed=task-block(unenforced-claim) | broke=yes (presence guard only; engine never read it — lie fixed forward into a grade refusal) | verdict=NOISE_REMOVED | loc=92 | concepts=5
+9 | pushed=case-index-field | broke=yes (artifact-shape test pinned the derivable field; fixed forward — position IS the id, s07 c10) | verdict=NOISE_REMOVED | loc=91 | concepts=5
+10 | pushed=cli-silent-first-system-default | broke=yes (cli test pinned the default; fixed forward — refusal with exit 2, the system taking the exam is NAMED always; +1 net loc under --allow-growth) | verdict=NOISE_REMOVED | loc=92 | concepts=5

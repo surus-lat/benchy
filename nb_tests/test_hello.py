@@ -76,7 +76,8 @@ class TestPillarScoring:
         art = run(bench(), system_specs()["good"])
         assert art["benchmark"] == "/sentiment"
         assert len(art["cases"]) == 6
-        assert all({"case", "input", "expected", "prediction", "score"} == set(r) for r in art["cases"])
+        # c9: position in the list IS the case id — no explicit index field
+        assert all({"input", "expected", "prediction", "score"} == set(r) for r in art["cases"])
 
     def test_unknown_rule_rejected(self):
         b = bench()
@@ -116,13 +117,15 @@ class TestCLI:
         assert art["score"] == 0.5
 
     def test_cli_defaults_to_first_system(self, tmp_path):
+        # c10: the silent first-system default is GONE — a CLI call without
+        # a system name must refuse (exit 2), never silently pick systems[0]
         out = tmp_path / "artifact.json"
         proc = subprocess.run(
             [sys.executable, "-m", "nb", str(BENCH), "/sentiment", str(out)],
             capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1],
         )
-        assert proc.returncode == 0, proc.stderr
-        assert json.loads(out.read_text(encoding="utf-8"))["score"] == 1.0
+        assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
+        assert not out.exists()
 
     def test_cli_bad_usage_exits_nonzero(self):
         proc = subprocess.run(

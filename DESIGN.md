@@ -24,8 +24,10 @@ ENGINE   nb/engine.py                  compile / grade / run / as_loss (pure)
 - **SCORING pillar** lives in the benchmark data: `scoring.rule` (match),
   `scoring.aggregate` (mean). Grading is a lookup, not a framework.
 - **DATA pillar** is the cases list — the exam itself. n cases, each a
-  (input, expected) pair. Everything is a distribution; the artifact reports
-  the point estimate plus the per-case evidence.
+  (input, expected) pair; a row's POSITION in the artifact IS its id (c9
+  deleted the explicit `case` index — derivable noise). Everything is a
+  distribution; the artifact reports the point estimate plus per-case
+  evidence.
 - **SYSTEM pillar** is a SPEC compiled by the engine: `compile(spec)` turns
   data into `invoke(text) -> prediction`. Today: keyword + constant (offline,
   no network). Cloud kinds join as new spec kinds — the exam-taker is
@@ -44,7 +46,7 @@ over systems; the ontology path `/sentiment` locates the benchmark.
 | grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke. c8 made it the TASK pillar's enforcement point: it refuses exam keys outside task.output.choices — the declaration is load-bearing. | 1 |
 | run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile. c7 deleted it (as_loss/CLI inlined grade∘compile) and 6 vision-shape tests broke: `run(benchmark, system)` IS the vision's headline shape — benchmark.run(system) is the api the optimizer consumes; inlining it makes every caller re-state the composition and the "system is the argument" law lives nowhere. | 1 |
 | as_loss | export | the vision's headline: export the benchmark as a new loss function | 0 |
-| main | cli | s07 c3 proved CLI metal: a person runs `python -m nb` with no Python knowledge; owns the file layer since c4 (load deleted) | 0 |
+| main | cli | s07 c3 proved CLI metal: a person runs `python -m nb` with no Python knowledge; owns the file layer since c4 (load deleted). c10 deleted the silent first-system default: the system taking the exam is NAMED, always — refusal beats surprise. | 0 |
 
 survived = deletion attempts in push cycles (this session: build only).
 
