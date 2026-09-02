@@ -13,13 +13,13 @@ from time import sleep
 
 
 def locate(path, root="bench"):
-    """Resolve an ontology path like '/sentiment' to its exam directory."""
-    hits = [p.parent for p in Path(root).rglob("exam.json")
-            if json.loads(p.read_text()).get("path") == path]
-    if len(hits) != 1:
-        raise FileNotFoundError(
-            f"expected exactly one exam at {path!r} under {root}/, found {len(hits)}")
-    return hits[0]
+    """Resolve an ontology path like '/sentiment' to its exam directory.
+    # survival: the tree IS the ontology — bench/sentiment/ literally is
+    # /sentiment; no walk, no index file, no second address."""
+    d = Path(root) / path.strip("/").replace("/", "-")
+    if not (d / "exam.json").is_file():
+        raise FileNotFoundError(f"no exam at {path!r} under {root}/")
+    return d
 
 
 def _score(want, got, weights):
