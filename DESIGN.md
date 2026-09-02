@@ -8,12 +8,13 @@ TAKING the exam at scale. Task/scoring/data are trivial records; the runner
 
 One engine module + one CLI module, stdlib only:
 
-- `nb/__init__.py` — `locate(path)`, `Exam` (`run(system)`, `as_loss(system)`,
-  `fingerprint()`), plus private metal: `_score`, `_compile`, `_attempt`, `_write`.
+- `nb/__init__.py` — `locate(path)`, `Exam` (`run(system)`, `as_loss(system)`),
+  plus private metal: `_score`, `_compile`, `_attempt`, `_write`.
 - `nb/__main__.py` — `python -m nb <exam-or-path> <system> -o out.json` with
   exit code 0 iff zero errored cases. Runnable without pytest.
-- `bench/hello/` — exam.json (path `/sentiment`, 6 cases, out vocabulary,
-  optional scoring weights) + systems/good.json + systems/dumb.json. Pure data.
+- `bench/sentiment/` — exam.json (6 cases, out vocabulary, optional scoring
+  weights) + systems/good.json + systems/dumb.json. Pure data; the directory
+  name IS the ontology path (`/sentiment`), no path field needed.
 - Systems are DATA specs compiled by `_compile`: `always`, `keyword`, `flaky`
   (scripted failure + wrap of any other spec). The cloud exam-taker (steering
   addendum) is a future spec kind, not engine code.
@@ -36,7 +37,7 @@ One engine module + one CLI module, stdlib only:
 
 | concept | pillar | why undeletable | survived |
 |---|---|---|---|
-| locate | DATA | ontology path `/sentiment` → exam dir; the vision's locateable-by-path | 0 |
+| locate | DATA | the tree IS the ontology: bench/sentiment/ literally is /sentiment (c6 deleted the rglob walk + path-field matching — reading every exam to find one, two addresses, tolerated ontology lies). No walk, no index, no second address | 0 |
 | Exam | DATA (compressor) | carries the vision's method syntax: run(system)/as_loss(); the surface IS the spec | 0 |
 | Exam.run | RUNNER | the exam-taking: fan-out + retries + resume + artifact; BARE_METAL c1: serial fails the 1000-case bar 16x over (25.9s vs 1.55s against a load-bearing bound — 10ms sleep/attempt, floor = n·tries·sleep, never undersleeps); threads (not asyncio, not raw threading) because systems are sync functions and ThreadPoolExecutor is the leanest stdlib fan-out | 1 |
 | Exam.as_loss | SCORING | BARE_METAL c5: deleted to `pass` → loss-ranking test broke instantly (TypeError None>None) — loss = 1−score IS the vision's export-to-optimizer seam; without it the artifact has no float for optimizers to descend | 1 |

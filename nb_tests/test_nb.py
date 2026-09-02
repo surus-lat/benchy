@@ -19,15 +19,15 @@ def hello():
 
 
 def spec(name):
-    return json.loads((ROOT / "bench/hello/systems" / f"{name}.json").read_text())
+    return json.loads((ROOT / "bench/sentiment/systems" / f"{name}.json").read_text())
 
 
 # ---- the hello acceptance bar (GOLEM.md) ----
 
 def test_locate_finds_the_exam_by_ontology_path():
     d = locate("/sentiment")
-    assert d.name == "hello"
-    assert Exam(d).path == "/sentiment"
+    assert d.name == "sentiment"  # the directory IS the ontology address
+    assert (d / "exam.json").is_file()
 
 
 def test_good_scores_1_and_dumb_scores_0_5():
