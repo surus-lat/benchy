@@ -41,6 +41,7 @@ unknown names fail loud, never silently score 0.
 | `scoring` key in bench.json + its load-time check | SCORING | scoring is a pillar of the benchmark identity (law #6). The key is the seat where the author names the policy the engine implements; the check is live honesty code — unknown or missing scoring fails loud, never silently exact-match. Survived deletion because nothing guarded the guard (cycle 11); the guard test now exists. | 1 |
 | the inner `loss` closure | DATA+SCORING | not style — the only honest home for the receipt. `spec` must be captured at load time, and `loss.trace` must be PER-INSTANCE state: a module-level loss() would share one trace across every loaded benchmark (cycle 12 hoist attempt broke 8 tests). The closure IS the loss-first identity: load() returns the loss itself. | 1 |
 | `loss.trace` attribute | SCORING+DATA | the receipt's home. Cycle 13 moved it into the RETURN value (`(float, trace)`) — 7 tests broke: the pure-float contract (an optimizer calling loss(system) must get a scalar, nothing else — the vision's "new loss function for prompt-optimizers"), the artifact write, and the independence test. No alternative home survives: a kwarg leaks the receipt into the calling convention, module state clobbers between benchmarks (cycle 12). Per-instance attribute is the only home that is both per-benchmark and invisible to the caller. | 1 |
+| `1.0 - score` inversion | SCORING | the loss direction. Cycle 14 returned the score AS the loss — 3 tests broke: the bar's own ranking (`loss(dumb) > loss(good)`: 0.5 > 1.0 failed), good-stub loss 0.0, and the one-minus-trace identity. Lower=better is not a convention, it is optimizer semantics: prompt-optimizers minimize; `loss(s) < loss(best)` must mean "s is better". The inversion is the bridge between the exam view (score: higher=better) and the loss view (minimize) — without it, the trace's `score` and the returned float would contradict each other. | 1 |
 
 (`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
 `system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
@@ -114,15 +115,20 @@ system is a callable and stdlib importlib is the loader.)
   benchmarks, cycle 12), separate public fn (same shared state + a new concept).
   The per-instance attribute is the only home that is per-benchmark AND
   invisible to the caller. Restored.
+- cycle 14: `1.0 - score` inversion — BARE_METAL. Returned the score AS the
+  loss (no inversion): 3 tests broke — the acceptance bar's own ranking
+  (`loss(dumb) > loss(good)` failed as 0.5 > 1.0), the good-stub loss 0.0,
+  and the one-minus-trace identity. Lower=better is optimizer semantics, not
+  a style choice: a prompt-optimizer does `loss(s) < loss(best)` to mean "s is
+  better"; with score-as-loss every downstream optimizer would have to know to
+  MAXIMIZE this one callable. The inversion is the exam->loss bridge: the
+  trace's `score` (higher=better, the human/exam view) and the returned float
+  (lower=better, the optimizer view) stay consistent. Restored.
 
 ## queued deletion candidates (loudest first)
 
-1. `1.0 - score` loss convention — acceptance bar demands loss(dumb) >
-   loss(good); lower=better is forced by the bar. Bare metal by fiat. Try
-   `score` AS the loss (higher=better): breaks the ranking direction the bar
-   names.
-2. `float(...)` cast on per-case score — is JSON-serializability of the trace
+1. `float(...)` cast on per-case score — is JSON-serializability of the trace
    a real requirement (bar: artifact JSON) or a nicety? `got == want` yields
    numpy/bool surprises in real systems; the cast is tiny armor.
-3. `/` division by len(cases) — empty cases list = ZeroDivisionError. Loud
+2. `/` division by len(cases) — empty cases list = ZeroDivisionError. Loud
    crash is honest; is it? Probe: is empty-cases a valid benchmark?
