@@ -1,12 +1,10 @@
 # s05 — yaml / benchmark-as-directory (SUMMARY for unify)
 
-## Final metrics (golem report verbatim)
+## Final metrics (golem --final PASS — report verbatim)
 
 ```json
 {"cycles": 15, "verdicts": {"NOISE_REMOVED": 4, "HARD_PUSH": 8, "BARE_METAL": 3}, "files": 2, "loc": 72, "deps": 0, "concepts": 4}
 ```
-
-`golem.py check --final` → PASS (15 cycles ≥ 12, last verdict NOISE_REMOVED).
 
 ## Final shape
 
