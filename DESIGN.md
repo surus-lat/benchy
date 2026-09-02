@@ -44,7 +44,7 @@ One engine module + one CLI module, stdlib only:
 | _score | SCORING | shape-dispatch on want: scalar exact match / dict weighted; data-only scoring | 0 |
 | _compile | SYSTEM | system specs are data; this is the compiler pillar's one function | 0 |
 | _attempt | RUNNER | one case: invoke with retries, graded evidence record | 0 |
-| _write | RUNNER | atomic artifact write; kill-safety is the resume contract | 0 |
+| _write | RUNNER | BARE_METAL c4: tmp+rename deleted → plain write → an external reader (agent/dashboard reading the artifact mid-run) saw TORN/EMPTY JSON in 128/2225 busy-polls, 4/4 runs — plain `write_text` truncates on every O(n²) rewrite; any reader in the refill window loses the artifact (a kill there = lost work, forbidden). tmp+rename only ever exposes complete states: 6/6 green. Atomicity serves THE READER, not just the kill | 1 |
 | main | CLI | runnable without pytest; exit codes; resume via same -o path | 0 |
 
 ## cycle 1 verdict — concurrency is BARE_METAL (the angle's central question, answered)
