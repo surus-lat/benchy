@@ -1,14 +1,12 @@
 {
  "files": 1,
- "loc": 102,
+ "loc": 99,
  "deps": 0,
  "concepts": [
   "Benchmark",
-  "_write",
   "grade",
-  "invoke",
   "main"
  ],
- "cycles": 14,
+ "cycles": 15,
  "why": null
 }

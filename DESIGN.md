@@ -8,9 +8,12 @@ If it does not fit, the design is wrong, not the file.
 One file, `nb/benchy.py`, read top to bottom as the four pillars:
 
 ```
-SYSTEM   invoke()          — the AI-API: one protocol f(in, ctx) -> out.
-                            Systems are DATA (rule+default | py) or callables;
-                            a default-only rule IS a constant system.
+SYSTEM   run()'s binding    — the AI-API: one protocol f(in, ctx) -> out.
+                            run() is the COMPILER: it binds every system
+                            shape (name -> py file -> rule+default -> the
+                            callable) to f(in,ctx) ONCE per exam. The
+                            protocol is a callable SHAPE, not a function:
+                            invoke() deleted (c15).
 TASK     (no code)         — the task IS data: spec["task"] = in/out schema +
                             ont path. An out-of-enum prediction cannot match
                             any want, so grading already scores it 0 — the
@@ -46,13 +49,11 @@ filesystem — no registry object.
 
 | concept | pillar | why undeletable | survived |
 |---|---|---|---|
-| invoke | SYSTEM | the single AI-API protocol; every system shape plugs in here. Model/node/workflow/agent all become f(in,ctx)->out. const folded into default-only rule (c3). Rule+default data specs are the learned-program shapes it serves; py specs compile to a callable ONCE per exam in run() (c9 — per-case import reset module state, a real correctness bug). invoke() itself is now rule+default only. | 2 |
 | grade | SCORING | what good means; the atom of both score and loss. ONE shape (c14): weights over the parts of want — want's shape IS the output schema instantiated (dict → per-field, scalar → whole equality), so the scoring spec is a plain weights map, absent = binary. IDEAS.md line 1 delivered: derive scoring from the schema, then tune weights. Enum gates are noise here: an out-of-enum pred cannot match any want (ok() deleted, c4); the 'exact' sentinel + {'fields'} wrapper deleted (c14 — broke the wrapper-format test, fixed forward: the tests guarded the noise). | 2 |
 | Benchmark._exam | DATA | builds the graded artifact dict: per-case rows + aggregate + loss. The dict IS the exam — Exam class deleted as noise (c2), the module-level exam() fn fused into its only caller (c11, HARD_PUSH: nothing broke, concept count dropped 6→5). No separate writer concept. | 4 |
-| Benchmark.run | DATA | the exam-taking loop; hosts resume + fan-out + artifact write — all one loop, no sub-concepts. py specs compile to a callable here, once per exam (moved from invoke in c9). The mid-run write is BARE METAL (c10): kill-safety is the resume contract — with only a final write, a kill leaves NO artifact and all graded work is lost (proved by test_kill_midrun_keeps_graded_work, written c10). | 3 |
+| Benchmark.run | DATA | the exam-taking loop AND the compiler; hosts system binding + resume + fan-out + artifact write — all one method, no sub-concepts. Every data shape (name in systems / {"py": "f:fn"} / rule+default / callable) binds to f(in,ctx) ONCE per exam; the mid-run write is BARE METAL (c10): kill-safety is the resume contract — with only a final write, a kill leaves NO artifact and all graded work is lost (test_kill_midrun_keeps_graded_work). _write fused in (c15, HARD_PUSH-style fusion, nothing broke); invoke() deleted here (c15): the AI-API is the protocol SHAPE, not a function name — test_rule_system_is_data broke on the import, fixed forward to assert behavior at the artifact. | 4 |
 | Benchmark.as_loss | SCORING | vision: benchmark = a new loss function for software-3.0. loss(dumb) > loss(good) ranks systems. | 0 |
 | Benchmark.load | DATA | by bench.json path/dir, or by ontology path; the filesystem is the registry. Three-way resolution survived its c2 push; c13 proved the ontology walk itself is BARE METAL (the acceptance bar: a benchmark must be locatable by /sentiment — deleting the walk broke test_load_by_ontology_path with FileNotFoundError). The dir/file ternary WAS noise: a two-element candidate list says the same thing with no is_dir() branch. The walk now reads spec data directly (no throwaway Benchmark per candidate). | 2 |
-| _write | DATA | atomic artifact persistence — resume's read side demands it; kill-safety. | 0 |
 | main | CLI | run only (c12): the `loss` verb deleted — the run artifact already carries loss; as_loss() the METHOD is the vision law and stays, the second CLI verb was a duplicate interface. Flag parser deleted (c7): out is a positional, limit/workers are engine kwargs. | 2 |
 
 ## noise policy
@@ -85,6 +86,10 @@ Remaining loudest things, in attack order:
 5. DONE c14 — grade's 'exact' sentinel + {'fields'} wrapper deleted
    (NOISE_REMOVED — the wrapper-format test broke, fixed forward to the
    one shape: scoring derives from want's shape, IDEAS.md line 1).
-   Remaining loudest for c15: _write (is a 5-line helper its own concept,
-   or does it fuse into run()?) and the two places that interpret system
-   specs (invoke's rule loop vs run()'s py-compile).
+6. DONE c15 (final) — _write fused into run()'s mid-run write (the WRITE
+   survives as c10 metal; the helper was not its own concept), then the
+   escalation: invoke() deleted — run() IS the compiler, the AI-API is
+   the protocol SHAPE f(in,ctx), not a function name. concepts 5→3.
+   Nothing survives above the four pillars: Benchmark (data), grade
+   (scoring), main (CLI sugar). The SYSTEM pillar is run()'s binding
+   section; the TASK pillar is a comment over data.
