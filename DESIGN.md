@@ -42,7 +42,7 @@ the task wrapper object (a bare list carries the answer space honestly).
 
 | concept | pillar | why it cannot be deleted | survived |
 |---|---|---|---|
-| load | exam | the only entry to exam data: one file, loud checks, validation lives here (cycle 2 fused _check_exam in) | 0 |
+| load | exam | the only entry to exam data: one file, loud checks, validation lives here (cycle 2 fused _check_exam in). cycle 14 tried to delete the EXAM_KEYS schema check (the five keys are each literally read — redundant?) and restored: without it an unknown top-level key rides along SILENTLY — the literal reads never see it. reading a key is not the same as checking the schema. a benchmark is data: drift dies at the door | 1 |
 | locate | exam | the ontology path /sentiment must resolve to data (GOLEM bar). cycle 9 tried to fuse the double-read and restored: the raw read is a PROBE (garbage siblings crash loudly, wrong-path files skip), load is the ENTRY (the matching file must validate or report its real error, not "not found"). probe != entry | 1 |
 | _check | exam | loud checks: unknown/missing keys must raise, not be ignored. cycle 8 deleted its `required` param (required==allowed at every call site — a schema's keys are its keys); escalation tried to drop `kind` from the keyword key set and broke — kind is a real key of the spec in data | 0 |
 | invoke | system | the compiler pillar: a spec must become a prediction; cloud specs land here. cycle 12 tried to delete its dict/kind gate (load already validates specs) and restored: load guards DATA entry, invoke guards ARGUMENT entry — a spec handed straight to as_loss/run (a prompt-optimizer's candidate) never passes load. the gate is a boundary, not a duplicate | 1 |
