@@ -3,8 +3,7 @@
 ## Final metrics (golem report verbatim)
 
 ```json
-{"cycles": 15, "verdicts": {"NOISE_REMOVED": 2, "HARD_PUSH": 9, "BARE_METAL": 4},
- "files": 2, "loc": 46, "deps": 0, "concepts": 3}
+{"cycles": 15, "verdicts": {"NOISE_REMOVED": 2, "HARD_PUSH": 9, "BARE_METAL": 4}, "files": 2, "loc": 46, "deps": 0, "concepts": 3}
 ```
 
 `golem.py check --final` → PASS (15 cycles ≥ 12, last verdict HARD_PUSH).
@@ -44,8 +43,7 @@ the spec — a spec written in three places is two places of drift risk.
 Delete named defaults (the seam is the constructor parameter); delete
 write-only artifact fields (consumers derive lenses at their own seam); keep a
 `main` (pytest-only engines are archaeology); **verify your benchmark data is
-git-tracked** (root `*.json` gitignore silently untracked whole exams in three
-trees: s04, s05, s06).
+git-tracked** (root `*.json` gitignore untracked whole exams in s04, s05, s06).
 
 ## One-line essence
 
