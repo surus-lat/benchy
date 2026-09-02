@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 
 from .exam import Exam
@@ -26,10 +26,7 @@ from .exam import Exam
 class Taker:
     """A system under evaluation: one who answers. A name plus a callable."""
     name: str
-    answer: object            # callable: (prompt: dict) -> answer
-
-    def sit(self, prompt: dict):
-        return self.answer(prompt)
+    answer: callable          # (prompt: dict) -> answer
 
 
 @dataclass
@@ -50,9 +47,8 @@ class ReportCard:
     def write(self, out_dir: Path, filename: str = None) -> Path:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
-        name = filename or f"report_card_{self.taker}.json"
-        path = out / name
-        path.write_text(json.dumps(asdict(self), indent=2))
+        path = out / (filename or f"report_card_{self.taker}.json")
+        path.write_text(json.dumps(self.__dict__, indent=2))
         return path
 
 
@@ -73,7 +69,7 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
         if str(i) in answers:            # already answered: keep it
             answered = answers[str(i)]
         else:
-            answered = taker.sit(page["prompt"])
+            answered = taker.answer(page["prompt"])
             if wb is not None:
                 answers[str(i)] = answered
                 wb.parent.mkdir(parents=True, exist_ok=True)

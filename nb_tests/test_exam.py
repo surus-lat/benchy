@@ -23,7 +23,7 @@ def test_exam_loads_from_three_data_files():
     exam = Exam.from_dir(HELLO)
     assert exam.path == "/sentiment"
     assert len(exam.pages) == 6
-    assert exam.answer_key.grade == "exact"
+    assert exam.answer_key["grade"] == "exact"
 
 
 def test_a_benchmark_is_data_not_python():
@@ -42,7 +42,7 @@ def test_exact_match_scores_one_else_zero():
 
 def test_unknown_rule_is_a_loud_error():
     exam = Exam.from_dir(HELLO)
-    exam.answer_key.grade = "nope"
+    exam.answer_key["grade"] = "nope"
     with pytest.raises(ValueError, match="unknown grading rule"):
         exam.grade_page(exam.pages[0], "pos")
 
