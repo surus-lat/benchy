@@ -8,3 +8,5 @@
 5 | pushed=as_loss (delete the loss-export) | broke=yes | verdict=BARE_METAL | loc=97 | concepts=8
 6 | pushed=grade (fuse the scoring lens into run, its only caller) | broke=no | verdict=HARD_PUSH | loc=96 | concepts=7
 7 | pushed=const kind (a constant IS keyword with any=[]) | broke=yes | verdict=HARD_PUSH | loc=94 | concepts=7
+8 | pushed=_check required param (SAMPLE_REQUIRED==SAMPLE_ALLOWED) + escalate: drop kind from key set | broke=yes | verdict=HARD_PUSH | loc=92 | concepts=7
+9 | pushed=locate double-read (probe vs entry) + run's duplicate policy gate | broke=yes | verdict=BARE_METAL | loc=89 | concepts=7

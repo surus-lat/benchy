@@ -74,11 +74,19 @@ def test_scoring_discriminates_via_run():
     assert all(c["score"] == 0.0 for c in wrong)
 
 
-def test_run_unknown_policy_raises():
-    exam_bad = json.loads(json.dumps(load(HELLO)))
-    exam_bad["scoring"] = {"match": "fuzzy"}
-    with pytest.raises(ValueError):
-        run(exam_bad, exam_bad["systems"]["dumb"])
+def test_run_unknown_policy_raises(exam):
+    # cycle 9: run's re-check of the policy deleted — load is the only entry
+    # to exam data and already rejects unknown policies loudly. the mutation
+    # must go through the entry (load), not smuggle a bad exam past it.
+    data = json.loads(json.dumps(exam))
+    data["scoring"] = {"match": "fuzzy"}
+    p = ROOT / "hello" / "_tmp_exam.json"
+    p.write_text(json.dumps(data), encoding="utf-8")
+    try:
+        with pytest.raises(ValueError, match="unknown scoring policy"):
+            load(p)
+    finally:
+        p.unlink()
 
 
 # --- the compiler lens: systems are specs in data --------------------------------
