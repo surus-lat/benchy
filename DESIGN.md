@@ -103,11 +103,14 @@ system is a callable and stdlib importlib is the loader.)
 
 ## queued deletion candidates (loudest first)
 
-1. `ROOT` — filesystem anchor; could load() take a relative glob from CWD instead?
-2. `loss.trace` — is the receipt as a function attribute the right home? could
-   the loss RETURN (float, trace)? Bar says loss must be (System)->float, so
-   attribute is forced. Verify convention is bare metal.
-3. `1.0 - score` loss convention — acceptance bar demands loss(dumb) > loss(good);
-   lower=better is forced by the bar. Bare metal by fiat.
-4. `system()` concept — could systems be plain importables the caller passes?
-   The exec-loading is a convenience; try making the test call the stubs directly.
+1. `loss.trace` home — could the loss RETURN (float, trace)? Bar says loss
+   must be (System)->float, so the attribute is forced by fiat. Probe anyway:
+   does anything else about the trace convention survive scrutiny?
+2. `1.0 - score` loss convention — acceptance bar demands loss(dumb) > loss(good);
+   lower=better is forced by the bar. Bare metal by fiat. Try `score` AS the
+   loss (higher=better): breaks the ranking direction the bar names.
+3. `float(...)` cast on per-case score — is JSON-serializability of the trace
+   a real requirement (bar: artifact JSON) or a nicety? `got == want` yields
+   numpy/bool surprises in real systems; the cast is tiny armor.
+4. `/` division by len(cases) — empty cases list = ZeroDivisionError. Loud
+   crash is honest; is it? Probe: is empty-cases a valid benchmark?
