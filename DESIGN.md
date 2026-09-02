@@ -38,7 +38,7 @@ One engine module + one CLI module, stdlib only:
 |---|---|---|---|
 | locate | DATA | ontology path `/sentiment` → exam dir; the vision's locateable-by-path | 0 |
 | Exam | DATA (compressor) | carries the vision's method syntax: run(system)/as_loss(); the surface IS the spec | 0 |
-| Exam.run | RUNNER | the exam-taking: fan-out + retries + resume + artifact | 0 |
+| Exam.run | RUNNER | the exam-taking: fan-out + retries + resume + artifact; BARE_METAL c1: serial fails the 1000-case bar 16x over (25.9s vs 1.55s against a load-bearing bound — 10ms sleep/attempt, floor = n·tries·sleep, never undersleeps); threads (not asyncio, not raw threading) because systems are sync functions and ThreadPoolExecutor is the leanest stdlib fan-out | 1 |
 | Exam.as_loss | SCORING | vision invariant: loss = 1 - score; ranks systems for optimizers | 0 |
 | Exam.fingerprint | RUNNER | resume must not reuse stale evidence after an exam edit; content identity, not dir identity | 0 |
 | _score | SCORING | shape-dispatch on want: scalar exact match / dict weighted; data-only scoring | 0 |
@@ -47,9 +47,21 @@ One engine module + one CLI module, stdlib only:
 | _write | RUNNER | atomic artifact write; kill-safety is the resume contract | 0 |
 | main | CLI | runnable without pytest; exit codes; resume via same -o path | 0 |
 
+## cycle 1 verdict — concurrency is BARE_METAL (the angle's central question, answered)
+
+Deleted ThreadPoolExecutor → serial against a bound made load-bearing FIRST
+(the honest order: tighten the test until concurrency is the only way through,
+then delete and watch it break). Serial floor = n · tries · sleep = 1000 · 2 ·
+10ms = 20s of pure `time.sleep` — sleep never undersleeps, so the 15s bound
+bites deterministically, not by CI luck. Result: serial 25.9s (FAILS),
+threads 1.55s (16x). At real cloud exam-taker latency (100ms–2s/call) the gap
+is 100x+. asyncio remains rejected: systems are plain sync
+`invoke(input) -> prediction` — viral async would leak into the SYSTEM pillar.
+Raw threading.Thread+Queue = strictly more LOC for the same guarantee.
+ThreadPoolExecutor is the bare metal of fan-out here.
+
 ## open questions for push cycles
 
-- is ThreadPoolExecutor metal or noise at this scale? (threads won the build;
-  the cycle must try to break them)
-- does `fingerprint` survive as a public concept or fuse into run()?
-- `tries`/`workers` defaults: named constants or noise?
+- does `fingerprint` survive as a public concept or fuse into run()? (c2)
+- `tries`/`workers` defaults: named constants or noise? flag vs mechanism (c3)
+- is `_write` temp+rename metal? the SIGKILL test is the judge (c4)

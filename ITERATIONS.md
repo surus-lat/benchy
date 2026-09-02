@@ -7,3 +7,5 @@
 # interprets alone; runner bar: 1000 flaky cases concurrent, SIGKILL mid-run -> resume
 # with zero lost work. ThreadPoolExecutor (not asyncio) won the build: systems are
 # plain sync functions, viral async would leak into the SYSTEM pillar.
+
+1 | pushed=ThreadPoolExecutor->serial (bound tightened first: sleep 0.01/attempt, serial floor 20s pure sleep vs 15s bound) | broke=yes (25.9s vs 15s; concurrent=1.55s, 16x gap) | verdict=BARE_METAL | loc=144 | concepts=7
