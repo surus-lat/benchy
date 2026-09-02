@@ -101,6 +101,9 @@ class Exam:
         """Take the exam concurrently (serial fails the 1000-case bar 16x over);
         `out` re-run = resume: ok cases kept, errored cases re-attempted."""
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
+        # total = the exam size, fixed: score = sum/total makes the mid-run
+        # value an honest lower bound (ungraded cases count 0), and the final
+        # value the exact mean. A partial artifact still interprets alone.
         art = {"system": spec, "scoring": self.spec.get("scoring"),
                "total": len(self.cases), "cases": []}
         out = Path(out) if out else None
@@ -123,10 +126,15 @@ class Exam:
                 rec = f.result()
                 done[rec["id"]] = rec
                 art["cases"] = list(done.values())
+                # score = sum/total: ungraded cases count 0, so the mid-run
+                # value is a lower bound that converges to the exact mean.
                 art["score"] = sum(r["score"] for r in art["cases"]) / art["total"]
-                art["errors"] = sum(r["status"] == "error" for r in art["cases"])
                 if out:
                     _write(out, art)
+        # a resume that found nothing to do never enters the loop — the
+        # artifact still owes its reader (and as_loss) the aggregate.
+        # errors is NOT stored: it is a projection, sum(status == "error").
+        art["score"] = sum(r["score"] for r in art["cases"]) / art["total"]
         return art
 
     def as_loss(self, system, **kw):

@@ -28,8 +28,16 @@ One engine module + one CLI module, stdlib only:
   (temp + atomic rename). O(n^2) writes are the price of durability; the
   artifact IS the resume contract (s04's verdict, our home turf).
 - resume: re-run with the same `out` path keeps ok cases, re-attempts the
-  rest. Content fingerprint (cases+scoring hash) refuses stale-evidence
-  resume after an exam edit; system spec must match exactly.
+  rest. Identity is explicit content: the artifact carries the scoring
+  block; resume refuses unless system+scoring match AND every kept record's
+  (input,want) matches the current cases (c2 deleted the hash, c7 deleted
+  the exam-name echo — content identity subsumes both).
+- artifact schema (c8): `total` = exam size, fixed (a partial artifact
+  interprets alone; progress = len(cases)/total); `score` = sum/total so
+  the mid-run value is an honest lower bound and the final value the exact
+  mean; `errors` is NOT stored — it is a projection, sum(status=="error"),
+  computed by its one real reader (the CLI). A resume that found nothing
+  to do still returns the complete artifact with its aggregate.
 - exit code: CLI exits 1 iff any case errored. The artifact is the truth,
   stdout is a convenience.
 
@@ -46,7 +54,7 @@ One engine module + one CLI module, stdlib only:
 | _compile | SYSTEM | system specs are data; this is the compiler pillar's one function | 0 |
 | _attempt | RUNNER | one case: invoke with retries, graded evidence record | 0 |
 | _write | RUNNER | BARE_METAL c4: tmp+rename deleted → plain write → an external reader (agent/dashboard reading the artifact mid-run) saw TORN/EMPTY JSON in 128/2225 busy-polls, 4/4 runs — plain `write_text` truncates on every O(n²) rewrite; any reader in the refill window loses the artifact (a kill there = lost work, forbidden). tmp+rename only ever exposes complete states: 6/6 green. Atomicity serves THE READER, not just the kill | 1 |
-| main | CLI | runnable without pytest; exit codes; resume via same -o path | 0 |
+| main | CLI | runnable without pytest; exit codes (1 iff any case errored — errors computed here as a projection, its one real reader); resume via same -o path | 1 |
 
 ## cycle 1 verdict — concurrency is BARE_METAL (the angle's central question, answered)
 

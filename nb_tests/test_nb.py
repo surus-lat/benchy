@@ -49,7 +49,6 @@ def test_artifact_interprets_alone():
         assert set(c) >= {"id", "input", "want", "got", "score", "status"}
     assert art["score"] == 1.0
     assert art["total"] == 6
-    assert art["errors"] == 0
 
 
 def test_as_loss_ranks_the_stubs():
@@ -79,9 +78,7 @@ def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     art = e.run(sys_spec, out=tmp_path / "a.json", workers=16)
     dt = time.monotonic() - t0
     assert len(art["cases"]) == 1000
-    assert art["errors"] == 0
-    # every case failed its first attempt -> retries actually fired
-    assert all(c["tries"] == 2 for c in art["cases"])
+    assert all(c["tries"] == 2 for c in art["cases"])  # ok on 2nd -> no errors
     assert art["score"] == 0.5  # always-pos: right on the pos-wanting half only
     # concurrency is load-bearing: the serial floor is n*tries*sleep = 20s of
     # pure sleep (sleep never undersleeps), so a serial runner can NOT pass.
@@ -93,7 +90,7 @@ def test_flaky_exhausting_retries_is_loud_not_silent(tmp_path):
     e = big_exam(tmp_path, 4)
     art = e.run({"kind": "flaky", "script": "F",
                  "of": {"kind": "always", "value": "pos"}}, tries=3)
-    assert art["errors"] == 4
+    assert sum(c["status"] == "error" for c in art["cases"]) == 4
     assert all(c["status"] == "error" and "RuntimeError" in c["error"] for c in art["cases"])
 
 
@@ -128,7 +125,7 @@ def test_resume_after_real_kill_loses_zero_work(tmp_path):
     # resume: same artifact path, same exam+system -> only the missing re-run
     art = e.run(sys_spec, out=out, workers=8)
     assert len(art["cases"]) == 1000
-    assert art["errors"] == 0
+    assert sum(c["status"] == "error" for c in art["cases"]) == 0
     assert {c["id"] for c in art["cases"]} == {f"c{i:04d}" for i in range(1000)}
     ids = [c["id"] for c in art["cases"]]
     assert len(ids) == len(set(ids))
@@ -158,6 +155,16 @@ def test_resume_refuses_mismatched_exam_or_system(tmp_path):
     p.write_text(json.dumps(spec))
     with pytest.raises(ValueError, match="different exam"):
         Exam(tmp_path).run({"kind": "always", "value": "pos"}, out=out)
+    # resume of an already-complete artifact: complete artifact, correct score,
+    # still refuses a different system (nothing to do, identity still checked)
+    e2 = big_exam(tmp_path / "fresh", 4, tag="F")
+    out2 = tmp_path / "fresh" / "a.json"
+    e2.run({"kind": "always", "value": "pos"}, out=out2)
+    done = Exam(tmp_path / "fresh").run({"kind": "always", "value": "pos"}, out=out2)
+    assert done["total"] == 4 and len(done["cases"]) == 4
+    assert done["score"] == 0.5  # complete artifact keeps its aggregate
+    with pytest.raises(ValueError, match="different exam"):
+        Exam(tmp_path / "fresh").run({"kind": "always", "value": "neg"}, out=out2)
 
 
 def test_kill_during_heavy_write_never_leaves_torn_artifact(tmp_path):
@@ -212,7 +219,7 @@ def test_kill_during_heavy_write_never_leaves_torn_artifact(tmp_path):
     # resume from the surviving complete artifact: zero lost work
     art = Exam(tmp_path).run(json.loads(sp.read_text()), out=out)
     assert len(art["cases"]) == n
-    assert art["errors"] == 0
+    assert sum(c["status"] == "error" for c in art["cases"]) == 0
 
 
 def test_weighted_scoring_is_data_not_code(tmp_path):
@@ -237,6 +244,59 @@ def test_loud_reject_of_want_outside_declared_out(tmp_path):
         Exam(d)
 
 
+def test_resume_completes_artifact_and_total_is_exam_size(tmp_path):
+    # c8 judge: what survived the schema push. total = exam size, always —
+    # a partial artifact still interprets alone (a reader computes progress
+    # as len(cases)/total; the remaining-work reading died with the probe).
+    # score = sum/total: mid-run it is an honest lower bound, final = the mean.
+    # errors is a projection (sum status=="error"), not a stored field.
+    # A resume that found nothing to do never enters the loop — the artifact
+    # still owes its reader (and as_loss) the aggregate.
+    e = big_exam(tmp_path, 40)
+    sp = tmp_path / "sys.json"
+    out = tmp_path / "b.json"
+    sp.write_text(json.dumps({"kind": "flaky", "script": "F", "sleep": 0.005,
+                              "of": {"kind": "always", "value": "pos"}}))
+    e.run(json.loads(sp.read_text()), out=out, workers=4)
+    final = json.loads(out.read_text())
+    assert final["total"] == 40 and len(final["cases"]) == 40
+    assert final["score"] == 0.0
+    assert sum(c["status"] == "error" for c in final["cases"]) == 40
+    # mid-run probe — kill a run, inspect the surviving partial artifact
+    out2 = tmp_path / "k.json"
+    sp.write_text(json.dumps({"kind": "flaky", "script": "FP", "sleep": 0.01,
+                              "of": {"kind": "always", "value": "pos"}}))
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "nb", str(tmp_path), str(sp), "-o", str(out2),
+         "--workers", "4", "--tries", "3"],
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if out2.exists():
+            art2 = json.loads(out2.read_text())
+            if len(art2["cases"]) > 5:
+                break
+        time.sleep(0.01)
+    else:
+        proc.kill()
+        pytest.fail("mid-run window never opened")
+    proc.send_signal(signal.SIGKILL)
+    proc.wait()
+    art2 = json.loads(out2.read_text())
+    assert art2["total"] == 40  # exam size, even mid-run
+    assert 0 < art2["score"] < 1.0  # honest lower bound, not the mean
+    # resume: same path -> complete artifact with the aggregate present
+    resumed = Exam(tmp_path).run(json.loads(sp.read_text()), out=out2, workers=4)
+    assert resumed["total"] == 40 and len(resumed["cases"]) == 40
+    assert resumed["score"] == 0.5
+    assert sum(c["status"] == "error" for c in resumed["cases"]) == 0
+    # resume of an already-complete artifact: nothing to do, still complete
+    again = Exam(tmp_path).run(json.loads(sp.read_text()), out=out2)
+    assert again["score"] == 0.5  # aggregate survives the no-op resume
+    with pytest.raises(ValueError, match="different exam"):
+        Exam(tmp_path).run({"kind": "always", "value": "neg"}, out=out2)
+
+
 def test_cli_runs_and_exit_codes(tmp_path):
     out = tmp_path / "cli.json"
     r = subprocess.run([sys.executable, "-m", "nb", "/sentiment", "good", "-o", str(out)],
@@ -244,12 +304,12 @@ def test_cli_runs_and_exit_codes(tmp_path):
     assert r.returncode == 0, r.stderr
     assert "score=1.000" in r.stdout
     art = json.loads(out.read_text())
-    assert art["score"] == 1.0 and art["errors"] == 0
+    assert art["score"] == 1.0 and "errors" not in art
     sp = tmp_path / "dead.json"
     sp.write_text(json.dumps({"kind": "flaky", "script": "F",
                               "of": {"kind": "always", "value": "pos"}}))
     r2 = subprocess.run([sys.executable, "-m", "nb", "/sentiment", str(sp), "-o", str(tmp_path / "e.json")],
-                         cwd=ROOT, capture_output=True, text=True)
+                        cwd=ROOT, capture_output=True, text=True)
     assert r2.returncode == 1  # errors -> non-zero, the artifact contract
 
 
