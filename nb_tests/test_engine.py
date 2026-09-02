@@ -138,8 +138,8 @@ def test_concurrent_matches_serial(bench, dumb):
 # ---- CLI ----
 def test_cli_run(capsys, monkeypatch, bench):
     import benchy
-    monkeypatch.setattr("sys.argv", ["benchy", "run", str(HERE), "dumb", "--out", str(Path("/tmp/cli.json"))])
-    rc = benchy.main(["run", str(HERE), "dumb", "--out", "/tmp/cli.json"])
+    monkeypatch.setattr("sys.argv", ["benchy", "run", str(HERE), "dumb", "/tmp/cli.json"])
+    rc = benchy.main(["run", str(HERE), "dumb", "/tmp/cli.json"])
     assert rc == 0
     a = json.loads(capsys.readouterr().out)
     assert a["score"] == 0.5

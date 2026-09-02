@@ -138,28 +138,17 @@ class Benchmark:
 
 # ---------------- CLI ----------------
 def main(argv):
-    """run <bench> <system> [--limit N] [--workers N] [--out F]
-    loss <bench> <system>"""
+    """run <bench> <system> [out] · loss <bench> <system>
+    limit/workers are engine kwargs (bench.run), not CLI flags."""
     if len(argv) < 3 or argv[0] not in ("run", "loss"):
         print(__doc__)
         return 2
     bench = Benchmark.load(argv[1])
-    kw, i = {}, 3
-    while i < len(argv):                     # --k v pairs
-        if argv[i].startswith("--") and i + 1 < len(argv):
-            kw[argv[i][2:]] = argv[i + 1]
-            i += 2
-        else:
-            i += 1
     if argv[0] == "loss":
         print(bench.as_loss()(argv[2]))
         return 0
-    out = kw.get("out") or str(bench.path.parent / "runs" / f"{argv[2]}.json")
-    exam = bench.run(argv[2],
-                     limit=int(kw["limit"]) if "limit" in kw else None,
-                     workers=int(kw["workers"]) if "workers" in kw else 1,
-                     out=out)
-    print(json.dumps(exam, indent=1, ensure_ascii=False))
+    out = argv[3] if len(argv) > 3 else str(bench.path.parent / "runs" / f"{argv[2]}.json")
+    print(json.dumps(bench.run(argv[2], out=out), indent=1, ensure_ascii=False))
     return 0
 
 
