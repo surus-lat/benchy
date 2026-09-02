@@ -41,6 +41,9 @@ def test_dumb_scores_half(exam):
 
 
 def test_as_loss_ranks_stubs(exam):
+    # cycle 5 deletion attempt: broke the vision contract (GOLEM law 6:
+    # `loss = benchmark.as_loss()` is unbreakable; the loss-export IS the
+    # headline feature). loss is not derivable-de-noise — it is the product.
     loss = as_loss(exam)
     assert loss(exam["systems"]["dumb"]) > loss(exam["systems"]["good"])
     assert loss(exam["systems"]["good"]) == 0.0

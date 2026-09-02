@@ -5,3 +5,4 @@
 2 | pushed=_check_exam (fuse validation into load, its only caller) | broke=no | verdict=HARD_PUSH | loc=98 | concepts=8
 3 | pushed=main CLI (delete nb/__main__.py) | broke=yes | verdict=BARE_METAL | loc=97 | concepts=8
 4 | pushed=context (sample key + invoke param + artifact field) | broke=no | verdict=HARD_PUSH | loc=97 | concepts=8
+5 | pushed=as_loss (delete the loss-export) | broke=yes | verdict=BARE_METAL | loc=97 | concepts=8
