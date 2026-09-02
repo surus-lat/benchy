@@ -1,0 +1,17 @@
+{
+ "path": "/sentiment",
+ "task": {"input": "text", "output": {"enum": ["pos", "neg"]}},
+ "scoring": {"match": "exact"},
+ "samples": [
+  {"id": "s1", "input": "this works great", "expected": "pos"},
+  {"id": "s2", "input": "excelente servicio", "expected": "pos"},
+  {"id": "s3", "input": "loved it", "expected": "pos"},
+  {"id": "s4", "input": "broken on arrival", "expected": "neg"},
+  {"id": "s5", "input": "una porqueria", "expected": "neg"},
+  {"id": "s6", "input": "never again", "expected": "neg"}
+ ],
+ "systems": {
+  "good": {"kind": "keyword", "any": ["great", "excelente", "loved"], "then": "pos", "else": "neg"},
+  "dumb": {"kind": "const", "value": "pos"}
+ }
+}
