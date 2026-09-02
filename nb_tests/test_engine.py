@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import nb
-from nb import Benchmark, compile_system
+from nb import as_loss, compile_system, run
 from nb.load import main as load_main
 from nb import load, score
 
@@ -34,26 +34,26 @@ def hello_bench():
 
 def test_hello_good_stub_scores_1():
     bench = hello_bench()
-    art = bench.run(_systems()["good-stub"])
+    art = run(bench, _systems()["good-stub"])
     assert art["score"] == 1.0
 
 
 def test_hello_dumb_stub_scores_half():
     bench = hello_bench()
-    art = bench.run(_systems()["dumb-stub"])
+    art = run(bench, _systems()["dumb-stub"])
     assert art["score"] == 0.5
 
 
 def test_loss_ranks_stubs():
     bench = hello_bench()
-    loss = bench.as_loss()
+    loss = as_loss(bench)
     systems = _systems()
     assert loss(systems["dumb-stub"]) > loss(systems["good-stub"])
 
 
 def test_artifact_has_per_case_and_aggregate():
     bench = hello_bench()
-    art = bench.run(_systems()["dumb-stub"])
+    art = run(bench, _systems()["dumb-stub"])
     assert set(art) >= {"score", "cases"}
     assert len(art["cases"]) == 6
     assert all(set(c) >= {"input", "expected", "prediction", "score"} for c in art["cases"])
@@ -62,7 +62,7 @@ def test_artifact_has_per_case_and_aggregate():
 
 def test_artifact_is_json_serializable():
     bench = hello_bench()
-    art = bench.run(_systems()["dumb-stub"])
+    art = run(bench, _systems()["dumb-stub"])
     json.dumps(art)
 
 
@@ -78,7 +78,7 @@ def test_ontology_path_sentiment():
 
 def test_task_is_in_out_declaration():
     """the TASK pillar is DATA: the task.json dict, uninterpreted."""
-    assert load(BENCH).task == {"in": "text", "out": "label"}
+    assert load(BENCH)[0] == {"in": "text", "out": "label"}
 
 
 def test_scoring_exact_partial_weighted():
@@ -112,10 +112,10 @@ def test_exam_rejects_empty(tmp_path):
 
 
 def test_benchmark_system_is_argument_not_field():
-    bench = Benchmark({"in": "text", "out": "label"}, {"mode": "exact"},
-                      [("x", "pos")])
-    assert not any(isinstance(getattr(bench, a, None), type(bench))
-                   for a in vars(bench))
+    bench = ({"in": "text", "out": "label"}, {"mode": "exact"},
+             [("x", "pos")])
+    assert run(bench, lambda x: "pos")["score"] == 1.0  # the system is the argument
+    assert not any(isinstance(part, type(bench)) for part in bench)  # plain data
 
 
 def test_invoke_one_method():
