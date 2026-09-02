@@ -22,10 +22,9 @@ from pathlib import Path
 # The question, the pages and the key are kept AS WRITTEN: the engine never
 # needs to interpret the question, so a wrapper class per data file would be
 # a mirror of json.loads with a nicer name. Pages and the key stay raw dicts.
-
-
-# extra grading rules live here once a real exam needs one (the escape hatch)
-EXAM_RULES: dict = {}
+# The grading seam is Exam.grade_page — when a real exam needs a rule beyond
+# exact, that seam is where it goes (cycle 9 deleted the empty EXAM_RULES
+# registry: speculative machinery, zero users, zero honest exam word).
 
 
 # ── the exam itself ────────────────────────────────────────────────────
@@ -55,15 +54,12 @@ class Exam:
     def grade_page(self, page: dict, actual) -> float:
         """Grade one page: 1 point if the answer matches the key, else 0.
 
-        The builtin rule is exact match. Other rules named in an answer key
-        are the Python escape hatch — import nb.exam and set EXAM_RULES.
+        The builtin rule is exact match. An answer key naming anything else
+        fails loudly — this exam wants a rule the engine does not know.
+        When a real exam needs one, this seam is where it goes.
         """
         grade = self.answer_key["grade"]
         if grade == "exact":
             return 1.0 if actual == page.get("expected") else 0.0
-        rule = EXAM_RULES.get(grade)
-        if rule is None:
-            raise ValueError(f"unknown grading rule: {grade!r} — "
-                             "this exam wants a rule the engine does not know.")
-        return float(rule(page.get("expected"), actual,
-                          self.answer_key.get("rule", {})))
+        raise ValueError(f"unknown grading rule: {grade!r} — "
+                         "this exam wants a rule the engine does not know.")

@@ -36,9 +36,8 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 |---|---|---|---|
 | Exam | DATA | the named thing you author, share, and locate by ontology path; the union of question+pages+key is the benchmark | 1 |
 | Exam.from_dir | DATA | an exam must be loadable from data with zero user Python | 0 |
-| Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop | 2 |
-| EXAM_RULES | SCORING | the Python escape hatch for grading rules beyond exact — a benchmark stays pure data; only new RULES need Python | 0 |
-| answer_key.json (raw dict) | SCORING | which rule grades each page, as written: {"grade": "exact", "rule": {…}}. A wrapper class would be a mirror of json.loads; the dead "combine" field died with it | 1 |
+| Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop. The seam is also where a beyond-exact rule goes, when a real exam needs one | 3 |
+| answer_key.json (raw dict) | SCORING | which rule grades each page, as written: {"grade": "exact"}. A wrapper class would be a mirror of json.loads; the dead "combine" and "rule" fields died with it | 2 |
 | Taker | SYSTEM | the exam word for the AI-system: a name + answer(prompt). The primitive is the system-as-taker, not the model | 0 |
 | sit() | DATA | the taker takes the exam; the run itself — AND the resume: sit again over a workbox keeps the scribbles. One verb, two tempos | 1 |
 | as_loss | SCORING | the vision's headline: benchmark-as-loss-function for prompt optimizers. loss = 1 - score | 0 |
@@ -72,6 +71,14 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
   Its `combine` field was NEVER read by any code path (the engine combines
   scores where the points are, in sit()) — a dead field in a class and a
   dead field in answer_key.json. Both died.
+
+- **EXAM_RULES registry + "rule" field** (cycle 9): an empty dict that
+  nobody ever registered a rule into, read by a code path that could never
+  fire for hello. Speculative machinery — the escape hatch is the SEAM
+  (Exam.grade_page), not a registry around it. When a real exam needs a
+  beyond-exact rule, that seam is where it goes. The never-read "rule" field
+  in answer_key.json died with it. Also died: ReportCard.write's `filename`
+  param — the only caller passed exactly the default value.
 
 - **Question, Page dataclasses** (cycle 1): the engine never interprets the
   question or the page — it loads them, passes them, grades them. A wrapper

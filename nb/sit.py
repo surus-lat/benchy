@@ -44,10 +44,10 @@ class ReportCard:
     loss: float                   # 1 - score
     taken_at: str                 # ISO timestamp
 
-    def write(self, out_dir: Path, filename: str = None) -> Path:
+    def write(self, out_dir: Path) -> Path:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
-        path = out / (filename or f"report_card_{self.taker}.json")
+        path = out / f"report_card_{self.taker}.json"
         path.write_text(json.dumps(self.__dict__, indent=2))
         return path
 
