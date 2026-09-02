@@ -39,10 +39,14 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | _backend_chain | SYSTEM | workflow = system whose backend composes systems; no new concept | 0 |
 | _backend_agent | SYSTEM | agent = model + tools + budget in a spec; the tool LOOP is compiler code — the falsification probe that proved composition needs no core concept | 0 |
 | load | BENCH | benchmark as data on disk, locatable by ontology path | 2 |
-| compile_systems | BENCH | systems/*.json -> {name: system}; the only systems door (raw-spec loading fused into compile) | 1 |
-| main | BENCH | CLI: run a benchmark dir against its systems | 3 |
+| main | BENCH | CLI: run a benchmark dir against its systems (the systems-dir compile is inlined here — the CLI is the only engine customer of systems/*.json) | 3 |
 
 ## deletions
+
+Removed in cycle 12: `compile_systems` (single-customer helper — main
+was the engine's only caller; the dir-scan compile is now one dict
+comprehension inline in main. Tests carry their own _systems()
+convenience; test noise is not engine noise).
 
 Removed in cycle 11: `Scoring` (the class — it existed only to carry
 mode+weights, a two-field wrapper around the scoring.json dict; the

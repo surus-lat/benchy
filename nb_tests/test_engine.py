@@ -14,9 +14,16 @@ from pathlib import Path
 import nb
 from nb import Benchmark, compile_system
 from nb.load import main as load_main
-from nb import load, compile_systems, score
+from nb import load, score
 
 BENCH = Path(__file__).resolve().parent.parent / "bench" / "hello"
+
+
+def _systems():  # test-side convenience: compile BENCH's systems/*.json
+    import json
+    sd = BENCH / "systems"
+    return {p.stem: compile_system(json.loads(p.read_text(encoding="utf-8")))
+            for p in sorted(sd.glob("*.json"))}
 
 
 # ------------------------------------------------------------ hello bar
@@ -27,29 +34,26 @@ def hello_bench():
 
 def test_hello_good_stub_scores_1():
     bench = hello_bench()
-    specs = compile_systems(BENCH)
-    art = bench.run(compile_system(specs["good-stub"]))
+    art = bench.run(_systems()["good-stub"])
     assert art["score"] == 1.0
 
 
 def test_hello_dumb_stub_scores_half():
     bench = hello_bench()
-    specs = compile_systems(BENCH)
-    art = bench.run(compile_system(specs["dumb-stub"]))
+    art = bench.run(_systems()["dumb-stub"])
     assert art["score"] == 0.5
 
 
 def test_loss_ranks_stubs():
     bench = hello_bench()
     loss = bench.as_loss()
-    specs = compile_systems(BENCH)
-    assert loss(compile_system(specs["dumb-stub"])) > \
-           loss(compile_system(specs["good-stub"]))
+    systems = _systems()
+    assert loss(systems["dumb-stub"]) > loss(systems["good-stub"])
 
 
 def test_artifact_has_per_case_and_aggregate():
     bench = hello_bench()
-    art = bench.run(compile_system(specs := compile_systems(BENCH)["dumb-stub"]))
+    art = bench.run(_systems()["dumb-stub"])
     assert set(art) >= {"score", "cases"}
     assert len(art["cases"]) == 6
     assert all(set(c) >= {"input", "expected", "prediction", "score"} for c in art["cases"])
@@ -58,7 +62,7 @@ def test_artifact_has_per_case_and_aggregate():
 
 def test_artifact_is_json_serializable():
     bench = hello_bench()
-    art = bench.run(compile_system(compile_systems(BENCH)["dumb-stub"]))
+    art = bench.run(_systems()["dumb-stub"])
     json.dumps(art)
 
 
