@@ -12,13 +12,13 @@ import pytest
 
 from nb import as_loss, compile, grade, run
 
-BENCH = Path(__file__).resolve().parents[1] / "bench" / "hello"
+BENCH = Path(__file__).resolve().parents[1] / "bench" / "hello" / "bundle"
 GOOD = {"name": "good", "kind": "keyword", "pos": ["great", "excelente", "loved"], "default": "neg"}
 DUMB = {"name": "dumb", "kind": "keyword", "pos": [], "default": "pos"}
 
 
 def bench() -> dict:
-    # the file layer, inlined: path -> file -> value (engine stays pure)
+    # the file layer, inlined: the bundle directory -> benchmark value
     return json.loads((BENCH / "sentiment.json").read_text(encoding="utf-8"))
 
 
