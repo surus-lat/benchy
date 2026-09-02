@@ -6,12 +6,12 @@ A benchmark is an **exam**. An exam is three readable data files — a
 **question.json** (what must be produced), **cases.json** (the pages:
 prompt + expected answer + points), and **answer_key.json** (which grading
 rule applies). A **Taker** is anyone who can answer — model, node,
-workflow, agent: all the same thing here. The taker **sits** the exam
+Pages stay raw dicts. The taker **sits** the exam
 page by page; grading produces a **ReportCard** (the artifact JSON:
 per-page scores + the exam score). Answers already **scribbled** in a
-workbox are kept on the next sit (resume). The ReportCard **is** the
-loss: `loss = 1 - score`, and `as_loss(exam, taker)` is the exam as a
-function over takers for prompt-optimizers.
+workbox are kept on the next sit (resume — retaking IS sitting). The
+ReportCard **is** the loss: `loss = 1 - score`, and `as_loss(exam, taker)`
+is the exam as a function over takers for prompt-optimizers.
 
 A non-engineer reads `bench/hello/` and understands the exam from the
 data alone; reads `nb/exam.py` and understands it from the words alone.
@@ -24,7 +24,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
       answer_key.json       grade rule (+ rule args)
     nb/
       exam.py               Exam, AnswerKey, grading seam
-      sit.py                Taker, sit(), retake(), ReportCard, as_loss()
+      sit.py                Taker, sit(), ReportCard, as_loss()
       hall.py               the CLI: sit an exam with a stub, from the shell
     nb_tests/              pytest: what "broken" means
     golem.py               the guard
@@ -39,8 +39,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | EXAM_RULES | SCORING | the Python escape hatch for grading rules beyond exact — a benchmark stays pure data; only new RULES need Python | 0 |
 | AnswerKey | SCORING | which rule grades each page. Deleting it merges grading policy into pages, hiding what "good" means | 0 |
 | Taker | SYSTEM | the exam word for the AI-system: a name + answer(prompt). The primitive is the system-as-taker, not the model | 0 |
-| sit() | DATA | the taker takes the exam; the run itself. Interruptible via workbox scribbles | 0 |
-| retake() | DATA | resume: keep scribbled answers, re-ask the rest. The vision's resume story in one word | 0 |
+| sit() | DATA | the taker takes the exam; the run itself — AND the resume: sit again over a workbox keeps the scribbles. One verb, two tempos | 1 |
 | as_loss | SCORING | the vision's headline: benchmark-as-loss-function for prompt optimizers. loss = 1 - score | 0 |
 | ReportCard | DATA | the graded artifact: per-page scores + aggregate, JSON. Evidence trace of one loss evaluation | 0 |
 | PageResult | DATA | one row of the report card: what was asked, answered, earned | 0 |
@@ -66,6 +65,11 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
   the sit loop.
 - **report()** (cycle 3): a two-line fold with one call site — fused into
   `sit()`. The card IS the end of the sit loop, not a separate stage.
+- **retake()** (cycle 4): a pure alias of `sit(..., workbox=...)`. Resume is
+  not a second verb — retaking an exam IS sitting it. Also killed the hall's
+  stub-vs-retake dual path (which had quietly hard-coded `always_pos` as
+  "the retake taker" — a lie); the hall now has ONE way to say who sits and
+  `--workbox` resumes.
 
 ## invariants (from GOLEM.md, law 6)
 
