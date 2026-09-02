@@ -26,3 +26,9 @@
 # implemented (also refuses extra declared-but-unread keys, the c8 lesson).
 # loc 92->91, no growth. 18 tests.
 11 | pushed=aggregate-refusal-probe + scoring-refusals-fusion | broke=yes (the c11 pin) | verdict=BARE_METAL | loc=91 | concepts=5
+# c12: the CLI stdout ack line was claimed but untested (CLI tests checked exit
+# code + artifact file only). Pinned first (score/system/exam all on the line),
+# deletion probe broke the pin — BARE_METAL: a person with no Python knowledge
+# needs one human-readable line; the artifact file is for programs, the ack is
+# for people (s07 c3 proved CLI metal). 19 tests, no growth.
+12 | pushed=cli-stdout-ack-line | broke=yes (the c12 pin) | verdict=BARE_METAL | loc=91 | concepts=5

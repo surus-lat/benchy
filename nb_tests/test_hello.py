@@ -124,6 +124,19 @@ class TestCLI:
         art = json.loads(out.read_text(encoding="utf-8"))
         assert art["score"] == 0.5
 
+    def test_cli_ack_line_carries_exam_system_score(self, tmp_path):
+        # c12: the stdout ack was claimed but untested (CLI tests checked
+        # exit code + artifact file only). pinned before the deletion probe.
+        out = tmp_path / "artifact.json"
+        proc = subprocess.run(
+            [sys.executable, "-m", "nb", str(BENCH), "/sentiment", str(out), "dumb"],
+            capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1],
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "score=0.5" in proc.stdout
+        assert "system=dumb" in proc.stdout
+        assert "/sentiment" in proc.stdout
+
     def test_cli_defaults_to_first_system(self, tmp_path):
         # c10: the silent first-system default is GONE — a CLI call without
         # a system name must refuse (exit 2), never silently pick systems[0]
