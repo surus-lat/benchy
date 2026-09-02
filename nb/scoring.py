@@ -21,26 +21,19 @@ class Scoring:
         self.weights = weights or {}
 
     def score(self, pred, expected) -> float:
-        if self.mode == "exact":
+        if self.mode == "exact" or not isinstance(expected, dict):
             return 1.0 if pred == expected else 0.0
-        if not isinstance(expected, dict):
-            return 1.0 if pred == expected else 0.0
+        got = pred.get if isinstance(pred, dict) else (lambda _: None)
         fields = list(expected)
         if self.mode == "weighted":
             total = sum(self.weights.get(f, 0.0) for f in fields)
-            if total <= 0:
-                return sum(1 for f in fields if _get(pred, f) == expected[f]) / len(fields)
+            if total <= 0:  # no weights given: weighted degrades to partial
+                return sum(1 for f in fields if got(f) == expected[f]) / len(fields)
             return sum(self.weights.get(f, 0.0) for f in fields
-                       if _get(pred, f) == expected[f]) / total
+                       if got(f) == expected[f]) / total
         # partial
-        return sum(1 for f in fields if _get(pred, f) == expected[f]) / len(fields)
+        return sum(1 for f in fields if got(f) == expected[f]) / len(fields)
 
     def as_loss(self, scored_cases) -> float:
         """the loss: 1 - mean of per-case scores. lower is better."""
         return 1.0 - sum(scored_cases) / len(scored_cases)
-
-
-def _get(pred, field):
-    if isinstance(pred, dict):
-        return pred.get(field)
-    return None

@@ -14,7 +14,7 @@ from pathlib import Path
 import nb
 from nb import Benchmark, Case, Exam, Scoring, Task, compile_system
 from nb.load import main as load_main
-from nb import load, load_system_specs
+from nb import load, compile_systems
 
 BENCH = Path(__file__).resolve().parent.parent / "bench" / "hello"
 
@@ -27,14 +27,14 @@ def hello_bench():
 
 def test_hello_good_stub_scores_1():
     bench = hello_bench()
-    specs = load_system_specs(BENCH)
+    specs = compile_systems(BENCH)
     art = bench.run(compile_system(specs["good-stub"]))
     assert art["score"] == 1.0
 
 
 def test_hello_dumb_stub_scores_half():
     bench = hello_bench()
-    specs = load_system_specs(BENCH)
+    specs = compile_systems(BENCH)
     art = bench.run(compile_system(specs["dumb-stub"]))
     assert art["score"] == 0.5
 
@@ -42,14 +42,14 @@ def test_hello_dumb_stub_scores_half():
 def test_loss_ranks_stubs():
     bench = hello_bench()
     loss = bench.as_loss()
-    specs = load_system_specs(BENCH)
+    specs = compile_systems(BENCH)
     assert loss(compile_system(specs["dumb-stub"])) > \
            loss(compile_system(specs["good-stub"]))
 
 
 def test_artifact_has_per_case_and_aggregate():
     bench = hello_bench()
-    art = bench.run(compile_system(specs := load_system_specs(BENCH)["dumb-stub"]))
+    art = bench.run(compile_system(specs := compile_systems(BENCH)["dumb-stub"]))
     assert set(art) >= {"score", "cases"}
     assert len(art["cases"]) == 6
     assert all(set(c) >= {"input", "expected", "prediction", "score"} for c in art["cases"])
@@ -58,7 +58,7 @@ def test_artifact_has_per_case_and_aggregate():
 
 def test_artifact_is_json_serializable():
     bench = hello_bench()
-    art = bench.run(compile_system(load_system_specs(BENCH)["dumb-stub"]))
+    art = bench.run(compile_system(compile_systems(BENCH)["dumb-stub"]))
     json.dumps(art)
 
 

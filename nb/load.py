@@ -22,26 +22,25 @@ from .system import compile_system
 from .task import Task
 
 
-def _read(p):
-    return json.loads(p.read_text(encoding="utf-8"))
-
-
 def load(path) -> Benchmark:
     """read one benchmark directory -> Benchmark (task+scoring+data)."""
     d = Path(path)
-    spec = _read(d / "task.json")
+    spec = json.loads((d / "task.json").read_text(encoding="utf-8"))
     task = Task(spec["in"], spec["out"])  # 'in' is a keyword; read it plainly
-    scoring = Scoring(**_read(d / "scoring.json"))
-    exam = Exam(_read(d / "cases.json"))
+    scoring = Scoring(**json.loads((d / "scoring.json").read_text(encoding="utf-8")))
+    exam = Exam(json.loads((d / "cases.json").read_text(encoding="utf-8")))
     return Benchmark(task, scoring, exam)
 
 
-def load_system_specs(path) -> dict:
-    """read systems/*.json -> {name: spec dict} (uncompiled, for display)."""
+def compile_systems(path) -> dict:
+    """compile systems/*.json -> {name: system}. The only systems door."""
     d = Path(path) / "systems"
     if not d.is_dir():
         return {}
-    return {p.stem: _read(p) for p in sorted(d.glob("*.json"))}
+    out = {}
+    for p in sorted(d.glob("*.json")):
+        out[p.stem] = compile_system(json.loads(p.read_text(encoding="utf-8")))
+    return out
 
 
 def main(argv=None) -> int:
@@ -52,19 +51,17 @@ def main(argv=None) -> int:
         return 2
     bench_path, *names = args
     bench = load(bench_path)
-    specs = load_system_specs(bench_path)
+    systems = compile_systems(bench_path)
     if not names:
-        names = sorted(specs)
-    if not specs:
+        names = sorted(systems)
+    if not systems:
         print(f"no systems in {bench_path}/systems/")
         return 2
-    failures = 0
     for name in names:
-        if name not in specs:
-            print(f"unknown system: {name!r} (have: {sorted(specs)})")
+        if name not in systems:
+            print(f"unknown system: {name!r} (have: {sorted(systems)})")
             return 2
-        artifact = bench.run(compile_system(specs[name]))
-        print(json.dumps({"system": name, **artifact}, indent=2))
+        print(json.dumps({"system": name, **bench.run(systems[name])}, indent=2))
     return 0  # a graded exam is a success; a dumb score is data, not an error
 
 
