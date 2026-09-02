@@ -45,6 +45,11 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | _read | BENCH | JSON loader helper | 0 |
 | _get | SCORING | dict field access for partial/weighted grading | 0 |
 
+Removed in cycle 1: `Task.out_enum/pred_enum` (premature enum magic; a
+Task is just in→out type names — validation belongs to scoring, and
+scoring's exact mode never needed it), `load_systems` (the compiled
+loader — nothing used it; the CLI compiles specs at run time).
+
 ## falsification watch (angle brief)
 
 Prove composition with NO new core concept: `_backend_chain` is just

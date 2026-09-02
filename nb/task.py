@@ -12,14 +12,7 @@ class Task:
 
     def __init__(self, in_: str, out: str):
         self.in_ = in_
-        out_split = out.rsplit('.', 1)
-        if len(out_split) == 2 and out_split[1] in ('pos', 'neg', 'bool', 'int', 'float'):
-            self.out = out_split[0] + '.' + 'label'
-            self.out_enum = frozenset({out_split[0] + '.label', out})
-        else:
-            self.out = out
-            self.out_enum = frozenset({out})
-        self.pred_enum = self.out_enum
+        self.out = out
 
     def __repr__(self):
         return f"Task(in={self.in_!r}, out={self.out!r})"

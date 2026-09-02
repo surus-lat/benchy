@@ -12,7 +12,7 @@ from .task import Task
 from .scoring import Scoring
 from .data import Exam
 from .system import compile_system, invoke
-from .load import load, load_system_specs, load_systems, run
+from .load import load, load_system_specs, run
 from .benchmark import Benchmark, Case
 
 __all__ = ["Task", "Scoring", "Exam", "System", "compile_system", "invoke", "Benchmark"]

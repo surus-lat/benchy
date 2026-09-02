@@ -36,14 +36,6 @@ def load(path) -> Benchmark:
     return Benchmark(task, scoring, exam)
 
 
-def load_systems(path) -> dict:
-    """read systems/*.json -> {name: compiled system}."""
-    d = Path(path) / "systems"
-    if not d.is_dir():
-        return {}
-    return {p.stem: compile_system(_read(p)) for p in sorted(d.glob("*.json"))}
-
-
 def load_system_specs(path) -> dict:
     """read systems/*.json -> {name: spec dict} (uncompiled, for display)."""
     d = Path(path) / "systems"
