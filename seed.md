@@ -16,3 +16,16 @@ arranca 10 worktrees y hace unas 300 iteraciones de este diseño y rediseño y r
 luego vamos a aprender de lo que paso luego de unificar los 10 worktress con 300 iteraciones cada uno, y lanzar otro proceso de busqueda. 
 
 como rich sutton "search & learn" beats everything
+
+---
+
+# steering addendum — 2026-09-01 (verbatim)
+
+yo apuntaria a encontrar la forma mas simple de representar la ontologia de benchy a traves de las 4 areas pilares de ingenieria de benchy: programa input output, scoring, exam (data), compiler/ai-endpoint.
+
+this is what matters most, then all the complexity to serve models and those things is a long term work. We need something that works, with this vision, maybe just running a foundational model from togetherai or what not, that is, the exam-taker is cloud to begin with, so we don't have to deal with serving locally llms and others.
+
+# interpretation (orchestrator notes, not verbatim)
+- the goal of the search = the SIMPLEST REPRESENTATION of benchy's ontology across the 4 pillars: program (task: input->output), scoring, exam (the data), compiler/ai-endpoint (the system).
+- model-serving complexity is LONG-TERM work, NOT bare metal. no local llm serving machinery in the engine.
+- the first real exam-taker is CLOUD (e.g. a foundational model via Together AI): a system spec in data, compiled by the system pillar — not engine code.
