@@ -1,9 +1,8 @@
 {
  "files": 3,
- "loc": 112,
+ "loc": 105,
  "deps": 0,
  "concepts": [
-  "_score_one",
   "as_loss",
   "compile",
   "grade",
@@ -11,6 +10,6 @@
   "main",
   "run"
  ],
- "cycles": 0,
- "why": "build baseline: nb engine + hello benchmark, from zero"
+ "cycles": 3,
+ "why": null
 }
