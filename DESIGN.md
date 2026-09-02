@@ -42,6 +42,7 @@ unknown names fail loud, never silently score 0.
 | the inner `loss` closure | DATA+SCORING | not style — the only honest home for the receipt. `spec` must be captured at load time, and `loss.trace` must be PER-INSTANCE state: a module-level loss() would share one trace across every loaded benchmark (cycle 12 hoist attempt broke 8 tests). The closure IS the loss-first identity: load() returns the loss itself. | 1 |
 | `loss.trace` attribute | SCORING+DATA | the receipt's home. Cycle 13 moved it into the RETURN value (`(float, trace)`) — 7 tests broke: the pure-float contract (an optimizer calling loss(system) must get a scalar, nothing else — the vision's "new loss function for prompt-optimizers"), the artifact write, and the independence test. No alternative home survives: a kwarg leaks the receipt into the calling convention, module state clobbers between benchmarks (cycle 12). Per-instance attribute is the only home that is both per-benchmark and invisible to the caller. | 1 |
 | `1.0 - score` inversion | SCORING | the loss direction. Cycle 14 returned the score AS the loss — 3 tests broke: the bar's own ranking (`loss(dumb) > loss(good)`: 0.5 > 1.0 failed), good-stub loss 0.0, and the one-minus-trace identity. Lower=better is not a convention, it is optimizer semantics: prompt-optimizers minimize; `loss(s) < loss(best)` must mean "s is better". The inversion is the bridge between the exam view (score: higher=better) and the loss view (minimize) — without it, the trace's `score` and the returned float would contradict each other. | 1 |
+| `float()` cast on per-case score | SCORING+DATA | artifact-boundary armor. Cycle 15 deleted it: all 12 tests stayed green because `True == 1.0` — the guard was unguarded (cycle-11 shape). But the verdicts became JSON booleans (`"score": true`): an unstable schema for a software-3.0 optimizer, and with a realistic numpy/pandas system returning `np.bool_`, `json.dumps` CRASHES on the trace. The cast normalizes the ENGINE's verdicts (score fields) so the artifact survives real systems; `got` stays raw evidence by design (its rawness is the trace's honesty — if a system returns unserializable objects, that fact belongs in the evidence, and the crash belongs to the writer's serializer, not the engine's verdicts). Guard test added; deletion now fails 1 test. | 1 |
 
 (`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
 `system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
@@ -124,11 +125,23 @@ system is a callable and stdlib importlib is the loader.)
   MAXIMIZE this one callable. The inversion is the exam->loss bridge: the
   trace's `score` (higher=better, the human/exam view) and the returned float
   (lower=better, the optimizer view) stay consistent. Restored.
+- cycle 15: `float()` cast + empty-cases division — BARE_METAL (the cast), no
+  metal needed (the division). Deleted the cast: all 12 tests stayed green
+  because `True == 1.0` — the guard was unguarded (cycle-11 shape). But the
+  artifact degraded: per-case verdicts became JSON booleans (`"score": true`),
+  an unstable schema for an optimizer, and a realistic numpy/pandas system
+  (np.bool_ returns — the vision's extraction/exam domain) crashed
+  json.dumps on the trace. The cast is the boundary armor that normalizes the
+  ENGINE's verdicts; `got` stays raw evidence (if a system returns
+  unserializable objects, that fact belongs in the evidence). Guard test
+  added — deletion now fails 1 test. Escalated in the same cycle to the
+  empty-cases probe: a zero-cases benchmark raises ZeroDivisionError LOUD at
+  eval time (missing cases: KeyError, also loud). Loud-by-construction —
+  zero guard metal needed; nothing redundant to delete. The queue is empty.
 
 ## queued deletion candidates (loudest first)
 
-1. `float(...)` cast on per-case score — is JSON-serializability of the trace
-   a real requirement (bar: artifact JSON) or a nicety? `got == want` yields
-   numpy/bool surprises in real systems; the cast is tiny armor.
-2. `/` division by len(cases) — empty cases list = ZeroDivisionError. Loud
-   crash is honest; is it? Probe: is empty-cases a valid benchmark?
+(none — the queue is empty. Every remaining line of the engine survived a
+serious deletion attempt: the closure (12), the trace home (13), the loss
+direction (14), the verdict cast (15), want-in-trace (10), scoring+check
+(11), load itself vs bench classes/vocab tables/second entry points (1-9).)
