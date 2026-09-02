@@ -36,9 +36,9 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 |---|---|---|---|
 | Exam | DATA | the named thing you author, share, and locate by ontology path; the union of question+pages+key is the benchmark | 1 |
 | Exam.from_dir | DATA | an exam must be loadable from data with zero user Python | 0 |
-| Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop | 1 |
+| Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop | 2 |
 | EXAM_RULES | SCORING | the Python escape hatch for grading rules beyond exact — a benchmark stays pure data; only new RULES need Python | 0 |
-| AnswerKey | SCORING | which rule grades each page. Deleting it merges grading policy into pages, hiding what "good" means | 0 |
+| answer_key.json (raw dict) | SCORING | which rule grades each page, as written: {"grade": "exact", "rule": {…}}. A wrapper class would be a mirror of json.loads; the dead "combine" field died with it | 1 |
 | Taker | SYSTEM | the exam word for the AI-system: a name + answer(prompt). The primitive is the system-as-taker, not the model | 0 |
 | sit() | DATA | the taker takes the exam; the run itself — AND the resume: sit again over a workbox keeps the scribbles. One verb, two tempos | 1 |
 | as_loss | SCORING | the vision's headline: benchmark-as-loss-function for prompt optimizers. loss = 1 - score | 0 |
@@ -60,6 +60,18 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
   now ONE honest answers.json (page index → answer), rewritten after every
   page. Two helpers, one sentinel, five files on disk → one dict read at
   sit, one dict written per page. Resume got simpler, not harder.
+
+- **Taker.sit** (cycle 7): a one-line delegation `return self.answer(prompt)`.
+  A method whose whole body was to call another method — the run loop now
+  calls `taker.answer(prompt)` directly. The verb sit() belongs to the RUN
+  (sit(exam, taker)), not to the taker.
+
+- **AnswerKey class + "combine" field** (cycle 8): the key is data — a raw
+  dict {"grade", "rule"}, exactly the third mirror-of-json.loads wrapper
+  that cycles 1 and 5 already proved to be noise (Page, Question, PageResult).
+  Its `combine` field was NEVER read by any code path (the engine combines
+  scores where the points are, in sit()) — a dead field in a class and a
+  dead field in answer_key.json. Both died.
 
 - **Question, Page dataclasses** (cycle 1): the engine never interprets the
   question or the page — it loads them, passes them, grades them. A wrapper

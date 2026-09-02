@@ -21,27 +21,14 @@ from pathlib import Path
 # Exam (question + pages + answer key) — plus Taker/ReportCard in sit.py.
 # The question, the pages and the key are kept AS WRITTEN: the engine never
 # needs to interpret the question, so a wrapper class per data file would be
-# a mirror of json.loads with a nicer name. Pages stay raw dicts.
+# a mirror of json.loads with a nicer name. Pages and the key stay raw dicts.
 
 
 # extra grading rules live here once a real exam needs one (the escape hatch)
 EXAM_RULES: dict = {}
 
 
-@dataclass
-class AnswerKey:
-    """How to grade one page: compare expected vs actual, then how points combine."""
-    grade: str               # the rule name, e.g. "exact" (a builtin rule)
-    rule: dict               # extra arguments the rule needs, if any
-    combine: str = "mean"    # how page scores combine into the exam score
-
-    @classmethod
-    def from_data(cls, d: dict) -> "AnswerKey":
-        return cls(grade=d["grade"], rule=d.get("rule", {}),
-                   combine=d.get("combine", "mean"))
-
-
-# ── the exam itself ───────────────────────────────────────────────────
+# ── the exam itself ────────────────────────────────────────────────────
 
 @dataclass
 class Exam:
@@ -53,7 +40,7 @@ class Exam:
     path: str                        # ontology path, e.g. "/sentiment"
     question: dict                   # question.json as written
     pages: list[dict]                # cases.json as written: prompt/expected/points
-    answer_key: AnswerKey
+    answer_key: dict                 # answer_key.json as written: grade (+ rule args)
 
     @classmethod
     def from_dir(cls, dir_path: Path) -> "Exam":
@@ -63,7 +50,7 @@ class Exam:
         c = json.loads((d / "cases.json").read_text())
         k = json.loads((d / "answer_key.json").read_text())
         return cls(path=q["path"], question=q["question"],
-                   pages=c["pages"], answer_key=AnswerKey.from_data(k))
+                   pages=c["pages"], answer_key=k)
 
     def grade_page(self, page: dict, actual) -> float:
         """Grade one page: 1 point if the answer matches the key, else 0.
@@ -71,10 +58,12 @@ class Exam:
         The builtin rule is exact match. Other rules named in an answer key
         are the Python escape hatch — import nb.exam and set EXAM_RULES.
         """
-        if self.answer_key.grade == "exact":
+        grade = self.answer_key["grade"]
+        if grade == "exact":
             return 1.0 if actual == page.get("expected") else 0.0
-        rule = EXAM_RULES.get(self.answer_key.grade)
+        rule = EXAM_RULES.get(grade)
         if rule is None:
-            raise ValueError(f"unknown grading rule: {self.answer_key.grade!r} — "
+            raise ValueError(f"unknown grading rule: {grade!r} — "
                              "this exam wants a rule the engine does not know.")
-        return float(rule(page.get("expected"), actual, self.answer_key.rule))
+        return float(rule(page.get("expected"), actual,
+                          self.answer_key.get("rule", {})))
