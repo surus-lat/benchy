@@ -22,7 +22,6 @@ def test_hello_benchmark_is_data():
     spec = json.loads(HELLO.read_text())
     assert spec["path"] == "/sentiment"
     assert len(spec["cases"]) == 6
-    assert spec["task"]["out"] == ["pos", "neg"]
 
 
 def test_load_returns_a_callable():

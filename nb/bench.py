@@ -33,11 +33,10 @@ def load(path):
             if spec["scoring"] != {"compare": "exact", "aggregate": "mean"}:
                 raise LookupError(f"unknown scoring: {spec['scoring']}")
             cases = []
-            for i, case in enumerate(spec.get("cases", [])):
+            for case in spec["cases"]:
                 got = system(case["in"])
-                score = float(got == case["want"])
-                cases.append({"i": i, "in": case["in"], "want": case["want"],
-                              "got": got, "score": score})
+                cases.append({"in": case["in"], "want": case["want"],
+                              "got": got, "score": float(got == case["want"])})
             loss.trace = {"path": spec["path"],
                           "score": sum(c["score"] for c in cases) / len(cases),
                           "cases": cases}
