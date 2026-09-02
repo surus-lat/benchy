@@ -1,0 +1,12 @@
+{
+  "kind": "stub",
+  "rules": {
+    "great": "pos",
+    "excelente": "pos",
+    "loved": "pos",
+    "broken": "neg",
+    "porqueria": "neg",
+    "never again": "neg"
+  },
+  "default": "neg"
+}

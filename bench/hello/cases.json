@@ -1,0 +1,8 @@
+[
+  {"input": "this works great", "expected": "pos"},
+  {"input": "excelente servicio", "expected": "pos"},
+  {"input": "loved it", "expected": "pos"},
+  {"input": "broken on arrival", "expected": "neg"},
+  {"input": "una porqueria", "expected": "neg"},
+  {"input": "never again", "expected": "neg"}
+]

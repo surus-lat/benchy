@@ -1,0 +1,58 @@
+# DESIGN — s03 compiler / AI-API
+
+The system side is a COMPILER. The rest of benchy only ever sees
+`invoke(input) -> prediction` — one method, the whole AI-API. Model,
+node, workflow, agent, old-ML: all are BACKENDS that compile a learned
+program into that one callable. Benchy grades what the callable
+returns. Nothing else exists.
+
+## the shape
+
+```
+TASK      Task(in, out)                     the program description
+SCORING   Scoring(mode, weights).score()    what good means; also the loss
+DATA      Exam([Case(input, expected)])     the exam; JSON on disk
+SYSTEM    compile_system(spec) -> callable  the compiler front door
+BENCH     Benchmark(t, s, e).run(system)    the system is the ARGUMENT
+          Benchmark.as_loss() -> (System)->float   the exam AS a loss
+
+a benchmark on disk = a directory:
+    task.json + scoring.json + cases.json + systems/*.json
+locatable by ontology path:  /<task?>/<domain?>/<language?>
+```
+
+## concept table
+
+| concept | pillar | why undeletable | survived |
+|---|---|---|---|
+| Task | TASK | the program description (in→out types) is the thing searched for; without it the exam has no subject | 0 |
+| Scoring | SCORING | grading is what makes a benchmark a loss function; deleting it leaves only raw predictions | 0 |
+| Exam | DATA | the exam is the data; distribution → point estimate happens here | 0 |
+| Case | DATA | one (input, expected); the atom of evidence | 0 |
+| Scoring.score | SCORING | per-case 0..1; the only place grades happen | 0 |
+| Scoring.as_loss | SCORING | the vision's headline: benchmark as new loss for optimizers | 0 |
+| Benchmark | TASK+DATA+SCORING | the exam as one value; the system is its argument, not a field | 0 |
+| Benchmark.run | BENCH | takes the exam: invoke per case, grade each, aggregate | 0 |
+| Benchmark.as_loss | SCORING/BENCH | (System)->float; reusing one exam across many systems | 0 |
+| compile_system | SYSTEM | the compiler front door: spec (data) → callable | 0 |
+| invoke | SYSTEM | THE protocol: one method; everything else is a backend | 0 |
+| _backend_stub | SYSTEM | keyword-table backend; makes the exam offline-runnable | 0 |
+| _backend_const | SYSTEM | dumbest possible system; proves scoring discriminates (0.5) | 0 |
+| _backend_http | SYSTEM | openai-compatible backend over stdlib urllib; the real world | 0 |
+| _backend_chain | SYSTEM | workflow = system whose backend composes systems; no new concept | 0 |
+| load | BENCH | benchmark as data on disk, locatable by ontology path | 0 |
+| main | BENCH | CLI: run a benchmark dir against its systems | 0 |
+| _read | BENCH | JSON loader helper | 0 |
+| _get | SCORING | dict field access for partial/weighted grading | 0 |
+
+## falsification watch (angle brief)
+
+Prove composition with NO new core concept: `_backend_chain` is just
+another backend — a workflow is a system spec whose steps are system
+specs. Agents (loop, tools) are the next probe: if they demand core
+changes, the angle leaks, and I must say so in LEARNINGS.md.
+
+Not-yet-proven suspects (will be pushed): the CLI's dual role (run vs
+systems listing) — maybe noise. `load_systems` (compiled) vs
+`load_system_specs` (raw) — maybe one is redundant. `Task.out_enum`
+complexity hints the Task constructor may be over-built.
