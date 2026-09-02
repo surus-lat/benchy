@@ -44,10 +44,15 @@ def grade(benchmark: dict, invoke: Callable[[str], str]) -> dict:
         raise ValueError(f"unknown scoring rule: {benchmark['scoring']['rule']!r}")
     if benchmark["scoring"]["aggregate"] != "mean":
         raise ValueError(f"unknown aggregate: {benchmark['scoring']['aggregate']!r}")
+    # c8: the task declaration is load-bearing — an exam key outside the
+    # declared output choices is a broken exam; refuse it, never guess it.
+    choices = set(benchmark["task"]["output"]["choices"])
     rows = []
     for i, case in enumerate(benchmark["cases"]):
         prediction = invoke(case["input"])
         expected = case["expected"]
+        if expected not in choices:
+            raise ValueError(f"exam key outside declared output: {expected!r}")
         rows.append({
             "case": i,
             "input": case["input"],

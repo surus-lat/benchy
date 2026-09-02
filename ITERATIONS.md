@@ -11,3 +11,9 @@
 # strict golem wording for broke-and-fixed-forward is NOISE_REMOVED, not HARD_PUSH.
 5 | pushed=bundle-purity(bench+systems-in-one-dir) | broke=yes (13 tests, fixed forward) | verdict=NOISE_REMOVED | loc=102 | concepts=5
 6 | pushed=__init__.re-export-shim | broke=yes (imports pinned the shim; fixed forward to nb.engine — CLI still works as namespace package) | verdict=NOISE_REMOVED | loc=89 | concepts=5
+7 | pushed=run(inline-grade∘compile-into-as_loss+cli) | broke=yes (6 vision-shape tests: run IS benchmark.run(system)) | verdict=BARE_METAL | loc=89 | concepts=5
+# c8: task-block probe broke only its own presence guard — the engine never
+# read it: an unenforced claim. Per the 4-pillar steering the declaration is
+# metal, so fixed FORWARD: grade now refuses exam keys outside task.output.choices.
+# +2 engine loc under --allow-growth (refusion, not new concept). 17 tests.
+8 | pushed=task-block(unenforced-claim) | broke=yes (presence guard only; engine never read it — lie fixed forward into a grade refusal) | verdict=NOISE_REMOVED | loc=92 | concepts=5
