@@ -60,7 +60,7 @@ def test_task_enum_gates_pred():
 
 def test_invalid_prediction_scores_zero(bench):
     # a system emitting junk outside the enum is graded 0, not crashed
-    a = bench.run({"const": "junk"})
+    a = bench.run({"default": "junk"})
     assert a["score"] == 0.0
 
 
