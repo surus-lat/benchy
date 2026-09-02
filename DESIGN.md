@@ -6,14 +6,14 @@ donate ONLY what survives a deletion attempt inside THIS design.
 
 ## the shape
 
-The four pillars of the ontology are DATA. The engine is five pure functions
-over that data — no classes, no registries, no frameworks.
+The four pillars of the ontology are DATA. The engine is four PURE functions
+over that data — values in, values out, no classes, no registries, no I/O.
 
 ```
 DATA     bench/hello/sentiment.json   the benchmark: task + scoring + cases
          bench/hello/systems.json     system SPECS (the exam-takers, as data)
-ENGINE   nb/engine.py                load / compile / grade / run / as_loss
-         nb/__main__.py              python -m nb — runnable by a person
+ENGINE   nb/engine.py                compile / grade / run / as_loss (pure)
+         nb/__main__.py              python -m nb — the file layer + CLI
 ```
 
 - **TASK pillar** lives in the benchmark data: `task.input` (a string text),
@@ -37,12 +37,11 @@ over systems; the ontology path `/sentiment` locates the benchmark.
 
 | concept | pillar | why it cannot be deleted | survived |
 |---|---|---|---|
-| load | data | the ontology path must resolve to a benchmark; without it there is no addressable exam | 0 |
 | compile | system | the SYSTEM pillar: turns a spec into invoke(text)->pred; the only place the engine may grow (cloud kinds) | 0 |
 | grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke: every system was forced through spec-compilation. The exam loop lives here, with raw invoke, not with specs. | 1 |
-| run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile | 0 |
+| run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile. c4 candidate — but it IS the vision shape; deleting it leaves as_loss calling grade(compile) directly and no single entry. | 0 |
 | as_loss | export | the vision's headline: export the benchmark as a new loss function | 0 |
-| main | cli | s07 c3 proved CLI metal: a person runs `python -m nb` with no Python knowledge | 0 |
+| main | cli | s07 c3 proved CLI metal: a person runs `python -m nb` with no Python knowledge; owns the file layer since c4 (load deleted) | 0 |
 
 survived = deletion attempts in push cycles (this session: build only).
 

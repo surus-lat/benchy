@@ -21,7 +21,8 @@ def main(argv: list[str]) -> int:
     bench_root, path, artifact_path = argv[0], argv[1], argv[2]
     system_name = argv[3] if len(argv) > 3 else None
 
-    benchmark = engine.load(bench_root, path)
+    benchmark = json.loads(
+        (Path(bench_root) / (path.strip("/") + ".json")).read_text(encoding="utf-8"))
     systems = json.loads(
         (Path(bench_root) / "systems.json").read_text(encoding="utf-8"))
     if system_name is None:
