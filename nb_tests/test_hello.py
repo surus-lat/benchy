@@ -83,8 +83,10 @@ def test_run_unknown_policy_raises():
 
 # --- the compiler lens: systems are specs in data --------------------------------
 
-def test_invoke_const_and_keyword():
-    assert invoke({"kind": "const", "value": "pos"}, "anything") == "pos"
+def test_invoke_keyword_and_const_as_empty():
+    # cycle 7: "const" deleted — a constant IS keyword with any=[] (no needle
+    # ever matches -> always else). one kind, one code path.
+    assert invoke({"kind": "keyword", "any": [], "then": "pos", "else": "pos"}, "anything") == "pos"
     kw = {"kind": "keyword", "any": ["great"], "then": "pos", "else": "neg"}
     assert invoke(kw, "this works great") == "pos"
     assert invoke(kw, "never again") == "neg"
