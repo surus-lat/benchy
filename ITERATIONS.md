@@ -10,3 +10,4 @@
 9 | pushed=py per-case dynamic import (moved to run(): compile py spec to callable ONCE per exam; invoke() now rule+default only) | broke=yes | verdict=NOISE_REMOVED | loc=108 | concepts=6
 10 | pushed=mid-run incremental write (deleted: single final write) | broke=yes | verdict=BARE_METAL | loc=109 | concepts=6
 11 | pushed=exam() module fn (fused into Benchmark._exam method; artifact-build lives with its only caller) | broke=no | verdict=HARD_PUSH | loc=108 | concepts=5
+12 | pushed=CLI loss command (deleted: the run artifact carries loss; as_loss() the METHOD stays as vision law, the second verb was a duplicate interface) | broke=no | verdict=HARD_PUSH | loc=105 | concepts=5
