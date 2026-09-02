@@ -44,7 +44,7 @@ over systems; the ontology path `/sentiment` locates the benchmark.
 
 | concept | pillar | why it cannot be deleted | survived |
 |---|---|---|---|
-| compile | system | the SYSTEM pillar: turns a spec into invoke(text)->pred; the only place the engine may grow (cloud kinds) | 0 |
+| compile | system | the SYSTEM pillar: turns a spec into invoke(text)->pred; the only place the engine may grow (cloud kinds). c13 deleted silent case-folding magic — matching is LITERAL, the spec carries case. c14 pinned `default`: a constant system is the degenerate keyword (pos=[], default=pos) and the choice lives in the SPEC as data — hardcoding "neg" scores identically on a balanced exam (score-blind), only the behavior pin catches it. | 1 |
 | grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke. c8 made it the TASK pillar's enforcement point: it refuses exam keys outside task.output.choices — the declaration is load-bearing. c11 pinned the aggregate refusal (the pin broke on deletion) and fused the two same-kind scoring refusals into one literal: `scoring != {rule: match, aggregate: mean}` is refused — exactly the scoring implemented, nothing declared-but-unread. | 2 |
 | run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile. c7 deleted it (as_loss/CLI inlined grade∘compile) and 6 vision-shape tests broke: `run(benchmark, system)` IS the vision's headline shape — benchmark.run(system) is the api the optimizer consumes; inlining it makes every caller re-state the composition and the "system is the argument" law lives nowhere. | 1 |
 | as_loss | export | the vision's headline: export the benchmark as a new loss function | 0 |

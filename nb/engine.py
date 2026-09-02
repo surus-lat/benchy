@@ -25,11 +25,18 @@ def compile(spec: dict) -> Callable[[str], str]:
     """
     if spec["kind"] != "keyword":
         raise ValueError(f"unknown system kind: {spec['kind']!r}")
-    words = [w.lower() for w in spec["pos"]]
     default = spec["default"]
 
     def invoke(text: str) -> str:
-        return "pos" if any(w in text.lower() for w in words) else default
+        # c13: matching is LITERAL. case folding was silent engine magic —
+        # unclaimed, untested, unexercised by the exam (all cases/words are
+        # lowercase). the SPEC carries case; explicit beats implicit (s07).
+        # c14: `default` is metal — a constant system is the degenerate
+        # keyword (pos=[], default=pos) and the choice lives in the SPEC,
+        # as data. hardcoding "neg" scores identically on a balanced exam
+        # (3 pos/3 neg: always-neg also scores 0.5) — the score is blind
+        # to which side a constant picks; only the behavior pin sees it.
+        return "pos" if any(w in text for w in spec["pos"]) else default
 
     return invoke
 

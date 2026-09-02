@@ -32,3 +32,15 @@
 # needs one human-readable line; the artifact file is for programs, the ack is
 # for people (s07 c3 proved CLI metal). 19 tests, no growth.
 12 | pushed=cli-stdout-ack-line | broke=yes (the c12 pin) | verdict=BARE_METAL | loc=91 | concepts=5
+# c13: compile's case folding (w.lower()/text.lower()) was silent engine magic —
+# unclaimed, untested, unexercised by the exam (all 6 cases and all pos words are
+# lowercase). Deleted to LITERAL matching: the SPEC carries case, explicit beats
+# implicit (s07). Nothing broke; the magic is fully gone. loc 91->90. 19 tests.
+13 | pushed=compile-case-folding(silent-magic) | broke=no (deleted entirely) | verdict=HARD_PUSH | loc=90 | concepts=5
+# c14: GOLEM.md's bar says the dumb stub is "always pos" but only the 0.5 score
+# was pinned. Behavior pinned first, then the deletion probe (hardcode "neg" as
+# the no-match default, spec's `default` unread) broke ONLY the behavior pin —
+# on a balanced exam always-neg also scores 0.5, so the score is blind to which
+# side a constant picks. `default` is metal: the constant system is the
+# degenerate keyword and the choice lives in the SPEC, as data. 20 tests.
+14 | pushed=compile-default(hardcode-neg) | broke=yes (the behavior pin only — score-blind on balanced exams) | verdict=BARE_METAL | loc=90 | concepts=5
