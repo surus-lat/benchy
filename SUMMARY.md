@@ -48,5 +48,5 @@ growth honest: the interpreter refuses until it actually reads the key.
 ## One-line essence
 
 A benchmark is a directory of JSON files interpreted by a 72-line engine —
-task.json locates, scoring.json grades, cases.jsonl examines, systems take
-the exam; every key interpreted, unknown keys raise, loss = 1−score.
+task.json locates, scoring grades, cases examine, systems take the exam;
+every key interpreted, unknown keys raise, loss = 1−score.
