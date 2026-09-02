@@ -75,8 +75,11 @@ def test_trace_is_the_receipt_of_last_eval():
     loss = nb.load("/sentiment")
     loss(DUMB)
     trace = loss.trace
-    # the artifact carries evidence only: per-case + aggregate. Identity is the
-    # loss itself (and the filename when serialized) — not schema inside.
+    # the artifact is SELF-CONTAINED evidence: the exam (in+want), the answers
+    # (got), the verdicts (score), the aggregate. A reader (human or a
+    # software-3.0 optimizer) needs nothing else to interpret it. Cycle 10
+    # tried deleting `want` (derivable from bench.json): a failed case became
+    # "wrong, but about what?" — an unanchored projection. BARE_METAL.
     assert set(trace) == {"score", "cases"}
     assert len(trace["cases"]) == 6
     for c in trace["cases"]:

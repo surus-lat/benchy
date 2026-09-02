@@ -9,3 +9,4 @@
 7 | pushed=`task` key in bench.json — deleted, schema is visible in the cases (in values are the input type, want values are the output vocab); engine never read it | broke=no | verdict=HARD_PUSH | loc=43 | concepts=2
 8 | pushed=`system()` concept — deleted, stdlib importlib is the loader, a system is just a callable; tests fixed forward | broke=yes | verdict=NOISE_REMOVED | loc=36 | concepts=1
 9 | pushed=path key in loss.trace — evidence-only artifact | broke=yes | verdict=NOISE_REMOVED | loc=35 | concepts=1
+10 | pushed=`want` key in trace cases — deleted, tests stayed green, but a failed case reads "wrong, about what?" without it; artifact must be self-contained for optimizers | broke=yes | verdict=BARE_METAL | loc=35 | concepts=1
