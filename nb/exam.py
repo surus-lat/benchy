@@ -31,13 +31,13 @@ from pathlib import Path
 
 @dataclass
 class Exam:
-    """A benchmark: a question, its pages, and the answer key. Nothing else.
+    """A benchmark: its pages and answer key. Nothing else.
 
-    The question is kept as written — it is for the taker (and the human
-    author) to read; the engine never needs to interpret it.
+    The question is kept as written on disk (question.json) — it is for
+    the taker (and the human author) to read; the engine never
+    interprets it, so it is not carried.
     """
     path: str                        # ontology path, e.g. "/sentiment"
-    question: dict                   # question.json as written
     pages: list[dict]                # cases.json as written: prompt/expected/points
     answer_key: dict                 # answer_key.json as written: grade (+ rule args)
 
@@ -48,8 +48,7 @@ class Exam:
         q = json.loads((d / "question.json").read_text())
         c = json.loads((d / "cases.json").read_text())
         k = json.loads((d / "answer_key.json").read_text())
-        return cls(path=q["path"], question=q["question"],
-                   pages=c["pages"], answer_key=k)
+        return cls(path=q["path"], pages=c["pages"], answer_key=k)
 
     def grade_page(self, page: dict, actual) -> float:
         """Grade one page: 1 point if the answer matches the key, else 0.

@@ -1,10 +1,10 @@
-"""sitting the exam — taker, graded run, resume, report card.
+"""sitting the exam — the graded run, resume, report card.
 
 Exam words for the runtime half:
 
-    Taker       — anyone who can answer a question: answer(prompt) -> answer
-                  (a model, a node, a workflow, an agent — all the same here)
-    sit()       — the taker takes the exam, page by page
+    sit()       — the exam is sat, page by page, by whoever can answer:
+                  name + answer(prompt) -> answer (a model, a node, a
+                  workflow, an agent — all the same here)
     ReportCard  — the graded artifact: per-page scores + the exam score
 
 The ReportCard IS the loss: score = how well you did, loss = 1 - score.
@@ -19,13 +19,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .exam import Exam
-
-
-@dataclass
-class Taker:
-    """A system under evaluation: one who answers. A name plus a callable."""
-    name: str
-    answer: callable          # (prompt: dict) -> answer
 
 
 @dataclass
@@ -50,8 +43,12 @@ class ReportCard:
         return path
 
 
-def sit(exam: Exam, taker: Taker, workbox: Path | None = None) -> ReportCard:
-    """The taker takes the exam: every page, graded page by page.
+def sit(exam: Exam, name: str, answer, workbox: Path | None = None) -> ReportCard:
+    """The exam is sat: every page, graded page by page.
+
+    name: who sits (goes on the card). answer: the taker's callable,
+    (prompt: dict) -> answer — a model, a node, a workflow, an agent,
+    all the same here.
 
     workbox: a directory to scribble answers into as we go. The scribbles
     are one honest answers.json (page index -> answer), rewritten after
@@ -66,7 +63,7 @@ def sit(exam: Exam, taker: Taker, workbox: Path | None = None) -> ReportCard:
         if str(i) in answers:            # already answered: keep it
             answered = answers[str(i)]
         else:
-            answered = taker.answer(page["prompt"])
+            answered = answer(page["prompt"])
             if wb is not None:
                 answers[str(i)] = answered
                 wb.parent.mkdir(parents=True, exist_ok=True)
@@ -76,10 +73,10 @@ def sit(exam: Exam, taker: Taker, workbox: Path | None = None) -> ReportCard:
     total = sum(page.get("points", 1.0) for page in pages)
     score = (sum(page.get("points", 1.0) * d["earned"]
                  for page, d in zip(pages, done)) / total) if total else 0.0
-    return ReportCard(exam=exam.path, taker=taker.name,
+    return ReportCard(exam=exam.path, taker=name,
                       pages=done, score=score, loss=1.0 - score)
 
 
-def as_loss(exam: Exam, taker: Taker) -> float:
+def as_loss(exam: Exam, name: str, answer) -> float:
     """The exam as a loss function over takers: sit, then 1 - score."""
-    return sit(exam, taker).loss
+    return sit(exam, name, answer).loss

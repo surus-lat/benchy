@@ -15,12 +15,11 @@ offline, no network, no keys.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 from .exam import Exam
-from .sit import Taker, sit
+from .sit import sit
 
 GOOD_WORDS = ("great", "excelente", "loved")
 BAD_WORDS = ("broken", "porqueria", "never")
@@ -52,13 +51,13 @@ def main(argv: list[str] | None = None) -> int:
     exam = Exam.from_dir(Path(args.exam_dir))
     if args.stub is None:
         p.error("say who sits: --stub good|dumb")
-    taker = Taker(name=args.stub, answer=STUBS[args.stub])
+    taker = STUBS[args.stub]
     workbox = Path(args.workbox) if args.workbox else None
-    card = sit(exam, taker, workbox=workbox)
+    card = sit(exam, args.stub, taker, workbox=workbox)
 
     path = card.write(Path.cwd())
     print(f"report card: {path}")
-    print(f"{taker.name} scored {card.score} on {exam.path} (loss {card.loss})")
+    print(f"{args.stub} scored {card.score} on {exam.path} (loss {card.loss})")
     return 0
 
 
