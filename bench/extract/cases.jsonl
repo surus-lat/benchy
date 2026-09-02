@@ -1,0 +1,2 @@
+{"input": "invoice from acme dated 2026-01-01: total $100", "expected": {"total": "100", "vendor": "acme", "date": "2026-01-01"}}
+{"input": "receipt from acme dated 2026-01-01: total $100", "expected": {"total": "100", "vendor": "acme", "date": "2026-01-01"}}

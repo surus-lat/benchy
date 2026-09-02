@@ -36,6 +36,20 @@ bench/<name>/
   systems/good.json, systems/dumb.json
 ```
 
+## The scoring vocabulary — pure data, no escape hatch (cycle 6)
+
+```
+{"match": "exact"}                            all-or-nothing per case
+{"match": "fields", "weights": {field: w}}    weighted partial credit:
+  per-case score = sum(weight of matching fields) / sum(all weights)
+```
+
+Both literals are whole-dict loud-checked (cycle 5 law): any unknown key,
+any unknown match value, or weights that do not name EVERY expected field
+raise — the interpreter refuses to guess. `"points": 1` was deleted
+(cycle 6): the cycle-5 loud check had pinned it to a single value, making
+it a constant pretending to be a variable.
+
 ## The four pillars map to files
 
 - TASK → task.json

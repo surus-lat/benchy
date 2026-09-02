@@ -1,14 +1,15 @@
 {
  "files": 2,
- "loc": 65,
+ "loc": 72,
  "deps": 0,
  "concepts": [
   "as_loss",
   "invoke",
   "load",
   "run",
-  "save"
+  "save",
+  "score_case"
  ],
  "cycles": 5,
- "why": null
+ "why": "C6 probe mandated by brief: weighted/partial scoring in pure data (fields+weights vocabulary); deleted points key same cycle"
 }

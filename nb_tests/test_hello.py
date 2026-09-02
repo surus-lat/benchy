@@ -79,6 +79,37 @@ def test_dumb_case_scores_prove_discrimination():
     assert all(c["expected"] == "neg" for c in wrong)
 
 
+EXTRACT = ROOT / "bench" / "extract"
+
+
+def test_weighted_scoring_is_pure_data_and_ranks_critical_above_nice():
+    """C6 probe: hierarchy-of-importance in pure data. 'critical' hits only
+    the 5-weight field; 'nice' hits two 1-weight fields. Weights must rank
+    critical ABOVE nice — 1 critical field > 2 nice-to-have fields."""
+    critical = bench.run(EXTRACT, "critical")
+    nice = bench.run(EXTRACT, "nice")
+    assert critical["score"] == pytest.approx(5 / 7)
+    assert nice["score"] == pytest.approx(2 / 7)
+    assert critical["score"] > nice["score"]
+    assert bench.as_loss(critical) < bench.as_loss(nice)
+
+
+def test_weights_must_name_every_expected_field(tmp_path):
+    """Loud check: weights naming a subset of fields must raise."""
+    for f in ("task.json", "scoring.json", "cases.jsonl"):
+        (tmp_path / f).write_text((EXTRACT / f).read_text(encoding="utf-8"),
+                                  encoding="utf-8")
+    (tmp_path / "systems").mkdir()
+    for s in (EXTRACT / "systems").glob("*.json"):
+        (tmp_path / "systems" / s.name).write_text(s.read_text(encoding="utf-8"),
+                                                   encoding="utf-8")
+    scoring = json.loads((tmp_path / "scoring.json").read_text(encoding="utf-8"))
+    scoring["weights"] = {"total": 5}  # subset — loud check must bite
+    (tmp_path / "scoring.json").write_text(json.dumps(scoring), encoding="utf-8")
+    with pytest.raises(ValueError):
+        bench.run(tmp_path, "critical")
+
+
 def test_cli_runs(tmp_path, capsys, monkeypatch):
     import subprocess
     import sys as _sys
