@@ -16,8 +16,8 @@ read-only contra los 10 worktrees, ley docs y código final de cada árbol.
 | s06 | contracts-first | CERRADO | 15 | 46 | 3 | 4/9/2 | 28b007c |
 | s07 | datacentric | CERRADO | 4/15→15 | 87 | 7 | 8/7/0 | c1eca58 |
 | s08 | cli | CERRADO | 15 | 89 | 4 | 3/5/7 | a153a1a |
-| s09 | runner | EN VUELO (c14-15) | 15 log | 135 | 7 | 4/7/2 | eded83b→c44719f |
-| s10 | salvage | EN VUELO (arqueología) | 16 | 90 | 5 | 4/3/5 | 2e5c7df |
+| s09 | runner | **CERRADO** | 15 | 121 | 7 | 5/8/2 | f413abe |
+| s10 | salvage | EN VUELO (c19+deliverables, deleg_09f21079) | 18 | 101 | 5 | 9/4/5 | aa6fd9a |
 
 ## Invariantes convergentes (sobrevivieron deleción en ≥2 árboles)
 
