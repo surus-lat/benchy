@@ -17,34 +17,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-# ── the four concepts of a benchmark, as exam words ──────────────────
-# Question · Page(case) · AnswerKey · Exam — plus Taker/ReportCard in sit.py
+# ── the exam words ────────────────────────────────────────────────────
+# Exam (question + pages + answer key) — plus Taker/ReportCard in sit.py.
+# The question, the pages and the key are kept AS WRITTEN: the engine never
+# needs to interpret the question, so a wrapper class per data file would be
+# a mirror of json.loads with a nicer name. Pages stay raw dicts.
 
 
-@dataclass
-class Question:
-    """What the exam asks for: what goes in, what must come out."""
-    asks: dict          # the input the taker receives, by name
-    answer_shape: dict   # the form an acceptable answer takes
-    instructions: str = ""
-
-    @classmethod
-    def from_data(cls, d: dict) -> "Question":
-        return cls(asks=d["asks"], answer_shape=d["answer_shape"],
-                   instructions=d.get("instructions", ""))
-
-
-@dataclass
-class Page:
-    """One case: the prompt for one page of the exam, and the expected answer."""
-    prompt: dict
-    expected: object          # may be None when the exam is unsupervised
-    points: float = 1.0       # weight of this page in the final grade
-
-    @classmethod
-    def from_data(cls, d: dict) -> "Page":
-        return cls(prompt=d["prompt"], expected=d.get("expected"),
-                   points=float(d.get("points", 1.0)))
+# extra grading rules live here once a real exam needs one (the escape hatch)
+EXAM_RULES: dict = {}
 
 
 @dataclass
@@ -60,35 +41,18 @@ class AnswerKey:
                    combine=d.get("combine", "mean"))
 
 
-# ── grading rules: the builtin answer-key rules ───────────────────────
-# A rule is a function (expected, actual, rule_args) -> score in [0, 1].
-# New rules are the Python escape hatch, registered by name in the key.
-
-
-def grade_exact(expected, actual, rule: dict) -> float:
-    """1 point for an exact match, else 0."""
-    return 1.0 if actual == expected else 0.0
-
-
-def grade_keyword(expected, actual, rule: dict) -> float:
-    """1 point if every keyword in rule['keywords'] appears in the answer."""
-    kws = rule.get("keywords", [])
-    if not isinstance(actual, str):
-        return 0.0
-    return 1.0 if all(k in actual for k in kws) else 0.0
-
-
-GRADES = {"exact": grade_exact, "keyword": grade_keyword}
-
-
 # ── the exam itself ───────────────────────────────────────────────────
 
 @dataclass
 class Exam:
-    """A benchmark: a question, its pages, and the answer key. Nothing else."""
+    """A benchmark: a question, its pages, and the answer key. Nothing else.
+
+    The question is kept as written — it is for the taker (and the human
+    author) to read; the engine never needs to interpret it.
+    """
     path: str                        # ontology path, e.g. "/sentiment"
-    question: Question
-    pages: list[Page]
+    question: dict                   # question.json as written
+    pages: list[dict]                # cases.json as written: prompt/expected/points
     answer_key: AnswerKey
 
     @classmethod
@@ -98,21 +62,19 @@ class Exam:
         q = json.loads((d / "question.json").read_text())
         c = json.loads((d / "cases.json").read_text())
         k = json.loads((d / "answer_key.json").read_text())
-        return cls(path=q["path"], question=Question.from_data(q["question"]),
-                   pages=[Page.from_data(p) for p in c["pages"]],
-                   answer_key=AnswerKey.from_data(k))
+        return cls(path=q["path"], question=q["question"],
+                   pages=c["pages"], answer_key=AnswerKey.from_data(k))
 
-    def grade_page(self, page: Page, actual) -> float:
-        """Grade one page against the key's rule."""
-        rule = GRADES.get(self.answer_key.grade)
+    def grade_page(self, page: dict, actual) -> float:
+        """Grade one page: 1 point if the answer matches the key, else 0.
+
+        The builtin rule is exact match. Other rules named in an answer key
+        are the Python escape hatch — import nb.exam and set EXAM_RULES.
+        """
+        if self.answer_key.grade == "exact":
+            return 1.0 if actual == page.get("expected") else 0.0
+        rule = EXAM_RULES.get(self.answer_key.grade)
         if rule is None:
             raise ValueError(f"unknown grading rule: {self.answer_key.grade!r} — "
                              "this exam wants a rule the engine does not know.")
-        return float(rule(page.expected, actual, self.answer_key.rule))
-
-    def combine(self, page_scores: list[float]) -> float:
-        """Turn per-page points into the exam score. Weighted by page points."""
-        if not page_scores:
-            return 0.0
-        pts = [p.points for p in self.pages]
-        return sum(pt * s for pt, s in zip(pts, page_scores)) / sum(pts)
+        return float(rule(page.get("expected"), actual, self.answer_key.rule))
