@@ -62,7 +62,7 @@ def grade(scoring, want, got):
 
 
 # ---------------- DATA pillar: the exam, taken ----------------
-# The graded evidence IS the artifact dict: {ont, system, score, loss, cases}.
+# The graded evidence IS the artifact dict: {ont, score, loss, cases}.
 # No Exam object — run() returns the artifact itself. The artifact is data
 # end to end: written to disk unchanged, re-read by resume unchanged.
 
@@ -82,17 +82,15 @@ def _write(path, artifact):
 
 
 class Benchmark:
-    """task + data + scoring, loaded as data. the system is the argument."""
+    """task + data + scoring, loaded as data. the system is the argument.
+    The engine keeps only what it uses; the task spec itself stays in the
+    bench.json — pure data for optimizers, never object attributes."""
     def __init__(self, spec, path):
-        self.spec, self.path = spec, Path(path)
-        self.task = spec["task"]
+        self.path = Path(path)
+        self.ont = spec["task"].get("ont", "")
         self.scoring = spec.get("scoring", "exact")
         self.cases = spec["cases"]
         self.systems = spec.get("systems", {})
-
-    @property
-    def ont(self):
-        return self.task.get("ont", "")
 
     @classmethod
     def load(cls, ref):
