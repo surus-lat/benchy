@@ -19,27 +19,32 @@ def test_benchmark_is_data_locatable_by_ontology_path():
 
 
 def test_hello_runs_offline_good_stub_scores_1():
-    result = bench.run(HELLO, bench.load_system(HELLO, "good"))
+    result = bench.run(HELLO, "good")
     assert result["score"] == 1.0
 
 
 def test_hello_runs_offline_dumb_stub_scores_half():
-    result = bench.run(HELLO, bench.load_system(HELLO, "dumb"))
+    result = bench.run(HELLO, "dumb")
     assert result["score"] == 0.5
 
 
 def test_as_loss_ranks_dumb_worse_than_good():
-    good = bench.run(HELLO, bench.load_system(HELLO, "good"))
-    dumb = bench.run(HELLO, bench.load_system(HELLO, "dumb"))
+    good = bench.run(HELLO, "good")
+    dumb = bench.run(HELLO, "dumb")
     assert bench.as_loss(dumb) > bench.as_loss(good)
 
 
 def test_artifact_has_per_case_scores_and_aggregate():
-    result = bench.run(HELLO, bench.load_system(HELLO, "dumb"))
+    result = bench.run(HELLO, "dumb")
     assert len(result["cases"]) == 6
     per = [c["score"] for c in result["cases"]]
     assert sum(per) == 3
     assert result["score"] == pytest.approx(0.5)
+
+
+def test_system_can_be_passed_as_data_dict_too():
+    sysdata = bench.load(HELLO, "dumb")["system"]
+    assert bench.run(HELLO, sysdata)["score"] == 0.5
 
 
 def test_zero_user_python():
@@ -50,7 +55,7 @@ def test_zero_user_python():
 
 def test_dumb_case_scores_prove_discrimination():
     """Dumb gets the 3 pos cases right, the 3 neg cases wrong."""
-    result = bench.run(HELLO, bench.load_system(HELLO, "dumb"))
+    result = bench.run(HELLO, "dumb")
     wrong = [c for c in result["cases"] if c["score"] == 0]
     assert len(wrong) == 3
     assert all(c["expected"] == "neg" for c in wrong)

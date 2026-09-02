@@ -2,3 +2,4 @@
 
 1 | pushed=run.py+main (CLI as separate file/concept) | broke=yes | verdict=NOISE_REMOVED | loc=72 | concepts=9
 2 | pushed=grade+_read_json+_read_jsonl (3 concepts fused/indlined into run/load) | broke=no | verdict=HARD_PUSH | loc=68 | concepts=6
+3 | pushed=load_system (fused into load, optional system param) | broke=yes | verdict=NOISE_REMOVED | loc=65 | concepts=5
