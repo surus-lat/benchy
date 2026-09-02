@@ -12,7 +12,7 @@ The engine is two tiny pure functions over that data plus loud validation.
     exam.json  = { path, task, scoring, samples, systems }
     task       = ["pos", "neg"]            the declared answer space (a bare list)
     scoring    = { match: "exact" }        the declared comparison policy
-    sample     = { id, input, expected, context? }
+    sample     = { id, input, expected }   (cycle 4 deleted context: no kind read it)
     system     = { kind: "const", value } | { kind: "keyword", any, then, else }
 
     load(path)          exam data, loudly validated (unknown keys raise)
