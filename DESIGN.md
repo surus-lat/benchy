@@ -22,7 +22,8 @@ CLI, artifacts, grading: projections of `(Task, Data, Scoring, System) -> float`
 - system = any callable: `solve(input) -> prediction`. Model, node, workflow,
   agent — same thing: it is invoked, it predicts. The engine has NO loader;
   Python's import machinery is the loader. A system enters as a callable.
-- loss.trace = dict: path, score, cases [{in, want, got, score}].
+- loss.trace = dict: score, cases [{in, want, got, score}]. Evidence only —
+  identity (the path) is the loss closure itself, not schema inside the receipt.
 
 ## scoring interpretation
 
@@ -67,6 +68,11 @@ system is a callable and stdlib importlib is the loader.)
   loader, the SYSTEM pillar needs zero engine code. Tests fixed forward from
   nb.system to importlib: the loader was guarded noise (tests referenced it)
   but the GUARD was noise — the pillar is the protocol, not the loader. NOISE_REMOVED.
+- cycle 9: `path` key in loss.trace — deleted; the receipt is evidence only
+  {score, cases:[{in, want, got, score}]}. The identity of the benchmark is the
+  loss closure itself (and the filename when serialized), not schema inside the
+  artifact. Test that asserted the path key broke — its own invention, not the
+  bar's; fixed forward. NOISE_REMOVED.
 
 ## queued deletion candidates (loudest first)
 
