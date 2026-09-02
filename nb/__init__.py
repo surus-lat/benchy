@@ -8,11 +8,10 @@ Four pillars. Bare metal:
           the whole AI-API. Backends compile learned programs into it.
 """
 
-from .task import Task
 from .scoring import Scoring
 from .data import Exam
 from .system import compile_system
 from .load import load, compile_systems
 from .benchmark import Benchmark
 
-__all__ = ["Task", "Scoring", "Exam", "compile_system", "Benchmark"]
+__all__ = ["Scoring", "Exam", "compile_system", "Benchmark"]

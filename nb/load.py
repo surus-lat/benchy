@@ -19,14 +19,13 @@ from .benchmark import Benchmark
 from .data import Exam
 from .scoring import Scoring
 from .system import compile_system
-from .task import Task
 
 
 def load(path) -> Benchmark:
     """read one benchmark directory -> Benchmark (task+scoring+data)."""
     d = Path(path)
     spec = json.loads((d / "task.json").read_text(encoding="utf-8"))
-    task = Task(spec["in"], spec["out"])  # 'in' is a keyword; read it plainly
+    task = spec  # the TASK pillar is data: {"in": ..., "out": ...}
     scoring = Scoring(**json.loads((d / "scoring.json").read_text(encoding="utf-8")))
     cases = [(c["input"], c["expected"])
              for c in json.loads((d / "cases.json").read_text(encoding="utf-8"))]
