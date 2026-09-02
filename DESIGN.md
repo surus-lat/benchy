@@ -10,7 +10,7 @@ bench/<name>/
   task.json       {"task": "sentiment"} — the ontology locator
   scoring.json    one of the two scoring literals (below) — whole-dict loud check, unknown keys raise
   cases.jsonl     {"input": ..., "expected": ...} per line
-  systems/*.json  {"kind": "constant"|"keyword", ...}
+  systems/*.json  {"kind": "constant"|"regex", ...} (two regex shapes below)
 ```
 
 ## The scoring vocabulary (cycle 6 — the angle's key probe, brief-mandated)
@@ -68,7 +68,7 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 | concept | pillar | why undeletable | survived N |
 |---|---|---|---|
 | load | DATA | turns directory into task+scoring+cases(+system); the interpreter itself; absorbed load_system cycle 3; survived task.json deletion attempt (cycle 7) — the ontology locator is load-bearing, see below | 2 |
-| invoke | SYSTEM | the ONLY system call: data-dict -> prediction; the AI-API | 0 |
+| invoke | SYSTEM | the ONLY system call: data-dict -> prediction; the AI-API; interprets the constant + regex kinds (keyword subsumed by regex alternation cycle 14 — vocabulary dedup); missing-shape regex raises loudly | 0 |
 | run | ALL | result = benchmark.run(system); the vision invariant; grade fused away cycle 2, its loop inlined cycle 6, score_case fused INTO it cycle 13 — scoring is interpreted inline, the literal check is the noise law | 1 |
 | as_loss | SCORING | loss = benchmark.as_loss(); NAMED in GOLEM's unbreakable vision invariants (invariant 6: `result = benchmark.run(system)` and `loss = benchmark.as_loss()`); the software-3.0 export. C12 deletion broke 2 ranking tests; restored — vision law outranks the golem's shrink desire | 1 |
 
@@ -101,7 +101,31 @@ redirectable with `>`; the guarding test was rewritten forward to parse
 stdout JSON), `score_case` (cycle 13 — fused into run's loop; its only
 caller was run. The two loud-checked literals are interpreted inline where
 they are used; the SCORING pillar lives in the DATA (scoring.json) plus
-as_loss, not in a helper concept. Public concepts 5 → 4).
+as_loss, not in a helper concept. Public concepts 5 → 4), the `keyword`
+system kind (cycle 14 — subsumed into the regex vocabulary: a keyword
+list IS an alternation pattern, `["great","excelente","loved"]` ≡
+`"great|excelente|loved"`. Two vocabularies for one behavior = the same
+vocabulary noise C6 exposed in `points`. good.json rewritten as
+`{"kind":"regex","if":"great|excelente|loved","then":"pos","else":"neg"}`).
+
+## The system vocabulary (cycle 14 — second escape-hatch probe)
+
+Is a regex system pure data, or does it force Python into the interface?
+**Pure data.** Patterns are strings; the engine interprets them with
+stdlib `re` — a backend, not an interface leak:
+
+```
+{"kind": "constant", "out": <prediction>}
+{"kind": "regex", "if": "<pattern>", "then": <p>, "else": <p>}   classification
+{"kind": "regex", "fields": {f: <pattern>}, "miss": <p>}         extraction
+```
+
+Proven by `bench/extract/systems/extractor.json`: a 169-byte JSON file
+(group-1 pattern per field) scores **1.0** on the weighted benchmark —
+a program-like system with zero benchmark-author Python. Escalation in
+the same cycle deleted `keyword` (vocabulary dedup, above). Escape-hatch
+cost after two probes: ZERO. Both honest growth events (C6 weights,
+C14 regex) widened the interpreted DATA vocabulary, never the interface.
 
 ## Bare metal proven (BARE_METAL verdicts)
 

@@ -1,6 +1,6 @@
 {
  "files": 2,
- "loc": 66,
+ "loc": 76,
  "deps": 0,
  "concepts": [
   "as_loss",
@@ -8,6 +8,6 @@
   "load",
   "run"
  ],
- "cycles": 12,
- "why": null
+ "cycles": 13,
+ "why": "C14 escalation: keyword kind subsumed into regex vocabulary \u2014 keyword list IS alternation pattern; vocabulary dedup, extraction/classification shapes share one kind"
 }

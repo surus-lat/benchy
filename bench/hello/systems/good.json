@@ -1,6 +1,6 @@
 {
-  "kind": "keyword",
-  "if_contains": ["great", "excelente", "loved"],
+  "kind": "regex",
+  "if": "great|excelente|loved",
   "then": "pos",
   "else": "neg"
 }

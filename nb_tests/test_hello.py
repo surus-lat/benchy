@@ -110,6 +110,15 @@ def test_weights_must_name_every_expected_field(tmp_path):
         bench.run(tmp_path, "critical")
 
 
+def test_regex_system_is_pure_data():
+    """A regex extractor is DATA: one JSON file, one group-1 pattern per
+    field, no Python written by the benchmark author. If it scores 1.0 on
+    the weighted benchmark, the second escape-hatch probe closes: real
+    program-like systems do NOT force Python into the interface."""
+    result = bench.run(EXTRACT, "extractor")
+    assert result["score"] == 1.0
+
+
 def test_cli_runs():
     """Cycle 11: the artifact bar is stdout (redirectable with >); the
     on-disk copy was an unread third projection of the same JSON."""
