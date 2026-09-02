@@ -27,13 +27,17 @@ not a human — the CLI prints the loss per run as the human-visible half.
                             score + loss (evidence outlives the process)
 
     benchmark.json           {path, task, cases} — the whole exam, pure data;
-                            unknown keys are loud (an exam is exactly this)
+                            unknown keys are loud (an exam is exactly this).
+                            task stays as taker-facing data: the cloud
+                            compiler reads it to build prompts; the engine
+                            passes it through untouched (cycle 1 deleted
+                            the engine's own task plumbing — a lens)
     systems.py               the exam-takers, NOT part of the benchmark:
                             a system is any invoked program; the cloud
                             taker (steering addendum) joins here as a spec
-    Exam.run(system)         -> graded artifact {system, benchmark, task,
-                            cases:[{input, expected, prediction, score}],
-                            score}   (mean; interprets alone)
+    Exam.run(system)         -> graded artifact {system, benchmark, cases:
+                            [{input, expected, prediction, score}], score}
+                            (mean; interprets alone)
     Exam.as_loss()           -> (system) -> 1 - score, lower is better
     locate(bench_root, path) ontology path -> exam (the address IS the registry)
 
