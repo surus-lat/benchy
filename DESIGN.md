@@ -17,9 +17,10 @@ The engine is two tiny pure functions over that data plus loud validation.
 
     load(path)          exam data, loudly validated (unknown keys raise)
     locate(root, path)  resolve an ontology path /<task?>/<domain?>/<language?>
-    invoke(system, input, context?)  the compiler pillar: spec -> prediction
-    grade(sample, got, scoring)      the scoring lens: comparison policy
+    invoke(system, input)  the compiler pillar: spec -> prediction
     run(exam, system)   take the exam -> per-case evidence + aggregate score
+                        (the scoring lens fused in, cycle 6: the declared
+                        policy is validated at load, grading is application)
     as_loss(exam)      -> (system) -> float; lower is better (1 - score)
 
     python -m nb <bench_root> /sentiment artifact.json   (offline end-to-end)
@@ -43,8 +44,7 @@ the task wrapper object (a bare list carries the answer space honestly).
 | locate | exam | the ontology path /sentiment must resolve to data (GOLEM bar) | 0 |
 | _check | exam | loud checks: unknown/missing keys must raise, not be ignored | 0 |
 | invoke | system | the compiler pillar: a spec must become a prediction; cloud specs land here | 0 |
-| grade | scoring | the comparison policy; the whole scoring pillar is this one function | 1 |
-| run | exam | take the exam: per-case evidence + aggregate; the artifact contract | 0 |
+| run | exam | take the exam: per-case evidence + aggregate; the artifact contract; the scoring lens lives here (cycle 6 fused grade in — the declared policy is validated at load, its application is 1 line) | 1 |
 | as_loss | scoring | cycle 5 tried to delete: broke the vision contract itself — GOLEM law 6 makes `loss = benchmark.as_loss()` unbreakable; the loss-export for prompt-optimizers is THE headline feature, not derivable noise | 1 |
 | main (CLI) | all | cycle 3 tried to delete it: engine ran only under pytest. the bar says offline end-to-end for a person, not a test file — CLI = metal | 1 |
 | task (declared answer space) | task | data: inferred enum absorbs typos + shrinks on unrepresented classes | 1 |

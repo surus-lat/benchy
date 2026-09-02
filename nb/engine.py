@@ -85,21 +85,20 @@ def invoke(system, inp):
     return system["then"] if any(k in inp for k in system["any"]) else system["else"]
 
 
-def grade(sample, got, scoring):
-    # the scoring lens: the exam's declared comparison policy applied to one case
+def run(exam, system):
+    # take the exam: the system answers every sample. evidence per case +
+    # aggregate. the scoring lens is fused here (cycle 6): the declared policy
+    # is validated at load — the only entry to exam data — so grading is just
+    # its application: exact match of the declared expected, 1 point per case.
+    scoring = exam["scoring"]
     if scoring.get("match") != "exact":
         raise ValueError(f"unknown scoring policy: {scoring.get('match')!r}")
-    return 1.0 if got == sample["expected"] else 0.0
-
-
-def run(exam, system):
-    # take the exam: the system answers every sample. evidence per case + aggregate
     cases = []
     for s in exam["samples"]:
         got = invoke(system, s["input"])
         cases.append({"id": s["id"], "input": s["input"],
                       "want": s["expected"], "got": got,
-                      "score": grade(s, got, exam["scoring"])})
+                      "score": 1.0 if got == s["expected"] else 0.0})
     score = sum(c["score"] for c in cases) / len(cases)
     return {"path": exam["path"], "system": system, "cases": cases, "score": score}
 

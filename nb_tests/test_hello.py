@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from nb import as_loss, grade, invoke, load, locate, run
+from nb import as_loss, invoke, load, locate, run
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent / "bench"
@@ -63,16 +63,22 @@ def test_artifact_has_per_case_and_aggregate(exam):
 
 
 # --- the scoring lens: declared policy, loud -------------------------------------
+# (cycle 6: grade fused into run — the declared policy is validated at load,
+# the only entry to exam data, so grading is just its application)
 
-def test_grade_exact_match():
-    s = {"id": "x", "input": "i", "expected": "pos"}
-    assert grade(s, "pos", {"match": "exact"}) == 1.0
-    assert grade(s, "neg", {"match": "exact"}) == 0.0
+def test_scoring_discriminates_via_run():
+    # the mean of exact matches; dumb vs good proves the policy discriminates
+    exam_dumb = run(load(HELLO), load(HELLO)["systems"]["dumb"])
+    assert exam_dumb["cases"][0]["score"] == 1.0
+    wrong = [c for c in exam_dumb["cases"] if c["want"] != c["got"]]
+    assert all(c["score"] == 0.0 for c in wrong)
 
 
-def test_grade_unknown_policy_raises():
+def test_run_unknown_policy_raises():
+    exam_bad = json.loads(json.dumps(load(HELLO)))
+    exam_bad["scoring"] = {"match": "fuzzy"}
     with pytest.raises(ValueError):
-        grade({"expected": "pos"}, "pos", {"match": "fuzzy"})
+        run(exam_bad, exam_bad["systems"]["dumb"])
 
 
 # --- the compiler lens: systems are specs in data --------------------------------

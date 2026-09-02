@@ -6,3 +6,4 @@
 3 | pushed=main CLI (delete nb/__main__.py) | broke=yes | verdict=BARE_METAL | loc=97 | concepts=8
 4 | pushed=context (sample key + invoke param + artifact field) | broke=no | verdict=HARD_PUSH | loc=97 | concepts=8
 5 | pushed=as_loss (delete the loss-export) | broke=yes | verdict=BARE_METAL | loc=97 | concepts=8
+6 | pushed=grade (fuse the scoring lens into run, its only caller) | broke=no | verdict=HARD_PUSH | loc=96 | concepts=7
