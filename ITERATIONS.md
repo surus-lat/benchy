@@ -14,3 +14,5 @@
 8 | pushed=AnswerKey class+dead combine field | broke=yes | verdict=NOISE_REMOVED | loc=177 | concepts=8
 9 | pushed=write(filename)+EXAM_RULES+rule field | broke=no | verdict=HARD_PUSH | loc=173 | concepts=8
 10 | pushed=limit param (sit/as_loss/hall --limit) | broke=yes | verdict=NOISE_REMOVED | loc=171 | concepts=8
+11 | pushed=ReportCard.taken_at (timestamp) | broke=no | verdict=HARD_PUSH | loc=168 | concepts=8
+12 | pushed=hall --out flag | broke=no | verdict=HARD_PUSH | loc=166 | concepts=8

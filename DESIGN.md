@@ -41,7 +41,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | Taker | SYSTEM | the exam word for the AI-system: a name + answer(prompt). The primitive is the system-as-taker, not the model | 0 |
 | sit() | DATA | the taker takes the exam; the run itself — AND the resume: sit again over a workbox keeps the scribbles. One verb, two tempos | 1 |
 | as_loss | SCORING | the vision's headline: benchmark-as-loss-function for prompt optimizers. loss = 1 - score | 0 |
-| ReportCard | DATA | the graded artifact: per-page scores + aggregate, JSON. Evidence trace of one loss evaluation. Rows are plain dicts {page, answered, earned} — the card never re-states the page; the exam is the single source of it | 1 |
+| ReportCard | DATA | the graded artifact: per-page scores + aggregate, JSON. Evidence trace of one loss evaluation. Rows are plain dicts {page, answered, earned} — the card never re-states the page; the exam is the single source of it | 2 |
 | keyword_tally / always_pos | SYSTEM | the two stub takers: offline demo, no network, no keys. They prove the hall works and that scoring discriminates | 0 |
 | hall.main | — | the shell door: sit an exam from the CLI. Deleting it leaves the engine library-only, unusable from the terminal | 0 |
 | report (sit.py helper) | DATA | ~~fold results into the card~~ DELETED cycle 3: a two-line fold with one call site — inlined into sit() | gone |
@@ -82,9 +82,22 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 
 - **limit param** (cycle 10): threaded through sit(), as_loss() and the
   hall's --limit flag, it had no honest exam word — an exam is not taken
-  "up to N pages"; you author fewer pages or you resume a workbox. The
-  vision's smoke-run need is runner territory (angle s09), not exam metal.
+  "up to N pages"; you author fewer pages or you resume a workbox.
+  The vision's smoke-run need is runner territory (angle s09), not exam metal.
   The limit test became an honest smaller-exam test.
+
+- **ReportCard.taken_at** (cycle 11): a timestamp on the card. When the
+  exam was sat is RUNNER metadata (which s09 owns: run_outcome.json
+  already carries started_at/ended_at), not exam metal — the card says
+  what was answered and what it earned, and that is the whole honest
+  content of a graded page. No test read it, nothing in the acceptance
+  bar needs a clock, and the `time` import died with it. −3 LOC.
+
+- **hall --out flag** (cycle 12): the card goes to the working directory
+  — where the shell already is. "Where the artifact lands" is shell
+  territory (`cd`, `mv`), same argument that killed --limit; a flag whose
+  only caller path was the default is a flag with no honest exam word.
+  −2 LOC.
 
 - **Question, Page dataclasses** (cycle 1): the engine never interprets the
   question or the page — it loads them, passes them, grades them. A wrapper
