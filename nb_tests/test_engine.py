@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "nb"))
-from benchy import Benchmark, grade, invoke  # noqa: E402
+from benchy import Benchmark, grade  # noqa: E402
 
 HERE = Path(__file__).parent.parent / "bench" / "hello"
 bench_json = json.loads((HERE / "bench.json").read_text())
@@ -66,14 +66,17 @@ def test_invalid_prediction_scores_zero(bench):
     assert a["score"] == 0.0
 
 
-# ---- system pillar: one protocol, many shapes ----
+# ---- system pillar: one protocol, many shapes, compiled in run() ----
 def test_callable_system(bench):
     assert bench.run(lambda inp, ctx=None: "pos")["score"] == 0.5
 
 
-def test_rule_system_is_data(bench, good):
-    assert invoke(good, "this works great") == "pos"
-    assert invoke(good, "UNIQUE") == "neg"          # default
+def test_rule_system_is_data(bench):
+    # the rule data spec compiles to the protocol inside run(); asserting on
+    # the artifact proves the keyword program behaves (hits pos, default neg)
+    a = bench.run(bench.systems["good"])
+    assert [r["got"] for r in a["cases"]] == ["pos", "pos", "pos", "neg", "neg", "neg"]
+    assert a["score"] == 1.0
 
 
 def test_py_escape_hatch(bench, tmp_path):

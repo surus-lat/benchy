@@ -17,21 +17,12 @@ from pathlib import Path
 
 # ---------------- SYSTEM pillar: the AI-API ----------------
 # A system is a program: invoked with a case, it predicts. Model, node,
-# workflow, agent — all plug in here through ONE protocol: f(in, ctx) -> out.
-# Data shapes: {"rule": {cls: [keywords]}, "default": cls} (a learned keyword
-# program; default-only = a constant system) and {"py": "file.py:func"} (the
-# escape hatch — python is not the interface). py paths resolve from the
-# CWD, same as every other data file you point at by path; run() compiles a
-# py spec to a callable ONCE per exam, never per case.
-def invoke(system, inp, ctx=None):
-    """invoke a system: callable | data spec (rule+default)."""
-    if callable(system):
-        return system(inp, ctx)
-    text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
-    for cls, keys in system.get("rule", {}).items():
-        if any(k.lower() in text.lower() for k in keys):
-            return cls
-    return system.get("default")
+# workflow, agent — all plug in through ONE protocol: f(in, ctx) -> out.
+# run() is the COMPILER: it binds every data shape — {"rule": {cls: [kw]},
+# "default": cls} (default-only = a constant system) or {"py": "file.py:func"}
+# (the escape hatch; paths resolve from the CWD like every data path) — to
+# a callable ONCE per exam, never per case. There is no invoke() function:
+# the protocol itself is the interface.
 
 
 # ---------------- TASK pillar: the program description ----------------
@@ -63,14 +54,6 @@ def grade(scoring, want, got):
 # end to end: written to disk unchanged, re-read by resume unchanged.
 
 
-def _write(path, artifact):
-    """atomic artifact write: a kill must never corrupt the resume evidence."""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    tmp = str(path) + ".tmp"
-    Path(tmp).write_text(json.dumps(artifact, indent=1, ensure_ascii=False))
-    os.replace(tmp, path)
-
-
 class Benchmark:
     """task + data + scoring, loaded as data. the system is the argument.
     The engine keeps only what it uses; the task spec itself stays in the
@@ -96,14 +79,24 @@ class Benchmark:
 
     def run(self, system, limit=None, workers=1, out=None):
         """exam = bench.run(system). resume-safe (out), concurrent (workers)."""
+        # the COMPILER: bind any system shape to f(in, ctx) ONCE per exam.
         if isinstance(system, str):
             system = self.systems[system]
-        if isinstance(system, dict) and "py" in system:   # compile ONCE per exam
-            f, fn = system["py"].rsplit(":", 1)
-            spec = importlib.util.spec_from_file_location(f.replace("/", "_"), f)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            system = getattr(mod, fn)
+        if isinstance(system, dict):
+            if "py" in system:                      # escape hatch: compile once
+                f, fn = system["py"].rsplit(":", 1)
+                mod = importlib.util.module_from_spec(importlib.util.spec_from_file_location(f.replace("/", "_"), f))
+                mod.__spec__.loader.exec_module(mod)
+                system = getattr(mod, fn)
+            else:                                   # rule+default data spec
+                rule, default = system.get("rule", {}), system.get("default")
+                def bind(inp, ctx=None):            # -> the one protocol
+                    text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
+                    for cls, keys in rule.items():
+                        if any(k.lower() in text.lower() for k in keys):
+                            return cls
+                    return default
+                system = bind
         cases = self.cases[:limit] if limit else self.cases
         done = {}
         if out and Path(out).exists():                   # RESUME: keep graded
@@ -112,7 +105,7 @@ class Benchmark:
 
         def take(ic):
             i, c = ic
-            got = invoke(system, c["in"], c.get("ctx"))
+            got = system(c["in"], c.get("ctx"))
             s = grade(self.scoring, c["want"], got)
             return {"id": i, "in": c["in"], "want": c["want"], "got": got, "score": s}
 
@@ -121,7 +114,10 @@ class Benchmark:
             for r in ex.map(take, todo):
                 rows[r["id"]] = r
                 if out:   # BARE_METAL (c10): a kill never loses graded work
-                    _write(out, self._exam([rows[i] for i in sorted(rows)]))
+                    Path(out).parent.mkdir(parents=True, exist_ok=True)
+                    tmp = str(out) + ".tmp"
+                    Path(tmp).write_text(json.dumps(self._exam([rows[i] for i in sorted(rows)]), indent=1, ensure_ascii=False))
+                    os.replace(tmp, out)
         return self._exam([rows[i] for i in sorted(rows)])
 
     def _exam(self, rows):
