@@ -9,3 +9,4 @@
 7 | pushed=task.json itself (ontology locator; 11/12 tests broke — restored, fusion rejected) | broke=yes | verdict=BARE_METAL | loc=72 | concepts=6
 8 | pushed=scoring.json itself (11/12 broke — C6 made it load-bearing again; weights are real interpreted data) | broke=yes | verdict=BARE_METAL | loc=72 | concepts=6
 9 | pushed=save (only production caller was __main__; 3-line body inlined into CLI) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
+10 | pushed=artifact benchmark stamp (task stamp survived escalation — engine's only interpretation of task.json) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
