@@ -100,8 +100,3 @@ def compile_system(spec):
     if backend is None:
         raise ValueError(f"unknown system kind: {kind!r}")
     return backend(spec)
-
-
-def invoke(system, text):
-    """invoke(system, input) -> prediction. One method. The protocol."""
-    return system(text)

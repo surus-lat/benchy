@@ -34,16 +34,22 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | Benchmark | TASK+DATA+SCORING | the exam as one value; the system is its argument, not a field | 0 |
 | Benchmark.run | BENCH | takes the exam: invoke per case, grade each, aggregate | 0 |
 | Benchmark.as_loss | SCORING/BENCH | (System)->float; reusing one exam across many systems | 0 |
-| compile_system | SYSTEM | the compiler front door: spec (data) → callable | 0 |
-| invoke | SYSTEM | THE protocol: one method; everything else is a backend | 0 |
+| compile_system | SYSTEM | the compiler front door: spec (data) → callable | 1 |
+| invoke | SYSTEM | THE protocol: the callable itself — `system(input) -> pred`. Not a function; the shape of every backend's return value | 1 |
 | _backend_stub | SYSTEM | keyword-table backend; makes the exam offline-runnable | 0 |
 | _backend_const | SYSTEM | dumbest possible system; proves scoring discriminates (0.5) | 0 |
 | _backend_http | SYSTEM | openai-compatible backend over stdlib urllib; the real world | 0 |
 | _backend_chain | SYSTEM | workflow = system whose backend composes systems; no new concept | 0 |
-| load | BENCH | benchmark as data on disk, locatable by ontology path | 0 |
-| main | BENCH | CLI: run a benchmark dir against its systems | 0 |
-| _read | BENCH | JSON loader helper | 0 |
-| _get | SCORING | dict field access for partial/weighted grading | 0 |
+| load | BENCH | benchmark as data on disk, locatable by ontology path | 1 |
+| main | BENCH | CLI: run a benchmark dir against its systems | 1 |
+| _read | BENCH | JSON loader helper | 1 |
+| _get | SCORING | dict field access for partial/weighted grading | 1 |
+
+Removed in cycle 2: `run` (load.py convenience wrapper — nothing in the
+engine called it; only an unused import kept it alive), the CLI `systems`
+verb (display sugar — `ls` lists specs; the CLI's one job is to run the
+exam), and the `run` verb (redundant once `systems` is gone: the command
+is just `nb.load <bench> [system...]`).
 
 Removed in cycle 1: `Task.out_enum/pred_enum` (premature enum magic; a
 Task is just in→out type names — validation belongs to scoring, and
