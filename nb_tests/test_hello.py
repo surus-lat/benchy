@@ -84,8 +84,10 @@ class TestPillarScoring:
         art = run(bench(), system_specs()["good"])
         assert art["benchmark"] == "/sentiment"
         assert len(art["cases"]) == 6
-        # c9: position in the list IS the case id — no explicit index field
-        assert all({"input", "expected", "prediction", "score"} == set(r) for r in art["cases"])
+        # c9: position in the list IS the case id — no explicit index field.
+        # c16 grew the row by `error` (donated failure contract — not
+        # derivable: it carries the failure type + message).
+        assert all({"input", "expected", "prediction", "score", "error"} == set(r) for r in art["cases"])
 
     def test_unknown_rule_rejected(self):
         b = bench()
@@ -107,6 +109,45 @@ class TestPillarScoring:
         b["cases"][0]["expected"] = "meh"
         with pytest.raises(ValueError):
             run(b, GOOD)
+
+
+def flaky():
+    """a real (cloud) system is not data — it fails after the first call."""
+    n = [0]
+
+    def invoke(text: str) -> str:
+        n[0] += 1
+        if n[0] > 1:
+            raise ConnectionError("transient")
+        return "pos"
+
+    return invoke
+
+
+class TestOldBenchyDonations:
+    # c16, donated from the old benchy run-loop contract (.staging/benchy/
+    # benchmark.py): one bad sample never aborts the run — a system failure
+    # is evidence, not a crash. Deliberate divergence: the old system
+    # EXCLUDED errored samples from the aggregate; here a failed case scores
+    # 0 and is INCLUDED — one scalar, the optimizer sees reliability too.
+
+    def test_flaky_system_does_not_abort_exam(self):
+        art = grade(bench(), flaky())
+        assert len(art["cases"]) == 6  # every case was taken and graded
+
+    def test_failure_is_visible_evidence_not_silence(self):
+        art = grade(bench(), flaky())
+        assert art["cases"][0]["error"] is None
+        assert "ConnectionError" in art["cases"][1]["error"]
+
+    def test_failed_case_scores_zero_not_excluded(self):
+        art = grade(bench(), flaky())
+        assert art["score"] == 1 / 6  # /6, not /5 — failures count against
+        assert 1.0 - art["score"] > as_loss(bench())(GOOD)
+
+    def test_error_key_present_on_every_row(self):
+        art = run(bench(), GOOD)
+        assert all("error" in r and r["error"] is None for r in art["cases"])
 
 
 class TestVisionInvariants:

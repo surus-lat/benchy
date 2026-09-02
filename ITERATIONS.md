@@ -49,3 +49,14 @@
 # export cannot be inlined away; the optimizer consumes loss(system) directly.
 # No growth; survival-why moved to a # comment after the golem growled at +1 loc.
 15 | pushed=as_loss | broke=yes (import error — collection itself) | verdict=BARE_METAL | loc=90 | concepts=5
+# c16 (ARCHAEOLOGY, donation from .staging/benchy/benchmark.py run-loop contract):
+# a system failure on ONE case is evidence, never an abort — the exam is fixed
+# data so its defects are refused, but a real (cloud-first) system is not data
+# and it fails; grade catches Exception per case, prediction=None + error=type:
+# msg in the row, the fused match scoring already scores it 0 (None can never
+# equal a declared choice). Deliberate divergence from the old system: it
+# EXCLUDED errored samples from the aggregate; here a failed case scores 0 and
+# stays IN (/6 not /5) — reliability lands in the one scalar the optimizer
+# consumes. Pinned 4 tests; deletion probe broke 14 (the donation is metal).
+# +5 loc under --allow-growth (donation provenance: old benchy).
+16 | pushed=donation:system-failure-is-evidence (old run-loop contract) | broke=yes (14 tests on probe-delete) | verdict=BARE_METAL | loc=95 | concepts=5

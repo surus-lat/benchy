@@ -58,10 +58,21 @@ def grade(benchmark: dict, invoke: Callable[[str], str]) -> dict:
     choices = set(benchmark["task"]["output"]["choices"])
     rows = []
     for i, case in enumerate(benchmark["cases"]):  # i unused: id = position (c9)
-        prediction = invoke(case["input"])
         expected = case["expected"]
         if expected not in choices:
             raise ValueError(f"exam key outside declared output: {expected!r}")
+        # c16, donated from the old benchy run-loop contract: a system
+        # failure on ONE case is evidence, never an abort. the exam is fixed
+        # data — its defects are REFUSED (above); a real (cloud) system is
+        # not data, it fails, and the artifact must say so. prediction=None
+        # can never equal a declared choice, so the fused match scoring
+        # already scores it 0 — reliability lands in the same scalar the
+        # optimizer consumes (loss(flaky) > loss(good)).
+        try:
+            prediction = invoke(case["input"])
+            error = None
+        except Exception as exc:  # BaseException (Ctrl-C) still aborts
+            prediction, error = None, f"{type(exc).__name__}: {exc}"
         rows.append({
             # c9: no explicit index — position in the list IS the case id
             # (s07 c10). the artifact row is exactly what the exam produced.
@@ -69,6 +80,7 @@ def grade(benchmark: dict, invoke: Callable[[str], str]) -> dict:
             "expected": expected,
             "prediction": prediction,
             "score": 1.0 if prediction == expected else 0.0,
+            "error": error,
         })
     return {
         "benchmark": benchmark["path"],
