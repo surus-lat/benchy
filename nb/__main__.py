@@ -19,9 +19,11 @@ def main():
     spec_path = Path(a.system) if a.system.endswith(".json") else d / "systems" / f"{a.system}.json"
     art = Exam(d).run(json.loads(spec_path.read_text()), out=Path(a.out),
                       workers=a.workers, tries=a.tries)
-    print(f"{a.exam} score={art['score']:.3f} errors={art['errors']} "
+    # errors is a projection over the records — the CLI is its one reader
+    errors = sum(c["status"] == "error" for c in art["cases"])
+    print(f"{a.exam} score={art['score']:.3f} errors={errors} "
           f"done={len(art['cases'])}/{art['total']} -> {a.out}")
-    sys.exit(1 if art["errors"] else 0)
+    sys.exit(1 if errors else 0)
 
 
 if __name__ == "__main__":
