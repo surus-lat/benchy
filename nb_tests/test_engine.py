@@ -1,15 +1,15 @@
 """nb tests — the definition of broken. pytest nb_tests (explicit arg, always)."""
 import json
-import os
 import sys
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "nb"))
-from benchy import Benchmark, grade, invoke, ok, exam  # noqa: E402
+from benchy import Benchmark, grade, invoke  # noqa: E402
 
 HERE = Path(__file__).parent.parent / "bench" / "hello"
+bench_json = json.loads((HERE / "bench.json").read_text())
 
 
 @pytest.fixture
@@ -53,13 +53,15 @@ def test_artifact_contract(bench, dumb):
 
 
 # ---- task pillar ----
-def test_task_enum_gates_pred():
-    spec = {"out": {"enum": ["pos", "neg"]}}
-    assert ok(spec, "pos") and not ok(spec, "meh")
+def test_task_enum_declares_output_space():
+    # the enum is data (the declared output space for optimizers), not a gate:
+    # an out-of-enum prediction cannot match any want, so grading scores it 0.
+    spec = bench_json["task"]
+    assert spec["out"]["enum"] == ["pos", "neg"]
 
 
 def test_invalid_prediction_scores_zero(bench):
-    # a system emitting junk outside the enum is graded 0, not crashed
+    # a system emitting junk outside the enum is graded 0 by mismatch alone
     a = bench.run({"default": "junk"})
     assert a["score"] == 0.0
 

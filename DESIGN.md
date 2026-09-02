@@ -11,8 +11,11 @@ One file, `nb/benchy.py`, read top to bottom as the four pillars:
 SYSTEM   invoke()          — the AI-API: one protocol f(in, ctx) -> out.
                             Systems are DATA (rule+default | py) or callables;
                             a default-only rule IS a constant system.
-TASK     ok()              — the task IS its spec dict (in/out schema + ont
-                            path). ok() gates enum outputs.
+TASK     (no code)         — the task IS data: spec["task"] = in/out schema +
+                            ont path. An out-of-enum prediction cannot match
+                            any want, so grading already scores it 0 — the
+                            enum is the declared output space for optimizers,
+                            not a gate the grader needs. ok() deleted (c4).
 SCORING  grade()           — 'exact' | {'fields': weights}. importance hierarchy.
                             grade is the loss's atom.
 DATA     Benchmark/exam()  — bench.json = task + cases + scoring + systems.
@@ -40,7 +43,6 @@ filesystem — no registry object.
 | concept | pillar | why undeletable | survived |
 |---|---|---|---|
 | invoke | SYSTEM | the single AI-API protocol; every system shape plugs in here. Model/node/workflow/agent all become f(in,ctx)->out. const folded into default-only rule (c3). | 1 |
-| ok | TASK | enum gating: a prediction outside the output schema is not an answer. Vision: task defines the program's i/o. Was Task.ok; Task class deleted as noise (c1) — the task IS its dict. | 1 |
 | grade | SCORING | what good means; the atom of both score and loss. fields weights = importance hierarchy. | 0 |
 | exam | DATA | builds the graded artifact dict: per-case rows + aggregate + loss. The dict IS the exam — Exam class deleted as noise (c2); no separate writer concept. | 1 |
 | Benchmark.run | DATA | the exam-taking loop; hosts resume + fan-out + artifact write — all one loop, no sub-concepts. | 0 |
