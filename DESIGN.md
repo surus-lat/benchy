@@ -29,7 +29,9 @@ ENGINE   nb/engine.py                  compile / grade / run / as_loss (pure)
   (input, expected) pair; a row's POSITION in the artifact IS its id (c9
   deleted the explicit `case` index — derivable noise). Everything is a
   distribution; the artifact reports the point estimate plus per-case
-  evidence.
+  evidence. One fact, one address: the artifact carries the per-case rows
+  and the one aggregate — nothing derivable from them is stored twice
+  (c19 rejected the old `counts` block for exactly this).
 - **SYSTEM pillar** is a SPEC compiled by the engine: `compile(spec)` turns
   data into `invoke(text) -> prediction`. Today: keyword + constant (offline,
   no network). Cloud kinds join as new spec kinds — the exam-taker is

@@ -1,7 +1,9 @@
 # s10 iteration log — push cycles only (golem counts these lines).
 # baseline (not a push cycle): nb engine (5 functions, stdlib only), hello as
 # pure data, 15 invariant tests, golem PASS 3 files/112 loc/0 deps/7 concepts.
-# archaeology (cycles ~13-15, read-only audit of the old benchy) is a LATER session.
+# cycles 1-12: from zero. cycles 16-18: archaeology donations (c16 failure-
+# evidence, c17 empty-refused, c18 path-coherence — all BARE_METAL). c19: the
+# planned REJECTION cycle (old counts block — derivable, deleted).
 
 1 | pushed=_score_one+contains-rule | broke=no | verdict=HARD_PUSH | loc=107 | concepts=6
 2 | pushed=constant-kind->degenerate-keyword | broke=no | verdict=HARD_PUSH | loc=105 | concepts=6
@@ -76,3 +78,16 @@
 # literal check in the file layer (not a concept, no engine change). Pinned;
 # probe-deletion broke the pin. +4 loc under --allow-growth. 26 tests.
 18 | pushed=donation:path-coherence-cli-check (old OntologyPath registry==layout) | broke=yes (the pin on probe-delete) | verdict=BARE_METAL | loc=101 | concepts=5
+# c19 (ARCHAEOLOGY, the planned REJECTION cycle — donation offered from the old
+# artifact contract, AGENTS.md run_outcome.json counts block: passed/failed/
+# error/pending/no_samples/skipped task counts): donated into grade's return
+# as {passed, failed, error} (simplest form), pinned, then probe-deleted.
+# RESULT: only the donation's OWN presence pin broke (KeyError: 'counts') —
+# as_loss (reads score), the CLI (reads benchmark/score), every program
+# reading cases: untouched. The counts are a SECOND ADDRESS for len(cases)
+# plus the per-row scores — derivable, the c9/c16 law again (one address per
+# fact; don't store what a consumer can count). Verdict REJECTED: fully
+# deleted (block + pin), loc back to 101, 26 tests. The old system needed
+# counts because its aggregate EXCLUDED errored samples (score was blind to
+# reliability); ours includes them, so the one scalar already carries it.
+19 | pushed=donation:counts-block (old run_outcome.json) | broke=no (only the donation's own pin; derivable) | verdict=HARD_PUSH | loc=101 | concepts=5
