@@ -58,6 +58,10 @@ names, not 10 types.
   conventions docstring — the honest endpoint of contracts-first.
 - SCORINGS registry (cycle 6): a registry of one entry is a fake choice;
   load hardcodes exact_match, custom scoring rides the injected-scorer seam.
+- scoring-kind-in-data (cycle 7): benchmark.json's "scoring": {"kind": ...}
+  became a dangling pointer once the registry died — data that looked like
+  a choice but selected nothing. Custom scoring is injected python, not
+  data-declared kinds (the s05 finding, confirmed here).
 
 Current: 5 concepts, 4 files, 69 loc.  Public surface (module names):
 exact_match, Exam (+run, as_loss), load, locate, main = 5.
