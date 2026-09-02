@@ -85,7 +85,6 @@ class Exam:
     def __init__(self, dir):
         self.dir = Path(dir)
         self.spec = json.loads((self.dir / "exam.json").read_text())
-        self.path = self.spec["path"]
         self.cases = self.spec["cases"]
         self.weights = (self.spec.get("scoring") or {}).get("weights")
         outs = self.spec.get("out")
@@ -102,7 +101,7 @@ class Exam:
         """Take the exam concurrently (serial fails the 1000-case bar 16x over);
         `out` re-run = resume: ok cases kept, errored cases re-attempted."""
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
-        art = {"exam": self.path, "system": spec, "scoring": self.spec.get("scoring"),
+        art = {"system": spec, "scoring": self.spec.get("scoring"),
                "total": len(self.cases), "cases": []}
         out = Path(out) if out else None
         if out and out.exists():
@@ -111,8 +110,8 @@ class Exam:
             stale = [r for r in old.get("cases", [])
                      if (cur.get(r["id"]) or {}).get("input") != r.get("input")
                      or (cur.get(r["id"]) or {}).get("want") != r.get("want")]
-            if stale or (old.get("exam"), old.get("system"), old.get("scoring")) != (
-                    self.path, spec, self.spec.get("scoring")):
+            if stale or (old.get("system"), old.get("scoring")) != (
+                    spec, self.spec.get("scoring")):
                 raise ValueError(f"{out} belongs to a different exam/system — resume must match")
             art["cases"] = [r for r in old["cases"] if r.get("status") == "ok"]
         done = {r["id"]: r for r in art["cases"]}

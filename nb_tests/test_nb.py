@@ -66,7 +66,7 @@ def big_exam(dir, n, sleep=0.0, tag=""):
              for i in range(n)]
     p = dir / "exam.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"path": "/big", "out": ["pos", "neg"], "cases": cases}))
+    p.write_text(json.dumps({"out": ["pos", "neg"], "cases": cases}))
     return Exam(p.parent)
 
 
@@ -171,7 +171,7 @@ def test_kill_during_heavy_write_never_leaves_torn_artifact(tmp_path):
     cases = [{"id": f"h{i:03d}", "input": "x" * 100000 + str(i),
               "want": "pos" if i % 2 else "neg"} for i in range(n)]
     (tmp_path / "exam.json").write_text(json.dumps(
-        {"path": "/heavy", "out": ["pos", "neg"], "cases": cases}))
+        {"out": ["pos", "neg"], "cases": cases}))
     sp = tmp_path / "sys.json"
     sp.write_text(json.dumps({"kind": "always", "value": "pos"}))
     out = tmp_path / "heavy.json"
@@ -219,8 +219,7 @@ def test_weighted_scoring_is_data_not_code(tmp_path):
     d = tmp_path / "w"
     d.mkdir()
     (d / "exam.json").write_text(json.dumps({
-        "path": "/w", "out": ["x", "y"],
-        "scoring": {"weights": {"critical": 3.0, "nice": 1.0}},
+        "scoring": { "weights": { "critical": 3.0, "nice": 1.0 } },
         "cases": [{"id": "w1", "input": "in",
                    "want": {"critical": "x", "nice": "y"}}]}))
     e = Exam(d)
@@ -232,7 +231,7 @@ def test_weighted_scoring_is_data_not_code(tmp_path):
 def test_loud_reject_of_want_outside_declared_out(tmp_path):
     d = tmp_path / "bad"
     d.mkdir()
-    (d / "exam.json").write_text(json.dumps({"path": "/bad", "out": ["pos", "neg"],
+    (d / "exam.json").write_text(json.dumps({"out": ["pos", "neg"],
                               "cases": [{"id": "b", "input": "x", "want": "meh"}]}))
     with pytest.raises(ValueError, match="outside declared out"):
         Exam(d)
