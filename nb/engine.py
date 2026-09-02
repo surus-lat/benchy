@@ -37,13 +37,15 @@ def compile(spec: dict) -> Callable[[str], str]:
 def grade(benchmark: dict, invoke: Callable[[str], str]) -> dict:
     """Grade the exam: every case taken, scored, aggregated. Returns artifact.
 
-    Scoring is fused here: the only rule is 'match' (1pt per exact match,
-    exam score = mean). Unknown rules/aggregates are refused, not guessed.
+    Scoring is fused here: the only scoring is 'match' over cases, 'mean' over
+    the exam. Anything else — unknown rule, unknown aggregate, extra declared
+    keys nobody reads (the c8 lesson) — is refused, never guessed.
     """
-    if benchmark["scoring"]["rule"] != "match":
-        raise ValueError(f"unknown scoring rule: {benchmark['scoring']['rule']!r}")
-    if benchmark["scoring"]["aggregate"] != "mean":
-        raise ValueError(f"unknown aggregate: {benchmark['scoring']['aggregate']!r}")
+    # c11: two refusals of the same kind (unknown rule / unknown aggregate)
+    # fused into one literal: the scoring you declare must be EXACTLY the
+    # scoring implemented. the whole block is echoed in the refusal.
+    if benchmark["scoring"] != {"rule": "match", "aggregate": "mean"}:
+        raise ValueError(f"unknown scoring: {benchmark['scoring']!r}")
     # c8: the task declaration is load-bearing — an exam key outside the
     # declared output choices is a broken exam; refuse it, never guess it.
     choices = set(benchmark["task"]["output"]["choices"])

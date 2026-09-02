@@ -19,3 +19,10 @@
 8 | pushed=task-block(unenforced-claim) | broke=yes (presence guard only; engine never read it — lie fixed forward into a grade refusal) | verdict=NOISE_REMOVED | loc=92 | concepts=5
 9 | pushed=case-index-field | broke=yes (artifact-shape test pinned the derivable field; fixed forward — position IS the id, s07 c10) | verdict=NOISE_REMOVED | loc=91 | concepts=5
 10 | pushed=cli-silent-first-system-default | broke=yes (cli test pinned the default; fixed forward — refusal with exit 2, the system taking the exam is NAMED always; +1 net loc under --allow-growth) | verdict=NOISE_REMOVED | loc=92 | concepts=5
+# c11: the pin (test_unknown_aggregate_rejected, committed at fa3f33c) broke the
+# moment the aggregate refusal was deleted — the refusal is metal. Escalation:
+# the two same-kind refusals (unknown rule / unknown aggregate) fused into ONE
+# literal equality check — the scoring you declare must be EXACTLY the scoring
+# implemented (also refuses extra declared-but-unread keys, the c8 lesson).
+# loc 92->91, no growth. 18 tests.
+11 | pushed=aggregate-refusal-probe + scoring-refusals-fusion | broke=yes (the c11 pin) | verdict=BARE_METAL | loc=91 | concepts=5
