@@ -17,3 +17,5 @@
 10 | pushed=Exam class (cases list is the exam; empty-guard moved to load) | broke=yes | verdict=NOISE_REMOVED | loc=238 | concepts=11
 11 | pushed=Scoring class (pillar = scoring.json data + free score()) | broke=yes | verdict=NOISE_REMOVED | loc=236 | concepts=11
 12 | pushed=compile_systems (inlined into main; tests carry own helper) | broke=yes | verdict=NOISE_REMOVED | loc=229 | concepts=10
+13 | pushed=_backend_const (const == stub with empty rules; dumb-stub.json migrated) | broke=yes | verdict=NOISE_REMOVED | loc=224 | concepts=9
+14 | pushed=load task=spec alias + main dual error branches (names-or-all folded into the for) | broke=no | verdict=HARD_PUSH | loc=218 | concepts=9
