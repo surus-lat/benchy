@@ -33,15 +33,26 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | Benchmark.as_loss | SCORING/BENCH | (System)->float = 1 - run score; the exam AS a loss; the only loss (per-case aggregation lives in run's mean — a second as_loss was one-mean-away) | 0 |
 | compile_system | SYSTEM | the compiler front door: spec (data) → callable | 1 |
 | invoke | SYSTEM | THE protocol: the callable itself — `system(input) -> pred`. Not a function; the shape of every backend's return value | 1 |
-| _backend_stub | SYSTEM | keyword-table backend; makes the exam offline-runnable | 0 |
-| _backend_const | SYSTEM | dumbest possible system; proves scoring discriminates (0.5) | 0 |
+| _backend_stub | SYSTEM | keyword-table backend; makes the exam offline-runnable. Absorbed `const` in cycle 13 (rules:{} + default == a constant), so it is also the dumbest possible system | 1 |
 | _backend_http | SYSTEM | openai-compatible backend over stdlib urllib; the real world | 0 |
 | _backend_chain | SYSTEM | workflow = system whose backend composes systems; no new concept | 0 |
 | _backend_agent | SYSTEM | agent = model + tools + budget in a spec; the tool LOOP is compiler code — the falsification probe that proved composition needs no core concept | 0 |
-| load | BENCH | benchmark as data on disk, locatable by ontology path | 2 |
-| main | BENCH | CLI: run a benchmark dir against its systems (the systems-dir compile is inlined here — the CLI is the only engine customer of systems/*.json) | 3 |
+| load | BENCH | benchmark as data on disk, locatable by ontology path | 3 |
+| main | BENCH | CLI: run a benchmark dir against its systems (the systems-dir compile is inlined here — the CLI is the only engine customer of systems/*.json). Cycle 14 killed its dual error branches: empty systems dir is a quiet zero-exam, the only error is an unknown name | 4 |
 
 ## deletions
+
+Removed in cycle 14: `load`'s `task = spec` alias (the TASK pillar is
+the dict passed straight to Benchmark — an alias line is not a
+concept), `main`'s empty-`names` branch and empty-`systems` branch
+(`names or sorted(systems)` folds the first into the for; a benchmark
+with zero systems is a quiet zero-exam, not an error — the only CLI
+error left is an unknown name).
+
+Removed in cycle 13: `_backend_const` (a constant IS a stub with empty
+rules — `{"kind":"stub","rules":{},"default":X}`; four tests carried
+const-kind specs and broke; dumb-stub.json migrated). The four backends
+are now three: stub (absorbs const), http, chain, agent.
 
 Removed in cycle 12: `compile_systems` (single-customer helper — main
 was the engine's only caller; the dir-scan compile is now one dict

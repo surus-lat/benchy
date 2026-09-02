@@ -29,12 +29,6 @@ def _backend_stub(spec):
     return invoke
 
 
-def _backend_const(spec):
-    """always return a constant. The dumbest system that can take an exam."""
-    const = spec.get("const", None)
-    return lambda text: const
-
-
 def _backend_http(spec):
     """openai-compatible chat completion over stdlib urllib.
 
@@ -110,7 +104,6 @@ def _backend_agent(spec):
 
 _BACKENDS = {
     "stub": _backend_stub,
-    "const": _backend_const,
     "http": _backend_http,
     "chain": _backend_chain,
     "agent": _backend_agent,

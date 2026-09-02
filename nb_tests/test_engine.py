@@ -120,7 +120,7 @@ def test_benchmark_system_is_argument_not_field():
 
 def test_invoke_one_method():
     """the protocol: a system IS a callable — invoke(input) -> prediction."""
-    sys_fn = compile_system({"kind": "const", "const": "pos"})
+    sys_fn = compile_system({"kind": "stub", "rules": {}, "default": "pos"})
     assert sys_fn("anything") == "pos"
 
 
@@ -190,7 +190,7 @@ def test_agent_backend_is_pure_data():
             return ["tool", "lookup", "the answer"]
         return "pos"
 
-    tool = {"kind": "const", "const": "the answer is pos"}
+    tool = {"kind": "stub", "rules": {}, "default": "the answer is pos"}
     spec = {"kind": "agent", "model": fake_model, "tools": {"lookup": tool},
             "max_iters": 3}
     assert compile_system(spec)("what is it?") == "pos"
@@ -202,7 +202,7 @@ def test_agent_budget_out_graded_honestly():
     def loopy(text):
         return ["tool", "lookup", "x"]  # constant request: never answers
 
-    tool = {"kind": "const", "const": "ignored"}
+    tool = {"kind": "stub", "rules": {}, "default": "ignored"}
     spec = {"kind": "agent", "model": loopy, "tools": {"lookup": tool},
             "max_iters": 2}
     pred = compile_system(spec)("q")
@@ -211,7 +211,8 @@ def test_agent_budget_out_graded_honestly():
 
 def test_agent_unknown_tool_is_prediction():
     """unknown tool: the utterance IS the prediction (no raise, no magic)."""
-    spec = {"kind": "agent", "model": {"kind": "const", "const": ["tool", "nope", "x"]},
+    spec = {"kind": "agent",
+            "model": {"kind": "stub", "rules": {}, "default": ["tool", "nope", "x"]},
             "tools": {}, "max_iters": 3}
     assert compile_system(spec)("q") == ["tool", "nope", "x"]
 

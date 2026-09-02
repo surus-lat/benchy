@@ -24,13 +24,12 @@ def load(path) -> Benchmark:
     """read one benchmark directory -> Benchmark (task+scoring+data)."""
     d = Path(path)
     spec = json.loads((d / "task.json").read_text(encoding="utf-8"))
-    task = spec  # the TASK pillar is data: {"in": ..., "out": ...}
     scoring = json.loads((d / "scoring.json").read_text(encoding="utf-8"))
     cases = [(c["input"], c["expected"])
              for c in json.loads((d / "cases.json").read_text(encoding="utf-8"))]
     if not cases:
         raise ValueError("an exam needs at least one case")  # the data door guards shape
-    return Benchmark(task, scoring, cases)
+    return Benchmark(spec, scoring, cases)
 
 
 def main(argv=None) -> int:
@@ -44,12 +43,7 @@ def main(argv=None) -> int:
     sd = Path(bench_path) / "systems"
     systems = {p.stem: compile_system(json.loads(p.read_text(encoding="utf-8")))
                for p in sorted(sd.glob("*.json"))} if sd.is_dir() else {}
-    if not names:
-        names = sorted(systems)
-    if not systems:
-        print(f"no systems in {bench_path}/systems/")
-        return 2
-    for name in names:
+    for name in names or sorted(systems):
         if name not in systems:
             print(f"unknown system: {name!r} (have: {sorted(systems)})")
             return 2
