@@ -36,6 +36,9 @@ def main(argv: list[str]) -> int:
     artifact = engine.run(benchmark, system)
     Path(artifact_path).write_text(
         json.dumps(artifact, indent=2) + "\n", encoding="utf-8")
+    # c12: metal (s07 c3 proved CLI metal) — a person with no Python
+    # knowledge needs ONE human-readable line: which exam, which system,
+    # what score. the artifact file is for programs; this line is for people.
     print(f"{artifact['benchmark']} system={system['name']} score={artifact['score']}")
     return 0
 
