@@ -45,7 +45,7 @@ the task wrapper object (a bare list carries the answer space honestly).
 | invoke | system | the compiler pillar: a spec must become a prediction; cloud specs land here | 0 |
 | grade | scoring | the comparison policy; the whole scoring pillar is this one function | 1 |
 | run | exam | take the exam: per-case evidence + aggregate; the artifact contract | 0 |
-| as_loss | scoring | vision invariant: loss(dumb) > loss(good); benchmark-as-new-loss | 0 |
+| as_loss | scoring | cycle 5 tried to delete: broke the vision contract itself — GOLEM law 6 makes `loss = benchmark.as_loss()` unbreakable; the loss-export for prompt-optimizers is THE headline feature, not derivable noise | 1 |
 | main (CLI) | all | cycle 3 tried to delete it: engine ran only under pytest. the bar says offline end-to-end for a person, not a test file — CLI = metal | 1 |
 | task (declared answer space) | task | data: inferred enum absorbs typos + shrinks on unrepresented classes | 1 |
 | scoring.match (declared policy) | scoring | data: "what good means" belongs on the exam paper, not in code | 1 |
