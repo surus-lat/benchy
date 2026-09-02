@@ -62,7 +62,7 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 | locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme — the DIRECTORY is the address; flat lookup, load-time honesty (unknown keys / zero cases refused before anything runs); the walk+`path`-field died in c6 (a registry re-deriving the address is noise) | 1 |
 | run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone) | 1 |
 | new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load | 0 |
-| main | UX | dispatch + words-not-tracebacks; a CLI that raises stack traces at users is not a product | 0 |
+| (main dissolved — cycle 8) | UX | dispatch is module code in __main__.py; if/elif over two verbs IS the table; tests drive the real process (subprocess), so the argv seam was dead weight | — |
 
 ## flags
 
