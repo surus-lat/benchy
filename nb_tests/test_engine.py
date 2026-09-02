@@ -12,9 +12,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import nb
-from nb import Benchmark, Exam, Scoring, compile_system
+from nb import Benchmark, compile_system
 from nb.load import main as load_main
-from nb import load, compile_systems
+from nb import load, compile_systems, score
 
 BENCH = Path(__file__).resolve().parent.parent / "bench" / "hello"
 
@@ -78,25 +78,29 @@ def test_task_is_in_out_declaration():
 
 
 def test_scoring_exact_partial_weighted():
-    s = Scoring("exact")
-    assert s.score("pos", "pos") == 1.0 and s.score("neg", "pos") == 0.0
+    s = {"mode": "exact"}
+    assert score(s, "pos", "pos") == 1.0 and score(s, "neg", "pos") == 0.0
 
 
 def test_scoring_partial():
-    s = Scoring("partial")
-    assert s.score({"a": 1, "b": 2}, {"a": 1, "b": 3}) == 0.5
+    s = {"mode": "partial"}
+    assert score(s, {"a": 1, "b": 2}, {"a": 1, "b": 3}) == 0.5
 
 
 def test_scoring_weighted():
-    s = Scoring("weighted", weights={"a": 9, "b": 1})
-    assert s.score({"a": 1, "b": 2}, {"a": 1, "b": 2}) == 1.0
-    assert s.score({"a": 1, "b": 9}, {"a": 1, "b": 2}) == 0.9
-    assert s.score({"b": 2}, {"a": 1, "b": 2}) == 0.1
+    s = {"mode": "weighted", "weights": {"a": 9, "b": 1}}
+    assert score(s, {"a": 1, "b": 2}, {"a": 1, "b": 2}) == 1.0
+    assert score(s, {"a": 1, "b": 9}, {"a": 1, "b": 2}) == 0.9
+    assert score(s, {"b": 2}, {"a": 1, "b": 2}) == 0.1
 
 
-def test_exam_rejects_empty():
+def test_exam_rejects_empty(tmp_path):
+    """an empty exam is shape-invalid at the data door (load)."""
+    tmp_path.joinpath("task.json").write_text('{"in": "text", "out": "label"}')
+    tmp_path.joinpath("scoring.json").write_text('{"mode": "exact"}')
+    tmp_path.joinpath("cases.json").write_text("[]")
     try:
-        Exam([])
+        load(tmp_path)
         raised = False
     except ValueError:
         raised = True
@@ -104,8 +108,8 @@ def test_exam_rejects_empty():
 
 
 def test_benchmark_system_is_argument_not_field():
-    bench = Benchmark({"in": "text", "out": "label"}, Scoring("exact"),
-                      Exam([("x", "pos")]))
+    bench = Benchmark({"in": "text", "out": "label"}, {"mode": "exact"},
+                      [("x", "pos")])
     assert not any(isinstance(getattr(bench, a, None), type(bench))
                    for a in vars(bench))
 

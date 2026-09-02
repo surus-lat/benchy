@@ -1,17 +1,17 @@
 """nb — the engine. STDLIB ONLY.
 
 Four pillars. Bare metal:
-  TASK    the description of the program we search for: in -> out.
-  SCORING the grading function: what good means, and the loss.
-  DATA    the exam: n cases. A system takes it; we get graded evidence.
+  TASK    the description of the program we search for: in -> out (data).
+  SCORING the grading function: what good means, and the loss (data + score).
+  DATA    the exam: n (input, expected) cases (data). A system takes it;
+          we get graded evidence.
   SYSTEM  the exam taker: invoke(input) -> prediction. One method. That is
           the whole AI-API. Backends compile learned programs into it.
 """
 
-from .scoring import Scoring
-from .data import Exam
+from .scoring import score
 from .system import compile_system
 from .load import load, compile_systems
 from .benchmark import Benchmark
 
-__all__ = ["Scoring", "Exam", "compile_system", "Benchmark"]
+__all__ = ["score", "compile_system", "Benchmark"]

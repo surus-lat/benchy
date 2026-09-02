@@ -1,12 +1,9 @@
 {
- "files": 7,
- "loc": 259,
+ "files": 5,
+ "loc": 236,
  "deps": 0,
  "concepts": [
   "Benchmark",
-  "Exam",
-  "Scoring",
-  "Task",
   "_backend_agent",
   "_backend_chain",
   "_backend_const",
@@ -15,8 +12,9 @@
   "compile_system",
   "compile_systems",
   "load",
-  "main"
+  "main",
+  "score"
  ],
- "cycles": 7,
+ "cycles": 11,
  "why": null
 }
