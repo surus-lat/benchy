@@ -1,23 +1,18 @@
-"""the engine: five functions over the four data pillars.
+"""the engine: four pure functions over the four data pillars.
 
-load     DATA pillar        bench_root/<path>.json -> benchmark dict
 compile  SYSTEM pillar      spec dict -> invoke(text)->pred (the compiler)
 grade    SCORING pillar     benchmark + predictions -> artifact
 run      exam               benchmark + system -> artifact (system = argument)
 as_loss  export             benchmark -> (system) -> float
+
+c4 deleted `load`: the engine is PURE — values in, values out. Files are
+persistence; path->file resolution lives in the CLI (__main__), the file
+layer. The benchmark value is the metal; the file is one encoding of it.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Callable
-
-
-def load(bench_root: str, path: str) -> dict:
-    """Load a benchmark by ontology path, e.g. load(root, '/sentiment')."""
-    file = Path(bench_root) / (path.strip("/") + ".json")
-    return json.loads(file.read_text(encoding="utf-8"))
 
 
 def compile(spec: dict) -> Callable[[str], str]:

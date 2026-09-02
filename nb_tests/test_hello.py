@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from nb import as_loss, compile, load, run
+from nb import as_loss, compile, grade, run
 
 BENCH = Path(__file__).resolve().parents[1] / "bench" / "hello"
 GOOD = {"name": "good", "kind": "keyword", "pos": ["great", "excelente", "loved"], "default": "neg"}
@@ -18,7 +18,8 @@ DUMB = {"name": "dumb", "kind": "keyword", "pos": [], "default": "pos"}
 
 
 def bench() -> dict:
-    return load(str(BENCH), "/sentiment")
+    # the file layer, inlined: path -> file -> value (engine stays pure)
+    return json.loads((BENCH / "sentiment.json").read_text(encoding="utf-8"))
 
 
 def system_specs() -> dict:

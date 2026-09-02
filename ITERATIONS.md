@@ -5,3 +5,4 @@
 1 | pushed=_score_one+contains-rule | broke=no | verdict=HARD_PUSH | loc=107 | concepts=6
 2 | pushed=constant-kind->degenerate-keyword | broke=no | verdict=HARD_PUSH | loc=105 | concepts=6
 3 | pushed=grade->run-fusion | broke=yes | verdict=BARE_METAL | loc=105 | concepts=6
+4 | pushed=load(engine-purity) | broke=no | verdict=HARD_PUSH | loc=102 | concepts=5
