@@ -9,12 +9,16 @@ JSON dict with per-case scores and the aggregate.
 """
 
 
+from .scoring import score
+
+
 class Benchmark:
-    """task + scoring + data. The system is the argument, not a field.
+    """task + scoring + exam. The system is the argument, not a field.
 
     task is DATA: the {"in": ..., "out": ...} declaration from task.json.
-    The engine never interprets it — it is the program description, the
-    thing the SYSTEM compiles against; scoring and exam carry the grading.
+    exam is DATA: the [(input, expected), ...] cases list. The engine
+    never interprets either — the SYSTEM compiles against the task;
+    scoring grades each prediction; the exam is just the evidence.
     """
 
     def __init__(self, task, scoring, exam):
@@ -31,10 +35,10 @@ class Benchmark:
                 "input": inp,
                 "expected": expected,
                 "prediction": pred,
-                "score": self.scoring.score(pred, expected),
+                "score": score(self.scoring, pred, expected),
             })
-        score = sum(c["score"] for c in per_case) / len(per_case)
-        return {"score": score, "cases": per_case}
+        exam_score = sum(c["score"] for c in per_case) / len(per_case)
+        return {"score": exam_score, "cases": per_case}
 
     def as_loss(self):
         """(System) -> float. The benchmark AS a loss function."""

@@ -16,8 +16,7 @@ import sys
 from pathlib import Path
 
 from .benchmark import Benchmark
-from .data import Exam
-from .scoring import Scoring
+from .scoring import score
 from .system import compile_system
 
 
@@ -26,10 +25,12 @@ def load(path) -> Benchmark:
     d = Path(path)
     spec = json.loads((d / "task.json").read_text(encoding="utf-8"))
     task = spec  # the TASK pillar is data: {"in": ..., "out": ...}
-    scoring = Scoring(**json.loads((d / "scoring.json").read_text(encoding="utf-8")))
+    scoring = json.loads((d / "scoring.json").read_text(encoding="utf-8"))
     cases = [(c["input"], c["expected"])
              for c in json.loads((d / "cases.json").read_text(encoding="utf-8"))]
-    return Benchmark(task, scoring, Exam(cases))
+    if not cases:
+        raise ValueError("an exam needs at least one case")  # the data door guards shape
+    return Benchmark(task, scoring, cases)
 
 
 def compile_systems(path) -> dict:

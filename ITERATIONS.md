@@ -14,3 +14,5 @@
 7 | pushed=Scoring.as_loss (fused into Benchmark.as_loss) + Task.__repr__ | broke=no | verdict=HARD_PUSH | loc=269 | concepts=14
 8 | pushed=Case class (plain tuples) + Exam.__len__ | broke=no | verdict=HARD_PUSH | loc=259 | concepts=13
 9 | pushed=Task class (pillar survives as data on Benchmark.task) | broke=yes | verdict=NOISE_REMOVED | loc=250 | concepts=12
+10 | pushed=Exam class (cases list is the exam; empty-guard moved to load) | broke=yes | verdict=NOISE_REMOVED | loc=238 | concepts=11
+11 | pushed=Scoring class (pillar = scoring.json data + free score()) | broke=yes | verdict=NOISE_REMOVED | loc=236 | concepts=11

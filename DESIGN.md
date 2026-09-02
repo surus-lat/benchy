@@ -10,10 +10,10 @@ returns. Nothing else exists.
 
 ```
 TASK      {"in": ..., "out": ...}             task.json — the program description
-SCORING   Scoring(mode, weights).score()    what good means (per-case 0..1)
-DATA      Exam([(input, expected), ...])       the exam; JSON on disk
+SCORING   score(spec, pred, expected) -> 0..1   spec = scoring.json dict (data)
+DATA      [(input, expected), ...]          cases.json — the exam; JSON on disk
 SYSTEM    compile_system(spec) -> callable  the compiler front door
-BENCH     Benchmark(t, s, e).run(system)    the system is the ARGUMENT
+BENCH     Benchmark(t, s, cases).run(system)  the system is the ARGUMENT
           Benchmark.as_loss() -> (System)->float   the exam AS a loss
 
 a benchmark on disk = a directory:
@@ -26,10 +26,8 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | concept | pillar | why undeletable | survived |
 |---|---|---|---|
 | task (data) | TASK | the task.json dict IS the program description (in→out); the engine never interprets it — the SYSTEM compiles against it; without it the exam has no subject. Its class wrapper died; the data survived | 1 |
-| Scoring | SCORING | grading is what makes a benchmark a loss function; deleting it leaves only raw predictions | 0 |
-| Exam | DATA | the exam is the data; distribution → point estimate happens here | 0 |
-| Exam.__iter__ | DATA | run() iterates the exam — the exam's ONLY interface; a Case class was one attribute-access away from a tuple | 0 |
-| Scoring.score | SCORING | per-case 0..1; the only place grades happen | 0 |
+| scoring (data) + score() | SCORING | the scoring.json dict IS the declaration (mode, weights); the free score(spec, pred, expected) -> 0..1 is the only place grades happen; grading is what makes a benchmark a loss function. The Scoring class that carried the dict died in cycle 11 | 1 |
+| exam (data) | DATA | the cases list [(input, expected), ...] IS the exam — distribution → point estimate happens in run's mean; the Exam class that wrapped it (empty-check + __iter__) died in cycle 10 | 1 |
 | Benchmark | TASK+DATA+SCORING | the exam as one value; the system is its argument, not a field | 0 |
 | Benchmark.run | BENCH | takes the exam: invoke per case, grade each, aggregate | 0 |
 | Benchmark.as_loss | SCORING/BENCH | (System)->float = 1 - run score; the exam AS a loss; the only loss (per-case aggregation lives in run's mean — a second as_loss was one-mean-away) | 0 |
@@ -45,6 +43,17 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | main | BENCH | CLI: run a benchmark dir against its systems | 3 |
 
 ## deletions
+
+Removed in cycle 11: `Scoring` (the class — it existed only to carry
+mode+weights, a two-field wrapper around the scoring.json dict; the
+pillar survives as data on Benchmark.scoring + the free score()
+function; methods were never separate golem concepts).
+
+Removed in cycle 10: `Exam` (the class — after Case died it was a
+non-empty check + __iter__; the emptiness guard moved to load(), the
+only door where data enters; Benchmark.exam is the plain cases list,
+which iterates identically), `nb/data.py` (the file existed to hold
+the class).
 
 Removed in cycle 9: `Task` (the class — a behavior-free two-attribute
 wrapper around the task.json dict; the TASK pillar survives as pure
