@@ -11,21 +11,32 @@ class Exam:
     # benchmark.run(system) / benchmark.as_loss()) and hides the exam's
     # internal shape; a 3-tuple leaked that shape to every caller (cli had
     # to destructure AND re-wrap, plus a run/run collision).
-    # cycle 7: the exam is PURE — cases + scoring.  path/dir attributes
-    # died: addresses are the caller's business (the CLI derives them from
+    # cycle 7: the exam is PURE — cases.  path/dir attributes died:
+    # addresses are the caller's business (the CLI derives them from
     # the ontology path it already holds); the artifact's identity fields
-    # died with them (the filename IS the identity, cycle 3's finding).
+    # are composed at the write (in the CLI), not carried by the exam.
+    # cycle 11: the scorer PARAM died — scoring is derived engine code
+    # (IDEAS.md: the scoring function derives from the output schema),
+    # so the exam's whole state is its cases.  One field, one concept.
 
-    def __init__(self, cases, scorer):
-        self.cases, self.scorer = cases, scorer
+    def __init__(self, cases):
+        self.cases = cases
 
     def run(self, system) -> dict:
         """The system takes the exam; returns the graded artifact (JSON-ready)."""
+        # the SCORING pillar lives HERE (cycle 11): exact match, 1 point per
+        # case, mean over the exam — the hello bar.  IDEAS.md: the scoring
+        # function DERIVES from the output schema (enum -> exact match),
+        # so it is engine code, not data and not a constructor seam.  The
+        # scorer param died: no caller ever passed a different one, so the
+        # "configurable scoring" story was speculative — when a real exam
+        # needs weights, the data format grows a scoring key LOUDLY (the
+        # exact-set check will demand it), never a silent Python seam.
         pages = []
         for case in self.cases:
             prediction = system.invoke(case["input"])
             pages.append({**case, "prediction": prediction,
-                          "score": self.scorer(case, prediction)})
+                          "score": float(prediction == case["expected"])})
         return {"cases": pages,
                 "score": sum(p["score"] for p in pages) / len(pages)}
 
@@ -59,8 +70,4 @@ def locate(bench_root, path):
         raise ValueError(f"{f}: an exam is exactly {{task, cases}}; got {sorted(data)}")
     if not data["cases"]:
         raise ValueError(f"{f}: no cases — nothing to grade; add cases to benchmark.json")
-    # exact-match scoring: 1 point per exact match (the hello bar); the
-    # task's output enum is what the cloud compiler reads — the engine
-    # never looks (cycle 1: the engine's task plumbing was a lens).
-    exact = lambda case, prediction: float(prediction == case["expected"])
-    return Exam(data["cases"], exact)
+    return Exam(data["cases"])

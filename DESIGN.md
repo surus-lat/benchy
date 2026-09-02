@@ -51,11 +51,14 @@ Exam.run(system)         -> graded artifact {system, benchmark, cases:
                             [{input, expected, prediction, score}], total,
                             score} (mean; interprets alone — and names its
                             own scope: total says graded-of-total, so a smoke
-                            run cannot masquerade as a full run, c10)
+                            run cannot masquerade as a full run, c10).
+                            Scoring is INSIDE (c11): exact match, derived
+                            from the output enum — engine code, not data
 Exam.as_loss()           -> (system) -> 1 - score, lower is better
 locate(bench_root, path) ontology path -> exam (the address IS the registry);
-                            load-time honesty: unknown keys and zero cases
-                            are refused before anything runs
+                            flat lookup, load-time honesty: the exam is
+                            EXACTLY {task, cases} (enforced, c9) and zero
+                            cases are refused before anything runs
 ```
 
 Errors are spoken words (`benchy: <reason>`), never tracebacks — a product
@@ -65,9 +68,9 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
-| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both; cycle 7: grading is PURE (cases + scorer) — path/dir address bookkeeping died as lenses (identity composes at the write, in the CLI) | 2 |
+| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both; cycle 7: grading is PURE (cases) — path/dir address bookkeeping died as lenses (identity composes at the write, in the CLI); cycle 11: the scorer param died — scoring is DERIVED engine code (exact match ← output enum, IDEAS.md), the exam's whole state is its cases (one field, one concept) | 3 |
 | locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme — the DIRECTORY is the address; flat lookup, load-time honesty (unknown keys / zero cases refused before anything runs); the walk+`path`-field died in c6 (a registry re-deriving the address is noise) | 1 |
-| run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone) | 1 |
+| run | UX+SYSTEM+DATA | the take-the-exam command; binds the taker via runpy (c12: one line returning the dict — importlib's 3-line ceremony bought a module object whose only use was getattr) and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone) | 2 |
 | new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load; c9: teaches a BLANK task {} (a typed example is a type-lie the engine does not check) and the ack line teaches the case shape in words | 0 |
 | (main dissolved — cycle 8) | UX | dispatch is module code in __main__.py; if/elif over two verbs IS the table; tests drive the real process (subprocess), so the argv seam was dead weight | — |
 

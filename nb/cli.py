@@ -10,9 +10,8 @@ read your evidence); a digest verb would be a formatter, not a product word.
 `benchy` is `python -m nb` until packaging earns a console script.
 bench/ is the exam corpus (addressed by ontology path), runs/ the evidence.
 """
-import importlib.util
 import json
-import sys
+import runpy
 from pathlib import Path
 
 from .exam import locate
@@ -37,16 +36,18 @@ def run(bench, system, limit=None):
     total = len(exam.cases)
     exam.cases = exam.cases[:limit]
     d = Path("bench") / bench.lstrip("/")
-    spec = importlib.util.spec_from_file_location("systems", d / "systems.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    if not hasattr(mod, system):
+    # c12: the binding seam is runpy — one line, returns the module's dict;
+    # the 3-line importlib ceremony (spec+module+exec) bought a module
+    # OBJECT whose only use was getattr.  The taker is data addressed by
+    # name, not a Python module identity.
+    mod = runpy.run_path(str(d / "systems.py"))
+    if system not in mod:
         raise LookupError(f"no taker {system!r} in {d}/systems.py")
     # the artifact interprets alone (c4) so it carries its own identity —
     # WHO took / WHICH exam — composed here, not in Exam: grading is pure
     # (cases + score); identity belongs to the write, and the CLI already
     # holds both addresses.  Exam.path/Exam.dir died as lenses (cycle 7).
-    artifact = {"system": system, "benchmark": bench, "total": total, **exam.run(getattr(mod, system))}
+    artifact = {"system": system, "benchmark": bench, "total": total, **exam.run(mod[system])}
     out = Path("runs") / f"{bench.lstrip('/').replace('/', '-')}-{system}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(artifact, indent=1) + "\n")
