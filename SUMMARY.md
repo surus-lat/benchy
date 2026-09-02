@@ -3,14 +3,8 @@
 ## Final metrics (golem report verbatim)
 
 ```json
-{
-  "cycles": 15,
-  "verdicts": {"NOISE_REMOVED": 2, "HARD_PUSH": 9, "BARE_METAL": 4},
-  "files": 2,
-  "loc": 46,
-  "deps": 0,
-  "concepts": 3
-}
+{"cycles": 15, "verdicts": {"NOISE_REMOVED": 2, "HARD_PUSH": 9, "BARE_METAL": 4},
+ "files": 2, "loc": 46, "deps": 0, "concepts": 3}
 ```
 
 `golem.py check --final` → PASS (15 cycles ≥ 12, last verdict HARD_PUSH).
