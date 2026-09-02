@@ -16,3 +16,4 @@
 9 | pushed=Task class (pillar survives as data on Benchmark.task) | broke=yes | verdict=NOISE_REMOVED | loc=250 | concepts=12
 10 | pushed=Exam class (cases list is the exam; empty-guard moved to load) | broke=yes | verdict=NOISE_REMOVED | loc=238 | concepts=11
 11 | pushed=Scoring class (pillar = scoring.json data + free score()) | broke=yes | verdict=NOISE_REMOVED | loc=236 | concepts=11
+12 | pushed=compile_systems (inlined into main; tests carry own helper) | broke=yes | verdict=NOISE_REMOVED | loc=229 | concepts=10

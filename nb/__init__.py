@@ -11,7 +11,7 @@ Four pillars. Bare metal:
 
 from .scoring import score
 from .system import compile_system
-from .load import load, compile_systems
+from .load import load
 from .benchmark import Benchmark
 
 __all__ = ["score", "compile_system", "Benchmark"]

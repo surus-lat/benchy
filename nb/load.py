@@ -33,17 +33,6 @@ def load(path) -> Benchmark:
     return Benchmark(task, scoring, cases)
 
 
-def compile_systems(path) -> dict:
-    """compile systems/*.json -> {name: system}. The only systems door."""
-    d = Path(path) / "systems"
-    if not d.is_dir():
-        return {}
-    out = {}
-    for p in sorted(d.glob("*.json")):
-        out[p.stem] = compile_system(json.loads(p.read_text(encoding="utf-8")))
-    return out
-
-
 def main(argv=None) -> int:
     """CLI: python -m nb.load bench/hello [system ...] — the exam takers take the exam."""
     args = list(sys.argv[1:] if argv is None else argv)
@@ -52,7 +41,9 @@ def main(argv=None) -> int:
         return 2
     bench_path, *names = args
     bench = load(bench_path)
-    systems = compile_systems(bench_path)
+    sd = Path(bench_path) / "systems"
+    systems = {p.stem: compile_system(json.loads(p.read_text(encoding="utf-8")))
+               for p in sorted(sd.glob("*.json"))} if sd.is_dir() else {}
     if not names:
         names = sorted(systems)
     if not systems:
