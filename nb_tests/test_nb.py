@@ -74,8 +74,9 @@ def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     sleep = 0.01  # per attempt; stands in for real per-case exam-taker latency
     sys_spec = {"kind": "flaky", "fails": 1, "sleep": sleep,
                 "of": {"kind": "always", "value": "pos"}}
+    workers = 16
     t0 = time.monotonic()
-    art = e.run(sys_spec, out=tmp_path / "a.json", workers=16)
+    art = e.run(sys_spec, out=tmp_path / "a.json", workers=workers)
     dt = time.monotonic() - t0
     assert len(art["cases"]) == 1000
     assert all(c["tries"] == 2 for c in art["cases"])  # ok on 2nd -> no errors
@@ -84,6 +85,15 @@ def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     # pure sleep (sleep never undersleeps), so a serial runner can NOT pass.
     serial_floor = 2 * 1000 * sleep
     assert dt < serial_floor * 0.75, f"not concurrent enough: {dt:.1f}s"
+    # c14: TWO-SIDED. The upper bound proves fan-out only if the sleep work
+    # really happened; the lower bound certifies it: dt can never beat the
+    # ideal concurrent floor (total sleep / workers — sleep never undersleeps,
+    # so nothing can cheat from below). A mutant that skips the flaky sleep
+    # finishes ~50x faster and now FAILS: instant "concurrency" that proved
+    # nothing. Mutation-verified: deleting the sleep(delay) call broke this
+    # judge on the lower bound alone (c13's lesson applied to c1's evidence).
+    ideal = serial_floor / workers
+    assert dt > ideal * 0.5, f"sleep work skipped: {dt:.3f}s vs ideal {ideal:.2f}s"
 
 
 def test_flaky_exhausting_retries_is_loud_not_silent(tmp_path):
