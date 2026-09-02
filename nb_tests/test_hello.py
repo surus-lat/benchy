@@ -85,6 +85,14 @@ class TestPillarScoring:
         with pytest.raises(ValueError):
             run(b, GOOD)
 
+    def test_unknown_aggregate_rejected(self):
+        # c11: the aggregate refusal was claimed but untested (3 trees old
+        # lesson). pinned first, then deletion-probed.
+        b = bench()
+        b["scoring"]["aggregate"] = "median"
+        with pytest.raises(ValueError):
+            run(b, GOOD)
+
     def test_exam_key_outside_declared_output_rejected(self):
         # c8: the task declaration is load-bearing, not decoration
         b = bench()
