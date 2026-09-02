@@ -1,11 +1,11 @@
 # s06 iterations — one line per push cycle (golem format)
 # Baseline (cycle 0, not a push): core.py contracts (Task, Case, Scored,
-# System, Scorer — zero behavior), exam.py loop (Exam/load/locate/exact_match),
+# System, Scorer — zero behavior), exam.py loop (Exam/run/locate/exact_match),
 # __main__ CLI, hello benchmark as pure data + two stub takers. 10 concepts,
 # ~95 loc. pytest green, golem baseline recorded. Every cycle below pushes.
 1 | pushed=Scorer-Protocol-class (accidental discovery: declared protocol class, implemented as function, broke 7 tests) | broke=yes | verdict=NOISE_REMOVED | loc=93 | concepts=9
 2 | pushed=Scorer-type-alias (named contract deleted; scoring = plain callable convention, seam survived duck-typed) | broke=yes (NameError in SCORINGS annotation, fixed forward) | verdict=NOISE_REMOVED | loc=89 | concepts=9
-3 | pushed=Scored-TypedDict then escalated: conforms-artifact-field + Task-type + Exam.task-param (first push TOO_SOFT, escalation deleted 3 concepts) | broke=yes (tests guarded removed surface; fixed forward — task/conforms were annotation-cargo) | verdict=HARD_PUSH | loc=77 | concepts=7
+3 | pushed=Scored-TypedDict then escalated: conforms-artifact-field + Task-type + Exam.task-param (first push TOO_SOFT, escalation deleted 3 concepts) | broke=no (deletion consumed its own only test; task/conforms were annotation-cargo) | verdict=HARD_PUSH | loc=77 | concepts=7
 4 | pushed=locate (delete ontology search) | broke=yes (ontology test: path /sentiment -> exam is a vision invariant, not directory convention) | verdict=BARE_METAL | loc=77 | concepts=7
 5 | pushed=System-Protocol then escalated: Case-TypedDict + all typed annotations (core.py is now a conventions docstring, zero classes) | broke=no (deletion consumed its own only test; structural conformance was annotation-cargo) | verdict=HARD_PUSH | loc=70 | concepts=5
 6 | pushed=SCORINGS registry (scoring kind hardcoded in load; a registry of one entry was a fake choice, custom scoring rides the injected-scorer seam) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
@@ -17,3 +17,4 @@
 12 | pushed=Exam-class (dissolve to free functions over a (cases,scorer,path) tuple, s03-style) | broke=yes (7 tests: the class-shaped API exam.run/as_loss/cases is the vision invariant's own syntax `benchmark.run(system)`, AND golem growled GREW concepts 4->5 — the class is the concept-compressor: methods count free inside it) | verdict=BARE_METAL | loc=62 | concepts=4
 13 | pushed=core.py (the conventions-docstring file — is a docstring engine code?) | broke=no (fully deleted: the conventions live in the values; the tests pin the artifact schema and stubs.py documents .invoke — a doc duplicating the spec in two other places is noise; __init__ docstring casualty fixed forward) | verdict=HARD_PUSH | loc=50 | concepts=4
 14 | pushed=exact_match (inline the default scorer as an anonymous lambda in locate; injection seam Exam(cases, scorer) untouched) | broke=no (fully deleted: no test ever named the default — the custom-scorer swap injects positionally, so an unnamed default is MORE honest: the seam is the contract, the default is just locate's policy) | verdict=HARD_PUSH | loc=48 | concepts=3
+15 | pushed=__init__.py (delete the docstring file) then escalated: artifact "loss" write-only field + repo salvage (benchmark.json was untracked — root *.json gitignore silently ignored the whole exam; .gitignore now exempts bench/**/benchmark.json) | broke=no (fully deleted: namespace packages carry the import; loss deleted from artifact — as_loss and main each derive 1-score at their own seam; the bar demands per-case scores + aggregate, loss is a lens not a fact) | verdict=HARD_PUSH | loc=46 | concepts=3

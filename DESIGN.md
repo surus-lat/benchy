@@ -21,12 +21,13 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
     benchmark.json      the exam as pure data: path (ontology), task (in/out
                         schema — pass-through, the engine does not read it),
                         cases
-    Exam.run(system)    -> graded artifact (per-case scores + aggregate + loss)
-    Exam.as_loss()      -> (system) -> float, lower is better
+    Exam.run(system)    -> graded artifact (per-case scores + aggregate score)
+    Exam.as_loss()      -> (system) -> float = 1 - score, lower is better
     System.invoke(x)    -> prediction   (structural conformance, no inheritance)
     scorer(case, pred)  -> float        (any callable, injected at Exam
-                        construction — the swap seam; exact_match is the
-                        built-in default; data-declared kinds deleted cycle 6)
+                        construction — the swap seam; the default is an
+                        anonymous exact-match lambda inside locate since
+                        cycle 14; data-declared kinds deleted cycle 6)
 
 The conventions (case {input, expected}, artifact shape, .invoke) are carried
 by the VALUES and pinned by the tests — since cycle 13 there is no core.py:
@@ -87,6 +88,19 @@ locate's lambda is just its default policy.
   Zero tests or callers referenced it by name (the swap test injects
   positionally); a named default invited `from nb.exam import exact_match`,
   which would have made the default itself a load-bearing public surface.
+- __init__.py (cycle 15): one docstring line; namespace packages carry the
+  `import nb.exam` and `python -m nb` paths without it. Engine files 3->2.
+- artifact "loss" field (cycle 15): the only write-only field left — no test
+  or disk reader consumed it. The acceptance bar demands per-case scores +
+  the aggregate; loss is a LENS over score (1-score), and each in-memory
+  consumer (as_loss, main's print) now derives it at its own seam. On-disk
+  evidence carries facts, not every projection of the facts.
+- benchmark.json untracked (cycle 15 repo salvage, found while pushing): the
+  root .gitignore's `*.json` silently ignored the ENTIRE exam — the vision's
+  "benchmark is DATA" invariant was invisible to version control; a fresh
+  checkout could not run the acceptance bar. Fixed: `!bench/**/benchmark.json`
+  in .gitignore + the file is now tracked. Lesson: a data-format engine whose
+  data isn't in git has no engine at all.
 - Scored record (cycle 3): `{**case, prediction, score}` is self-describing.
 - Task record + Exam.task + artifact `conforms` (cycle 3): the task pillar is
   data (benchmark.json), not engine state; `conforms` was a second verdict
@@ -110,8 +124,10 @@ locate's lambda is just its default policy.
   conventions live in the values and are PINNED BY THE TESTS
   (test_artifact_is_graded_json pins the artifact schema; stubs.py documents
   .invoke). A spec written in three places is two places of drift risk.
-  Engine is now 3 files: __init__ (docstring), __main__ (2-line shim),
-  exam.py (all behavior).
+  Engine is now 2 files after cycle 15: __main__ (2-line shim), exam.py
+  (all behavior) — __init__.py deleted (namespace package).
 
-Current: 3 concepts, 3 files, 48 loc.  Public surface (module names):
-Exam (+run, as_loss), locate, main = 3.
+Current: 3 concepts, 2 files, 46 loc.  Public surface (module names):
+Exam (+run, as_loss), locate, main = 3.  Engine dir: nb/exam.py (all
+behavior) + nb/__main__.py (2-line shim); __init__.py deleted cycle 15
+(namespace package).

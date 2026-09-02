@@ -7,6 +7,6 @@ pure data, locatable by ontology path /sentiment. Scoring is exact match
 `stubs.py` holds two example exam-takers (systems under test). They are not
 part of the benchmark; any invoked program can take the exam.
 
-    .venv/bin/python -m pytest nb_tests -q           # the acceptance run
-    .venv/bin/python -m nb bench/hello good           # run one taker, write artifact
-    .venv/bin/python -m nb bench/hello dumb
+    .venv/bin/python -m pytest nb_tests -q                  # the acceptance run
+    .venv/bin/python -m nb bench /sentiment good            # run one taker, write artifact
+    .venv/bin/python -m nb bench /sentiment dumb
