@@ -1,3 +1,3 @@
 # s05 iterations — golem log
 
-# cycle 0 was the bootstrap (schema + interpreter + hello), logged as prose so it does not count as a push cycle.
+1 | pushed=run.py+main (CLI as separate file/concept) | broke=yes | verdict=NOISE_REMOVED | loc=72 | concepts=9
