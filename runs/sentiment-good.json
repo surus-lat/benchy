@@ -1,6 +1,7 @@
 {
  "system": "good",
  "benchmark": "/sentiment",
+ "total": 6,
  "cases": [
   {
    "input": "this works great",

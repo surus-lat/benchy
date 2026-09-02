@@ -18,5 +18,5 @@ try:
         new(*argv[1:2])
     else:
         raise SystemExit(cli.__doc__.strip())
-except (LookupError, ValueError, FileNotFoundError, TypeError) as e:
+except (LookupError, ValueError, FileNotFoundError, TypeError, ZeroDivisionError) as e:
     raise SystemExit(f"benchy: {e}")

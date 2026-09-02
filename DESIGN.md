@@ -30,21 +30,28 @@ benchy run <bench> <sys> [--limit N]
                             artifact -> runs/<path>-<sys>.json
                             (the ontology path IS the artifact identity)
 
-benchmark.json           {task, cases} — the whole exam, pure data; unknown keys
-                            are loud (an exam is exactly this).  The DIRECTORY
-                            IS the ontology path (cycle 6 deleted the `path`
-                            data field — a second address; the walk existed
-                            only to reconcile it).  task stays as
-                            taker-facing data: the cloud compiler reads it
-                            to build prompts; the engine passes it through
-                            untouched (cycle 1 deleted the engine's own task
-                            plumbing — a lens)
+benchmark.json           {task, cases} — the whole exam, pure data; EXACTLY these
+                            keys, enforced (cycle 9: the format was a docstring
+                            claim until a test-first invariant failed against
+                            the engine; one message names missing AND junk
+                            keys).  The DIRECTORY IS the ontology path
+                            (cycle 6 deleted the `path` data field — a second
+                            address; the walk existed only to reconcile it).
+                            task stays as taker-facing data: the cloud
+                            compiler reads it to build prompts; the engine
+                            passes it through untouched (cycle 1 deleted the
+                            engine's own task plumbing — a lens); its
+                            presence is enforced, its CONTENT is free (the
+                            scaffold teaches a blank {} — any typed example
+                            is a type-lie the engine does not check)
 systems.py               the exam-takers, NOT part of the benchmark:
                             a system is any invoked program; the cloud
                             taker (steering addendum) joins here as a spec
 Exam.run(system)         -> graded artifact {system, benchmark, cases:
-                            [{input, expected, prediction, score}], score}
-                            (mean; interprets alone)
+                            [{input, expected, prediction, score}], total,
+                            score} (mean; interprets alone — and names its
+                            own scope: total says graded-of-total, so a smoke
+                            run cannot masquerade as a full run, c10)
 Exam.as_loss()           -> (system) -> 1 - score, lower is better
 locate(bench_root, path) ontology path -> exam (the address IS the registry);
                             load-time honesty: unknown keys and zero cases
@@ -61,13 +68,13 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 | Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both; cycle 7: grading is PURE (cases + scorer) — path/dir address bookkeeping died as lenses (identity composes at the write, in the CLI) | 2 |
 | locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme — the DIRECTORY is the address; flat lookup, load-time honesty (unknown keys / zero cases refused before anything runs); the walk+`path`-field died in c6 (a registry re-deriving the address is noise) | 1 |
 | run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone) | 1 |
-| new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load | 0 |
+| new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load; c9: teaches a BLANK task {} (a typed example is a type-lie the engine does not check) and the ack line teaches the case shape in words | 0 |
 | (main dissolved — cycle 8) | UX | dispatch is module code in __main__.py; if/elif over two verbs IS the table; tests drive the real process (subprocess), so the argv seam was dead weight | — |
 
 ## flags
 
 | flag | justification |
 |---|---|
-| `--limit N` | the smoke valve: grade on the first N cases before spending on a full cloud run — the old benchy's entire smoke workflow (AGENTS.md) reduced to one flag |
+| `--limit N` | the smoke valve: grade on the first N cases before spending on a full cloud run — the old benchy's entire smoke workflow (AGENTS.md) reduced to one flag; c10: the artifact carries `total`, so a smoke run can never masquerade as a full run (the artifact interprets alone, including its own scope) |
 
 Every other shape the vision demands arrived as a *word*, not a flag.
