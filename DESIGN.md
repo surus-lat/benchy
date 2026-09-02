@@ -53,7 +53,7 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 
 | concept | pillar | why undeletable | survived N |
 |---|---|---|---|
-| load | DATA | turns directory into task+scoring+cases(+system); the interpreter itself; absorbed load_system cycle 3 | 1 |
+| load | DATA | turns directory into task+scoring+cases(+system); the interpreter itself; absorbed load_system cycle 3; survived task.json deletion attempt (cycle 7) — the ontology locator is load-bearing, see below | 2 |
 | invoke | SYSTEM | the ONLY system call: data-dict -> prediction; the AI-API | 0 |
 | run | ALL | result = benchmark.run(system); the vision invariant; grade fused away cycle 2, its loop inlined cycle 6 | 0 |
 | score_case | SCORING | interprets the two pure-data scoring literals (exact / fields+weights); grown cycle 6 under --allow-growth, brief-mandated by the s05 key probe; "points" deleted same cycle | 0 |
@@ -74,4 +74,20 @@ documentation for authors lives in the cases themselves), `scoring.json
 was enabled by replacing the per-key read with a WHOLE-DICT loud check:
 `scoring != {"match": "exact", "points": 1}` raises. Any key the engine
 does not interpret now fails loudly instead of lying silently — the noise
-law, enforced by the interpreter's strictness, not by documentation).
+law, enforced by the interpreter's strictness, not by documentation),
+`"points": 1` in scoring.json (cycle 6 — deleted from the vocabulary and
+from the data: the cycle-5 loud check had pinned it to a single possible
+value, a constant masquerading as a variable).
+
+## Bare metal proven (BARE_METAL verdicts)
+
+`task.json` (cycle 7 — ontology locator). Deletion attempt removed the
+file from both benchmarks; 11/12 tests broke. WHY it is essential: the
+acceptance bar requires the benchmark to be "defined as data, locatable
+by its ontology path /sentiment", and the deliverable law fixes the
+on-disk path at `bench/hello/` — the directory name can never carry the
+ontology segment, so the mapping must be data. Fusion into scoring.json
+was considered and rejected: the vision mandates the four pillars as
+separate modules ("a module to define the task, one for the scoring
+function...") and the pillar→file mapping is this angle's core claim.
+The TASK pillar = one data key, one file, zero engine concepts.
