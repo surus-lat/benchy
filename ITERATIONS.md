@@ -18,3 +18,4 @@
 12 | pushed=hall --out flag | broke=no | verdict=HARD_PUSH | loc=166 | concepts=8
 13 | pushed=Exam.question field | broke=no | verdict=HARD_PUSH | loc=165 | concepts=8
 14 | pushed=Taker class → sit(exam, name, answer) | broke=no | verdict=HARD_PUSH | loc=163 | concepts=7
+15 | pushed=Exam.from_dir (gutted, inlined into hall) | broke=yes (vision: format leaked to callers) | verdict=BARE_METAL | loc=162 | concepts=7

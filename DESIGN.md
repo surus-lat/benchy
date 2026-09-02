@@ -36,7 +36,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | concept | pillar | why undeletable | survived N |
 |---|---|---|---|
 | Exam | DATA | the named thing you author, share, and locate by ontology path; the union of question+pages+key is the benchmark. The question stays on disk (engine never reads it); Exam carries pages+key | 1 |
-| Exam.from_dir | DATA | an exam must be loadable from data with zero user Python | 0 |
+| Exam.from_dir | DATA | **BARE METAL (cycle 15)**: deleted and inlined into its callers, 13/13 tests still passed — but the exam-directory FORMAT (three file names + the q["path"]/c["pages"] surgery) leaked into every caller's Python. Running a benchmark would again require user Python; a runner or a prompt-optimizer importing as_loss would each re-author the loader. The loader IS the "benchmark = data, zero user Python" invariant's one load-bearing brick. Restored byte-identical | 1 |
 | Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop. The seam is also where a beyond-exact rule goes, when a real exam needs one | 3 |
 | answer_key.json (raw dict) | SCORING | which rule grades each page, as written: {"grade": "exact"}. A wrapper class would be a mirror of json.loads; the dead "combine" and "rule" fields died with it | 2 |
 | taker (name + answer callable) | SYSTEM | the exam word for the AI-system: who sits, and the `answer(prompt)` callable they sit with. The primitive is the system-as-taker, not the model. The word survives as `taker: str` on the card and a `name` arg; the class was noise — a name field grouping two args (cycle 14) | 1 |
@@ -116,6 +116,19 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
   The WORD survives — `taker: str` on the card, `name` on the sit — the
   class was noise. Fifth mirror-of-json.loads death in this search
   (Question, Page, PageResult, AnswerKey, now Taker).
+
+- **Exam.from_dir — survived (cycle 15, BARE_METAL)**: the honest
+  deletion was executed: from_dir gutted, the 4-line load inlined into
+  hall.main, a `load_hello()` helper written in the tests, all 12 call
+  sites migrated. 13/13 passed. But the pass was the leak: the format
+  knowledge (which three files, and how their dicts become an Exam) now
+  lived in TWO places outside the engine, and every future caller —
+  a runner, a prompt-optimizer importing as_loss — would have to copy
+  those 4 lines again. "A benchmark is data, never required Python"
+  (GOLEM.md law 5) breaks at the load boundary: if the loader is not IN
+  the engine, running the exam IS user Python. Restored byte-identical.
+  The one concept this search proved bare-metal by breakage — and what
+  it guards is the vision, not a convenience.
 
 - **Question, Page dataclasses** (cycle 1): the engine never interprets the
   question or the page — it loads them, passes them, grades them. A wrapper
