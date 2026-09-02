@@ -11,3 +11,4 @@
 10 | pushed=mid-run incremental write (deleted: single final write) | broke=yes | verdict=BARE_METAL | loc=109 | concepts=6
 11 | pushed=exam() module fn (fused into Benchmark._exam method; artifact-build lives with its only caller) | broke=no | verdict=HARD_PUSH | loc=108 | concepts=5
 12 | pushed=CLI loss command (deleted: the run artifact carries loss; as_loss() the METHOD stays as vision law, the second verb was a duplicate interface) | broke=no | verdict=HARD_PUSH | loc=105 | concepts=5
+13 | pushed=Benchmark.load three-way resolution (dir/file ternary collapsed to a candidate list; ontology walk itself deleted) | broke=yes | verdict=BARE_METAL | loc=104 | concepts=5

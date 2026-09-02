@@ -81,15 +81,14 @@ class Benchmark:
 
     @classmethod
     def load(cls, ref):
-        """by dir, by bench.json path, or by ontology path (/sentiment)."""
-        p = Path(ref)
-        f = p / "bench.json" if p.is_dir() else p
-        if f.is_file():
-            return cls(json.loads(f.read_text()), f)
+        """by bench.json path/dir, or by ontology path (/sentiment)."""
+        for f in [Path(ref) / "bench.json", Path(ref)]:   # dir -> bench.json
+            if f.is_file():
+                return cls(json.loads(f.read_text()), f)
         for f in Path("bench").rglob("bench.json"):   # ontology registry walk
-            b = cls(json.loads(f.read_text()), f)
-            if b.ont == ref:
-                return b
+            spec = json.loads(f.read_text())
+            if spec["task"].get("ont") == ref:
+                return cls(spec, f)
         raise FileNotFoundError(f"no benchmark at {ref}")
 
     def run(self, system, limit=None, workers=1, out=None):
