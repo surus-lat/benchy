@@ -16,8 +16,8 @@ def exact_match(case, prediction) -> float:
 class Exam:
     """One benchmark.  run(system) grades a taker; as_loss() exports the loss."""
 
-    def __init__(self, cases, scorer, path: str = ""):
-        self.cases, self.scorer, self.path = cases, scorer, path
+    def __init__(self, cases, scorer, path: str = "", dir=None):
+        self.cases, self.scorer, self.path, self.dir = cases, scorer, path, dir
 
     def run(self, system) -> dict:
         """The system takes the exam; returns the graded artifact (JSON-ready)."""
@@ -38,17 +38,11 @@ class Exam:
         return loss
 
 
-def load(bench_dir: str | Path) -> Exam:
-    """Read a benchmark directory — benchmark.json is the whole exam, pure data."""
-    data = json.loads((Path(bench_dir) / "benchmark.json").read_text())
-    return Exam(data["cases"], exact_match, data["path"])
-# data-declared scoring kinds: deleted (cycle 6). Custom scoring = inject a
-# python scorer into Exam(cases, scorer); "exact_match" is the built-in default.
-
-
 def locate(bench_root: str | Path, path: str) -> Exam:
-    """Find a benchmark by ontology path /<task?>/<domain?>/<language?>."""
+    """Find a benchmark by ontology path /<task?>/<domain?>/<language?> — the
+    only constructor: benchmark.json is the whole exam, pure data."""
     for f in sorted(Path(bench_root).rglob("benchmark.json")):
-        if json.loads(f.read_text())["path"] == path:
-            return load(f.parent)
+        data = json.loads(f.read_text())
+        if data["path"] == path:
+            return Exam(data["cases"], exact_match, data["path"], f.parent)
     raise LookupError(f"no benchmark with ontology path {path!r}")
