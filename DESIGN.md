@@ -35,7 +35,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 |---|---|---|---|
 | Exam | DATA | the named thing you author, share, and locate by ontology path; the union of question+pages+key is the benchmark | 1 |
 | Exam.from_dir | DATA | an exam must be loadable from data with zero user Python | 0 |
-| Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop | 0 |
+| Exam.grade_page | SCORING | the single grading seam: the key's rule applied to one page. Deleting it scatters comparison logic into the run loop | 1 |
 | EXAM_RULES | SCORING | the Python escape hatch for grading rules beyond exact — a benchmark stays pure data; only new RULES need Python | 0 |
 | AnswerKey | SCORING | which rule grades each page. Deleting it merges grading policy into pages, hiding what "good" means | 0 |
 | Taker | SYSTEM | the exam word for the AI-system: a name + answer(prompt). The primitive is the system-as-taker, not the model | 0 |
@@ -46,7 +46,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | PageResult | DATA | one row of the report card: what was asked, answered, earned | 0 |
 | keyword_tally / always_pos | SYSTEM | the two stub takers: offline demo, no network, no keys. They prove the hall works and that scoring discriminates | 0 |
 | hall.main | — | the shell door: sit an exam from the CLI. Deleting it leaves the engine library-only, unusable from the terminal | 0 |
-| grade_page / report (sit.py helpers) | DATA | grade one page / fold results into the card. Fused into sit.py as the grading seams; public only because the golem counts names | 0 |
+| report (sit.py helper) | DATA | fold results into the card: points-weighted score, loss, timestamp. Fused into sit.py; public only because the golem counts names | 1 |
 | _scribble/_read_scribble | DATA | workbox I/O: answer per page saved as soon as produced. The honesty of retake | 0 |
 
 ## deletions (what the push proved to be noise)

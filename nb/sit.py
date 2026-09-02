@@ -78,7 +78,11 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
             answered = taker.sit(page["prompt"])
             if workbox is not None:
                 _scribble(workbox, i, answered)
-        done.append(grade_page(exam, i, page, answered))
+        earned = exam.grade_page(page, answered)
+        done.append(PageResult(page=i, prompt=page["prompt"],
+                               expected=page.get("expected"),
+                               answered=answered,
+                               points=page.get("points", 1.0), earned=earned))
     return report(exam, taker, done)
 
 
@@ -94,13 +98,6 @@ def as_loss(exam: Exam, taker: Taker, limit: int = None) -> float:
 
 
 _UNANSWERED = object()
-
-
-def grade_page(exam: Exam, i: int, page: dict, answered) -> PageResult:
-    earned = exam.grade_page(page, answered)
-    return PageResult(page=i, prompt=page["prompt"], expected=page.get("expected"),
-                      answered=answered, points=page.get("points", 1.0),
-                      earned=earned)
 
 
 def report(exam: Exam, taker: Taker, done: list[PageResult]) -> ReportCard:
