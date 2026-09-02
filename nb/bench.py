@@ -41,6 +41,8 @@ def load(path):
                               "got": got, "score": float(got == case["want"])})
             loss.trace = {"score": sum(c["score"] for c in cases) / len(cases),
                           "cases": cases}
+            # lower loss = better system. The inversion is the bridge between
+            # the exam view (score: higher=better) and the loss view (minimize).
             return 1.0 - loss.trace["score"]
 
         return loss
