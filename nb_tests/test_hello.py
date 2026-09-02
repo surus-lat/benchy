@@ -36,7 +36,7 @@ def test_as_loss_ranks_dumb_worse_than_good():
 
 def test_artifact_has_per_case_scores_and_aggregate():
     result = bench.run(HELLO, "dumb")
-    assert set(result) == {"benchmark", "task", "cases", "score"}
+    assert set(result) == {"task", "cases", "score"}
     assert len(result["cases"]) == 6
     per = [c["score"] for c in result["cases"]]
     assert sum(per) == 3

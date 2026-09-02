@@ -36,8 +36,19 @@ vocabulary and from hello's scoring.json.
 
 Engine: `nb/bench.py` — interpreter + CLI in one file
 (`python3 nb/bench.py <bench_dir> <system>`). Artifact: JSON to stdout +
-`runs/<bench>/<system>.json`, per-case scores + aggregate. `as_loss()` =
-1 - score.
+`runs/<bench>/<system>.json`, per-case scores + aggregate. `as_loss()` = 1 - score.
+
+## The artifact (cycle 10 — output-side noise law)
+
+Artifact keys are an exact set: `{task, cases, score}`.
+- `benchmark` (the raw filesystem path) was DELETED: unread by the engine,
+  a machine-local duplicate of the storage path `runs/<bench>/<system>.json`.
+- `task` SURVIVED the same-cycle escalation probe: it is the engine's
+  only interpretation of task.json — the artifact's ontology identity.
+  Delete it and the locator becomes a test-only fixture, violating the
+  unread-key law (C4/C5) in reverse: the engine must interpret every key
+  it loads, and load only keys it interprets. The C7 BARE_METAL verdict
+  depends on this stamp.
 
 ## The yaml question (cycle 0)
 

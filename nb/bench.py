@@ -59,7 +59,7 @@ def run(bench_dir, system):
         cases.append({**c, "predicted": p,
                       "score": score_case(bench["scoring"], c["expected"], p)})
     score = sum(c["score"] for c in cases) / len(cases)
-    return {"benchmark": str(bench_dir), "task": bench["task"]["task"],
+    return {"task": bench["task"]["task"],
             "cases": cases, "score": score}
 
 
