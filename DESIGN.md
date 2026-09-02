@@ -40,7 +40,7 @@ One engine module + one CLI module, stdlib only:
 | Exam | DATA (compressor) | carries the vision's method syntax: run(system)/as_loss(); the surface IS the spec | 0 |
 | Exam.run | RUNNER | the exam-taking: fan-out + retries + resume + artifact; BARE_METAL c1: serial fails the 1000-case bar 16x over (25.9s vs 1.55s against a load-bearing bound — 10ms sleep/attempt, floor = n·tries·sleep, never undersleeps); threads (not asyncio, not raw threading) because systems are sync functions and ThreadPoolExecutor is the leanest stdlib fan-out | 1 |
 | Exam.as_loss | SCORING | vision invariant: loss = 1 - score; ranks systems for optimizers | 0 |
-| Exam.fingerprint | RUNNER | resume must not reuse stale evidence after an exam edit; content identity, not dir identity | 0 |
+| Exam.fingerprint | — | **DELETED c2**: opaque sha256 hash was noise. Identity is now explicit data — artifact carries the scoring block; resume refuses unless system+scoring match AND every kept record's (input,want) matches the current cases. Strictly stronger: refuses edits AND tolerates case additions (hash would refuse and lose work) | gone |
 | _score | SCORING | shape-dispatch on want: scalar exact match / dict weighted; data-only scoring | 0 |
 | _compile | SYSTEM | system specs are data; this is the compiler pillar's one function | 0 |
 | _attempt | RUNNER | one case: invoke with retries, graded evidence record | 0 |
@@ -60,8 +60,19 @@ is 100x+. asyncio remains rejected: systems are plain sync
 Raw threading.Thread+Queue = strictly more LOC for the same guarantee.
 ThreadPoolExecutor is the bare metal of fan-out here.
 
+## cycle 2 verdict — fingerprint was noise; the refusal is metal
+
+Deleted `Exam.fingerprint()` (public method + hashlib + the artifact's opaque
+`fingerprint` field). Identity is now EXPLICIT DATA: the artifact stores the
+scoring block; resume refuses unless (exam, system, scoring) match AND every
+kept record's (input, want) still matches the current cases. This is stronger
+than the hash — an ADDED case no longer nukes all prior work (the hash refused
+any content change), while a changed case still refuses loudly. Escalation
+probe: deleting the refusal check entirely broke the stale-evidence test in
+0.03s — resume silently kept stale evidence → **refusal = BARE_METAL**.
+Suite sharpened: scoring-edit (weights change) refusal is now its own test.
+
 ## open questions for push cycles
 
-- does `fingerprint` survive as a public concept or fuse into run()? (c2)
 - `tries`/`workers` defaults: named constants or noise? flag vs mechanism (c3)
 - is `_write` temp+rename metal? the SIGKILL test is the judge (c4)
