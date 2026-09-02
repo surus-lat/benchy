@@ -39,7 +39,7 @@ One engine module + one CLI module, stdlib only:
 | locate | DATA | ontology path `/sentiment` → exam dir; the vision's locateable-by-path | 0 |
 | Exam | DATA (compressor) | carries the vision's method syntax: run(system)/as_loss(); the surface IS the spec | 0 |
 | Exam.run | RUNNER | the exam-taking: fan-out + retries + resume + artifact; BARE_METAL c1: serial fails the 1000-case bar 16x over (25.9s vs 1.55s against a load-bearing bound — 10ms sleep/attempt, floor = n·tries·sleep, never undersleeps); threads (not asyncio, not raw threading) because systems are sync functions and ThreadPoolExecutor is the leanest stdlib fan-out | 1 |
-| Exam.as_loss | SCORING | vision invariant: loss = 1 - score; ranks systems for optimizers | 0 |
+| Exam.as_loss | SCORING | BARE_METAL c5: deleted to `pass` → loss-ranking test broke instantly (TypeError None>None) — loss = 1−score IS the vision's export-to-optimizer seam; without it the artifact has no float for optimizers to descend | 1 |
 | Exam.fingerprint | — | **DELETED c2**: opaque sha256 hash was noise. Identity is now explicit data — artifact carries the scoring block; resume refuses unless system+scoring match AND every kept record's (input,want) matches the current cases. Strictly stronger: refuses edits AND tolerates case additions (hash would refuse and lose work) | gone |
 | _score | SCORING | shape-dispatch on want: scalar exact match / dict weighted; data-only scoring | 0 |
 | _compile | SYSTEM | system specs are data; this is the compiler pillar's one function | 0 |
