@@ -72,7 +72,7 @@ def big_exam(dir, n, sleep=0.0, tag=""):
 def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
     e = big_exam(tmp_path, 1000)
     sleep = 0.01  # per attempt; stands in for real per-case exam-taker latency
-    sys_spec = {"kind": "flaky", "script": "FP", "sleep": sleep,
+    sys_spec = {"kind": "flaky", "fails": 1, "sleep": sleep,
                 "of": {"kind": "always", "value": "pos"}}
     t0 = time.monotonic()
     art = e.run(sys_spec, out=tmp_path / "a.json", workers=16)
@@ -88,7 +88,7 @@ def test_1000_cases_concurrently_against_flaky_stub(tmp_path):
 
 def test_flaky_exhausting_retries_is_loud_not_silent(tmp_path):
     e = big_exam(tmp_path, 4)
-    art = e.run({"kind": "flaky", "script": "F",
+    art = e.run({"kind": "flaky", "fails": 99,
                  "of": {"kind": "always", "value": "pos"}}, tries=3)
     assert sum(c["status"] == "error" for c in art["cases"]) == 4
     assert all(c["status"] == "error" and "RuntimeError" in c["error"] for c in art["cases"])
@@ -96,7 +96,7 @@ def test_flaky_exhausting_retries_is_loud_not_silent(tmp_path):
 
 def test_resume_after_real_kill_loses_zero_work(tmp_path):
     e = big_exam(tmp_path, 1000)
-    sys_spec = {"kind": "flaky", "script": "FP", "sleep": 0.01,
+    sys_spec = {"kind": "flaky", "fails": 1, "sleep": 0.01,
                 "of": {"kind": "always", "value": "pos"}}
     sp = tmp_path / "sys.json"
     sp.write_text(json.dumps(sys_spec))
@@ -255,7 +255,7 @@ def test_resume_completes_artifact_and_total_is_exam_size(tmp_path):
     e = big_exam(tmp_path, 40)
     sp = tmp_path / "sys.json"
     out = tmp_path / "b.json"
-    sp.write_text(json.dumps({"kind": "flaky", "script": "F", "sleep": 0.005,
+    sp.write_text(json.dumps({"kind": "flaky", "fails": 99, "sleep": 0.005,
                               "of": {"kind": "always", "value": "pos"}}))
     e.run(json.loads(sp.read_text()), out=out, workers=4)
     final = json.loads(out.read_text())
@@ -264,7 +264,7 @@ def test_resume_completes_artifact_and_total_is_exam_size(tmp_path):
     assert sum(c["status"] == "error" for c in final["cases"]) == 40
     # mid-run probe — kill a run, inspect the surviving partial artifact
     out2 = tmp_path / "k.json"
-    sp.write_text(json.dumps({"kind": "flaky", "script": "FP", "sleep": 0.01,
+    sp.write_text(json.dumps({"kind": "flaky", "fails": 1, "sleep": 0.01,
                               "of": {"kind": "always", "value": "pos"}}))
     proc = subprocess.Popen(
         [sys.executable, "-m", "nb", str(tmp_path), str(sp), "-o", str(out2),
@@ -306,7 +306,7 @@ def test_cli_runs_and_exit_codes(tmp_path):
     art = json.loads(out.read_text())
     assert art["score"] == 1.0 and "errors" not in art
     sp = tmp_path / "dead.json"
-    sp.write_text(json.dumps({"kind": "flaky", "script": "F",
+    sp.write_text(json.dumps({"kind": "flaky", "fails": 99,
                               "of": {"kind": "always", "value": "pos"}}))
     r2 = subprocess.run([sys.executable, "-m", "nb", "/sentiment", str(sp), "-o", str(tmp_path / "e.json")],
                         cwd=ROOT, capture_output=True, text=True)

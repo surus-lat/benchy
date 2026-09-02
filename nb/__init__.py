@@ -40,7 +40,15 @@ def _compile(spec):
         return lambda text: ("pos" if any(k in str(text).lower() for k in spec["pos"])
                              else "neg")
     if kind == "flaky":
-        inner, script, delay = _compile(spec["of"]), spec["script"], spec.get("sleep", 0)
+        # survival (BARE_METAL c9): deleting flaky broke 4 runner tests
+        # instantly — a deterministic scriptable failure is the ONLY honest
+        # probe for retries/loud-errors/kill-resume; without a failing system
+        # the retry path is claimed-but-untested. `fails` = attempts that
+        # fail before the first success; always-fail = fails >= tries (data,
+        # no special encoding). c9 deleted the "FP" script mini-language:
+        # periodic flake semantics no test exercised (fails-count covers all
+        # scripted shapes the bar demands). A second `of` system wraps.
+        inner, fails, delay = _compile(spec["of"]), spec["fails"], spec.get("sleep", 0)
         seen = {}
 
         def invoke(text):
@@ -48,11 +56,10 @@ def _compile(spec):
             seen[text] = n
             if delay:
                 sleep(delay)
-            if script[(n - 1) % len(script)] == "F":
-                raise RuntimeError(f"flaky script {script!r}: attempt {n} fails")
+            if n <= fails:
+                raise RuntimeError(f"flaky: attempt {n} (first {fails} fail)")
             return inner(text)
 
-        invoke.seen = {}
         return invoke
     raise ValueError(f"unknown system kind {kind!r}")
 
