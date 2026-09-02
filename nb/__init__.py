@@ -1,1 +1,1 @@
-"""nb — benchy, contracts-first: core.py holds the contracts, exam.py the loop."""
+"""nb — benchy: the exam is pure data + scoring; exam.py is the engine."""

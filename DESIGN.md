@@ -28,6 +28,10 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
                         construction — the swap seam; exact_match is the
                         built-in default; data-declared kinds deleted cycle 6)
 
+The conventions (case {input, expected}, artifact shape, .invoke) are carried
+by the VALUES and pinned by the tests — since cycle 13 there is no core.py:
+a doc duplicating the spec the values+tests already state was noise.
+
 ## concept table
 
 | concept | pillar | why undeletable (so far) | survived |
@@ -90,6 +94,13 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
 - load (cycle 9, fused into locate): a separate loader after locate reads
   the files it searched was a concept doing locate's job twice; the
   ontology path is the only address and locate the only constructor.
+- core.py, the conventions-docstring file (cycle 13): after cycle 5 it had
+  zero code — only a doc restating the conventions. Deleted whole: the
+  conventions live in the values and are PINNED BY THE TESTS
+  (test_artifact_is_graded_json pins the artifact schema; stubs.py documents
+  .invoke). A spec written in three places is two places of drift risk.
+  Engine is now 3 files: __init__ (docstring), __main__ (2-line shim),
+  exam.py (all behavior).
 
-Current: 4 concepts, 4 files, 62 loc.  Public surface (module names):
+Current: 4 concepts, 3 files, 50 loc.  Public surface (module names):
 exact_match, Exam (+run, as_loss), locate, main = 4.
