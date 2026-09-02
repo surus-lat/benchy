@@ -49,7 +49,7 @@ filesystem — no registry object.
 | Benchmark.as_loss | SCORING | vision: benchmark = a new loss function for software-3.0. loss(dumb) > loss(good) ranks systems. | 0 |
 | Benchmark.load | DATA | by dir / file / ontology path; the filesystem is the registry. Three-way resolution survived its c2 push — bench.json-in-dir is how non-engineers hand you a benchmark, ontology path is the vision's /<task?>/<domain?>/<language?> address, direct file is the degenerate case. | 1 |
 | _write | DATA | atomic artifact persistence — resume's read side demands it; kill-safety. | 0 |
-| main | CLI | run + loss; the UX. Flag parser deleted (c7): out is a positional, limit/workers are engine kwargs — the CLI is a two-verb lens on run/as_loss, not a second interface. | 1 |
+| main | CLI | run only (c12): the `loss` verb deleted — the run artifact already carries loss; as_loss() the METHOD is the vision law and stays, the second CLI verb was a duplicate interface. Flag parser deleted (c7): out is a positional, limit/workers are engine kwargs. | 2 |
 
 ## noise policy
 
@@ -72,6 +72,7 @@ Remaining loudest things, in attack order:
 2. DONE c11 — exam() module fn fused into Benchmark._exam (HARD_PUSH:
    nothing broke, concepts 6→5). The artifact-build lives with its only
    caller; `ont` no longer travels as an argument.
-3. Benchmark.load's three-way resolution and the CLI `loss` command
-   (as_loss stays — vision law; the *command* may be deletable).
+3. DONE c12 — CLI `loss` verb deleted (HARD_PUSH: nothing broke; the run
+   artifact carries loss; as_loss() the method is vision law and stays).
+   Remaining in this family: Benchmark.load's three-way resolution.
 4. grade()'s "exact" string special-case vs fields-shape unification.

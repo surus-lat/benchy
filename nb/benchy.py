@@ -134,15 +134,12 @@ class Benchmark:
 
 # ---------------- CLI ----------------
 def main(argv):
-    """run <bench> <system> [out] · loss <bench> <system>
+    """run <bench> <system> [out]
     limit/workers are engine kwargs (bench.run), not CLI flags."""
-    if len(argv) < 3 or argv[0] not in ("run", "loss"):
+    if len(argv) < 3:
         print(__doc__)
         return 2
     bench = Benchmark.load(argv[1])
-    if argv[0] == "loss":
-        print(bench.as_loss()(argv[2]))
-        return 0
     out = argv[3] if len(argv) > 3 else str(bench.path.parent / "runs" / f"{argv[2]}.json")
     print(json.dumps(bench.run(argv[2], out=out), indent=1, ensure_ascii=False))
     return 0

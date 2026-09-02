@@ -174,9 +174,3 @@ def test_cli_run(capsys, monkeypatch, bench):
     a = json.loads(capsys.readouterr().out)
     assert a["score"] == 0.5
     assert json.loads(Path("/tmp/cli.json").read_text())["score"] == 0.5
-
-
-def test_cli_loss(capsys):
-    import benchy
-    assert benchy.main(["loss", str(HERE), "dumb"]) == 0
-    assert float(capsys.readouterr().out.strip()) == 0.5
