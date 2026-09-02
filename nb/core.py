@@ -8,28 +8,11 @@ here — implementations are trivial one-liners elsewhere.
 from typing import Protocol, TypedDict, runtime_checkable
 
 
-class Task(TypedDict):
-    """Pillar TASK — the program we are searching for: in-schema -> out-schema."""
-
-    input: object
-    output: object
-
-
 class Case(TypedDict):
     """Pillar DATA — one exam page: the input and the expected answer."""
 
     input: object
     expected: object
-
-
-class Scored(TypedDict):
-    """The graded page — the record Scoring hands back for one case."""
-
-    input: object
-    expected: object
-    prediction: object
-    conforms: bool
-    score: float
 
 
 @runtime_checkable
