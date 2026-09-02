@@ -9,7 +9,7 @@ returns. Nothing else exists.
 ## the shape
 
 ```
-TASK      Task(in, out)                     the program description
+TASK      {"in": ..., "out": ...}             task.json — the program description
 SCORING   Scoring(mode, weights).score()    what good means (per-case 0..1)
 DATA      Exam([(input, expected), ...])       the exam; JSON on disk
 SYSTEM    compile_system(spec) -> callable  the compiler front door
@@ -25,7 +25,7 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 
 | concept | pillar | why undeletable | survived |
 |---|---|---|---|
-| Task | TASK | the program description (in→out types) is the thing searched for; without it the exam has no subject | 0 |
+| task (data) | TASK | the task.json dict IS the program description (in→out); the engine never interprets it — the SYSTEM compiles against it; without it the exam has no subject. Its class wrapper died; the data survived | 1 |
 | Scoring | SCORING | grading is what makes a benchmark a loss function; deleting it leaves only raw predictions | 0 |
 | Exam | DATA | the exam is the data; distribution → point estimate happens here | 0 |
 | Exam.__iter__ | DATA | run() iterates the exam — the exam's ONLY interface; a Case class was one attribute-access away from a tuple | 0 |
@@ -43,6 +43,12 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | load | BENCH | benchmark as data on disk, locatable by ontology path | 2 |
 | compile_systems | BENCH | systems/*.json -> {name: system}; the only systems door (raw-spec loading fused into compile) | 1 |
 | main | BENCH | CLI: run a benchmark dir against its systems | 3 |
+
+## deletions
+
+Removed in cycle 9: `Task` (the class — a behavior-free two-attribute
+wrapper around the task.json dict; the TASK pillar survives as pure
+data on Benchmark.task. Its only customer was its own test).
 
 Removed in cycle 8: `Case` (a class that was a tuple with attribute
 access — `(input, expected)` is the whole atom of evidence; dict→tuple
@@ -92,7 +98,8 @@ value; the controller loop is backend code. Task/Scoring/Exam/Benchmark
 never learned anything. Zero core changes — the angle held: agents are
 compiler backends, not engine concepts.
 
-Not-yet-proven suspects (will be pushed): the CLI's dual role (run vs
-systems listing) — maybe noise. `load_systems` (compiled) vs
-`load_system_specs` (raw) — maybe one is redundant. `Task.out_enum`
-complexity hints the Task constructor may be over-built.
+Not-yet-proven suspects (will be pushed): `Exam` (after Case died it is a
+non-empty list + __iter__ — the emptiness check may belong to load),
+`Scoring` the class (carries mode+weights; a free score() function over
+the tuple may be the same concept with less machinery), the CLI's
+`compile_systems` (single-customer helper), `main` argv plumbing.

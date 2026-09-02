@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import nb
-from nb import Benchmark, Exam, Scoring, Task, compile_system
+from nb import Benchmark, Exam, Scoring, compile_system
 from nb.load import main as load_main
 from nb import load, compile_systems
 
@@ -73,8 +73,8 @@ def test_ontology_path_sentiment():
 # ------------------------------------------------------------ four pillars
 
 def test_task_is_in_out_declaration():
-    t = Task("text", "label")
-    assert (t.in_, t.out) == ("text", "label")
+    """the TASK pillar is DATA: the task.json dict, uninterpreted."""
+    assert load(BENCH).task == {"in": "text", "out": "label"}
 
 
 def test_scoring_exact_partial_weighted():
@@ -104,7 +104,7 @@ def test_exam_rejects_empty():
 
 
 def test_benchmark_system_is_argument_not_field():
-    bench = Benchmark(Task("text", "label"), Scoring("exact"),
+    bench = Benchmark({"in": "text", "out": "label"}, Scoring("exact"),
                       Exam([("x", "pos")]))
     assert not any(isinstance(getattr(bench, a, None), type(bench))
                    for a in vars(bench))

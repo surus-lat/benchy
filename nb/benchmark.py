@@ -10,7 +10,12 @@ JSON dict with per-case scores and the aggregate.
 
 
 class Benchmark:
-    """task + scoring + data. The system is the argument, not a field."""
+    """task + scoring + data. The system is the argument, not a field.
+
+    task is DATA: the {"in": ..., "out": ...} declaration from task.json.
+    The engine never interprets it — it is the program description, the
+    thing the SYSTEM compiles against; scoring and exam carry the grading.
+    """
 
     def __init__(self, task, scoring, exam):
         self.task = task
