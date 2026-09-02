@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from nb.exam import Exam, grade_exact, grade_keyword
+from nb.exam import Exam
 from nb.sit import Taker, sit, retake, as_loss
 from nb.hall import keyword_tally, always_pos
 
@@ -35,8 +35,9 @@ def test_a_benchmark_is_data_not_python():
 # ── grading rules ─────────────────────────────────────────────────────
 
 def test_exact_match_scores_one_else_zero():
-    assert grade_exact("pos", "pos", {}) == 1.0
-    assert grade_exact("pos", "neg", {}) == 0.0
+    exam = Exam.from_dir(HELLO)
+    assert exam.grade_page(exam.pages[0], "pos") == 1.0   # expected: pos
+    assert exam.grade_page(exam.pages[0], "neg") == 0.0
 
 
 def test_unknown_rule_is_a_loud_error():

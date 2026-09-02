@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from .exam import Exam, Page
+from .exam import Exam
 
 
 @dataclass
@@ -75,7 +75,7 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
         if workbox is not None and _read_scribble(workbox, i) is not _UNANSWERED:
             answered = _read_scribble(workbox, i)   # already answered: keep it
         else:
-            answered = taker.sit(page.prompt)
+            answered = taker.sit(page["prompt"])
             if workbox is not None:
                 _scribble(workbox, i, answered)
         done.append(grade_page(exam, i, page, answered))
@@ -96,10 +96,11 @@ def as_loss(exam: Exam, taker: Taker, limit: int = None) -> float:
 _UNANSWERED = object()
 
 
-def grade_page(exam: Exam, i: int, page: Page, answered) -> PageResult:
+def grade_page(exam: Exam, i: int, page: dict, answered) -> PageResult:
     earned = exam.grade_page(page, answered)
-    return PageResult(page=i, prompt=page.prompt, expected=page.expected,
-                      answered=answered, points=page.points, earned=earned)
+    return PageResult(page=i, prompt=page["prompt"], expected=page.get("expected"),
+                      answered=answered, points=page.get("points", 1.0),
+                      earned=earned)
 
 
 def report(exam: Exam, taker: Taker, done: list[PageResult]) -> ReportCard:
