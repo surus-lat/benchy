@@ -14,7 +14,7 @@ from nb import as_loss, compile, load, run
 
 BENCH = Path(__file__).resolve().parents[1] / "bench" / "hello"
 GOOD = {"name": "good", "kind": "keyword", "pos": ["great", "excelente", "loved"], "default": "neg"}
-DUMB = {"name": "dumb", "kind": "constant", "value": "pos"}
+DUMB = {"name": "dumb", "kind": "keyword", "pos": [], "default": "pos"}
 
 
 def bench() -> dict:
