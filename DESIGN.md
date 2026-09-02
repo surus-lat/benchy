@@ -22,7 +22,9 @@ ENGINE   nb/engine.py                  compile / grade / run / as_loss (pure)
   refuses any exam whose answer key falls outside the declared choices.
   "takes a text, returns {pos,neg}" is data, enforced by the engine.
 - **SCORING pillar** lives in the benchmark data: `scoring.rule` (match),
-  `scoring.aggregate` (mean). Grading is a lookup, not a framework.
+  `scoring.aggregate` (mean). Grading is a lookup, not a framework — and
+  c11 fused the two scoring refusals into one literal: the declared scoring
+  must be EXACTLY `{rule: match, aggregate: mean}` or grade refuses.
 - **DATA pillar** is the cases list — the exam itself. n cases, each a
   (input, expected) pair; a row's POSITION in the artifact IS its id (c9
   deleted the explicit `case` index — derivable noise). Everything is a
@@ -43,7 +45,7 @@ over systems; the ontology path `/sentiment` locates the benchmark.
 | concept | pillar | why it cannot be deleted | survived |
 |---|---|---|---|
 | compile | system | the SYSTEM pillar: turns a spec into invoke(text)->pred; the only place the engine may grow (cloud kinds) | 0 |
-| grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke. c8 made it the TASK pillar's enforcement point: it refuses exam keys outside task.output.choices — the declaration is load-bearing. | 1 |
+| grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke. c8 made it the TASK pillar's enforcement point: it refuses exam keys outside task.output.choices — the declaration is load-bearing. c11 pinned the aggregate refusal (the pin broke on deletion) and fused the two same-kind scoring refusals into one literal: `scoring != {rule: match, aggregate: mean}` is refused — exactly the scoring implemented, nothing declared-but-unread. | 2 |
 | run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile. c7 deleted it (as_loss/CLI inlined grade∘compile) and 6 vision-shape tests broke: `run(benchmark, system)` IS the vision's headline shape — benchmark.run(system) is the api the optimizer consumes; inlining it makes every caller re-state the composition and the "system is the argument" law lives nowhere. | 1 |
 | as_loss | export | the vision's headline: export the benchmark as a new loss function | 0 |
 | main | cli | s07 c3 proved CLI metal: a person runs `python -m nb` with no Python knowledge; owns the file layer since c4 (load deleted). c10 deleted the silent first-system default: the system taking the exam is NAMED, always — refusal beats surprise. | 0 |
