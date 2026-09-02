@@ -18,42 +18,39 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SCORES = {"exact": lambda got, want: 1.0 if got == want else 0.0}
-AGGS = {"mean": lambda xs: sum(xs) / len(xs) if xs else 0.0}
 
 
 def load(path):
     """Load a benchmark by ontology path (/sentiment). Benchmarks are data;
-    the path is the identity. No second addressing scheme."""
+    the path is the identity. No second addressing scheme. Returns the loss
+    itself: (System) -> float, with the receipt at loss.trace."""
     for f in ROOT.glob("bench/**/bench.json"):
-        if json.loads(f.read_text())["path"] == path:
-            return benchmark(json.loads(f.read_text()))
+        spec = json.loads(f.read_text())
+        if spec["path"] != path:
+            continue
+
+        def loss(system) -> float:
+            if spec["scoring"] != {"compare": "exact", "aggregate": "mean"}:
+                raise LookupError(f"unknown scoring: {spec['scoring']}")
+            cases = []
+            for i, case in enumerate(spec.get("cases", [])):
+                got = system(case["in"])
+                score = float(got == case["want"])
+                cases.append({"i": i, "in": case["in"], "want": case["want"],
+                              "got": got, "score": score})
+            loss.trace = {"path": spec["path"],
+                          "score": sum(c["score"] for c in cases) / len(cases),
+                          "cases": cases}
+            return 1.0 - loss.trace["score"]
+
+        return loss
     raise LookupError(f"no benchmark with ontology path {path!r}")
 
 
-def benchmark(spec):
-    """A benchmark IS a loss function over systems: (System) -> float.
-    loss.trace holds the receipt — the evidence of the last evaluation."""
-    def loss(system) -> float:
-        cases = []
-        for i, case in enumerate(spec.get("cases", [])):
-            got = system(case["in"])
-            score = SCORES[spec["scoring"]["compare"]](got, case["want"])
-            cases.append({"i": i, "in": case["in"], "want": case["want"],
-                          "got": got, "score": score})
-        loss.trace = {"path": spec["path"],
-                      "score": AGGS[spec["scoring"]["aggregate"]](
-                          [c["score"] for c in cases]),
-                      "cases": cases}
-        return 1.0 - loss.trace["score"]
-    return loss
-
-
 def system(name):
-    """Load a system program by path: `bench/hello/systems/good.py` or `good`."""
+    """Load a system program by file path: `bench/hello/systems/good.py`.
+    A system is its file — no second addressing scheme."""
     p = Path(name)
-    if not p.is_file():
-        p = next((ROOT / "bench").glob(f"**/systems/{name}.py"))
     ns = {}
     exec(compile(p.read_text(), str(p), "exec"), ns)
     return ns["solve"]

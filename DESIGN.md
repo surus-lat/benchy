@@ -18,36 +18,51 @@ CLI, artifacts, grading: projections of `(Task, Data, Scoring, System) -> float`
 
 - benchmark = `bench.json` (data): `path` (ontology /<task>/<domain>/<lang>),
   `task` (in/out schema), `scoring` (compare + aggregate), `cases`.
-- system = a program: any importable `solve` callable. `solve(input) -> prediction`.
-  Model, node, workflow, agent — same thing: it is invoked, it predicts.
-- loss.trace = dict: path, score, aggregate, per-case [{i, in, want, got, score}].
+- system = a program: any importable `solve` callable, addressed by FILE PATH
+  only (`bench/hello/systems/good.py`). No second addressing scheme.
+- loss.trace = dict: path, score, cases [{i, in, want, got, score}].
+
+## scoring interpretation
+
+There is no vocabulary table. The engine interprets exactly one scoring:
+`{"compare": "exact", "aggregate": "mean"}` — anything else raises LookupError.
+Scoring is data, but the data must NAME a scoring the engine actually knows;
+unknown names fail loud, never silently score 0.
 
 ## concept table
 
 | concept | pillar | why undeletable | survived N |
 |---|---|---|---|
-| load | DATA | data must enter somehow; the only IO concept | 0 |
-| benchmark | SCORING | the loss closure: task+data+scoring fused as one callable value | 1 |
-| system | SYSTEM | systems must enter as programs; only loader concept | 0 |
-| SCORES/AGGS | SCORING | data-declared scoring needs an interpretation table | 1 |
+| load | DATA | data must enter somehow; the only IO concept; returns the loss closure | 1 |
+| system | SYSTEM | systems must enter as programs; the only loader concept | 1 |
 | ROOT | TASK | ontology path -> file must anchor somewhere | 0 |
+
+(`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5 —
+scoring is one inline interpretation, checked loud.)
 
 ## what broke and what it proved
 
 - cycle 1: `aggregate` key in receipt — test failed → the key is derivable from
   `path` -> spec; receipt carries results, not schema. Noise removed (fixed tests forward).
 - cycle 1: SCORES/AGGS extra vocab (`fuzzy`, `sum`, `min`) — nothing used them; deleted. No break.
-- cycle 2: the Bench class itself — load() returned an object with .run/.as_loss/.spec,
-  9/10 tests failed on the push, fixed forward to the closure shape. The class was
-  ceremony around the identity: run() was loss()+trace, as_loss() was the identity
-  returned by a method. Both are now the closure itself. NOISE_REMOVED.
+- cycle 2: the Bench class — 9/10 tests failed on the push, fixed forward to the
+  closure shape. run() was loss()+trace; as_loss() was the identity behind a method.
+  Both are now the closure itself. NOISE_REMOVED.
+- cycle 3: `benchmark(spec)` second entry point — deleted entirely, nothing broke:
+  the raw-spec entry was never guarded, never used. HARD_PUSH.
+- cycle 4: `system()` short-name glob fallback — deleted entirely, nothing broke:
+  convenience addressing that no test or benchmark used. HARD_PUSH.
+- cycle 5: SCORES/AGGS tables — deleted, replaced by one inline interpretation
+  with a loud unknown-vocab check. First inline attempt was TOO SOFT (silent 0.0
+  on unknown vocab = dishonest scoring); escalated to loud check. HARD_PUSH.
 
 ## queued deletion candidates (loudest first)
 
-1. `system()` short-name fallback (`good` → glob `**/systems/good.py`) — convenience
-   loader branch; try deleting, force explicit paths.
-2. SCORES/AGGS tables vs data-computed scoring — try computing score/aggregate
-   from the spec directly; the tables are an interpretation layer.
-3. `benchmark()` indirection — load() could build the closure inline.
-4. receipt key minimality — `i`, `in`, `want`, `got`, `score`: are all five
-   needed, or derivable?
+1. receipt key minimality — `i`, `in`, `want`, `got`, `score`: is `i` needed
+   when cases list is ordered? is `want` derivable from input+task?
+2. `spec.get("cases", [])` default — empty benchmark = silent 0 loss; should it raise?
+3. `task` key in bench.json — the schema is declared but never interpreted;
+   either interpret it (validate outputs) or it is dead weight in the data.
+4. `1.0 - score` loss convention — could loss be the score itself with lower=better?
+   No: acceptance bar demands loss(dumb) > loss(good). Convention is bare metal.
+5. `system()` as a concept — could systems just be importables the caller passes?
