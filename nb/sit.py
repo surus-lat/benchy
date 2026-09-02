@@ -15,7 +15,6 @@ already scribbled — retaking an exam IS sitting it.
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,7 +41,6 @@ class ReportCard:
     pages: list                   # rows: {page, answered, earned}
     score: float                  # exam score, weighted mean of page scores
     loss: float                   # 1 - score
-    taken_at: str                 # ISO timestamp
 
     def write(self, out_dir: Path) -> Path:
         out = Path(out_dir)
@@ -79,8 +77,7 @@ def sit(exam: Exam, taker: Taker, workbox: Path | None = None) -> ReportCard:
     score = (sum(page.get("points", 1.0) * d["earned"]
                  for page, d in zip(pages, done)) / total) if total else 0.0
     return ReportCard(exam=exam.path, taker=taker.name,
-                      pages=done, score=score, loss=1.0 - score,
-                      taken_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
+                      pages=done, score=score, loss=1.0 - score)
 
 
 def as_loss(exam: Exam, taker: Taker) -> float:
