@@ -52,7 +52,7 @@ def test_artifact_has_per_case_and_aggregate(exam):
     rep = run(exam, exam["systems"]["dumb"])
     assert len(rep["cases"]) == 6
     for c in rep["cases"]:
-        assert {"id", "input", "context", "want", "got", "score"} <= set(c)
+        assert {"id", "input", "want", "got", "score"} <= set(c)
     assert rep["score"] == sum(c["score"] for c in rep["cases"]) / 6
     # interprets alone: one dumb case shows want vs got without the exam file
     c = rep["cases"][3]

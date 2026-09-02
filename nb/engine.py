@@ -1,7 +1,7 @@
 # nb/engine.py — the exam engine.
-# s07 datacentric: the Sample record (id, input, expected, context?) is the
-# root record. a benchmark is ONE data file (exam.json) plus two tiny pure
-# functions: grade (the scoring lens) and run (take the exam). the system is
+# s07 datacentric: the Sample record (id, input, expected) is the root record.
+# a benchmark is ONE data file (exam.json) plus two tiny pure functions: grade
+# (the scoring lens) and run (take the exam). the system is
 # a spec in data, interpreted by invoke — the compiler pillar (cloud specs
 # later, same slot). the declared lenses are data, not inference: the answer
 # space cannot be derived from observed expecteds (a typo'd expected would
@@ -14,7 +14,7 @@ from pathlib import Path
 EXAM_KEYS = {"path", "task", "scoring", "samples", "systems"}
 SCORE_KEYS = {"match"}
 SAMPLE_REQUIRED = {"id", "input", "expected"}
-SAMPLE_ALLOWED = SAMPLE_REQUIRED | {"context"}
+SAMPLE_ALLOWED = SAMPLE_REQUIRED
 KINDS = {"const": {"kind", "value"}, "keyword": {"kind", "any", "then", "else"}}
 
 
@@ -69,8 +69,9 @@ def locate(root, path):
     raise FileNotFoundError(f"no exam.json with ontology path {path!r} under {root}")
 
 
-def invoke(system, inp, context=None):
+def invoke(system, inp):
     # the compiler pillar: a system spec (data) -> prediction. the exam-taker.
+    # cycle 4: context param deleted — no system kind ever read it (dead param).
     if not isinstance(system, dict):
         raise ValueError(f"system spec must be a dict, got: {type(system).__name__}")
     kind = system.get("kind")
@@ -95,8 +96,8 @@ def run(exam, system):
     # take the exam: the system answers every sample. evidence per case + aggregate
     cases = []
     for s in exam["samples"]:
-        got = invoke(system, s["input"], s.get("context"))
-        cases.append({"id": s["id"], "input": s["input"], "context": s.get("context"),
+        got = invoke(system, s["input"])
+        cases.append({"id": s["id"], "input": s["input"],
                       "want": s["expected"], "got": got,
                       "score": grade(s, got, exam["scoring"])})
     score = sum(c["score"] for c in cases) / len(cases)
