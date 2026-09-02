@@ -122,9 +122,9 @@ class Benchmark:
 
         rows = dict(done)
         with ThreadPoolExecutor(max(1, workers)) as ex:   # 1 pool = the runner
-            for r in ex.map(take, todo):                  # write as they land
+            for r in ex.map(take, todo):
                 rows[r["id"]] = r
-                if out:
+                if out:   # BARE_METAL (c10): a kill never loses graded work
                     _write(out, exam(self.ont, [rows[i] for i in sorted(rows)]))
         return exam(self.ont, [rows[i] for i in sorted(rows)])
 

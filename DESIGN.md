@@ -44,8 +44,8 @@ filesystem — no registry object.
 |---|---|---|---|
 | invoke | SYSTEM | the single AI-API protocol; every system shape plugs in here. Model/node/workflow/agent all become f(in,ctx)->out. const folded into default-only rule (c3). Rule+default data specs are the learned-program shapes it serves; py specs compile to a callable ONCE per exam in run() (c9 — per-case import reset module state, a real correctness bug). invoke() itself is now rule+default only. | 2 |
 | grade | SCORING | what good means; the atom of both score and loss. fields weights = importance hierarchy. Enum gates are noise here: an out-of-enum pred cannot match any want (ok() deleted, c4). | 1 |
-| exam | DATA | builds the graded artifact dict: per-case rows + aggregate + loss. The dict IS the exam — Exam class deleted as noise (c2); no separate writer concept. | 2 |
-| Benchmark.run | DATA | the exam-taking loop; hosts resume + fan-out + artifact write — all one loop, no sub-concepts. py specs compile to a callable here, once per exam (moved from invoke in c9). | 2 |
+| exam | DATA | builds the graded artifact dict: per-case rows + aggregate + loss. The dict IS the exam — Exam class deleted as noise (c2); no separate writer concept. | 3 |
+| Benchmark.run | DATA | the exam-taking loop; hosts resume + fan-out + artifact write — all one loop, no sub-concepts. py specs compile to a callable here, once per exam (moved from invoke in c9). The mid-run write is BARE METAL (c10): kill-safety is the resume contract — with only a final write, a kill leaves NO artifact and all graded work is lost (proved by test_kill_midrun_keeps_graded_work, written c10). | 3 |
 | Benchmark.as_loss | SCORING | vision: benchmark = a new loss function for software-3.0. loss(dumb) > loss(good) ranks systems. | 0 |
 | Benchmark.load | DATA | by dir / file / ontology path; the filesystem is the registry. Three-way resolution survived its c2 push — bench.json-in-dir is how non-engineers hand you a benchmark, ontology path is the vision's /<task?>/<domain?>/<language?> address, direct file is the degenerate case. | 1 |
 | _write | DATA | atomic artifact persistence — resume's read side demands it; kill-safety. | 0 |
@@ -66,13 +66,14 @@ py per-case dynamic import (c9 — compile to a callable once per exam in
 run(); per-case import reset module state: a REAL correctness bug).
 
 Remaining loudest things, in attack order:
-1. the mid-run incremental write: every completed case rewrites the whole
-   artifact — O(n²) JSON writes for n cases. Kill-safety is the resume
-   contract, but does resume need EVERY intermediate state, or is the
-   final atomic write enough? Push to prove it either way.
+1. DONE c10 — the mid-run incremental write is BARE METAL (kill-safety is
+   the resume contract; a final-write-only engine loses ALL graded work on
+   a kill). The O(n²) rewrite is the price of durability. Kept.
 2. exam() is called twice (mid-run write + final) and resume reads
    `cases` straight from the artifact dict — can the aggregate fold into
-   run() so exam() disappears entirely?
+   run() so exam() disappears entirely? Note: exam() the FUNCTION is not
+   a public concept — it has no entry in the golem's concept list... it
+   does. Push it: fold the aggregate into run()/_write.
 3. Benchmark.load's three-way resolution and the CLI `loss` command
    (as_loss stays — vision law; the *command* may be deletable).
 4. grade()'s "exact" string special-case vs fields-shape unification.

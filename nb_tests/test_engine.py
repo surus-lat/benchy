@@ -136,6 +136,25 @@ def test_resume_is_true_resume(bench, dumb, tmp_path, monkeypatch):
     assert a["score"] == 0.5
 
 
+def test_kill_midrun_keeps_graded_work(bench, tmp_path):
+    # kill-safety: the exam DIES mid-run (system raises on case 4); every case
+    # graded so far must already be on disk, and resume must carry them
+    # without re-taking. This is the mid-run write's contract — a kill never
+    # loses graded work.
+    out = tmp_path / "run.json"
+    calls = []
+    def dies(inp, ctx=None):
+        calls.append(inp)
+        if len(calls) > 3:
+            raise RuntimeError("killed mid-exam")
+        return "pos"
+    with pytest.raises(RuntimeError):
+        bench.run(dies, out=out)
+    assert len(json.loads(out.read_text())["cases"]) == 3   # survived the kill
+    a = bench.run({"default": "pos"}, out=out)              # resume the exam
+    assert len(a["cases"]) == 6 and a["score"] == 0.5
+
+
 def test_workers_fan_out(bench, dumb):
     assert bench.run(dumb, workers=3)["score"] == 0.5
 
