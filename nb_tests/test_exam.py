@@ -85,14 +85,12 @@ def test_report_card_writes_json_artifact(tmp_path):
     assert len(data["pages"]) == 6
 
 
-def test_limit_takes_only_the_first_pages():
+def test_a_smaller_exam_is_just_fewer_pages():
     exam = Exam.from_dir(HELLO)
-    card = sit(exam, Taker("dumb", always_pos), limit=2)
+    exam.pages = exam.pages[:2]        # author fewer pages: a smaller exam
+    card = sit(exam, Taker("dumb", always_pos))
     assert len(card.pages) == 2
-    assert card.score == 1.0  # first two pages are both pos
-    # and a limit never reads pages it does not take
-    card6 = sit(exam, Taker("dumb", always_pos))
-    assert card6.score == 0.5
+    assert card.score == 1.0           # first two pages are both pos
 
 
 # ── resume: sit again over a workbox ──────────────────────────────────

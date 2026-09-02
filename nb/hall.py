@@ -45,7 +45,6 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="hall")
     p.add_argument("exam_dir", help="directory holding question/cases/answer_key")
     p.add_argument("--stub", choices=sorted(STUBS), help="which stub taker sits")
-    p.add_argument("--limit", type=int, default=None)
     p.add_argument("--out", default=None, help="where to put the report card")
     p.add_argument("--workbox", default=None,
                    help="dir to scribble answers into; resumes if non-empty")
@@ -56,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         p.error("say who sits: --stub good|dumb")
     taker = Taker(name=args.stub, answer=STUBS[args.stub])
     workbox = Path(args.workbox) if args.workbox else None
-    card = sit(exam, taker, limit=args.limit, workbox=workbox)
+    card = sit(exam, taker, workbox=workbox)
 
     out = Path(args.out) if args.out else Path.cwd()
     path = card.write(out)

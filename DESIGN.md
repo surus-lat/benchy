@@ -80,6 +80,12 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
   in answer_key.json died with it. Also died: ReportCard.write's `filename`
   param — the only caller passed exactly the default value.
 
+- **limit param** (cycle 10): threaded through sit(), as_loss() and the
+  hall's --limit flag, it had no honest exam word — an exam is not taken
+  "up to N pages"; you author fewer pages or you resume a workbox. The
+  vision's smoke-run need is runner territory (angle s09), not exam metal.
+  The limit test became an honest smaller-exam test.
+
 - **Question, Page dataclasses** (cycle 1): the engine never interprets the
   question or the page — it loads them, passes them, grades them. A wrapper
   class per data file was a mirror of `json.loads` with a nicer name.
