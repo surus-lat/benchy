@@ -11,7 +11,7 @@
 ## Final shape
 
 - 72 loc, 4 concepts (load, invoke, run, as_loss), 2 files, 0 deps
-- A benchmark is a directory: `task.json` (locates) + `scoring.json` (grades) + `cases.jsonl` (examines) + `systems/*.json` (takes the exam)
+- A benchmark is a directory: `task.json` locates, `scoring.json` grades, `cases.jsonl` examines, `systems/*.json` takes the exam
 - Scoring vocabulary: `exact` | `fields+weights` — loud-dispatched, unknown keys raise
 - System vocabulary: `constant` | `regex` — specs compiled to callables; a cloud endpoint is one more spec shape
 - Artifact bar: stdout (no resume here → no mid-run write; contrast s04)
@@ -35,8 +35,8 @@ where every key is interpreted is the honest benchmark-as-directory.
 ## Most expensive mistake
 
 The root `*.json` gitignore silently untracked the whole bench/ directory
-for 4 cycles — deliverables existed only on disk until 69d5d94 negated the
-pattern. Verify what git tracks, not what the tree shows.
+for 4 cycles — until 69d5d94 negated the pattern. Verify what git tracks,
+not what the tree shows.
 
 ## Advice for the other nine
 
