@@ -33,22 +33,16 @@ class Taker:
 
 
 @dataclass
-class PageResult:
-    """One graded page: what was asked, what was answered, points earned."""
-    page: int          # index of the page in the exam
-    prompt: dict
-    expected: object
-    answered: object
-    points: float      # what the page was worth
-    earned: float      # fraction of the points earned, 0..1
-
-
-@dataclass
 class ReportCard:
-    """The graded artifact: per-page results + the exam score. This is the JSON."""
+    """The graded artifact: per-page results + the exam score. This is the JSON.
+
+    Each row carries only what the exam's cases.json cannot: which page
+    (by index), what was answered, and the fraction of its points earned.
+    The card never re-states the page — the exam is the single source of it.
+    """
     exam: str                     # ontology path of the exam
     taker: str                    # who sat the exam
-    pages: list                   # per-page results (PageResult as dicts)
+    pages: list                   # rows: {page, answered, earned}
     score: float                  # exam score, weighted mean of page scores
     loss: float                   # 1 - score
     taken_at: str                 # ISO timestamp
@@ -71,7 +65,7 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
     interrupted exam can be retaken without re-answering what is already done.
     """
     pages = exam.pages if limit is None else exam.pages[:limit]
-    done: list[PageResult] = []
+    done: list[dict] = []
     for i, page in enumerate(pages):
         if workbox is not None and _read_scribble(workbox, i) is not _UNANSWERED:
             answered = _read_scribble(workbox, i)   # already answered: keep it
@@ -79,16 +73,13 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
             answered = taker.sit(page["prompt"])
             if workbox is not None:
                 _scribble(workbox, i, answered)
-        earned = exam.grade_page(page, answered)
-        done.append(PageResult(page=i, prompt=page["prompt"],
-                               expected=page.get("expected"),
-                               answered=answered,
-                               points=page.get("points", 1.0), earned=earned))
-    total = sum(d.points for d in done)
-    score = (sum(d.points * d.earned for d in done) / total) if total else 0.0
+        done.append({"page": i, "answered": answered,
+                     "earned": exam.grade_page(page, answered)})
+    total = sum(page.get("points", 1.0) for page in pages)
+    score = (sum(page.get("points", 1.0) * d["earned"]
+                 for page, d in zip(pages, done)) / total) if total else 0.0
     return ReportCard(exam=exam.path, taker=taker.name,
-                      pages=[asdict(d) for d in done],
-                      score=score, loss=1.0 - score,
+                      pages=done, score=score, loss=1.0 - score,
                       taken_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
