@@ -11,3 +11,4 @@
 9 | pushed=path key in loss.trace — evidence-only artifact | broke=yes | verdict=NOISE_REMOVED | loc=35 | concepts=1
 10 | pushed=`want` key in trace cases — deleted, tests stayed green, but a failed case reads "wrong, about what?" without it; artifact must be self-contained for optimizers | broke=yes | verdict=BARE_METAL | loc=35 | concepts=1
 11 | pushed=`scoring` key + engine check — deleted, stayed green (guard was unguarded); restored: scoring is a pillar (law #6), the check was live honesty code, vision promises multiple scorings; added the missing guard test | broke=no | verdict=BARE_METAL | loc=35 | concepts=1
+12 | pushed=ROOT module anchor — inlined into load(); escalated: tried hoisting loss() out of the closure — broke 8 tests (spec needed at eval time, trace needs per-instance state); restored closure, added two-benchmarks-independent-receipts test | broke=yes | verdict=BARE_METAL | loc=34 | concepts=1
