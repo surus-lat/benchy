@@ -50,6 +50,7 @@ logs/
 !configs/**/*.json
 !submissions/**/*.json
 !configs/**/*.yaml
+!bench/**/benchmark.json
 *.csv
 *.parquet
 /.data/

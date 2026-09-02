@@ -21,13 +21,12 @@ class Exam:
             pages.append({**case, "prediction": prediction,
                           "score": self.scorer(case, prediction)})
         score = sum(p["score"] for p in pages) / len(pages)
-        return {"benchmark": self.path, "cases": pages,
-                "score": score, "loss": 1.0 - score}
+        return {"benchmark": self.path, "cases": pages, "score": score}
 
     def as_loss(self):
         """The benchmark as a loss function over systems: lower is better."""
         def loss(system) -> float:
-            return float(self.run(system)["loss"])
+            return 1.0 - self.run(system)["score"]
 
         return loss
 
@@ -53,4 +52,4 @@ def main() -> None:
     out = exam.dir / f"artifact_{name}.json"
     out.write_text(json.dumps(artifact, indent=1) + "\n")
     print(f"{artifact['benchmark']} {name}: score={artifact['score']:.2f} "
-          f"loss={artifact['loss']:.2f} -> {out}")
+          f"loss={1.0 - artifact['score']:.2f} -> {out}")
