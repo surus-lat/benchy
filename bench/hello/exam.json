@@ -1,0 +1,15 @@
+{
+  "path": "/sentiment",
+  "task": "sentiment classification: one short text in, exactly one of the declared out labels",
+  "in": "text",
+  "out": ["pos", "neg"],
+  "scoring": { "note": "1 point per exact match, exam score = mean" },
+  "cases": [
+    { "id": "s1", "input": "this works great",  "want": "pos" },
+    { "id": "s2", "input": "excelente servicio", "want": "pos" },
+    { "id": "s3", "input": "loved it",          "want": "pos" },
+    { "id": "s4", "input": "broken on arrival", "want": "neg" },
+    { "id": "s5", "input": "una porqueria",     "want": "neg" },
+    { "id": "s6", "input": "never again",       "want": "neg" }
+  ]
+}

@@ -79,3 +79,6 @@ test.py
 .claude/
 .worktrees/
 .search/
+
+# bench benchmark data must be tracked (search trees)
+!bench/**/*.json
