@@ -54,7 +54,7 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
-| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6) | 0 |
+| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both: tuple has no as_loss, shape leaked to cli | 1 |
 | locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme; the walk IS the registry; load-time honesty lives here | 0 |
 | run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence | 0 |
 | new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load | 0 |
