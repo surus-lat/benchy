@@ -10,3 +10,4 @@
 7 | pushed=const kind (a constant IS keyword with any=[]) | broke=yes | verdict=HARD_PUSH | loc=94 | concepts=7
 8 | pushed=_check required param (SAMPLE_REQUIRED==SAMPLE_ALLOWED) + escalate: drop kind from key set | broke=yes | verdict=HARD_PUSH | loc=92 | concepts=7
 9 | pushed=locate double-read (probe vs entry) + run's duplicate policy gate | broke=yes | verdict=BARE_METAL | loc=89 | concepts=7
+10 | pushed=sample id (write-only metadata: schema+engine+artifact+data, full delete) | broke=no | verdict=HARD_PUSH | loc=89 | concepts=7
