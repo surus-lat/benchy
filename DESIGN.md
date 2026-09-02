@@ -10,10 +10,11 @@ The four pillars of the ontology are DATA. The engine is four PURE functions
 over that data — values in, values out, no classes, no registries, no I/O.
 
 ```
-DATA     bench/hello/sentiment.json   the benchmark: task + scoring + cases
-         bench/hello/systems.json     system SPECS (the exam-takers, as data)
-ENGINE   nb/engine.py                compile / grade / run / as_loss (pure)
-         nb/__main__.py              python -m nb — the file layer + CLI
+DATA     bench/hello/bundle/           one self-contained benchmark bundle:
+           sentiment.json               the benchmark: task + scoring + cases
+           systems.json                 system SPECS (exam-takers, as data)
+ENGINE   nb/engine.py                  compile / grade / run / as_loss (pure)
+         nb/__main__.py                python -m nb — the file layer + CLI
 ```
 
 - **TASK pillar** lives in the benchmark data: `task.input` (a string text),
@@ -49,4 +50,4 @@ survived = deletion attempts in push cycles (this session: build only).
 
 /sentiment · 6 cases · good keyword stub → 1.0 · dumb constant stub → 0.5 ·
 artifact = JSON per-case + aggregate · loss(dumb) > loss(good) · fully
-offline · stdlib only · benchmark is pure data.
+offline · stdlib only · benchmark is pure data · one bundle directory.
