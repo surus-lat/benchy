@@ -29,6 +29,18 @@ def main(argv: list[str]) -> int:
 
     benchmark = json.loads(
         (Path(bench_root) / (path.strip("/") + ".json")).read_text(encoding="utf-8"))
+    # c18, donated from the old spine (.staging/benchy/core.py OntologyPath:
+    # "simultaneously the registry key and the on-disk layout"; old
+    # load_benchmark resolved benchmarks BY ontology): the requested path
+    # and the file's declared path must be the SAME path — a file that
+    # declares /other when you asked for /sentiment is a broken exam
+    # install (copied/renamed without editing), and running it would
+    # silently produce artifacts under the wrong identity. refusal beats
+    # surprise; the artifact's benchmark field must be trustworthy.
+    if benchmark["path"] != path:
+        print(f"benchmark declares {benchmark['path']!r} but was requested as {path!r}",
+              file=sys.stderr)
+        return 2
     systems = json.loads(
         (Path(bench_root) / "systems.json").read_text(encoding="utf-8"))
     system = next(s for s in systems if s["name"] == system_name)
