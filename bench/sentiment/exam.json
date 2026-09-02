@@ -1,7 +1,4 @@
 {
-  "path": "/sentiment",
-  "task": "sentiment classification: one short text in, exactly one of the declared out labels",
-  "in": "text",
   "out": ["pos", "neg"],
   "scoring": { "note": "1 point per exact match, exam score = mean" },
   "cases": [

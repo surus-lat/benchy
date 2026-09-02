@@ -12,13 +12,14 @@ from pathlib import Path
 from time import sleep
 
 
-def locate(path, root="bench"):
+def locate(path):
     """Resolve an ontology path like '/sentiment' to its exam directory.
     # survival: the tree IS the ontology — bench/sentiment/ literally is
-    # /sentiment; no walk, no index file, no second address."""
-    d = Path(root) / path.strip("/").replace("/", "-")
+    # /sentiment; no walk, no index file, no second address. c12: the root
+    # kwarg was unread cargo — no caller ever passed a different root."""
+    d = Path("bench") / path.strip("/").replace("/", "-")
     if not (d / "exam.json").is_file():
-        raise FileNotFoundError(f"no exam at {path!r} under {root}/")
+        raise FileNotFoundError(f"no exam at {path!r} under bench/")
     return d
 
 
@@ -93,8 +94,7 @@ class Exam:
     """The benchmark: task + scoring + cases. run(system) takes it, as_loss ranks systems."""
 
     def __init__(self, dir):
-        self.dir = Path(dir)
-        self.spec = json.loads((self.dir / "exam.json").read_text())
+        self.spec = json.loads((Path(dir) / "exam.json").read_text())
         self.cases = self.spec["cases"]
         self.weights = (self.spec.get("scoring") or {}).get("weights")
         outs = self.spec.get("out")
@@ -109,16 +109,21 @@ class Exam:
 
     def run(self, system, out=None, workers=8, tries=3):
         """Take the exam concurrently (serial fails the 1000-case bar 16x over);
-        `out` re-run = resume: ok cases kept, errored cases re-attempted."""
+        `out` re-run = resume: ok cases kept, errored cases re-attempted.
+        # survival (c12): out=None is the in-memory evaluation — the pure
+        # read-only path. Forcing `out` broke 7 tests, 5 of them pure
+        # scoring/loss evaluations (as_loss would need a throwaway path per
+        # call: the optimizer seam turned stateful). The artifact is optional
+        # durability; the vision's run(system) has no out argument."""
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
         # total = the exam size, fixed: score = sum/total makes the mid-run
         # value an honest lower bound (ungraded cases count 0), and the final
         # value the exact mean. A partial artifact still interprets alone.
         art = {"system": spec, "scoring": self.spec.get("scoring"),
                "total": len(self.cases), "cases": []}
-        out = Path(out) if out else None
-        if out and out.exists():
-            old = json.loads(out.read_text())
+        out_p = Path(out) if out else None
+        if out_p and out_p.exists():
+            old = json.loads(out_p.read_text())
             cur = {c["id"]: c for c in self.cases}
             stale = [r for r in old.get("cases", [])
                      if (cur.get(r["id"]) or {}).get("input") != r.get("input")
@@ -139,8 +144,8 @@ class Exam:
                 # score = sum/total: ungraded cases count 0, so the mid-run
                 # value is a lower bound that converges to the exact mean.
                 art["score"] = sum(r["score"] for r in art["cases"]) / art["total"]
-                if out:
-                    _write(out, art)
+                if out_p:
+                    _write(out_p, art)
         # a resume that found nothing to do never enters the loop — the
         # artifact still owes its reader (and as_loss) the aggregate.
         # errors is NOT stored: it is a projection, sum(status == "error").
