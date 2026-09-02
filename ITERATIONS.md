@@ -9,3 +9,4 @@
 3 | pushed=report() fused into sit() | broke=no | verdict=HARD_PUSH | loc=211 | concepts=13
 4 | pushed=retake()+hall-dual-path | broke=yes | verdict=NOISE_REMOVED | loc=201 | concepts=12
 5 | pushed=PageResult | broke=no | verdict=HARD_PUSH | loc=193 | concepts=11
+6 | pushed=_scribble/_read_scribble→answers.json | broke=yes | verdict=NOISE_REMOVED | loc=188 | concepts=9

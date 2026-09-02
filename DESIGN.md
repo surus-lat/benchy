@@ -6,7 +6,8 @@ A benchmark is an **exam**. An exam is three readable data files — a
 **question.json** (what must be produced), **cases.json** (the pages:
 prompt + expected answer + points), and **answer_key.json** (which grading
 rule applies). A **Taker** is anyone who can answer — model, node,
-Pages stay raw dicts. The taker **sits** the exam
+workflow, agent: all the same here. Pages stay raw dicts. The taker
+**sits** the exam
 page by page; grading produces a **ReportCard** (the artifact JSON:
 per-page scores + the exam score). Answers already **scribbled** in a
 workbox are kept on the next sit (resume — retaking IS sitting). The
@@ -45,15 +46,20 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | keyword_tally / always_pos | SYSTEM | the two stub takers: offline demo, no network, no keys. They prove the hall works and that scoring discriminates | 0 |
 | hall.main | — | the shell door: sit an exam from the CLI. Deleting it leaves the engine library-only, unusable from the terminal | 0 |
 | report (sit.py helper) | DATA | ~~fold results into the card~~ DELETED cycle 3: a two-line fold with one call site — inlined into sit() | gone |
-| _scribble/_read_scribble | DATA | workbox I/O: answer per page saved as soon as produced. The honesty of retake | 0 |
+| workbox answers.json | DATA | the resume format: one honest dict (page index → answer), rewritten after every page. Two helper functions + a sentinel object died for it | 0 |
+
+## deletions (what the push proved to be noise)
 
 - **PageResult** (cycle 5): a dataclass that was only ever converted to a dict
   before writing the card. The rows are now built as plain dicts directly in
   the sit loop — the card never re-states the page (prompt/expected/points
   live in the exam; the row says only: which page, what was answered, what
   was earned). One fewer class, −8 LOC.
-
-## deletions (what the push proved to be noise)
+- **_scribble/_read_scribble/_UNANSWERED** (cycle 6): the workbox was a file
+  per page plus a sentinel object standing for "unanswered". The workbox is
+  now ONE honest answers.json (page index → answer), rewritten after every
+  page. Two helpers, one sentinel, five files on disk → one dict read at
+  sit, one dict written per page. Resume got simpler, not harder.
 
 - **Question, Page dataclasses** (cycle 1): the engine never interprets the
   question or the page — it loads them, passes them, grades them. A wrapper
