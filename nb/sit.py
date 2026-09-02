@@ -60,19 +60,24 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
         workbox: Path | None = None) -> ReportCard:
     """The taker takes the exam: every page, graded page by page.
 
-    workbox: a directory to scribble answers into as we go (enables retake).
-    When given, each page's answer is saved as soon as it is produced, so an
-    interrupted exam can be retaken without re-answering what is already done.
+    workbox: a directory to scribble answers into as we go. The scribbles
+    are one honest answers.json (page index -> answer), rewritten after
+    every page — so an interrupted exam is resumed by sitting again:
+    pages already answered are kept, only the rest are asked.
     """
     pages = exam.pages if limit is None else exam.pages[:limit]
+    wb = Path(workbox) / "answers.json" if workbox is not None else None
+    answers: dict = json.loads(wb.read_text()) if wb and wb.exists() else {}
     done: list[dict] = []
     for i, page in enumerate(pages):
-        if workbox is not None and _read_scribble(workbox, i) is not _UNANSWERED:
-            answered = _read_scribble(workbox, i)   # already answered: keep it
+        if str(i) in answers:            # already answered: keep it
+            answered = answers[str(i)]
         else:
             answered = taker.sit(page["prompt"])
-            if workbox is not None:
-                _scribble(workbox, i, answered)
+            if wb is not None:
+                answers[str(i)] = answered
+                wb.parent.mkdir(parents=True, exist_ok=True)
+                wb.write_text(json.dumps(answers, indent=2))
         done.append({"page": i, "answered": answered,
                      "earned": exam.grade_page(page, answered)})
     total = sum(page.get("points", 1.0) for page in pages)
@@ -86,19 +91,3 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
 def as_loss(exam: Exam, taker: Taker, limit: int = None) -> float:
     """The exam as a loss function over takers: sit, then 1 - score."""
     return sit(exam, taker, limit=limit).loss
-
-
-_UNANSWERED = object()
-
-
-def _scribble(workbox: Path, i: int, answered) -> None:
-    wb = Path(workbox)
-    wb.mkdir(parents=True, exist_ok=True)
-    (wb / f"page_{i:04d}.json").write_text(json.dumps({"answered": answered}))
-
-
-def _read_scribble(workbox: Path, i: int):
-    p = Path(workbox) / f"page_{i:04d}.json"
-    if not p.exists():
-        return _UNANSWERED
-    return json.loads(p.read_text())["answered"]

@@ -106,9 +106,8 @@ def test_sitting_again_keeps_answers_already_given(tmp_path):
         return "pos"
 
     # half the exam was already answered before the interruption
-    from nb.sit import _scribble
-    for i in range(3):
-        _scribble(tmp_path, i, "pos")
+    (tmp_path / "answers.json").write_text(json.dumps(
+        {"0": "pos", "1": "pos", "2": "pos"}))
 
     card = sit(exam, Taker("counter", counting_taker), workbox=tmp_path)
     assert len(card.pages) == 6          # the whole exam is graded
@@ -116,14 +115,24 @@ def test_sitting_again_keeps_answers_already_given(tmp_path):
     assert card.score == 0.5             # always-pos across 6 pages
 
 
-def test_scribbled_answers_are_honest_json(tmp_path):
-    from nb.sit import _scribble, _read_scribble
-    _scribble(tmp_path, 0, "pos")
-    assert _read_scribble(tmp_path, 0) == "pos"
-    assert (_read_scribble(tmp_path, 1) is not None) or True  # unanswered marker
+def test_the_workbox_is_one_honest_answers_json(tmp_path):
+    exam = Exam.from_dir(HELLO)
+    sit(exam, Taker("good", keyword_tally), workbox=tmp_path)
+    wb = json.loads((tmp_path / "answers.json").read_text())
+    assert set(wb) == {str(i) for i in range(6)}   # every page, keyed by index
+    assert all(v in ("pos", "neg") for v in wb.values())
 
 
 def test_sit_with_workbox_scribbles_as_it_goes(tmp_path):
     exam = Exam.from_dir(HELLO)
-    sit(exam, Taker("good", keyword_tally), workbox=tmp_path)
-    assert len(list(tmp_path.iterdir())) == 6
+    calls = []
+
+    def counting_taker(prompt):
+        calls.append(1)
+        return "neg"
+
+    # interrupt mid-exam: after every page the whole workbox is on disk
+    sit(exam, Taker("counter", counting_taker), workbox=tmp_path)
+    assert len(list(tmp_path.iterdir())) == 1      # one answers.json, not six files
+    wb = json.loads((tmp_path / "answers.json").read_text())
+    assert len(wb) == len(calls) == 6
