@@ -37,7 +37,7 @@ class Exam:
         return loss
 
 
-def locate(bench_root: str | Path, path: str) -> Exam:
+def locate(bench_root, path):
     """Find a benchmark by ontology path /<task?>/<domain?>/<language?> — the
     only constructor: benchmark.json is the whole exam, pure data."""
     for f in sorted(Path(bench_root).rglob("benchmark.json")):

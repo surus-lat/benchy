@@ -33,7 +33,7 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
 | exact_match | SCORING | the dumbest scorer; the built-in default | 0 |
-| Exam | ALL | benchmark = data+scoring; system is the argument (run / as_loss — two vision invariants) | 2 |
+| Exam | ALL | 3 survivals. cycle 12 dissolution broke 7 tests AND grew concepts 4->5: the class is the concept-COMPRESSOR (methods count free inside it) and carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM.md law 6) | 3 |
 | locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>); since cycle 9 the only constructor (load fused in) | 2 |
 | main | UX | cycle 10 deletion broke test_cli_runs_offline_end_to_end: the acceptance bar is "runs offline, end to end" WITHOUT pytest — an engine only reachable via pytest is archaeology, not a product. Lives in exam.py (fused); __main__.py is a 2-line shim | 1 |
 
@@ -59,6 +59,14 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
   evaporates on copy). An unlabeled grade is a mean without an exam. The
   old benchy's run_outcome.json carries run identity at top level for the
   same reason: report-side reading needs self-describing data.
+- Exam, the class (cycle 12, 3rd survival): dissolving it into free
+  functions over a (cases, scorer, path) tuple — s03's move — broke 7
+  tests and the golem ITSELF growled GREW concepts 4->5. Two metal facts:
+  (a) the class is the concept-compressor — `run` and `as_loss` count as
+  free top-level defs when they escape it; (b) the vision invariant is
+  written in method syntax (`result = benchmark.run(system)`,
+  `loss = benchmark.as_loss()`, GOLEM.md law 6) — the surface IS the
+  spec. A tuple can't carry a spec.
 
 ## deleted (noise — protocols that only had annotation-work)
 
