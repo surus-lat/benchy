@@ -3,9 +3,9 @@
 The only behavior in the engine: a for-loop over cases, a mean, and JSON I/O.
 """
 import json
+import sys
 from pathlib import Path
 from typing import Callable
-
 
 
 def exact_match(case, prediction) -> float:
@@ -46,3 +46,16 @@ def locate(bench_root: str | Path, path: str) -> Exam:
         if data["path"] == path:
             return Exam(data["cases"], exact_match, data["path"], f.parent)
     raise LookupError(f"no benchmark with ontology path {path!r}")
+
+
+def main() -> None:
+    """`python -m nb <bench_root> <ontology_path> <system>` — one exam, offline,
+    end to end; writes the graded artifact next to the benchmark."""
+    root, path, name = sys.argv[1], sys.argv[2], sys.argv[3]
+    exam = locate(root, path)
+    sys.path.insert(0, str(exam.dir))
+    artifact = exam.run(getattr(__import__("stubs"), name))
+    out = exam.dir / f"artifact_{name}.json"
+    out.write_text(json.dumps(artifact, indent=1) + "\n")
+    print(f"{artifact['benchmark']} {name}: score={artifact['score']:.2f} "
+          f"loss={artifact['loss']:.2f} -> {out}")
