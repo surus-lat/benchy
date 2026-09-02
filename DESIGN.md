@@ -33,7 +33,7 @@ names, not 10 types.
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
 | exact_match | SCORING | the dumbest scorer; the built-in default | 0 |
-| Exam | ALL | benchmark = data+scoring; system is the argument (run / as_loss — two vision invariants) | 1 |
+| Exam | ALL | benchmark = data+scoring; system is the argument (run / as_loss — two vision invariants) | 2 |
 | load | DATA | a benchmark is data; the only directory reader | 0 |
 | locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>) | 1 |
 | main | UX | `python -m nb <bench> <system>`: runnable without pytest archaeology | 0 |
@@ -42,6 +42,12 @@ names, not 10 types.
 
 - locate (cycle 4): the ontology path is the vision's addressing scheme
   (/<task?>/<domain?>/<language?>), not a directory convention.
+- as_loss (cycle 8): VISION/IDEAS name the loss export the headline feature —
+  "export the benchmark as a new loss function for prompt-optimizers" — and
+  the acceptance bar demands `as_loss()` ranks the stubs. It is the identity
+  of the benchmark-as-loss view (angle s01's whole thesis), not a feature.
+  The deletion broke the acceptance test itself; a benchmark that cannot be
+  handed to an optimizer is not benchy.
 
 ## deleted (noise — protocols that only had annotation-work)
 
