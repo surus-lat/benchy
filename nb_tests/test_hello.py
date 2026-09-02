@@ -28,7 +28,7 @@ def _run(system, *extra):
 
 def test_run_good_scores_one_and_writes_artifact():
     r = _run("good")
-    out = ROOT / "runs" / f"hello-good.json"
+    out = ROOT / "runs" / f"sentiment-good.json"
     a = json.loads(out.read_text())
     assert a["score"] == 1.0 and a["system"] == "good"
     assert len(a["cases"]) == 6
@@ -37,19 +37,19 @@ def test_run_good_scores_one_and_writes_artifact():
 
 def test_run_dumb_scores_half():
     r = _run("dumb")
-    a = json.loads((ROOT / "runs" / "hello-dumb.json").read_text())
+    a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
     assert a["score"] == 0.5
 
 
 def test_artifact_interprets_alone():
-    a = json.loads((ROOT / "runs" / "hello-dumb.json").read_text())
+    a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
     for c in a["cases"]:
         assert set(c) >= {"input", "expected", "prediction", "score"}
 
 
 def test_limit_is_the_smoke_valve():
     _run("dumb", "--limit", "4")  # 3 pos + 1 neg expected -> dumb scores 0.75
-    a = json.loads((ROOT / "runs" / "hello-dumb.json").read_text())
+    a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
     assert len(a["cases"]) == 4 and a["score"] == 0.75
 
 
@@ -65,7 +65,7 @@ def test_as_loss_ranks_dumb_above_good():
 
 def test_report_reads_the_graded_run():
     _run("dumb")
-    r = _cli("report", "runs/hello-dumb.json")
+    r = _cli("report", "runs/sentiment-dumb.json")
     assert r.returncode == 0, r.stderr
     assert "score 0.500" in r.stdout and "loss 0.500" in r.stdout
     assert "fail" in r.stdout and "pass" in r.stdout

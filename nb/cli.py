@@ -11,24 +11,12 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from textwrap import dedent
 
 from .exam import locate
 
 EXAM = '{"path": "/%s", "task": {"input": "", "output": ""}, "cases": []}\n'
-# scaffold payload, indented so it reads as data, not engine code
-SYSTEMS = dedent('''
-    """Exam-takers for /%s — a system is any invoked program
-    (model, node, workflow, agent).  invoke(input) -> prediction."""
-
-    class Todo:
-        """The scaffold taker: refuses to guess until you implement it."""
-
-        def invoke(self, x):
-            raise NotImplementedError("implement Todo.invoke, or write your own taker")
-
-    todo = Todo()
-''')
+# the scaffold is pure data — a benchmark is data; the taker (systems.py) is
+# yours to write, next to the exam, where run looks for it
 
 
 def run(bench, system, limit=None):
@@ -41,9 +29,9 @@ def run(bench, system, limit=None):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if not hasattr(mod, system):
-        raise LookupError(f"no taker {system!r} in {exam.dir.name}/systems.py")
+        raise LookupError(f"no taker {system!r} in {exam.dir}/systems.py")
     artifact = {"system": system, **exam.run(getattr(mod, system))}
-    out = Path("runs") / f"{exam.dir.name}-{system}.json"
+    out = Path("runs") / f"{bench.lstrip('/').replace('/', '-')}-{system}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(artifact, indent=1) + "\n")
     print(f"{artifact['benchmark']} · {system}: score={artifact['score']:.2f} "
@@ -51,15 +39,14 @@ def run(bench, system, limit=None):
 
 
 def new(name):
-    """`new <name>`: scaffold the full runnable shape — creating exams is the
+    """`new <name>`: scaffold the exam as pure data — creating exams is the
     product's first step, so the format starts as a written file, not lore."""
     d = Path("bench") / name
     if (d / "benchmark.json").exists():
         raise ValueError(f"{d}/benchmark.json already exists")
     d.mkdir(parents=True, exist_ok=True)
     (d / "benchmark.json").write_text(EXAM % name)
-    (d / "systems.py").write_text(SYSTEMS % name)
-    print(f"{d}/  — add cases to benchmark.json, then: run /{name} todo")
+    print(f"{d}/  — add cases to benchmark.json, write systems.py, then: run /{name} <taker>")
 
 
 def report(run_path):
@@ -87,6 +74,5 @@ def main(argv=None):
             report(argv[1])
         else:
             raise SystemExit(__doc__.strip())
-    except (LookupError, ValueError, NotImplementedError, FileNotFoundError,
-            TypeError) as e:
+    except (LookupError, ValueError, FileNotFoundError, TypeError) as e:
         raise SystemExit(f"benchy: {e}")

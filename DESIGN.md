@@ -18,28 +18,33 @@ not a human — the CLI prints the loss per run as the human-visible half.
 
 ## shape
 
-    benchy new <name>        bench/<name>/{benchmark.json,systems.py} — a
-                            runnable scaffold (zero cases -> loud refusal)
-    benchy run <bench> <sys> [--limit N]
+```
+benchy new <name>        bench/<name>/benchmark.json — a runnable scaffold
+                            as pure data (zero cases -> loud refusal at load)
+benchy run <bench> <sys> [--limit N]
                             locate by ontology path, the system takes the
-                            exam, graded artifact -> runs/<bench>-<sys>.json
-    benchy report <run>      re-read a graded run: per-case pass/fail +
+                            exam, graded artifact -> runs/<path>-<sys>.json
+                            (the ontology path IS the artifact identity)
+benchy report <run>      re-read a graded run: per-case pass/fail +
                             score + loss (evidence outlives the process)
 
-    benchmark.json           {path, task, cases} — the whole exam, pure data;
+benchmark.json           {path, task, cases} — the whole exam, pure data;
                             unknown keys are loud (an exam is exactly this).
                             task stays as taker-facing data: the cloud
                             compiler reads it to build prompts; the engine
                             passes it through untouched (cycle 1 deleted
                             the engine's own task plumbing — a lens)
-    systems.py               the exam-takers, NOT part of the benchmark:
+systems.py               the exam-takers, NOT part of the benchmark:
                             a system is any invoked program; the cloud
                             taker (steering addendum) joins here as a spec
-    Exam.run(system)         -> graded artifact {system, benchmark, cases:
+Exam.run(system)         -> graded artifact {system, benchmark, cases:
                             [{input, expected, prediction, score}], score}
                             (mean; interprets alone)
-    Exam.as_loss()           -> (system) -> 1 - score, lower is better
-    locate(bench_root, path) ontology path -> exam (the address IS the registry)
+Exam.as_loss()           -> (system) -> 1 - score, lower is better
+locate(bench_root, path) ontology path -> exam (the address IS the registry);
+                            load-time honesty: unknown keys and zero cases
+                            are refused before anything runs
+```
 
 Errors are spoken words (`benchy: <reason>`), never tracebacks — a product
 CLI speaks.  `python -m nb` until packaging earns the console script.
@@ -49,9 +54,9 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
 | Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6) | 0 |
-| locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme; the walk IS the registry | 0 |
+| locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme; the walk IS the registry; load-time honesty lives here | 0 |
 | run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence | 0 |
-| new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold must be runnable, not a blank page | 0 |
+| new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load | 0 |
 | report | DATA | evidence outlives the process that made it; re-running a cloud system to see a grade costs money | 0 |
 | main | UX | dispatch + words-not-tracebacks; a CLI that raises stack traces at users is not a product | 0 |
 
