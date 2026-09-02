@@ -1,28 +1,14 @@
-"""nb.core — the contracts.
+"""nb.core — the contracts, as conventions (the s06 finding).
 
-Benchy has four pillars: TASK, SCORING, DATA, SYSTEM.  This file is the
-contract layer: the records that flow between the pillars and the one
-runtime-checkable protocol an exam-taker must satisfy.  No behavior lives
-here — implementations are trivial one-liners elsewhere.
+  case    {input, expected}                     — one exam page (DATA)
+  task    {input-schema, output-schema}         — the program description
+          (TASK) — lives in the data; the engine passes it through
+  scorer  (case, prediction) -> float in [0,1]  — what good means (SCORING)
+  system  .invoke(input) -> prediction           — the exam taker (SYSTEM);
+          model, node, workflow, agent — all the same thing
+  artifact {benchmark, cases:[{input, expected, prediction, score}], score,
+          loss} — the graded record the report side reads
+
+Swapping any implementation changes zero lines outside it: the conventions
+are carried by the values, not by named types.
 """
-from typing import Protocol, TypedDict, runtime_checkable
-
-
-class Case(TypedDict):
-    """Pillar DATA — one exam page: the input and the expected answer."""
-
-    input: object
-    expected: object
-
-
-@runtime_checkable
-class System(Protocol):
-    """Pillar SYSTEM — any AI program: model, node, workflow, agent, stub.
-
-    The whole contract is one method: given an input, predict.  Conformance
-    is structural (duck): no inheritance, no registration.
-    """
-
-    def invoke(self, x: object) -> object: ...
-
-

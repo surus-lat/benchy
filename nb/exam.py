@@ -1,4 +1,4 @@
-"""nb.exam — the exam: benchmark = task + data + scoring; system is the argument.
+"""nb.exam — the exam: benchmark = data + scoring; system is the argument.
 
 The only behavior in the engine: a for-loop over cases, a mean, and JSON I/O.
 """
@@ -6,10 +6,9 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from .core import Case, System
 
 
-def exact_match(case: Case, prediction: object) -> float:
+def exact_match(case, prediction) -> float:
     """The dumbest Scorer: 1 point per exact match."""
     return float(prediction == case["expected"])
 
@@ -21,10 +20,10 @@ SCORINGS = {"exact_match": exact_match}
 class Exam:
     """One benchmark.  run(system) grades a taker; as_loss() exports the loss."""
 
-    def __init__(self, cases: list[Case], scorer, path: str = ""):
+    def __init__(self, cases, scorer, path: str = ""):
         self.cases, self.scorer, self.path = cases, scorer, path
 
-    def run(self, system: System) -> dict:
+    def run(self, system) -> dict:
         """The system takes the exam; returns the graded artifact (JSON-ready)."""
         pages = []
         for case in self.cases:
@@ -35,9 +34,9 @@ class Exam:
         return {"benchmark": self.path, "cases": pages,
                 "score": score, "loss": 1.0 - score}
 
-    def as_loss(self) -> Callable[[System], float]:
+    def as_loss(self) -> Callable:
         """The benchmark as a loss function over systems: lower is better."""
-        def loss(system: System) -> float:
+        def loss(system) -> float:
             return float(self.run(system)["loss"])
 
         return loss

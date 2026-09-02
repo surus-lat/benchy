@@ -59,12 +59,6 @@ def test_benchmark_is_pure_data():
     assert [c["expected"] for c in data["cases"]] == ["pos"] * 3 + ["neg"] * 3
 
 
-def test_systems_conform_structurally():
-    from nb.core import System
-    assert isinstance(_stub("good"), System)
-    assert isinstance(_stub("dumb"), System)
-
-
 def test_any_invoked_program_takes_the_exam():
     class AlwaysNeg:
         def invoke(self, x):
