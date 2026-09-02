@@ -28,10 +28,12 @@ def load(path):
         spec = json.loads(f.read_text())
         if spec["path"] != path:
             continue
+        # SCORING is data: the benchmark must NAME a policy the engine really
+        # implements. Unknown or missing -> loud, never silently exact-match.
+        if spec.get("scoring") != {"compare": "exact", "aggregate": "mean"}:
+            raise LookupError(f"unknown scoring: {spec.get('scoring')!r}")
 
         def loss(system) -> float:
-            if spec["scoring"] != {"compare": "exact", "aggregate": "mean"}:
-                raise LookupError(f"unknown scoring: {spec['scoring']}")
             cases = []
             for case in spec["cases"]:
                 got = system(case["in"])

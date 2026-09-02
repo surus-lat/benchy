@@ -38,6 +38,7 @@ unknown names fail loud, never silently score 0.
 |---|---|---|---|
 | load | DATA+SCORING | data must enter somehow; the only IO concept; returns the loss closure — one concept IS the whole engine | 1 |
 | `want` in trace cases | SCORING+DATA | the artifact must be SELF-CONTAINED: without `want`, a failed case reads "wrong, but about what?" and no reader (human or software-3.0 optimizer) can interpret or learn from the trace without joining bench.json — which the artifact no longer names (path deleted, cycle 9). Derivable-from-source is not the bar; interpretable-alone is. | 1 |
+| `scoring` key in bench.json + its load-time check | SCORING | scoring is a pillar of the benchmark identity (law #6). The key is the seat where the author names the policy the engine implements; the check is live honesty code — unknown or missing scoring fails loud, never silently exact-match. Survived deletion because nothing guarded the guard (cycle 11); the guard test now exists. | 1 |
 
 (`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
 `system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
@@ -82,6 +83,16 @@ system is a callable and stdlib importlib is the loader.)
   artifact feeds software-3.0 optimizers; an optimizer cannot learn the target
   answer from a trace that omits it. Derivable-from-bench.json is not the bar —
   INTERPRETABLE-ALONE is. Restored.
+- cycle 11: `scoring` key + engine check — BARE_METAL. The probe deleted both
+  and all 10 tests stayed green: the honesty guard was UNGUARDED — a gap in
+  the tests, not proof the pillar was ceremonial. Restored because: (a) law #6
+  makes scoring a pillar of the benchmark identity ("task + data + scoring");
+  (b) the check is live code — a benchmark naming `fuzzy` must fail loud,
+  never silently exact-match (the cycle-5 lesson, now made load-time instead
+  of hidden in the closure); (c) the vision promises multiple scorings
+  ("hierarchy of importance between fields") — the key is the seat where the
+  author names the policy. Fixed the gap: added a test that a missing or
+  unknown scoring raises LookupError. The engine's loc is unchanged (35).
 
 ## queued deletion candidates (loudest first)
 
