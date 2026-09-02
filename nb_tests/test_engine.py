@@ -106,3 +106,38 @@ def test_trace_is_json_artifact(tmp_path):
 def test_missing_path_raises():
     with pytest.raises(LookupError):
         nb.load("/nope")
+
+
+def test_scoring_is_data_and_guards_itself():
+    # cycle 11 probe: deleting the scoring key + check stayed green — the
+    # honesty guard was UNGUARDED. Scoring is a PILLAR (law #6: benchmark =
+    # task + data + scoring); a benchmark that fails to name a scoring the
+    # engine implements must fail loud, never silently exact-match.
+    spec = json.loads(HELLO.read_text())
+    assert spec["scoring"] == {"compare": "exact", "aggregate": "mean"}
+
+    import copy
+    bad = copy.deepcopy(spec)
+    bad.pop("scoring")  # missing
+    (ROOT / "bench" / "probe_missing" / "bench.json").parent.mkdir(parents=True, exist_ok=True)
+    (ROOT / "bench" / "probe_missing" / "bench.json").write_text(json.dumps(bad))
+    try:
+        with pytest.raises(LookupError):
+            nb.load("/sentiment")  # two matches now; the bad one must fail loud
+    finally:
+        import shutil
+        shutil.rmtree(ROOT / "bench" / "probe_missing")
+
+    bogus = tmp_bench({"path": "/probe_unknown", "scoring": {"compare": "fuzzy"}})
+    try:
+        with pytest.raises(LookupError):
+            nb.load("/probe_unknown")  # unknown vocab: loud, not silent 0.0
+    finally:
+        shutil.rmtree(bogus)
+
+
+def tmp_bench(spec):
+    d = ROOT / "bench" / "probe_tmp"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "bench.json").write_text(json.dumps(spec))
+    return d
