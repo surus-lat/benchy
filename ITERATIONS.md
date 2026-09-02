@@ -6,3 +6,8 @@
 3 | pushed=module-level invoke() | broke=no | verdict=HARD_PUSH | loc=255 | concepts=15
 4 | pushed=load_system_specs + _read (fusion into compile_systems) | broke=no | verdict=HARD_PUSH | loc=254 | concepts=14
 5 | pushed=_get (inlined into score) + dead failures counter | broke=no | verdict=HARD_PUSH | loc=249 | concepts=13
+6 | pushed=agent probe (kind=agent backend, tools+loop as data) | broke=no | verdict=HARD_PUSH | loc=274 | concepts=14
+# growth-for-probe, sanctioned by the angle brief: a full tool-loop agent was
+# thrown at the compiler and absorbed ENTIRELY as data (one _BACKENDS entry,
+# zero core changes) — the agent-as-core-concept is fully gone, nothing broke,
+# the angle survived its falsification attempt.

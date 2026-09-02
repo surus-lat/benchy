@@ -1,6 +1,6 @@
 {
  "files": 7,
- "loc": 249,
+ "loc": 274,
  "deps": 0,
  "concepts": [
   "Benchmark",
@@ -8,6 +8,7 @@
   "Exam",
   "Scoring",
   "Task",
+  "_backend_agent",
   "_backend_chain",
   "_backend_const",
   "_backend_http",
@@ -18,5 +19,5 @@
   "main"
  ],
  "cycles": 5,
- "why": null
+ "why": "agent falsification probe mandated by the angle brief: agent as pure config, no core leak"
 }

@@ -80,11 +80,40 @@ def _backend_chain(spec):
     return invoke
 
 
+def _backend_agent(spec):
+    """a tool loop: model + tools + a fixed controller.
+
+    An agent is a system whose spec names a model (a system), tools
+    (systems), and a budget. The model emits a plain value (final
+    answer) or ["tool", name, arg]; the controller runs the tool,
+    appends its result, and asks again until a final answer or budget
+    out. The loop is COMPILER code — a backend like any other; the
+    core never learns what an agent is.
+    """
+    model = compile_system(spec["model"])
+    tools = {n: compile_system(s) for n, s in spec.get("tools", {}).items()}
+    budget = spec.get("max_iters", 5)
+
+    def invoke(text):
+        out = model(text)
+        for _ in range(budget):
+            if not (isinstance(out, list) and out and out[0] == "tool"):
+                return out  # a plain value IS the final answer
+            name, arg = out[1], out[2] if len(out) > 2 else text
+            if name not in tools:
+                return out  # unknown tool: the utterance is the prediction
+            text = f"{text}\nresult: {tools[name](arg)}"
+            out = model(text)
+        return out  # budget out: the last utterance, graded honestly
+    return invoke
+
+
 _BACKENDS = {
     "stub": _backend_stub,
     "const": _backend_const,
     "http": _backend_http,
     "chain": _backend_chain,
+    "agent": _backend_agent,
 }
 
 

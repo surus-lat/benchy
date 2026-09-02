@@ -40,6 +40,7 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | _backend_const | SYSTEM | dumbest possible system; proves scoring discriminates (0.5) | 0 |
 | _backend_http | SYSTEM | openai-compatible backend over stdlib urllib; the real world | 0 |
 | _backend_chain | SYSTEM | workflow = system whose backend composes systems; no new concept | 0 |
+| _backend_agent | SYSTEM | agent = model + tools + budget in a spec; the tool LOOP is compiler code — the falsification probe that proved composition needs no core concept | 0 |
 | load | BENCH | benchmark as data on disk, locatable by ontology path | 2 |
 | compile_systems | BENCH | systems/*.json -> {name: system}; the only systems door (raw-spec loading fused into compile) | 1 |
 | main | BENCH | CLI: run a benchmark dir against its systems | 3 |
@@ -73,6 +74,13 @@ Prove composition with NO new core concept: `_backend_chain` is just
 another backend — a workflow is a system spec whose steps are system
 specs. Agents (loop, tools) are the next probe: if they demand core
 changes, the angle leaks, and I must say so in LEARNINGS.md.
+
+PROBE RESULT (cycle 6): the agent SURVIVED as pure configuration.
+`_backend_agent` (~25 loc) names a model (system spec), tools (system
+specs), and a budget; the model emits `["tool", name, arg]` or a final
+value; the controller loop is backend code. Task/Scoring/Exam/Benchmark
+never learned anything. Zero core changes — the angle held: agents are
+compiler backends, not engine concepts.
 
 Not-yet-proven suspects (will be pushed): the CLI's dual role (run vs
 systems listing) — maybe noise. `load_systems` (compiled) vs
