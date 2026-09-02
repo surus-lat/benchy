@@ -18,10 +18,6 @@ ROOT = Path(__file__).resolve().parent.parent
 HELLO = ROOT / "bench" / "hello" / "bench.json"
 
 
-def loss_of(b, system):
-    return b.as_loss()(system)
-
-
 def test_hello_benchmark_is_data():
     spec = json.loads(HELLO.read_text())
     assert spec["path"] == "/sentiment"
@@ -29,64 +25,65 @@ def test_hello_benchmark_is_data():
     assert spec["task"]["out"] == ["pos", "neg"]
 
 
+def test_load_returns_a_callable():
+    loss = nb.load("/sentiment")
+    assert callable(loss)
+
+
 def test_loss_ranks_stubs():
-    b = nb.load("/sentiment")
+    loss = nb.load("/sentiment")
     good = nb.system("bench/hello/systems/good.py")
     dumb = nb.system("bench/hello/systems/dumb.py")
-    assert loss_of(b, dumb) > loss_of(b, good)
+    assert loss(dumb) > loss(good)
 
 
 def test_good_stub_scores_one():
-    r = nb.load("/sentiment").run(nb.system("bench/hello/systems/good.py"))
-    assert r["score"] == 1.0
+    loss = nb.load("/sentiment")
+    assert loss(nb.system("bench/hello/systems/good.py")) == 0.0
 
 
 def test_dumb_stub_scores_half():
-    r = nb.load("/sentiment").run(nb.system("bench/hello/systems/dumb.py"))
-    assert r["score"] == 0.5
+    loss = nb.load("/sentiment")
+    loss(nb.system("bench/hello/systems/dumb.py"))
     # the 0.5 proves the scoring discriminates: per-case scores are real
-    assert [c["score"] for c in r["cases"]] == [1.0, 1.0,  1.0, 0.0, 0.0, 0.0]
+    assert [c["score"] for c in loss.trace["cases"]] == [1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+    assert loss.trace["score"] == 0.5
 
 
-def test_receipt_is_the_loss_evidence():
-    b = nb.load("/sentiment")
-    for name in ("good", "dumb"):
-        sys_prog = nb.system(f"bench/hello/systems/{name}.py")
-        receipt = b.run(sys_prog)
-        assert receipt["score"] == 1.0 - loss_of(b, sys_prog)
+def test_loss_is_pure_float():
+    loss = nb.load("/sentiment")
+    assert isinstance(loss(lambda t: "pos"), float)
+    assert loss(lambda t: "pos") == 0.5  # always-pos: 3/6 wrong
 
 
-def test_receipt_has_per_case_scores_and_aggregate():
-    r = nb.load("/sentiment").run(nb.system("bench/hello/systems/dumb.py"))
-    assert len(r["cases"]) == 6
-    for c in r["cases"]:
+def test_trace_is_the_receipt_of_last_eval():
+    loss = nb.load("/sentiment")
+    loss(nb.system("bench/hello/systems/dumb.py"))
+    trace = loss.trace
+    assert set(trace) >= {"path", "score", "cases"}
+    assert trace["path"] == "/sentiment"
+    assert len(trace["cases"]) == 6
+    for c in trace["cases"]:
         assert set(c) >= {"in", "want", "got", "score"}
-    # the aggregate lives in the benchmark spec; the receipt carries its result
-    assert nb.load("/sentiment").spec["scoring"]["aggregate"] == "mean"
 
 
-def test_artifact_json_roundtrip(tmp_path):
-    r = nb.load("/sentiment").run(nb.system("bench/hello/systems/dumb.py"))
+def test_loss_score_is_one_minus_trace_score():
+    loss = nb.load("/sentiment")
+    for name in ("good", "dumb"):
+        got = loss(nb.system(f"bench/hello/systems/{name}.py"))
+        assert got == pytest.approx(1.0 - loss.trace["score"])
+
+
+def test_trace_is_json_artifact(tmp_path):
+    loss = nb.load("/sentiment")
+    loss(nb.system("bench/hello/systems/dumb.py"))
     art = tmp_path / "artifact.json"
-    art.write_text(json.dumps(r))
+    art.write_text(json.dumps(loss.trace))
     back = json.loads(art.read_text())
     assert back["score"] == 0.5
     assert len(back["cases"]) == 6
 
 
-def test_as_loss_is_pure_float():
-    b = nb.load("/sentiment")
-    L = b.as_loss()
-    assert isinstance(L(nb.system("bench/hello/systems/good.py")), float)
-    assert isinstance(L(nb.system("bench/hello/systems/dumb.py")), float)
-
-
-def test_load_by_ontology_path():
-    b = nb.load("/sentiment")
-    assert b.spec["path"] == "/sentiment"
-
-
-def test_system_is_just_a_callable():
-    b = nb.load("/sentiment")
-    assert b.as_loss()(lambda text: "neg") == 0.5  # always-neg: 3/6 wrong
-    assert b.as_loss()(lambda text: "pos") == 0.5
+def test_missing_path_raises():
+    with pytest.raises(LookupError):
+        nb.load("/nope")

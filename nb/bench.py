@@ -2,10 +2,11 @@
 
 The identity: a benchmark IS a loss function over systems.
 
-    loss = benchmark.as_loss()(system)          # (System) -> float
-    receipt = benchmark.run(system)             # evidence trace of that eval
+    loss = load("/sentiment")               # (System) -> float
+    loss(system)                            # one evaluation -> float
+    loss.trace                              # the receipt: that eval's evidence
 
-Everything else — loading, grading, artifacts, CLI — is a projection of
+Everything else — grading, artifacts, CLI — is a projection of
 (Task, Data, Scoring, System) -> float.
 
 A benchmark is DATA (bench.json), locatable by ontology path /<task>/<domain>/<lang>.
@@ -22,39 +23,30 @@ AGGS = {"mean": lambda xs: sum(xs) / len(xs) if xs else 0.0}
 
 
 def load(path):
-    """Load a benchmark as data. path: filesystem path OR ontology path (/sentiment)."""
-    p = Path(path)
-    if not p.is_file():
-        for f in ROOT.glob("bench/**/bench.json"):
-            if json.loads(f.read_text())["path"] == str(path):
-                p = f
-                break
-    return Bench(json.loads(p.read_text()))
+    """Load a benchmark by ontology path (/sentiment). Benchmarks are data;
+    the path is the identity. No second addressing scheme."""
+    for f in ROOT.glob("bench/**/bench.json"):
+        if json.loads(f.read_text())["path"] == path:
+            return benchmark(json.loads(f.read_text()))
+    raise LookupError(f"no benchmark with ontology path {path!r}")
 
 
-class Bench:
-    """A benchmark. Its whole job: evaluate systems, project the float."""
-    def __init__(self, spec):
-        self.spec = spec
-
-    def run(self, system) -> dict:
-        """Receipt projection: the evidence trace of one loss evaluation."""
+def benchmark(spec):
+    """A benchmark IS a loss function over systems: (System) -> float.
+    loss.trace holds the receipt — the evidence of the last evaluation."""
+    def loss(system) -> float:
         cases = []
-        for i, case in enumerate(self.spec.get("cases", [])):
+        for i, case in enumerate(spec.get("cases", [])):
             got = system(case["in"])
-            score = SCORES[self.spec["scoring"]["compare"]](got, case["want"])
+            score = SCORES[spec["scoring"]["compare"]](got, case["want"])
             cases.append({"i": i, "in": case["in"], "want": case["want"],
                           "got": got, "score": score})
-        return {"path": self.spec["path"],
-                "score": AGGS[self.spec["scoring"]["aggregate"]](
-                    [c["score"] for c in cases]),
-                "cases": cases}
-
-    def as_loss(self):
-        """The identity: this benchmark AS a loss function over systems."""
-        def loss(system) -> float:
-            return 1.0 - self.run(system)["score"]
-        return loss
+        loss.trace = {"path": spec["path"],
+                      "score": AGGS[spec["scoring"]["aggregate"]](
+                          [c["score"] for c in cases]),
+                      "cases": cases}
+        return 1.0 - loss.trace["score"]
+    return loss
 
 
 def system(name):
