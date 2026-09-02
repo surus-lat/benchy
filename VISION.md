@@ -21,3 +21,29 @@ And keep in mind that this is our whole ontology for ai:
 /<task?>/<domain?>/<language?>
 
 an ai system is a program that performs a task, thus that's the root level, then a sublevel is the domain, then the third sublevel is the language. 
+
+
+
+
+also what is the real requirements from bare metal to here? full first principles and to the limit. 
+
+for a benchmark, we want a description of a program, that can be simple a yaml? or json? 
+
+```
+in:[.pdf]
+
+in: doc[pdf]
+
+out: extracted_fields[json]
+```
+or the same but more in json format? 
+
+
+what do we have to do with this program? define how the exam for that program is going to be? and how its going to be graded? 
+
+how the exam is going to be is n cases where you have to perform the task, in the given context (may be null), 
+
+
+
+:wq
+

@@ -78,3 +78,4 @@ test.py
 # Agent worktrees + local harness state
 .claude/
 .worktrees/
+.search/
