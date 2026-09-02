@@ -56,6 +56,14 @@ def grade(benchmark: dict, invoke: Callable[[str], str]) -> dict:
     # c8: the task declaration is load-bearing — an exam key outside the
     # declared output choices is a broken exam; refuse it, never guess it.
     choices = set(benchmark["task"]["output"]["choices"])
+    # c17, donated from the old benchy status vocabulary (src/outcome.py
+    # TASK_STATUS_NO_SAMPLES, AGENTS.md counts.no_samples_tasks): an empty
+    # exam is a broken exam — refuse it. without this it was a
+    # ZeroDivisionError mid-run: a crash, not a refusal — and as_loss
+    # would crash the optimizer with it. exam data is fixed data; its
+    # defects are refused, never surprised by (c10 law, c16 logic).
+    if not benchmark["cases"]:
+        raise ValueError("empty exam: no cases")
     rows = []
     for i, case in enumerate(benchmark["cases"]):  # i unused: id = position (c9)
         expected = case["expected"]
