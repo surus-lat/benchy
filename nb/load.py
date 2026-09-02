@@ -6,9 +6,9 @@ A benchmark directory holds:
     cases.json     [{"input":..., "expected":...}]   — the DATA pillar
     systems/*.json {"kind": ...}                     — SYSTEM specs (optional)
 
-`load(path)` reads one benchmark dir and builds Benchmark + its system
-specs. `run(path, system_spec)` is the whole product: exam + taker.
-No Python is ever required to define a benchmark.
+`load(path)` reads one benchmark dir and builds Benchmark. The CLI is
+one thing: take the exam. No Python is ever required to define or run
+a benchmark.
 """
 
 import json
@@ -44,26 +44,20 @@ def load_system_specs(path) -> dict:
     return {p.stem: _read(p) for p in sorted(d.glob("*.json"))}
 
 
-def run(path, system_spec) -> dict:
-    """benchmark.run(system): the whole product in one call."""
-    return load(path).run(compile_system(system_spec))
-
-
 def main(argv=None) -> int:
-    """CLI: nb.load main bench/hello good-stub"""
+    """CLI: python -m nb.load bench/hello [system ...] — the exam takers take the exam."""
     args = list(sys.argv[1:] if argv is None else argv)
-    if not args or args[0] not in ("run", "systems"):
+    if not args:
         print(__doc__)
         return 2
-    bench_path, *names = args[1:]
-    if args[0] == "systems":
-        for name, spec in load_system_specs(bench_path).items():
-            print(f"{name}: {json.dumps(spec)}")
-        return 0
+    bench_path, *names = args
     bench = load(bench_path)
     specs = load_system_specs(bench_path)
     if not names:
         names = sorted(specs)
+    if not specs:
+        print(f"no systems in {bench_path}/systems/")
+        return 2
     failures = 0
     for name in names:
         if name not in specs:

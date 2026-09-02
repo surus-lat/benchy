@@ -12,9 +12,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import nb
-from nb import Benchmark, Case, Exam, Scoring, Task, compile_system, invoke
+from nb import Benchmark, Case, Exam, Scoring, Task, compile_system
 from nb.load import main as load_main
-from nb import load, load_system_specs, run
+from nb import load, load_system_specs
 
 BENCH = Path(__file__).resolve().parent.parent / "bench" / "hello"
 
@@ -111,8 +111,9 @@ def test_benchmark_system_is_argument_not_field():
 
 
 def test_invoke_one_method():
+    """the protocol: a system IS a callable — invoke(input) -> prediction."""
     sys_fn = compile_system({"kind": "const", "const": "pos"})
-    assert invoke(sys_fn, "anything") == "pos"
+    assert sys_fn("anything") == "pos"
 
 
 def test_stub_backend_is_data():
@@ -180,10 +181,10 @@ def test_callable_spec_is_pass_through():
 # ------------------------------------------------------------ CLI
 
 def test_cli_runs_hello(tmp_path, capsys):
-    assert load_main(["run", str(BENCH)]) == 0
+    assert load_main([str(BENCH)]) == 0
     out = capsys.readouterr().out
     assert '"score": 1.0' in out and '"score": 0.5' in out
 
 
 def test_cli_unknown_system():
-    assert load_main(["run", str(BENCH), "ghost"]) == 2
+    assert load_main([str(BENCH), "ghost"]) == 2

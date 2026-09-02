@@ -1,6 +1,6 @@
 {
  "files": 7,
- "loc": 262,
+ "loc": 255,
  "deps": 0,
  "concepts": [
   "Benchmark",
@@ -15,12 +15,10 @@
   "_get",
   "_read",
   "compile_system",
-  "invoke",
   "load",
   "load_system_specs",
-  "main",
-  "run"
+  "main"
  ],
- "cycles": 1,
+ "cycles": 3,
  "why": null
 }
