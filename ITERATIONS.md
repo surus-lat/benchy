@@ -5,3 +5,4 @@
 4 | pushed=ok() gate (deleted: out-of-enum pred cannot match any want, grading already scores it 0) | broke=yes | verdict=NOISE_REMOVED | loc=132 | concepts=6
 5 | pushed=py path-resolution branch in run() (deleted: py paths resolve from CWD like every data path) | broke=no | verdict=HARD_PUSH | loc=129 | concepts=6
 6 | pushed=name derivation + system label in artifact (deleted: artifact path IS the label; nothing reads artifact["system"]) | broke=no | verdict=HARD_PUSH | loc=122 | concepts=6
+7 | pushed=main() flag parser (deleted: out is a positional arg; limit/workers are engine kwargs, not a second CLI interface) | broke=yes | verdict=NOISE_REMOVED | loc=111 | concepts=6
