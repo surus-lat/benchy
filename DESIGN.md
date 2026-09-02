@@ -40,10 +40,21 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | _backend_const | SYSTEM | dumbest possible system; proves scoring discriminates (0.5) | 0 |
 | _backend_http | SYSTEM | openai-compatible backend over stdlib urllib; the real world | 0 |
 | _backend_chain | SYSTEM | workflow = system whose backend composes systems; no new concept | 0 |
-| load | BENCH | benchmark as data on disk, locatable by ontology path | 1 |
-| main | BENCH | CLI: run a benchmark dir against its systems | 1 |
-| _read | BENCH | JSON loader helper | 1 |
-| _get | SCORING | dict field access for partial/weighted grading | 1 |
+| load | BENCH | benchmark as data on disk, locatable by ontology path | 2 |
+| compile_systems | BENCH | systems/*.json -> {name: system}; the only systems door (raw-spec loading fused into compile) | 1 |
+| main | BENCH | CLI: run a benchmark dir against its systems | 3 |
+
+Removed in cycle 5: `_get` (one-line dict access inlined into `score`;
+"unweighted weighted" now honestly reads as the partial fallback), the
+dead `failures` counter in main() (never incremented — leftovers of a
+design where a bad score was an error; a graded exam is data, not an
+error).
+
+Removed in cycle 4: `load_system_specs` (uncompiled raw-spec loader
+fused into `compile_systems` — after the `systems` verb died nothing
+consumed raw specs; compile-at-load is the compiler angle's law:
+spec→callable happens at one door), `_read` (one-line JSON wrapper
+inlined — a function that adds a name without adding a concept).
 
 Removed in cycle 2: `run` (load.py convenience wrapper — nothing in the
 engine called it; only an unused import kept it alive), the CLI `systems`

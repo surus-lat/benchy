@@ -4,3 +4,5 @@
 1 | pushed=Task.out_enum + load_systems | broke=no | verdict=HARD_PUSH | loc=262 | concepts=17
 2 | pushed=run() + CLI dual role (systems verb) | broke=yes | verdict=NOISE_REMOVED | loc=258 | concepts=16
 3 | pushed=module-level invoke() | broke=no | verdict=HARD_PUSH | loc=255 | concepts=15
+4 | pushed=load_system_specs + _read (fusion into compile_systems) | broke=no | verdict=HARD_PUSH | loc=254 | concepts=14
+5 | pushed=_get (inlined into score) + dead failures counter | broke=no | verdict=HARD_PUSH | loc=249 | concepts=13
