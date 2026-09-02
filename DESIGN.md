@@ -35,7 +35,7 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
 | exact_match | SCORING | the dumbest scorer; the built-in default | 0 |
 | Exam | ALL | benchmark = data+scoring; system is the argument (run / as_loss — two vision invariants) | 2 |
 | locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>); since cycle 9 the only constructor (load fused in) | 2 |
-| main | UX | `python -m nb <bench_root> <ontology_path> <system>`: runnable without pytest archaeology | 0 |
+| main | UX | cycle 10 deletion broke test_cli_runs_offline_end_to_end: the acceptance bar is "runs offline, end to end" WITHOUT pytest — an engine only reachable via pytest is archaeology, not a product. Lives in exam.py (fused); __main__.py is a 2-line shim | 1 |
 
 ## bare metal (survived a deletion attempt)
 
@@ -47,6 +47,12 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
   of the benchmark-as-loss view (angle s01's whole thesis), not a feature.
   The deletion broke the acceptance test itself; a benchmark that cannot be
   handed to an optimizer is not benchy.
+- main (cycle 10): deleting the CLI broke test_cli_runs_offline_end_to_end.
+  GOLEM.md's acceptance bar says the engine must "run this offline, end to
+  end" — an engine whose only entry point is pytest is not runnable, it is
+  archaeology. The behavior (main) is metal; the FILE was noise: fusing it
+  into exam.py + a 2-line __main__ shim kept the concept and shed 6 loc of
+  import ceremony and docstring duplication.
 
 ## deleted (noise — protocols that only had annotation-work)
 
@@ -71,5 +77,5 @@ names (5 at cycle 6; 4 after cycle 9 fused load into locate), not 10 types.
   the files it searched was a concept doing locate's job twice; the
   ontology path is the only address and locate the only constructor.
 
-Current: 4 concepts, 4 files, 69 loc.  Public surface (module names):
+Current: 4 concepts, 4 files, 63 loc.  Public surface (module names):
 exact_match, Exam (+run, as_loss), locate, main = 4.
