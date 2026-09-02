@@ -45,14 +45,17 @@ def run(bench, system, limit=None):
         raise LookupError(f"no taker {system!r} in {d}/systems.py")
     # the artifact interprets alone (c4) so it carries its own identity —
     # WHO took / WHICH exam — composed here, not in Exam: grading is pure
-    # (cases + score); identity belongs to the write, and the CLI already
-    # holds both addresses.  Exam.path/Exam.dir died as lenses (cycle 7).
+    # (cases + score + loss); identity belongs to the write, and the CLI
+    # already holds both addresses.  Exam.path/Exam.dir died as lenses (cycle 7).
     artifact = {"system": system, "benchmark": bench, "total": total, **exam.run(mod[system])}
     out = Path("runs") / f"{bench.lstrip('/').replace('/', '-')}-{system}.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(artifact, indent=1) + "\n")
+    # c13: stdout carries NOTHING the artifact doesn't — the ack line echoes
+    # the graded evidence (score, loss) + the write address; the CLI's own
+    # 1-score formula died (a second address of grading's formula).
     print(f"{bench} · {system}: score={artifact['score']:.2f} "
-          f"loss={1.0 - artifact['score']:.2f} -> {out}")
+          f"loss={artifact['loss']:.2f} -> {out}")
 
 
 def new(name):
