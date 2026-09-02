@@ -7,11 +7,6 @@ import sys
 from pathlib import Path
 
 
-def exact_match(case, prediction) -> float:
-    """The dumbest Scorer: 1 point per exact match."""
-    return float(prediction == case["expected"])
-
-
 class Exam:
     """One benchmark.  run(system) grades a taker; as_loss() exports the loss."""
 
@@ -43,7 +38,8 @@ def locate(bench_root, path):
     for f in sorted(Path(bench_root).rglob("benchmark.json")):
         data = json.loads(f.read_text())
         if data["path"] == path:
-            return Exam(data["cases"], exact_match, data["path"], f.parent)
+            score = lambda case, prediction: float(prediction == case["expected"])
+            return Exam(data["cases"], score, data["path"], f.parent)
     raise LookupError(f"no benchmark with ontology path {path!r}")
 
 

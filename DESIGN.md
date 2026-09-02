@@ -32,13 +32,19 @@ The conventions (case {input, expected}, artifact shape, .invoke) are carried
 by the VALUES and pinned by the tests — since cycle 13 there is no core.py:
 a doc duplicating the spec the values+tests already state was noise.
 
+Since cycle 14 the default scorer is an anonymous lambda inside locate
+(exact_match deleted as a named public concept): no test or caller ever
+needed the default BY NAME — the custom-scorer swap test injects
+positionally, proving the seam is the constructor parameter, not a named
+default. An unnamed default is more honest: the seam is the contract,
+locate's lambda is just its default policy.
+
 ## concept table
 
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
-| exact_match | SCORING | the dumbest scorer; the built-in default | 0 |
 | Exam | ALL | 3 survivals. cycle 12 dissolution broke 7 tests AND grew concepts 4->5: the class is the concept-COMPRESSOR (methods count free inside it) and carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM.md law 6) | 3 |
-| locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>); since cycle 9 the only constructor (load fused in) | 2 |
+| locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>); since cycle 9 the only constructor (load fused in); since cycle 14 also owns scoring policy: it injects the default scorer as an anonymous lambda | 2 |
 | main | UX | cycle 10 deletion broke test_cli_runs_offline_end_to_end: the acceptance bar is "runs offline, end to end" WITHOUT pytest — an engine only reachable via pytest is archaeology, not a product. Lives in exam.py (fused); __main__.py is a 2-line shim | 1 |
 
 ## bare metal (survived a deletion attempt)
@@ -76,6 +82,11 @@ a doc duplicating the spec the values+tests already state was noise.
 
 - Scorer protocol class (cycle 1), Scorer type alias (cycle 2): the
   convention `(case, prediction) -> float` carries the contract.
+- exact_match as a NAMED public concept (cycle 14): the default scorer is
+  locate's private policy now — an anonymous lambda on the injection seam.
+  Zero tests or callers referenced it by name (the swap test injects
+  positionally); a named default invited `from nb.exam import exact_match`,
+  which would have made the default itself a load-bearing public surface.
 - Scored record (cycle 3): `{**case, prediction, score}` is self-describing.
 - Task record + Exam.task + artifact `conforms` (cycle 3): the task pillar is
   data (benchmark.json), not engine state; `conforms` was a second verdict
@@ -102,5 +113,5 @@ a doc duplicating the spec the values+tests already state was noise.
   Engine is now 3 files: __init__ (docstring), __main__ (2-line shim),
   exam.py (all behavior).
 
-Current: 4 concepts, 3 files, 50 loc.  Public surface (module names):
-exact_match, Exam (+run, as_loss), locate, main = 4.
+Current: 3 concepts, 3 files, 48 loc.  Public surface (module names):
+Exam (+run, as_loss), locate, main = 3.
