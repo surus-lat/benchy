@@ -12,6 +12,6 @@
  ],
  "systems": {
   "good": {"kind": "keyword", "any": ["great", "excelente", "loved"], "then": "pos", "else": "neg"},
-  "dumb": {"kind": "const", "value": "pos"}
+  "dumb": {"kind": "keyword", "any": [], "then": "pos", "else": "pos"}
  }
 }

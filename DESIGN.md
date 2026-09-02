@@ -13,7 +13,7 @@ The engine is two tiny pure functions over that data plus loud validation.
     task       = ["pos", "neg"]            the declared answer space (a bare list)
     scoring    = { match: "exact" }        the declared comparison policy
     sample     = { id, input, expected }   (cycle 4 deleted context: no kind read it)
-    system     = { kind: "const", value } | { kind: "keyword", any, then, else }
+    system     = { kind: "keyword", any, then, else }   (cycle 7 deleted const: a constant IS keyword with any=[])
 
     load(path)          exam data, loudly validated (unknown keys raise)
     locate(root, path)  resolve an ontology path /<task?>/<domain?>/<language?>

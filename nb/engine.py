@@ -15,7 +15,7 @@ EXAM_KEYS = {"path", "task", "scoring", "samples", "systems"}
 SCORE_KEYS = {"match"}
 SAMPLE_REQUIRED = {"id", "input", "expected"}
 SAMPLE_ALLOWED = SAMPLE_REQUIRED
-KINDS = {"const": {"kind", "value"}, "keyword": {"kind", "any", "then", "else"}}
+KINDS = {"keyword": {"kind", "any", "then", "else"}}
 
 
 def _check(allowed, got, where, required=None):
@@ -79,9 +79,9 @@ def invoke(system, inp):
     if keys is None:
         raise ValueError(f"unknown system kind: {kind!r}")
     _check(keys, system, f"system {kind}")
-    if kind == "const":
-        return system["value"]
-    # keyword: any needle in the input -> then, otherwise -> else
+    # keyword: any needle in the input -> then, otherwise -> else. cycle 7
+    # deleted "const": a constant IS keyword with any=[] (no needle ever
+    # matches -> always else). one kind, one code path.
     return system["then"] if any(k in inp for k in system["any"]) else system["else"]
 
 
