@@ -110,14 +110,14 @@ def test_weights_must_name_every_expected_field(tmp_path):
         bench.run(tmp_path, "critical")
 
 
-def test_cli_runs(tmp_path, capsys, monkeypatch):
+def test_cli_runs():
+    """Cycle 11: the artifact bar is stdout (redirectable with >); the
+    on-disk copy was an unread third projection of the same JSON."""
     import subprocess
     import sys as _sys
-    monkeypatch.chdir(tmp_path)
-    code = subprocess.call(
+    out = subprocess.run(
         [_sys.executable, str(ROOT / "nb" / "bench.py"), str(HELLO), "good"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        capture_output=True, text=True,
     )
-    assert code == 0
-    saved = json.loads((tmp_path / "runs/hello/good.json").read_text())
-    assert saved["score"] == 1.0
+    assert out.returncode == 0
+    assert json.loads(out.stdout)["score"] == 1.0

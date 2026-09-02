@@ -35,8 +35,11 @@ a constant masquerading as a variable — so it is deleted from the
 vocabulary and from hello's scoring.json.
 
 Engine: `nb/bench.py` — interpreter + CLI in one file
-(`python3 nb/bench.py <bench_dir> <system>`). Artifact: JSON to stdout +
-`runs/<bench>/<system>.json`, per-case scores + aggregate. `as_loss()` = 1 - score.
+(`python3 nb/bench.py <bench_dir> <system>`). Artifact: the graded JSON on
+stdout — per-case scores + aggregate — redirectable with `>`; the cycle-11
+probe deleted the `runs/<bench>/<system>.json` write (an unread third
+projection of the same JSON; the engine never reads it back, and this tree
+has no resume requirement that would). `as_loss()` = 1 - score.
 
 ## The artifact (cycle 10 — output-side noise law)
 
@@ -90,7 +93,13 @@ from the data: the cycle-5 loud check had pinned it to a single possible
 value, a constant masquerading as a variable), `save` (cycle 9 — its only
 production caller was `__main__`; the 3-line body inlined into the CLI
 block. The artifact contract survives unchanged: runs/<bench>/<system>.json
-is still written, by the same three lines, one concept poorer).
+is still written, by the same three lines, one concept poorer), the CLI's
+save-to-disk lines (cycle 11 — `runs/<bench>/<system>.json` was an unread
+third projection of the artifact; the engine never reads it back, and this
+tree carries no resume/kill-safety requirement (that is s04's metal) that
+would make a mid-run file load-bearing. The artifact bar is stdout,
+redirectable with `>`; the guarding test was rewritten forward to parse
+stdout JSON).
 
 ## Bare metal proven (BARE_METAL verdicts)
 

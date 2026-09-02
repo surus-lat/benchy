@@ -75,7 +75,4 @@ if __name__ == "__main__":
         sys.exit(2)
     _d, _s = sys.argv[1], sys.argv[2]
     _r = run(_d, _s)
-    _o = Path("runs") / Path(_d).name / f"{_s}.json"
-    _o.parent.mkdir(parents=True, exist_ok=True)
-    _o.write_text(json.dumps(_r, indent=2), encoding="utf-8")
     print(json.dumps(_r, indent=2))
