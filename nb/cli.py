@@ -1,8 +1,11 @@
-"""nb.cli — the product is three commands (the whole UX):
+"""nb.cli — the product is two commands (the whole UX):
 
     benchy run <bench> <system> [--limit N]   take the exam, write the graded run
-    benchy new <name>                          scaffold a runnable benchmark
-    benchy report <run>                        re-read a graded run: score + loss
+    benchy new <name>                          scaffold a benchmark
+
+The graded artifact IS the report — JSON, indent=1, per-case input/expected/
+prediction/score + the aggregate. It interprets alone (no engine needed to
+read your evidence); a digest verb would be a formatter, not a product word.
 
 `benchy` is `python -m nb` until packaging earns a console script.
 bench/ is the exam corpus (addressed by ontology path), runs/ the evidence.
@@ -49,20 +52,8 @@ def new(name):
     print(f"{d}/  — add cases to benchmark.json, write systems.py, then: run /{name} <taker>")
 
 
-def report(run_path):
-    """`report <run>`: re-read a graded run — evidence outlives the process
-    that produced it (re-running a cloud system to see a grade costs money)."""
-    a = json.loads(Path(run_path).read_text())
-    lines = [f"{a['benchmark']} · {a['system']} · {len(a['cases'])} cases"]
-    for c in a["cases"]:
-        lines.append(f"  {'pass' if c['score'] else 'fail'}  {c['input']!r} "
-                     f"-> {c['prediction']!r} (want {c['expected']!r})")
-    lines.append(f"score {a['score']:.3f}  loss {1.0 - a['score']:.3f}")
-    print("\n".join(lines))
-
-
 def main(argv=None):
-    """Dispatch the three commands; speak errors, not tracebacks."""
+    """Dispatch the commands; speak errors, not tracebacks."""
     argv = list(sys.argv[1:] if argv is None else argv)
     try:
         if argv[:1] == ["run"]:
@@ -70,8 +61,6 @@ def main(argv=None):
             run(*argv[1:3], **{k.lstrip("-"): int(v) for k, v in flags.items()})
         elif argv[:1] == ["new"]:
             new(argv[1])
-        elif argv[:1] == ["report"]:
-            report(argv[1])
         else:
             raise SystemExit(__doc__.strip())
     except (LookupError, ValueError, FileNotFoundError, TypeError) as e:

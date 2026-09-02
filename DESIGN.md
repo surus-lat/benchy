@@ -6,15 +6,18 @@ CLI first, make each word real.  Bare metal if the whole UX fits in a tweet
 and covers create → run → grade → export as loss.  Falsified if the CLI grows
 flags.
 
-**Interim verdict (cycle 0): the CLI absorbs the whole vision loop with one
-flag.**  The three commands landed as the spec, the engine shrank to fit
-under them (exam.py carries only what the words demand).  Every word is real
-and pinned by a test: `new` scaffolds a benchmark that is *immediately
-runnable*, `run` grades and writes evidence, `report` re-reads it.  The one
-flag, `--limit`, is the smoke valve against cloud spend (a money
-justification, not convenience).  Export-as-loss lives at the API seam
-(`exam.as_loss()`) because its consumer is a program (a prompt-optimizer),
-not a human — the CLI prints the loss per run as the human-visible half.
+**Interim verdict (cycle 4): the CLI absorbed the whole vision loop with two
+commands and one flag.**  The words landed as the spec, the engine shrank to
+fit under them (exam.py carries only what the words demand).  `new` scaffolds
+a benchmark as pure data that is *immediately honest* (zero cases -> loud
+refusal at load), `run` grades and writes evidence.  The one flag, `--limit`,
+is the smoke valve against cloud spend (a money justification, not
+convenience).  Export-as-loss lives at the API seam (`exam.as_loss()`)
+because its consumer is a program (a prompt-optimizer), not a human — the
+CLI prints the loss per run as the human-visible half.  `report` was deleted
+in cycle 4: the graded artifact IS the report — JSON that interprets alone —
+and the vision loop (create → run → grade → export as loss) has no report
+word in it.
 
 ## shape
 
@@ -25,8 +28,6 @@ benchy run <bench> <sys> [--limit N]
                             locate by ontology path, the system takes the
                             exam, graded artifact -> runs/<path>-<sys>.json
                             (the ontology path IS the artifact identity)
-benchy report <run>      re-read a graded run: per-case pass/fail +
-                            score + loss (evidence outlives the process)
 
 benchmark.json           {path, task, cases} — the whole exam, pure data;
                             unknown keys are loud (an exam is exactly this).
@@ -57,7 +58,6 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 | locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme; the walk IS the registry; load-time honesty lives here | 0 |
 | run | UX+SYSTEM+DATA | the take-the-exam command; binds taker from systems.py and writes evidence | 0 |
 | new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load | 0 |
-| report | DATA | evidence outlives the process that made it; re-running a cloud system to see a grade costs money | 0 |
 | main | UX | dispatch + words-not-tracebacks; a CLI that raises stack traces at users is not a product | 0 |
 
 ## flags
