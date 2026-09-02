@@ -37,6 +37,7 @@ unknown names fail loud, never silently score 0.
 | concept | pillar | why undeletable | survived N |
 |---|---|---|---|
 | load | DATA+SCORING | data must enter somehow; the only IO concept; returns the loss closure — one concept IS the whole engine | 1 |
+| `want` in trace cases | SCORING+DATA | the artifact must be SELF-CONTAINED: without `want`, a failed case reads "wrong, but about what?" and no reader (human or software-3.0 optimizer) can interpret or learn from the trace without joining bench.json — which the artifact no longer names (path deleted, cycle 9). Derivable-from-source is not the bar; interpretable-alone is. | 1 |
 
 (`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
 `system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
@@ -73,6 +74,14 @@ system is a callable and stdlib importlib is the loader.)
   loss closure itself (and the filename when serialized), not schema inside the
   artifact. Test that asserted the path key broke — its own invention, not the
   bar's; fixed forward. NOISE_REMOVED.
+- cycle 10: `want` in trace cases — BARE_METAL, first earned badge. Deleted it;
+  all 10 tests stayed green (nothing mechanically guarded it) but the artifact
+  became an unanchored projection: a failed case read `{"in": ..., "got": ...,
+  "score": 0.0}` — wrong, but about what? With `path` already deleted (cycle 9),
+  the artifact couldn't even name the exam it belonged to. The vision says the
+  artifact feeds software-3.0 optimizers; an optimizer cannot learn the target
+  answer from a trace that omits it. Derivable-from-bench.json is not the bar —
+  INTERPRETABLE-ALONE is. Restored.
 
 ## queued deletion candidates (loudest first)
 
