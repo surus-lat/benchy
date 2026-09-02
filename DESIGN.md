@@ -47,7 +47,7 @@ filesystem — no registry object.
 | Benchmark._exam | DATA | builds the graded artifact dict: per-case rows + aggregate + loss. The dict IS the exam — Exam class deleted as noise (c2), the module-level exam() fn fused into its only caller (c11, HARD_PUSH: nothing broke, concept count dropped 6→5). No separate writer concept. | 4 |
 | Benchmark.run | DATA | the exam-taking loop; hosts resume + fan-out + artifact write — all one loop, no sub-concepts. py specs compile to a callable here, once per exam (moved from invoke in c9). The mid-run write is BARE METAL (c10): kill-safety is the resume contract — with only a final write, a kill leaves NO artifact and all graded work is lost (proved by test_kill_midrun_keeps_graded_work, written c10). | 3 |
 | Benchmark.as_loss | SCORING | vision: benchmark = a new loss function for software-3.0. loss(dumb) > loss(good) ranks systems. | 0 |
-| Benchmark.load | DATA | by dir / file / ontology path; the filesystem is the registry. Three-way resolution survived its c2 push — bench.json-in-dir is how non-engineers hand you a benchmark, ontology path is the vision's /<task?>/<domain?>/<language?> address, direct file is the degenerate case. | 1 |
+| Benchmark.load | DATA | by bench.json path/dir, or by ontology path; the filesystem is the registry. Three-way resolution survived its c2 push; c13 proved the ontology walk itself is BARE METAL (the acceptance bar: a benchmark must be locatable by /sentiment — deleting the walk broke test_load_by_ontology_path with FileNotFoundError). The dir/file ternary WAS noise: a two-element candidate list says the same thing with no is_dir() branch. The walk now reads spec data directly (no throwaway Benchmark per candidate). | 2 |
 | _write | DATA | atomic artifact persistence — resume's read side demands it; kill-safety. | 0 |
 | main | CLI | run only (c12): the `loss` verb deleted — the run artifact already carries loss; as_loss() the METHOD is the vision law and stays, the second CLI verb was a duplicate interface. Flag parser deleted (c7): out is a positional, limit/workers are engine kwargs. | 2 |
 
@@ -74,5 +74,7 @@ Remaining loudest things, in attack order:
    caller; `ont` no longer travels as an argument.
 3. DONE c12 — CLI `loss` verb deleted (HARD_PUSH: nothing broke; the run
    artifact carries loss; as_loss() the method is vision law and stays).
-   Remaining in this family: Benchmark.load's three-way resolution.
-4. grade()'s "exact" string special-case vs fields-shape unification.
+4. DONE c13 — Benchmark.load: dir/file ternary collapsed to a candidate
+   list (noise); the ontology walk itself is BARE METAL (acceptance bar:
+   /sentiment must resolve — the walk IS the filesystem-as-registry made
+   addressable by the vision's ontology).
