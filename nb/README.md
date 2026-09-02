@@ -12,7 +12,7 @@ makes it locatable at `/sentiment`.
 
 ```
 bench/<name>/
-  task.yaml        REQUIRED  task name (the ontology path segment) + in/out types
+  task.yaml        REQUIRED  task name (the ontology path segment)
   scoring.yaml     REQUIRED  how to grade a prediction against expected
   cases.jsonl      REQUIRED  the exam: one case per line
   systems/         OPTIONAL  zero or more systems, each one data too
@@ -30,7 +30,7 @@ the file extension is detail. Trade-off recorded in LEARNINGS.md.
 
 ```
 bench/<name>/
-  task.json        REQUIRED  {"task": "sentiment", "in": "text", "out": "label[pos|neg]"}
+  task.json        REQUIRED  {"task": "sentiment"} — the ontology path segment
   scoring.json     REQUIRED  {"match": "exact", "points": 1, "aggregate": "mean"}
   cases.jsonl      REQUIRED  {"input": "...", "expected": "pos"} per line
   systems/good.json, systems/dumb.json

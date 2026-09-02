@@ -7,7 +7,7 @@ interpreter of directories. Zero Python to define, run, and score a benchmark.
 
 ```
 bench/<name>/
-  task.json       {"task": "sentiment", "in": "text", "out": "label[pos|neg]"}
+  task.json       {"task": "sentiment"} — the ontology locator
   scoring.json    {"match": "exact", "points": 1, "aggregate": "mean"}
   cases.jsonl     {"input": ..., "expected": ...} per line
   systems/*.json  {"kind": "constant"|"keyword", ...}
@@ -42,4 +42,9 @@ Deleted so far: `main` (cycle 1, CLI noise), `grade` (cycle 2, fused into
 run's loop — scoring data is interpreted inline), `_read_json`/`_read_jsonl`
 (cycle 2, one-line wrappers — json.loads called directly), `load_system`
 (cycle 3, fused into load as an optional `system` name param — run() now
-accepts a system NAME or data dict; one loader concept, not two).
+accepts a system NAME or data dict; one loader concept, not two),
+`task.json in/out keys` (cycle 4 — declared but never interpreted: unread
+schema keys are noise in the DATA format too; the deletion law extends into
+the benchmark files. The TASK pillar survives as the `task` name, which the
+engine reads as the ontology locator and stamps into the artifact; type
+documentation for authors lives in the cases themselves).
