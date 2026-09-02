@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import nb
-from nb import Benchmark, Case, Exam, Scoring, Task, compile_system
+from nb import Benchmark, Exam, Scoring, Task, compile_system
 from nb.load import main as load_main
 from nb import load, compile_systems
 
@@ -105,7 +105,7 @@ def test_exam_rejects_empty():
 
 def test_benchmark_system_is_argument_not_field():
     bench = Benchmark(Task("text", "label"), Scoring("exact"),
-                      Exam([Case("x", "pos")]))
+                      Exam([("x", "pos")]))
     assert not any(isinstance(getattr(bench, a, None), type(bench))
                    for a in vars(bench))
 

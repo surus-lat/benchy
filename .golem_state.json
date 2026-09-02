@@ -1,10 +1,9 @@
 {
  "files": 7,
- "loc": 274,
+ "loc": 259,
  "deps": 0,
  "concepts": [
   "Benchmark",
-  "Case",
   "Exam",
   "Scoring",
   "Task",
@@ -18,6 +17,6 @@
   "load",
   "main"
  ],
- "cycles": 5,
- "why": "agent falsification probe mandated by the angle brief: agent as pure config, no core leak"
+ "cycles": 7,
+ "why": null
 }

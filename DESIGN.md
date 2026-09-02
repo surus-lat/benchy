@@ -10,8 +10,8 @@ returns. Nothing else exists.
 
 ```
 TASK      Task(in, out)                     the program description
-SCORING   Scoring(mode, weights).score()    what good means; also the loss
-DATA      Exam([Case(input, expected)])     the exam; JSON on disk
+SCORING   Scoring(mode, weights).score()    what good means (per-case 0..1)
+DATA      Exam([(input, expected), ...])       the exam; JSON on disk
 SYSTEM    compile_system(spec) -> callable  the compiler front door
 BENCH     Benchmark(t, s, e).run(system)    the system is the ARGUMENT
           Benchmark.as_loss() -> (System)->float   the exam AS a loss
@@ -28,12 +28,11 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | Task | TASK | the program description (in→out types) is the thing searched for; without it the exam has no subject | 0 |
 | Scoring | SCORING | grading is what makes a benchmark a loss function; deleting it leaves only raw predictions | 0 |
 | Exam | DATA | the exam is the data; distribution → point estimate happens here | 0 |
-| Case | DATA | one (input, expected); the atom of evidence | 0 |
+| Exam.__iter__ | DATA | run() iterates the exam — the exam's ONLY interface; a Case class was one attribute-access away from a tuple | 0 |
 | Scoring.score | SCORING | per-case 0..1; the only place grades happen | 0 |
-| Scoring.as_loss | SCORING | the vision's headline: benchmark as new loss for optimizers | 0 |
 | Benchmark | TASK+DATA+SCORING | the exam as one value; the system is its argument, not a field | 0 |
 | Benchmark.run | BENCH | takes the exam: invoke per case, grade each, aggregate | 0 |
-| Benchmark.as_loss | SCORING/BENCH | (System)->float; reusing one exam across many systems | 0 |
+| Benchmark.as_loss | SCORING/BENCH | (System)->float = 1 - run score; the exam AS a loss; the only loss (per-case aggregation lives in run's mean — a second as_loss was one-mean-away) | 0 |
 | compile_system | SYSTEM | the compiler front door: spec (data) → callable | 1 |
 | invoke | SYSTEM | THE protocol: the callable itself — `system(input) -> pred`. Not a function; the shape of every backend's return value | 1 |
 | _backend_stub | SYSTEM | keyword-table backend; makes the exam offline-runnable | 0 |
@@ -44,6 +43,17 @@ locatable by ontology path:  /<task?>/<domain?>/<language?>
 | load | BENCH | benchmark as data on disk, locatable by ontology path | 2 |
 | compile_systems | BENCH | systems/*.json -> {name: system}; the only systems door (raw-spec loading fused into compile) | 1 |
 | main | BENCH | CLI: run a benchmark dir against its systems | 3 |
+
+Removed in cycle 8: `Case` (a class that was a tuple with attribute
+access — `(input, expected)` is the whole atom of evidence; dict→tuple
+normalization moved to load(), where the JSON is read), `Exam.__len__`
+(dead interface — run() iterates, tests count the artifact, nothing
+ever asked the exam for its length).
+
+Removed in cycle 7: `Scoring.as_loss` (fused into `Benchmark.as_loss` —
+it was `1 - mean(scored_cases)`, and run() already computes exactly that
+mean as `score`; two as_losses were one-mean-apart), `Task.__repr__`
+(pure display sugar; nothing in engine or tests ever printed a Task).
 
 Removed in cycle 5: `_get` (one-line dict access inlined into `score`;
 "unweighted weighted" now honestly reads as the partial fallback), the

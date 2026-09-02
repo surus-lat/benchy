@@ -13,6 +13,3 @@ class Task:
     def __init__(self, in_: str, out: str):
         self.in_ = in_
         self.out = out
-
-    def __repr__(self):
-        return f"Task(in={self.in_!r}, out={self.out!r})"

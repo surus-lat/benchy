@@ -28,8 +28,9 @@ def load(path) -> Benchmark:
     spec = json.loads((d / "task.json").read_text(encoding="utf-8"))
     task = Task(spec["in"], spec["out"])  # 'in' is a keyword; read it plainly
     scoring = Scoring(**json.loads((d / "scoring.json").read_text(encoding="utf-8")))
-    exam = Exam(json.loads((d / "cases.json").read_text(encoding="utf-8")))
-    return Benchmark(task, scoring, exam)
+    cases = [(c["input"], c["expected"])
+             for c in json.loads((d / "cases.json").read_text(encoding="utf-8"))]
+    return Benchmark(task, scoring, Exam(cases))
 
 
 def compile_systems(path) -> dict:

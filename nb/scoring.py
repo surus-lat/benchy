@@ -33,7 +33,3 @@ class Scoring:
                        if got(f) == expected[f]) / total
         # partial
         return sum(1 for f in fields if got(f) == expected[f]) / len(fields)
-
-    def as_loss(self, scored_cases) -> float:
-        """the loss: 1 - mean of per-case scores. lower is better."""
-        return 1.0 - sum(scored_cases) / len(scored_cases)
