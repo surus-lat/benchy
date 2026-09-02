@@ -1,6 +1,6 @@
 # s05 learnings — what the bare metal actually is
 
-(running notes; pillar-by-pillar summary written at the stop condition)
+(finished at the stop condition — 15 cycles, golem --final PASS)
 
 ## The angle's key probe — cycle 6: did benchmark-as-directory survive?
 
@@ -24,9 +24,61 @@ extension itself immediately exposed a deletion: `"points": 1` was a
 constant pinned by its own loud check — a variable that could never
 vary. Deleted from the vocabulary and from hello's scoring.json.
 
-Open question for later cycles: the loud check pins the vocabulary to a
-two-literal set. Every REAL scoring need now lands on score_case's
-growth budget — the question is whether rubric-style or
-numeric-tolerance scoring also collapses into small literals or forces
-the Python escape hatch the angle feared. C8 will test whether
-scoring.json itself is load-bearing now that its freedom is literal.
+## Second escape-hatch probe — cycle 14: regex systems are pure data too
+
+The `keyword` system kind subsumed into regex alternation
+(`great|excelente|loved` IS the keyword list — a keyword list is just
+alternation, a second kind was a concept wearing cargo). extractor.json,
+169 bytes, scores 1.0 on the weighted benchmark. Zero benchmark-author
+Python. System vocabulary ends at two loud-dispatched shapes:
+`constant` | `regex`.
+
+Both escape-hatch probes (scoring complexity, system complexity) closed at
+ZERO interface cost: the interpreted DATA vocabulary grew honestly under
+--allow-growth, the interface never did.
+
+## Pillar by pillar (task / scoring / data / system)
+
+- **task (program: input→output)**: the case is the raw pair — `{"input":
+  ..., "want": ...}` in cases.jsonl. No Task class, no schema keys the
+  engine does not interpret (in/out deleted from task.json cycle 4 —
+  unread schema noise extends INTO the data format). Task semantics live
+  in the artifact's `task` stamp (ontology locator, BARE_METAL c7).
+- **scoring**: scoring.json is genuinely interpreted data (BARE_METAL c8):
+  `exact` | `fields+weights`. score_case fused into run (c13) — scoring is
+  a branch of the interpreter, not a peer concept. Named `as_loss` is the
+  vision invariant (BARE_METAL c12: deletion broke the ranking tests; the
+  1-line body is the minimum).
+- **data (exam)**: a benchmark IS a directory — task.json (locates,
+  BARE_METAL c7), scoring.json (grades, BARE_METAL c8), cases.jsonl
+  (examines), systems/*.json (takes the exam). The artifact bar is stdout
+  (c11: runs/*.json was an unread third projection; this tree has no
+  resume requirement, so no mid-run write — contrast s04 where kill-safety
+  was BARE_METAL; the artifact contract is tree-relative, resume is not).
+- **system (compiler/ai-endpoint)**: systems are JSON specs loud-dispatched
+  to callables (`constant` | `regex`). A cloud endpoint is one more spec
+  shape — no engine change. The system is the argument; the exam-taker is
+  data.
+
+## The yaml→JSON decision (cycle 0)
+
+No stdlib YAML parser; hand-rolling one is a large concept serving no
+pillar. JSON is stdlib, and the angle's essence (benchmark-as-directory)
+survives the format swap untouched: the DIRECTORY is the insight, not the
+serialization.
+
+## What the directory format actually requires
+
+A non-engineer can write a benchmark: three data files + system specs,
+every key interpreted, unknown keys raise. The engine is 72 lines of
+stdlib Python, 2 files, 4 public concepts (load, invoke, run, as_loss).
+
+## Advice for the other searchers
+
+- Loud checks must pin the vocabulary to what the interpreter REALLY
+  reads — a pinned constant (`points`) is a variable that can never vary.
+- Subsume, don't add: the keyword kind died inside regex alternation.
+- The artifact bar decides the write contract: no resume → stdout IS the
+  artifact (c11); resume → mid-run write is metal (s04). Both are honest;
+  the bar, not the engine, chooses.
+- Unread projections are noise even when they look useful (runs/*.json).
