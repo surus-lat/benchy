@@ -162,3 +162,41 @@ def test_unknown_benchmark_key_is_loud():
     shutil.rmtree(bad) if False else None
     import shutil as _sh
     _sh.rmtree(bad)
+
+
+def test_malformed_case_is_refused_at_load_in_words():
+    # c14: the speak-words claim ("Errors are spoken words, never tracebacks")
+    # was UNENFORCED at the case level — a case missing `expected` died
+    # MID-EXAM in a raw KeyError traceback (after already spending cases:
+    # money, on a cloud exam), and the scaffold's ack teaches
+    # {"input": …, "expected": …}, which the engine never checked — the c9
+    # task-lie repeated per-case.  Load-time honesty: the per-case contract
+    # is refused BEFORE anything runs; catching KeyError in the CLI instead
+    # would MASK taker bugs (data errors refuse at load, taker errors crash).
+    sys.path.insert(0, str(ROOT))
+    from nb.exam import locate
+    bad = ROOT / "bench" / "badcase"
+    bad.mkdir(exist_ok=True)
+    (bad / "benchmark.json").write_text(json.dumps(
+        {"task": {}, "cases": [{"input": "x"}]}))
+    with pytest.raises(ValueError, match="input and expected"):
+        locate(ROOT / "bench", "/badcase")
+    r = _cli("run", "/badcase", "good")
+    assert r.returncode != 0 and "Traceback" not in r.stderr
+    assert r.stderr.startswith("benchy: ")
+    import shutil as _sh
+    _sh.rmtree(bad)
+
+
+def test_new_refuses_to_overwrite():
+    # c14 escalation: the overwrite refusal existed in code but NO test
+    # pinned it — an unenforced claim (the table's WHY checklist).  Creating
+    # benchmarks is the product's first step; silently clobbering a filled
+    # exam would destroy work.
+    import tempfile, shutil
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        shutil.copytree(ROOT / "bench", td / "bench")
+        assert _cli("new", "sentiment_es", cwd=td).returncode == 0
+        r = _cli("new", "sentiment_es", cwd=td)
+        assert r.returncode != 0 and "already exists" in r.stderr

@@ -4,8 +4,8 @@
     benchy new <name>                          scaffold a benchmark
 
 The graded artifact IS the report — JSON, indent=1, per-case input/expected/
-prediction/score + the aggregate. It interprets alone (no engine needed to
-read your evidence); a digest verb would be a formatter, not a product word.
+prediction/score + the aggregate + the loss.  It interprets alone (no engine
+needed to read your evidence).
 
 `benchy` is `python -m nb` until packaging earns a console script.
 bench/ is the exam corpus (addressed by ontology path), runs/ the evidence.
@@ -24,8 +24,9 @@ from .exam import locate
 EXAM = '{"task": {}, "cases": []}\n'
 
 def run(bench, system, limit=None):
-    """`run <bench> <system> [--limit N]`: the system takes the exam (first N
-    cases if limited — the smoke valve), the graded artifact lands in runs/."""
+    # c14 dedup: the command's words live in the module docstring (which IS
+    # the usage text __main__ prints) — function docstrings repeating them
+    # were a second address of the same teaching.
     exam = locate("bench", bench)
     # the artifact names its own scope (c10): total is captured BEFORE the
     # slice so a smoke run cannot masquerade as a full run — the JSON says
@@ -59,8 +60,8 @@ def run(bench, system, limit=None):
 
 
 def new(name):
-    """`new <name>`: scaffold the exam as pure data — creating exams is the
-    product's first step, so the format starts as a written file, not lore."""
+    """Creating exams is the product's first step; the scaffold is written
+    data, not lore."""
     d = Path("bench") / name
     if (d / "benchmark.json").exists():
         raise ValueError(f"{d}/benchmark.json already exists")
