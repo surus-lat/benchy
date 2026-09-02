@@ -1,0 +1,4 @@
+{
+  "kind": "constant",
+  "out": {"total": "?", "vendor": "acme", "date": "2026-01-01"}
+}

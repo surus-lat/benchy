@@ -1,0 +1,8 @@
+{
+  "match": "fields",
+  "weights": {
+    "total": 5,
+    "vendor": 1,
+    "date": 1
+  }
+}

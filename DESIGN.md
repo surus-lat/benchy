@@ -8,10 +8,31 @@ interpreter of directories. Zero Python to define, run, and score a benchmark.
 ```
 bench/<name>/
   task.json       {"task": "sentiment"} — the ontology locator
-  scoring.json    {"match": "exact", "points": 1} — whole-dict loud check, unknown keys raise
+  scoring.json    one of the two scoring literals (below) — whole-dict loud check, unknown keys raise
   cases.jsonl     {"input": ..., "expected": ...} per line
   systems/*.json  {"kind": "constant"|"keyword", ...}
 ```
+
+## The scoring vocabulary (cycle 6 — the angle's key probe, brief-mandated)
+
+Weighted/partial scoring, expressed in pure data — no Python in the
+benchmark, no escape hatch:
+
+```
+{"match": "exact"}                            all-or-nothing per case
+{"match": "fields", "weights": {field: w}}    weighted partial credit:
+  per-case score = sum(w of matching fields) / sum(all w)
+```
+
+Both literals are checked WHOLE-DICT loud (cycle 5 law): any other key,
+any other match value, weights that do not name every expected field →
+raise. The `fields` form is the vision's hierarchy-of-importance
+(IDEAS.md: "one field critical, the rest nice to have") as pure data —
+worked example: `bench/extract/` (weights rank a 1-field critical hit
+ABOVE a 2-field nice-to-have hit). The probe also exposed `"points"` as
+noise: the cycle-5 loud check had pinned it to a single possible value —
+a constant masquerading as a variable — so it is deleted from the
+vocabulary and from hello's scoring.json.
 
 Engine: `nb/bench.py` — interpreter + CLI in one file
 (`python3 nb/bench.py <bench_dir> <system>`). Artifact: JSON to stdout +
@@ -34,7 +55,8 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 |---|---|---|---|
 | load | DATA | turns directory into task+scoring+cases(+system); the interpreter itself; absorbed load_system cycle 3 | 1 |
 | invoke | SYSTEM | the ONLY system call: data-dict -> prediction; the AI-API | 0 |
-| run | ALL | result = benchmark.run(system); the vision invariant; scoring inlined (grade fused away cycle 2) | 0 |
+| run | ALL | result = benchmark.run(system); the vision invariant; grade fused away cycle 2, its loop inlined cycle 6 | 0 |
+| score_case | SCORING | interprets the two pure-data scoring literals (exact / fields+weights); grown cycle 6 under --allow-growth, brief-mandated by the s05 key probe; "points" deleted same cycle | 0 |
 | as_loss | SCORING | loss = benchmark.as_loss(); the software-3.0 export | 0 |
 | save | DATA | graded artifact persistence (runs/<bench>/<system>.json) | 0 |
 

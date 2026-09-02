@@ -33,22 +33,31 @@ def invoke(system, case):
     raise ValueError(f"unknown system kind: {kind}")
 
 
+def score_case(scoring, expected, predicted):
+    """Pure-data scoring: interprets one of the two loud-checked literals."""
+    if scoring == {"match": "exact"}:
+        return 1.0 if predicted == expected else 0.0
+    w = scoring.get("weights")
+    loud = (scoring.get("match") == "fields"
+            and set(scoring) == {"match", "weights"} and isinstance(w, dict)
+            and w and set(w) == set(expected))
+    if not loud:
+        raise ValueError(f"unsupported scoring: {scoring!r}")
+    hit = sum(v for f, v in w.items() if predicted.get(f) == expected[f])
+    return hit / sum(w.values())
+
+
 def run(bench_dir, system):
     """result = benchmark.run(system). system: NAME (str) or data dict.
     Returns the graded artifact: per-case scores + aggregate."""
     bench = load(bench_dir, system if isinstance(system, str) else None)
     if isinstance(system, str):
         system = bench["system"]
-    scoring = bench["scoring"]
-    if scoring != {"match": "exact", "points": 1}:
-        raise ValueError(f"unsupported scoring: {scoring!r}")
-    points = scoring["points"]
     cases = []
     for c in bench["cases"]:
-        predicted = invoke(system, c)
-        cases.append({"input": c["input"], "expected": c["expected"],
-                      "predicted": predicted,
-                      "score": points if predicted == c["expected"] else 0})
+        p = invoke(system, c)
+        cases.append({**c, "predicted": p,
+                      "score": score_case(bench["scoring"], c["expected"], p)})
     score = sum(c["score"] for c in cases) / len(cases)
     return {"benchmark": str(bench_dir), "task": bench["task"]["task"],
             "cases": cases, "score": score}
