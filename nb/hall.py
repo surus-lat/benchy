@@ -3,11 +3,13 @@
 One command, two ways to say who is sitting:
 
     python -m nb.hall bench/hello --stub good     sit the exam with a stub
-    python -m nb.hall bench/hello --retake DIR    finish an interrupted exam
+    python -m nb.hall bench/hello --workbox DIR   resume an interrupted exam
 
-The stubs are demo takers: keyword-tally (counts good/bad words) and
-always-pos. Real takers are the Python escape hatch (anything with
-answer(prompt) -> answer); stubs exist so the hall works offline.
+Resume is not a second command: sit() again over a workbox keeps what was
+already scribbled. The stubs are demo takers: keyword-tally (counts good
+and bad words) and always-pos. Real takers are the Python escape hatch
+(anything with answer(prompt) -> answer); stubs exist so the hall works
+offline, no network, no keys.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ import sys
 from pathlib import Path
 
 from .exam import Exam
-from .sit import Taker, sit, retake
+from .sit import Taker, sit
 
 GOOD_WORDS = ("great", "excelente", "loved")
 BAD_WORDS = ("broken", "porqueria", "never")
@@ -45,29 +47,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--stub", choices=sorted(STUBS), help="which stub taker sits")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--out", default=None, help="where to put the report card")
-    p.add_argument("--retake", default=None,
-                   help="workbox dir with answers to keep (resume)")
+    p.add_argument("--workbox", default=None,
+                   help="dir to scribble answers into; resumes if non-empty")
     args = p.parse_args(argv)
 
     exam = Exam.from_dir(Path(args.exam_dir))
-    if args.stub is None and args.retake is None:
-        p.error("say who sits: --stub good|dumb, or --retake DIR")
-
-    if args.stub is not None:
-        taker = Taker(name=args.stub, answer=STUBS[args.stub])
-        workbox = Path(args.retake) if args.retake else None
-        card = sit(exam, taker, limit=args.limit, workbox=workbox)
-        name = taker.name
-    else:
-        if args.retake is None:
-            p.error("--retake needs DIR")
-        taker = Taker(name="retake", answer=always_pos)
-        card = retake(exam, taker, workbox=Path(args.retake), limit=args.limit)
-        name = taker.name
+    if args.stub is None:
+        p.error("say who sits: --stub good|dumb")
+    taker = Taker(name=args.stub, answer=STUBS[args.stub])
+    workbox = Path(args.workbox) if args.workbox else None
+    card = sit(exam, taker, limit=args.limit, workbox=workbox)
 
     out = Path(args.out) if args.out else Path.cwd()
-    path = card.write(out, filename=f"report_card_{name}.json")
-    print(json.dumps({k: v for k, v in card.__dict__.items()}, indent=2)[:400])
+    path = card.write(out, filename=f"report_card_{taker.name}.json")
     print(f"report card: {path}")
     print(f"{taker.name} scored {card.score} on {exam.path} (loss {card.loss})")
     return 0

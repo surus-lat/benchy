@@ -1,14 +1,15 @@
-"""sitting the exam — taker, graded run, retake (resume), report card.
+"""sitting the exam — taker, graded run, resume, report card.
 
 Exam words for the runtime half:
 
     Taker       — anyone who can answer a question: answer(prompt) -> answer
                   (a model, a node, a workflow, an agent — all the same here)
     sit()       — the taker takes the exam, page by page
-    retake()    — sit() again, skipping pages already answered (resume)
     ReportCard  — the graded artifact: per-page scores + the exam score
 
 The ReportCard IS the loss: score = how well you did, loss = 1 - score.
+Resume is not a second verb: sit() again over a workbox keeps what was
+already scribbled — retaking an exam IS sitting it.
 """
 
 from __future__ import annotations
@@ -89,12 +90,6 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
                       pages=[asdict(d) for d in done],
                       score=score, loss=1.0 - score,
                       taken_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
-
-
-def retake(exam: Exam, taker: Taker, workbox: Path,
-           limit: int | None = None) -> ReportCard:
-    """Sit the exam again, keeping answers already in the workbox (resume)."""
-    return sit(exam, taker, limit=limit, workbox=workbox)
 
 
 def as_loss(exam: Exam, taker: Taker, limit: int = None) -> float:

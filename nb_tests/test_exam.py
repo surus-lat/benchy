@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from nb.exam import Exam
-from nb.sit import Taker, sit, retake, as_loss
+from nb.sit import Taker, sit, as_loss
 from nb.hall import keyword_tally, always_pos
 
 
@@ -95,9 +95,9 @@ def test_limit_takes_only_the_first_pages():
     assert card6.score == 0.5
 
 
-# ── retake: the resume story ──────────────────────────────────────────
+# ── resume: sit again over a workbox ──────────────────────────────────
 
-def test_retake_keeps_answers_already_given(tmp_path):
+def test_sitting_again_keeps_answers_already_given(tmp_path):
     exam = Exam.from_dir(HELLO)
     calls = []
 
@@ -110,7 +110,7 @@ def test_retake_keeps_answers_already_given(tmp_path):
     for i in range(3):
         _scribble(tmp_path, i, "pos")
 
-    card = retake(exam, Taker("counter", counting_taker), workbox=tmp_path)
+    card = sit(exam, Taker("counter", counting_taker), workbox=tmp_path)
     assert len(card.pages) == 6          # the whole exam is graded
     assert len(calls) == 3               # only the unanswered pages were re-asked
     assert card.score == 0.5             # always-pos across 6 pages

@@ -6,3 +6,4 @@
 # loss ranks stubs). Golem baseline recorded after this line.
 1 | pushed=Question+Page+combine+grade_keyword+GRADES | broke=yes | verdict=HARD_PUSH | loc=214 | concepts=15
 2 | pushed=sit.grade_page(dup name) | broke=no | verdict=HARD_PUSH | loc=213 | concepts=143 | pushed=report() fused into sit() | broke=no | verdict=HARD_PUSH | loc=211 | concepts=13
+4 | pushed=retake()+hall-dual-path | broke=yes | verdict=NOISE_REMOVED | loc=201 | concepts=12
