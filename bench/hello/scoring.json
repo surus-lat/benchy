@@ -1,0 +1,5 @@
+{
+  "match": "exact",
+  "points": 1,
+  "aggregate": "mean"
+}

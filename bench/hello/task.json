@@ -1,0 +1,5 @@
+{
+  "task": "sentiment",
+  "in": "text",
+  "out": "label[pos|neg]"
+}
