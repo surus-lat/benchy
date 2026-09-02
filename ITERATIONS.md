@@ -60,3 +60,10 @@
 # consumes. Pinned 4 tests; deletion probe broke 14 (the donation is metal).
 # +5 loc under --allow-growth (donation provenance: old benchy).
 16 | pushed=donation:system-failure-is-evidence (old run-loop contract) | broke=yes (14 tests on probe-delete) | verdict=BARE_METAL | loc=95 | concepts=5
+# c17 (ARCHAEOLOGY, donation from old benchy status vocabulary — src/outcome.py
+# TASK_STATUS_NO_SAMPLES, AGENTS.md counts.no_samples_tasks): an empty exam is
+# a broken exam, REFUSED by grade. probed both ways: with the refusal deleted,
+# as_loss crashes the optimizer with ZeroDivisionError (verified live) — a
+# crash, not a refusal; and the pin broke. exam data is fixed data: its defects
+# are refused, never surprised by. +2 loc under --allow-growth. 25 tests.
+17 | pushed=donation:empty-exam-refused (old no_samples status) | broke=yes (pin + live ZeroDivisionError in as_loss on probe-delete) | verdict=BARE_METAL | loc=97 | concepts=5

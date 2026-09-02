@@ -149,6 +149,14 @@ class TestOldBenchyDonations:
         art = run(bench(), GOOD)
         assert all("error" in r and r["error"] is None for r in art["cases"])
 
+    def test_empty_exam_refused_not_zero_division(self):
+        # c17, donated from the old status vocabulary (no_samples): an empty
+        # exam is a broken exam — refusal, never a mid-run ZeroDivisionError.
+        b = bench()
+        b["cases"] = []
+        with pytest.raises(ValueError, match="empty exam"):
+            grade(b, lambda t: "pos")
+
 
 class TestVisionInvariants:
     def test_as_loss_ranks_stubs(self):
