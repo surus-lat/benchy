@@ -12,7 +12,9 @@ import json
 from pathlib import Path
 
 EXAM_KEYS = {"path", "task", "scoring", "samples", "systems"}
-SCORE_KEYS = {"match"}
+# cycle 13 inlined SCORE_KEYS: a one-entry set consulted once — its name was
+# the indirection, the check it fed is the metal (unknown scoring keys still
+# raise, right here, load being the only entry to exam data).
 # cycle 10 deleted sample `id`: write-only metadata — echoed into the artifact
 # but never read. the list INDEX is the case id; the root record is
 # (input, expected). data got smaller, error messages now carry the input.
@@ -47,9 +49,11 @@ def load(path):
     if (not isinstance(task, list) or not task
             or any(not isinstance(t, str) for t in task) or len(set(task)) != len(task)):
         raise ValueError(f"{where} task must be a non-empty list of unique outputs")
-    _check(SCORE_KEYS, data["scoring"], f"{where} scoring")
-    if data["scoring"]["match"] != "exact":
-        raise ValueError(f"unknown scoring policy: {data['scoring']['match']!r}")
+    # cycle 13 inlined SCORE_KEYS: there is ONE scoring policy and its canonical
+    # form is the literal below — any deviation (unknown key, missing key,
+    # wrong value) is "not the policy". load is the only entry, still loud.
+    if data["scoring"] != {"match": "exact"}:
+        raise ValueError(f"unknown scoring policy: {data['scoring']!r}")
     if not isinstance(data["samples"], list) or not data["samples"]:
         raise ValueError(f"{where} samples must be a non-empty list")
     for i, s in enumerate(data["samples"]):
@@ -91,9 +95,14 @@ def invoke(system, inp):
     if keys is None:
         raise ValueError(f"unknown system kind: {kind!r}")
     _check(keys, system, f"system {kind}")
-    # keyword: any needle in the input -> then, otherwise -> else. cycle 7
-    # deleted "const": a constant IS keyword with any=[] (no needle ever
-    # matches -> always else). one kind, one code path.
+    # keyword: any needle in the input -> then, otherwise -> else. cycle 12
+    # tried to delete the gate above (load already validates specs) and
+    # restored it: load guards DATA entry, invoke guards ARGUMENT entry —
+    # a spec handed straight to as_loss/run (a prompt-optimizer's candidate)
+    # never passes load. invoke is the compiler pillar's own loud boundary:
+    # no validated file, no trusted spec. gate != duplicate.
+    # cycle 7 deleted "const": a constant IS keyword with any=[] (no needle
+    # ever matches -> always else). one kind, one code path.
     return system["then"] if any(k in inp for k in system["any"]) else system["else"]
 
 

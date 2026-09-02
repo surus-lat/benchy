@@ -12,3 +12,5 @@
 9 | pushed=locate double-read (probe vs entry) + run's duplicate policy gate | broke=yes | verdict=BARE_METAL | loc=89 | concepts=7
 10 | pushed=sample id (write-only metadata: schema+engine+artifact+data, full delete) | broke=no | verdict=HARD_PUSH | loc=89 | concepts=7
 11 | pushed=artifact echoes (path+system deleted — unread, callers hold their own args; escalated to per-case input) | broke=yes (input: a case must interpret alone) | verdict=BARE_METAL | loc=89 | concepts=7
+12 | pushed=invoke's dict/kind gate (load already validates specs — duplicate?) | broke=yes (unknown-kind spec raised KeyError not ValueError) | verdict=BARE_METAL | loc=89 | concepts=7
+13 | pushed=SCORE_KEYS indirection (one-entry set consulted once) | broke=no | verdict=HARD_PUSH | loc=87 | concepts=7
