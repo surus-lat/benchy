@@ -23,8 +23,11 @@ def locate(path, root="bench"):
 
 
 def _score(want, got, weights):
-    """Shape-dispatch on want: scalar = exact match, dict = weighted per-field."""
     if isinstance(want, dict):
+        # c10: the weighted branch is honest — weights are not decoration,
+        # they RANK: right-on-critical beats right-on-nice at equal field
+        # count. `weights or {}` means an unweighted dict-want scores as the
+        # per-field mean (every field weight 1) — one shape, no special case.
         got = got if isinstance(got, dict) else {}
         w = {k: (weights or {}).get(k, 1.0) for k in want}
         return sum(v for k, v in w.items() if got.get(k) == want[k]) / sum(w.values())
