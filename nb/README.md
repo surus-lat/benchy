@@ -45,10 +45,6 @@ bench/<name>/
 
 ## Usage
 
-```
-python3 -m nb.run bench/hello systems/good
-```
-
-prints a graded artifact JSON to stdout (per-case scores + aggregate) and
-writes it to `runs/<bench>/<system>/<ts>.json`. `as_loss()` = 1 - score;
-loss(dumb) > loss(good).
+`python3 nb/bench.py <bench_dir> <system>` — prints the graded artifact
+JSON (per-case scores + aggregate) to stdout and writes it to
+`runs/<bench>/<system>.json`. `as_loss()` = 1 - score; loss(dumb) > loss(good).
