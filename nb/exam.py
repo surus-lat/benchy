@@ -13,8 +13,6 @@ class Exam:
 
     def run(self, system) -> dict:
         """The system takes the exam; returns the graded artifact (JSON-ready)."""
-        if not self.cases:
-            raise ValueError(f"exam {self.path} has no cases — nothing to grade")
         pages = []
         for case in self.cases:
             prediction = system.invoke(case["input"])
@@ -39,6 +37,9 @@ def locate(bench_root, path):
         if unknown:
             raise ValueError(f"{f}: unknown keys {sorted(unknown)} — an exam is {{path, task, cases}}")
         if data["path"] == path:
+            if not data["cases"]:
+                raise ValueError(f"{f}: no cases — nothing to grade; "
+                                 "add cases to benchmark.json")
             exact = lambda case, prediction: float(prediction == case["expected"])
             return Exam(data["cases"], exact, path, f.parent)
     raise LookupError(f"no benchmark with ontology path {path!r} under {bench_root}")
