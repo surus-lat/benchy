@@ -7,9 +7,9 @@ from pathlib import Path
 class Exam:
     """One benchmark.  run(system) grades a taker;  as_loss() exports the loss."""
 
-    def __init__(self, cases, scorer, path="", task=None, dir=None):
+    def __init__(self, cases, scorer, path="", dir=None):
         self.cases, self.scorer = cases, scorer
-        self.path, self.task, self.dir = path, task, dir
+        self.path, self.dir = path, dir
 
     def run(self, system) -> dict:
         """The system takes the exam; returns the graded artifact (JSON-ready)."""
@@ -20,7 +20,7 @@ class Exam:
             prediction = system.invoke(case["input"])
             pages.append({**case, "prediction": prediction,
                           "score": self.scorer(case, prediction)})
-        return {"benchmark": self.path, "task": self.task, "cases": pages,
+        return {"benchmark": self.path, "cases": pages,
                 "score": sum(p["score"] for p in pages) / len(pages)}
 
     def as_loss(self):
@@ -40,5 +40,5 @@ def locate(bench_root, path):
             raise ValueError(f"{f}: unknown keys {sorted(unknown)} — an exam is {{path, task, cases}}")
         if data["path"] == path:
             exact = lambda case, prediction: float(prediction == case["expected"])
-            return Exam(data["cases"], exact, path, data["task"], f.parent)
+            return Exam(data["cases"], exact, path, f.parent)
     raise LookupError(f"no benchmark with ontology path {path!r} under {bench_root}")

@@ -66,7 +66,7 @@ def report(run_path):
     """`report <run>`: re-read a graded run — evidence outlives the process
     that produced it (re-running a cloud system to see a grade costs money)."""
     a = json.loads(Path(run_path).read_text())
-    lines = [f"{a['benchmark']} · {a['system']} · {len(a['cases'])} cases · task {a['task']}"]
+    lines = [f"{a['benchmark']} · {a['system']} · {len(a['cases'])} cases"]
     for c in a["cases"]:
         lines.append(f"  {'pass' if c['score'] else 'fail'}  {c['input']!r} "
                      f"-> {c['prediction']!r} (want {c['expected']!r})")
