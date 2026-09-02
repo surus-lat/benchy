@@ -18,7 +18,9 @@ ENGINE   nb/engine.py                  compile / grade / run / as_loss (pure)
 ```
 
 - **TASK pillar** lives in the benchmark data: `task.input` (a string text),
-  `task.output` (declared choices). "takes a text, returns {pos,neg}" is data.
+  `task.output` (declared choices) — and it is LOAD-BEARING (c8): grade
+  refuses any exam whose answer key falls outside the declared choices.
+  "takes a text, returns {pos,neg}" is data, enforced by the engine.
 - **SCORING pillar** lives in the benchmark data: `scoring.rule` (match),
   `scoring.aggregate` (mean). Grading is a lookup, not a framework.
 - **DATA pillar** is the cases list — the exam itself. n cases, each a
@@ -39,8 +41,8 @@ over systems; the ontology path `/sentiment` locates the benchmark.
 | concept | pillar | why it cannot be deleted | survived |
 |---|---|---|---|
 | compile | system | the SYSTEM pillar: turns a spec into invoke(text)->pred; the only place the engine may grow (cloud kinds) | 0 |
-| grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke: every system was forced through spec-compilation. The exam loop lives here, with raw invoke, not with specs. | 1 |
-| run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile. c4 candidate — but it IS the vision shape; deleting it leaves as_loss calling grade(compile) directly and no single entry. | 0 |
+| grade | scoring+seam | the seam where ANY callable takes the exam — real APIs, workflows, cached runs bypass compile. c3 fused it into run and the seam test broke. c8 made it the TASK pillar's enforcement point: it refuses exam keys outside task.output.choices — the declaration is load-bearing. | 1 |
+| run | exam | the vision invariant: system as the ARGUMENT; run = grade ∘ compile. c7 deleted it (as_loss/CLI inlined grade∘compile) and 6 vision-shape tests broke: `run(benchmark, system)` IS the vision's headline shape — benchmark.run(system) is the api the optimizer consumes; inlining it makes every caller re-state the composition and the "system is the argument" law lives nowhere. | 1 |
 | as_loss | export | the vision's headline: export the benchmark as a new loss function | 0 |
 | main | cli | s07 c3 proved CLI metal: a person runs `python -m nb` with no Python knowledge; owns the file layer since c4 (load deleted) | 0 |
 

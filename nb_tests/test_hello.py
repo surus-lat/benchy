@@ -84,6 +84,13 @@ class TestPillarScoring:
         with pytest.raises(ValueError):
             run(b, GOOD)
 
+    def test_exam_key_outside_declared_output_rejected(self):
+        # c8: the task declaration is load-bearing, not decoration
+        b = bench()
+        b["cases"][0]["expected"] = "meh"
+        with pytest.raises(ValueError):
+            run(b, GOOD)
+
 
 class TestVisionInvariants:
     def test_as_loss_ranks_stubs(self):
