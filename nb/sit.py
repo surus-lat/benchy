@@ -83,7 +83,12 @@ def sit(exam: Exam, taker: Taker, limit: int | None = None,
                                expected=page.get("expected"),
                                answered=answered,
                                points=page.get("points", 1.0), earned=earned))
-    return report(exam, taker, done)
+    total = sum(d.points for d in done)
+    score = (sum(d.points * d.earned for d in done) / total) if total else 0.0
+    return ReportCard(exam=exam.path, taker=taker.name,
+                      pages=[asdict(d) for d in done],
+                      score=score, loss=1.0 - score,
+                      taken_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
 def retake(exam: Exam, taker: Taker, workbox: Path,
@@ -98,15 +103,6 @@ def as_loss(exam: Exam, taker: Taker, limit: int = None) -> float:
 
 
 _UNANSWERED = object()
-
-
-def report(exam: Exam, taker: Taker, done: list[PageResult]) -> ReportCard:
-    total = sum(d.points for d in done)
-    score = (sum(d.points * d.earned for d in done) / total) if total else 0.0
-    return ReportCard(exam=exam.path, taker=taker.name,
-                      pages=[asdict(d) for d in done],
-                      score=score, loss=1.0 - score,
-                      taken_at=time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
 def _scribble(workbox: Path, i: int, answered) -> None:

@@ -46,7 +46,7 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 | PageResult | DATA | one row of the report card: what was asked, answered, earned | 0 |
 | keyword_tally / always_pos | SYSTEM | the two stub takers: offline demo, no network, no keys. They prove the hall works and that scoring discriminates | 0 |
 | hall.main | — | the shell door: sit an exam from the CLI. Deleting it leaves the engine library-only, unusable from the terminal | 0 |
-| report (sit.py helper) | DATA | fold results into the card: points-weighted score, loss, timestamp. Fused into sit.py; public only because the golem counts names | 1 |
+| report (sit.py helper) | DATA | ~~fold results into the card~~ DELETED cycle 3: a two-line fold with one call site — inlined into sit() | gone |
 | _scribble/_read_scribble | DATA | workbox I/O: answer per page saved as soon as produced. The honesty of retake | 0 |
 
 ## deletions (what the push proved to be noise)
@@ -61,6 +61,11 @@ data alone; reads `nb/exam.py` and understands it from the words alone.
 - **Exam.combine** (cycle 1): dead — the score combination lives in
   `report()` where the points are at hand. Weighted-mean logic in two
   places is one place too many.
+- **sit.grade_page** (cycle 2): a second `grade_page` — one name doing two
+  jobs. Grading seam: `Exam.grade_page` alone; the row build inlined into
+  the sit loop.
+- **report()** (cycle 3): a two-line fold with one call site — fused into
+  `sit()`. The card IS the end of the sit loop, not a separate stage.
 
 ## invariants (from GOLEM.md, law 6)
 
