@@ -60,12 +60,6 @@ def grade(scoring, want, got):
 # end to end: written to disk unchanged, re-read by resume unchanged.
 
 
-def exam(ont, rows):
-    """rows (per-case scores) -> the graded artifact: aggregate + evidence."""
-    score = sum(r["score"] for r in rows) / len(rows) if rows else 0.0
-    return {"ont": ont, "score": score, "loss": 1.0 - score, "cases": rows}
-
-
 def _write(path, artifact):
     """atomic artifact write: a kill must never corrupt the resume evidence."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -125,8 +119,13 @@ class Benchmark:
             for r in ex.map(take, todo):
                 rows[r["id"]] = r
                 if out:   # BARE_METAL (c10): a kill never loses graded work
-                    _write(out, exam(self.ont, [rows[i] for i in sorted(rows)]))
-        return exam(self.ont, [rows[i] for i in sorted(rows)])
+                    _write(out, self._exam([rows[i] for i in sorted(rows)]))
+        return self._exam([rows[i] for i in sorted(rows)])
+
+    def _exam(self, rows):
+        """rows (per-case scores) -> the graded artifact: aggregate + evidence."""
+        score = sum(r["score"] for r in rows) / len(rows) if rows else 0.0
+        return {"ont": self.ont, "score": score, "loss": 1.0 - score, "cases": rows}
 
     def as_loss(self):
         """the benchmark as a loss function for software-3.0 optimizers."""
