@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from nb.exam import Exam
-from nb.sit import Taker, sit, as_loss
+from nb.sit import sit, as_loss
 from nb.hall import keyword_tally, always_pos
 
 
@@ -51,25 +51,25 @@ def test_unknown_rule_is_a_loud_error():
 
 def test_good_stub_scores_perfect_on_hello():
     exam = Exam.from_dir(HELLO)
-    card = sit(exam, Taker("good", keyword_tally))
+    card = sit(exam, "good", keyword_tally)
     assert card.score == 1.0
 
 
 def test_dumb_stub_scores_half_on_hello():
     exam = Exam.from_dir(HELLO)
-    card = sit(exam, Taker("dumb", always_pos))
+    card = sit(exam, "dumb", always_pos)
     assert card.score == 0.5
 
 
 def test_scoring_discriminates():
     exam = Exam.from_dir(HELLO)
-    assert as_loss(exam, Taker("dumb", always_pos)) > as_loss(
-        exam, Taker("good", keyword_tally))
+    assert as_loss(exam, "dumb", always_pos) > as_loss(
+        exam, "good", keyword_tally)
 
 
 def test_report_card_has_per_page_scores_and_aggregate():
     exam = Exam.from_dir(HELLO)
-    card = sit(exam, Taker("dumb", always_pos))
+    card = sit(exam, "dumb", always_pos)
     assert len(card.pages) == 6
     assert all(p["earned"] in (0.0, 1.0) for p in card.pages)
     assert card.score == sum(p["earned"] for p in card.pages) / 6
@@ -77,7 +77,7 @@ def test_report_card_has_per_page_scores_and_aggregate():
 
 def test_report_card_writes_json_artifact(tmp_path):
     exam = Exam.from_dir(HELLO)
-    card = sit(exam, Taker("good", keyword_tally))
+    card = sit(exam, "good", keyword_tally)
     path = card.write(tmp_path)
     data = json.loads(path.read_text())
     assert data["score"] == 1.0
@@ -88,7 +88,7 @@ def test_report_card_writes_json_artifact(tmp_path):
 def test_a_smaller_exam_is_just_fewer_pages():
     exam = Exam.from_dir(HELLO)
     exam.pages = exam.pages[:2]        # author fewer pages: a smaller exam
-    card = sit(exam, Taker("dumb", always_pos))
+    card = sit(exam, "dumb", always_pos)
     assert len(card.pages) == 2
     assert card.score == 1.0           # first two pages are both pos
 
@@ -107,7 +107,7 @@ def test_sitting_again_keeps_answers_already_given(tmp_path):
     (tmp_path / "answers.json").write_text(json.dumps(
         {"0": "pos", "1": "pos", "2": "pos"}))
 
-    card = sit(exam, Taker("counter", counting_taker), workbox=tmp_path)
+    card = sit(exam, "counter", counting_taker, workbox=tmp_path)
     assert len(card.pages) == 6          # the whole exam is graded
     assert len(calls) == 3               # only the unanswered pages were re-asked
     assert card.score == 0.5             # always-pos across 6 pages
@@ -115,7 +115,7 @@ def test_sitting_again_keeps_answers_already_given(tmp_path):
 
 def test_the_workbox_is_one_honest_answers_json(tmp_path):
     exam = Exam.from_dir(HELLO)
-    sit(exam, Taker("good", keyword_tally), workbox=tmp_path)
+    sit(exam, "good", keyword_tally, workbox=tmp_path)
     wb = json.loads((tmp_path / "answers.json").read_text())
     assert set(wb) == {str(i) for i in range(6)}   # every page, keyed by index
     assert all(v in ("pos", "neg") for v in wb.values())
@@ -130,7 +130,7 @@ def test_sit_with_workbox_scribbles_as_it_goes(tmp_path):
         return "neg"
 
     # interrupt mid-exam: after every page the whole workbox is on disk
-    sit(exam, Taker("counter", counting_taker), workbox=tmp_path)
+    sit(exam, "counter", counting_taker, workbox=tmp_path)
     assert len(list(tmp_path.iterdir())) == 1      # one answers.json, not six files
     wb = json.loads((tmp_path / "answers.json").read_text())
     assert len(wb) == len(calls) == 6

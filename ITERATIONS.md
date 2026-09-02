@@ -16,3 +16,5 @@
 10 | pushed=limit param (sit/as_loss/hall --limit) | broke=yes | verdict=NOISE_REMOVED | loc=171 | concepts=8
 11 | pushed=ReportCard.taken_at (timestamp) | broke=no | verdict=HARD_PUSH | loc=168 | concepts=8
 12 | pushed=hall --out flag | broke=no | verdict=HARD_PUSH | loc=166 | concepts=8
+13 | pushed=Exam.question field | broke=no | verdict=HARD_PUSH | loc=165 | concepts=8
+14 | pushed=Taker class → sit(exam, name, answer) | broke=no | verdict=HARD_PUSH | loc=163 | concepts=7
