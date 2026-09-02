@@ -5,19 +5,15 @@ from pathlib import Path
 
 
 class Exam:
-    """One benchmark.  run(system) grades a taker;  as_loss() exports the loss."""
     # survived dissolution (cycle 5): the class is the concept-compressor —
     # it carries the vision invariant's own syntax (GOLEM law 6:
     # benchmark.run(system) / benchmark.as_loss()) and hides the exam's
-    # internal shape; a 3-tuple leaked that shape to every caller (cli had
-    # to destructure AND re-wrap, plus a run/run collision).
-    # cycle 7: the exam is PURE — cases.  path/dir attributes died:
-    # addresses are the caller's business (the CLI derives them from
-    # the ontology path it already holds); the artifact's identity fields
-    # are composed at the write (in the CLI), not carried by the exam.
-    # cycle 11: the scorer PARAM died — scoring is derived engine code
-    # (IDEAS.md: the scoring function derives from the output schema),
-    # so the exam's whole state is its cases.  One field, one concept.
+    # internal shape; a 3-tuple leaked that shape to every caller.
+    # cycle 7: the exam is PURE — cases; addresses are the caller's.
+    # cycle 11: scoring is derived engine code (IDEAS.md: from the output
+    # schema), so the exam's whole state is its cases.  One field, one
+    # concept.  cycle 13: grading composes the loss once (the CLI's private
+    # 1-score formula died — a second address of the grading formula).
 
     def __init__(self, cases):
         self.cases = cases
@@ -68,13 +64,23 @@ def locate(bench_root, path):
         raise LookupError(f"no benchmark with ontology path {path!r} under {bench_root}")
     data = json.loads(f.read_text())
     # the exam is EXACTLY {task, cases} (cycle 9: was an unenforced claim —
-    # a task-less exam loaded fine while the error message promised the
-    # format; the exact-set check names the actual keys, so a missing
-    # pillar and a junk key are both diagnosable from one honest message).
-    # task content is the TAKER's business (the cloud compiler reads it to
-    # build prompts) — presence is load-time honesty, semantics stay free.
+    # the exact-set check names the actual keys, so a missing pillar and a
+    # junk key are both diagnosable from one honest message).  task content
+    # is the TAKER's business (the cloud compiler reads it to build
+    # prompts) — presence is load-time honesty, semantics stay free.
     if set(data) != {"task", "cases"}:
         raise ValueError(f"{f}: an exam is exactly {{task, cases}}; got {sorted(data)}")
     if not data["cases"]:
         raise ValueError(f"{f}: no cases — nothing to grade; add cases to benchmark.json")
+    # c14: the per-case contract, enforced at LOAD — a case is at least
+    # {input, expected} (extra keys — context, id — are the taker's data and
+    # pass through to the artifact).  Before this, a malformed case died
+    # MID-EXAM (money already spent on a cloud taker) with the cryptic
+    # KeyError repr 'expected' instead of words — and the scaffold's ack
+    # teaches {"input": …, "expected": …}, which the engine never checked:
+    # the c9 task-lie, repeated per case.  Data errors refuse at load;
+    # taker errors still crash honestly.
+    for i, c in enumerate(data["cases"]):
+        if "input" not in c or "expected" not in c:
+            raise ValueError(f"{f}: every case needs input and expected; case {i} got {sorted(c)}")
     return Exam(data["cases"])
