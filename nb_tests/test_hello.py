@@ -61,7 +61,7 @@ def test_scoring_format_is_loud_against_dead_keys(tmp_path):
 
 
 def test_system_can_be_passed_as_data_dict_too():
-    sysdata = bench.load(HELLO, "dumb")["system"]
+    sysdata = json.loads((HELLO / "systems" / "dumb.json").read_text())
     assert bench.run(HELLO, sysdata)["score"] == 0.5
 
 

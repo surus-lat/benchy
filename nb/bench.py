@@ -6,21 +6,16 @@ import re
 from pathlib import Path
 
 
-def load(bench_dir, system=None):
-    """Interpret a benchmark directory; optional system is a NAME,
-    read from bench_dir/systems/<name>.json."""
+def load(bench_dir):
+    """Interpret a benchmark directory: task + scoring + cases."""
     d = Path(bench_dir)
-    b = {
+    return {
         "task": json.loads((d / "task.json").read_text(encoding="utf-8")),
         "scoring": json.loads((d / "scoring.json").read_text(encoding="utf-8")),
         "cases": [json.loads(l) for l in
                   (d / "cases.jsonl").read_text(encoding="utf-8").splitlines()
                   if l.strip()],
     }
-    if system is not None:
-        b["system"] = json.loads(
-            (d / "systems" / f"{system}.json").read_text(encoding="utf-8"))
-    return b
 
 
 def invoke(system, case):
@@ -46,9 +41,10 @@ def invoke(system, case):
 def run(bench_dir, system):
     """result = benchmark.run(system). system: NAME (str) or data dict.
     Returns the graded artifact: per-case scores + aggregate."""
-    bench = load(bench_dir, system if isinstance(system, str) else None)
+    bench = load(bench_dir)
     if isinstance(system, str):
-        system = bench["system"]
+        system = json.loads((Path(bench_dir) / "systems" /
+                             f"{system}.json").read_text(encoding="utf-8"))
     scoring = bench["scoring"]
     cases = []
     for c in bench["cases"]:
