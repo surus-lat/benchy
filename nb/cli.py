@@ -56,18 +56,3 @@ def new(name):
     d.mkdir(parents=True, exist_ok=True)
     (d / "benchmark.json").write_text(EXAM)
     print(f"{d}/  — add cases to benchmark.json, write systems.py, then: run /{name} <taker>")
-
-
-def main(argv=None):
-    """Dispatch the commands; speak errors, not tracebacks."""
-    argv = list(sys.argv[1:] if argv is None else argv)
-    try:
-        if argv[:1] == ["run"]:
-            flags = dict(zip(argv[3::2], argv[4::2]))
-            run(*argv[1:3], **{k.lstrip("-"): int(v) for k, v in flags.items()})
-        elif argv[:1] == ["new"]:
-            new(argv[1])
-        else:
-            raise SystemExit(__doc__.strip())
-    except (LookupError, ValueError, FileNotFoundError, TypeError) as e:
-        raise SystemExit(f"benchy: {e}")
