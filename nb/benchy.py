@@ -20,7 +20,8 @@ from pathlib import Path
 # workflow, agent — all plug in here through ONE protocol: f(in, ctx) -> out.
 # Data shapes: {"rule": {cls: [keywords]}, "default": cls} (a learned keyword
 # program; default-only = a constant system) and {"py": "file.py:func"} (the
-# escape hatch — python is not the interface).
+# escape hatch — python is not the interface). py paths resolve from the
+# CWD, same as every other data file you point at by path.
 def invoke(system, inp, ctx=None):
     """invoke a system: callable | data spec (rule+default | py)."""
     if callable(system):
@@ -41,14 +42,10 @@ def invoke(system, inp, ctx=None):
 
 
 # ---------------- TASK pillar: the program description ----------------
-# the task IS its spec dict: in/out schema + ont path. ok() is one expression,
-# not a class — the description of the program we are searching for.
-
-
-def ok(task_spec, pred):
-    """is pred a valid output? (enum membership; anything else passes)"""
-    enum = task_spec.get("out", {}).get("enum")
-    return True if enum is None else pred in enum
+# The task IS data: spec["task"] = in/out schema + ont path. Zero code serves
+# it: an invalid output (outside out.enum) cannot match any want, so grading
+# already scores it 0. The enum is the declared output space for optimizers
+# reading the task — it is not a gate the grader needs.
 
 
 # ---------------- SCORING pillar: what good means (and the loss) ----------------
@@ -116,9 +113,6 @@ class Benchmark:
         name = system if isinstance(system, str) else getattr(system, "__name__", "system")
         if isinstance(system, str):
             system = self.systems[system]
-        if isinstance(system, dict) and "py" in system:   # py paths: by the bench
-            mod, fn = system["py"].rsplit(":", 1)
-            system = {**system, "py": str(self.path.parent / mod) + ":" + fn}
         cases = self.cases[:limit] if limit else self.cases
         done = {}
         if out and Path(out).exists():                   # RESUME: keep graded
@@ -128,7 +122,7 @@ class Benchmark:
         def take(ic):
             i, c = ic
             got = invoke(system, c["in"], c.get("ctx"))
-            s = grade(self.scoring, c["want"], got) if ok(self.task, got) else 0.0
+            s = grade(self.scoring, c["want"], got)
             return {"id": i, "in": c["in"], "want": c["want"], "got": got, "score": s}
 
         rows = dict(done)
