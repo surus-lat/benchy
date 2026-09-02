@@ -106,6 +106,15 @@ def test_trace_is_json_artifact(tmp_path):
     back = json.loads(art.read_text())
     assert back["score"] == 0.5
     assert len(back["cases"]) == 6
+    # cycle 15 guard: deleting the float() cast kept every test green because
+    # True == 1.0 — the guard was unguarded. The cast is armor at the artifact
+    # boundary: verdicts must be NUMBERS in JSON (a stable schema for the
+    # optimizer), never booleans; and real systems (numpy/pandas pipelines)
+    # hand back np.bool_, which json.dumps refuses to serialize — the cast
+    # normalizes the ENGINE's verdicts (score fields) so the artifact survives
+    # them. `got` stays raw evidence by design; see DESIGN.md cycle 15.
+    assert all(isinstance(c["score"], float) for c in loss.trace["cases"])
+    assert '"score": 1.0' in art.read_text()  # numeric, not "true"
 
 
 def test_missing_path_raises():
