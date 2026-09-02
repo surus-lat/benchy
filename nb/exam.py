@@ -6,6 +6,11 @@ from pathlib import Path
 
 class Exam:
     """One benchmark.  run(system) grades a taker;  as_loss() exports the loss."""
+    # survived dissolution (cycle 5): the class is the concept-compressor —
+    # it carries the vision invariant's own syntax (GOLEM law 6:
+    # benchmark.run(system) / benchmark.as_loss()) and hides the exam's
+    # internal shape; a 3-tuple leaked that shape to every caller (cli had
+    # to destructure AND re-wrap, plus a run/run collision).
 
     def __init__(self, cases, scorer, path="", dir=None):
         self.cases, self.scorer = cases, scorer
