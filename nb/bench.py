@@ -10,27 +10,22 @@ import json
 from pathlib import Path
 
 
-def _read_json(path: Path):
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _read_jsonl(path: Path):
-    return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
-
-
 def load(bench_dir):
-    """Interpret a benchmark directory. bench_dir is a Path or str."""
+    """Interpret a benchmark directory: task.json + scoring.json + cases.jsonl."""
     d = Path(bench_dir)
+    cases = [json.loads(l) for l in
+             (d / "cases.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
     return {
-        "task": _read_json(d / "task.json"),
-        "scoring": _read_json(d / "scoring.json"),
-        "cases": _read_jsonl(d / "cases.jsonl"),
+        "task": json.loads((d / "task.json").read_text(encoding="utf-8")),
+        "scoring": json.loads((d / "scoring.json").read_text(encoding="utf-8")),
+        "cases": cases,
     }
 
 
 def load_system(bench_dir, system_name):
     """A system is data too: bench_dir/systems/<name>.json"""
-    return _read_json(Path(bench_dir) / "systems" / f"{system_name}.json")
+    return json.loads((Path(bench_dir) / "systems" / f"{system_name}.json")
+                      .read_text(encoding="utf-8"))
 
 
 def invoke(system, case):
@@ -39,32 +34,29 @@ def invoke(system, case):
     if kind == "constant":
         return system["out"]
     if kind == "keyword":
-        text = case["input"]
-        hit = any(k in text for k in system["if_contains"])
+        hit = any(k in case["input"] for k in system["if_contains"])
         return system["then"] if hit else system["else"]
     raise ValueError(f"unknown system kind: {kind}")
-
-
-def grade(scoring, prediction, expected):
-    """Score one case. scoring is data: match/points/aggregate."""
-    if scoring["match"] != "exact":
-        raise ValueError(f"unknown match: {scoring['match']}")
-    return scoring["points"] if prediction == expected else 0
 
 
 def run(bench_dir, system):
     """result = benchmark.run(system) — the vision invariant.
 
+    Scoring is inline: the scoring.json data is simple enough
+    (exact match -> points, mean) that a separate grade() was noise.
     Returns the graded artifact: per-case scores + aggregate.
     """
     bench = load(bench_dir)
-    cases = [
-        {"input": c["input"], "expected": c["expected"],
-         "predicted": invoke(system, c), "score": None}
-        for c in bench["cases"]
-    ]
-    for c in cases:
-        c["score"] = grade(bench["scoring"], c["predicted"], c["expected"])
+    scoring = bench["scoring"]
+    if scoring["match"] != "exact":
+        raise ValueError(f"unknown match: {scoring['match']}")
+    points = scoring["points"]
+    cases = []
+    for c in bench["cases"]:
+        predicted = invoke(system, c)
+        cases.append({"input": c["input"], "expected": c["expected"],
+                      "predicted": predicted,
+                      "score": points if predicted == c["expected"] else 0})
     score = sum(c["score"] for c in cases) / len(cases)
     return {"benchmark": str(bench_dir), "task": bench["task"]["task"],
             "cases": cases, "score": score}
@@ -76,9 +68,7 @@ def as_loss(result):
 
 
 def save(result, bench_dir, system_name, out_dir="runs"):
-    bench_name = Path(bench_dir).name
-    name = f"{system_name}.json"
-    out = Path(out_dir) / bench_name / name
+    out = Path(out_dir) / Path(bench_dir).name / f"{system_name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2), encoding="utf-8")
     return out

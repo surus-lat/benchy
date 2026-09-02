@@ -35,9 +35,10 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 | load | DATA | turns directory into task+scoring+cases; the interpreter itself | 0 |
 | load_system | SYSTEM | a system is data too; reads systems/<name>.json | 0 |
 | invoke | SYSTEM | the ONLY system call: data-dict -> prediction; the AI-API | 0 |
-| grade | SCORING | scores one case per scoring.json; the loss kernel | 0 |
-| run | ALL | result = benchmark.run(system); the vision invariant | 0 |
+| run | ALL | result = benchmark.run(system); the vision invariant; scoring inlined (grade fused away cycle 2) | 0 |
 | as_loss | SCORING | loss = benchmark.as_loss(); the software-3.0 export | 0 |
 | save | DATA | graded artifact persistence (runs/<bench>/<system>.json) | 0 |
-| _read_json | DATA | file -> dict | 0 |
-| _read_jsonl | DATA | file -> list of dicts (the exam lines) | 0 |
+
+Deleted so far: `main` (cycle 1, CLI noise), `grade` (cycle 2, fused into
+run's loop — scoring data is interpreted inline), `_read_json`/`_read_jsonl`
+(cycle 2, one-line wrappers — json.loads called directly).
