@@ -10,3 +10,4 @@
 
 1 | pushed=ThreadPoolExecutor->serial (bound tightened first: sleep 0.01/attempt, serial floor 20s pure sleep vs 15s bound) | broke=yes (25.9s vs 15s; concurrent=1.55s, 16x gap) | verdict=BARE_METAL | loc=144 | concepts=7
 2 | pushed=fingerprint (sha256 content hash) -> explicit identity (scoring block + per-record input/want vs current cases); escalated: deleted the refusal check itself -> stale-evidence test broke in 0.03s -> restored; suite sharpened with scoring-edit refusal | broke=yes (escalation) | verdict=HARD_PUSH (noise out, refusal proven metal) | loc=141 | concepts=7
+3 | pushed=WORKERS/TRIES module constants (s06: named defaults are cargo — inlined into run/as_loss signatures); as_loss compressed to run(**kw) (one seam, no duplicated knobs); CLI --workers/--tries KEPT (real knobs: cloud rate limits, retry tuning) | broke=no | verdict=HARD_PUSH | loc=140 | concepts=7

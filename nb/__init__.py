@@ -11,8 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from time import sleep
 
-WORKERS, TRIES = 8, 3
-
 
 def locate(path, root="bench"):
     """Resolve an ontology path like '/sentiment' to its exam directory."""
@@ -100,7 +98,7 @@ class Exam:
                 raise ValueError(
                     f"case {c['id']!r}: want {c['want']!r} outside declared out {outs}")
 
-    def run(self, system, out=None, workers=WORKERS, tries=TRIES):
+    def run(self, system, out=None, workers=8, tries=3):
         """Take the exam concurrently (serial fails the 1000-case bar 16x over);
         `out` re-run = resume: ok cases kept, errored cases re-attempted."""
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
@@ -132,6 +130,6 @@ class Exam:
                     _write(out, art)
         return art
 
-    def as_loss(self, system, workers=WORKERS, tries=TRIES):
+    def as_loss(self, system, **kw):
         """The benchmark as a loss over systems: loss = 1 - exam score."""
-        return 1.0 - self.run(system, workers=workers, tries=tries)["score"]
+        return 1.0 - self.run(system, **kw)["score"]
