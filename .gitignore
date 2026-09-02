@@ -79,3 +79,7 @@ test.py
 .claude/
 .worktrees/
 .search/
+
+# s08: benchmark data + graded runs must be tracked despite the root *.json ignore
+!bench/**/*.json
+!runs/**/*.json
