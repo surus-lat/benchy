@@ -1,0 +1,52 @@
+{
+ "system": "dumb",
+ "benchmark": "/sentiment",
+ "task": {
+  "input": "text",
+  "output": {
+   "enum": [
+    "pos",
+    "neg"
+   ]
+  }
+ },
+ "cases": [
+  {
+   "input": "this works great",
+   "expected": "pos",
+   "prediction": "pos",
+   "score": 1.0
+  },
+  {
+   "input": "excelente servicio",
+   "expected": "pos",
+   "prediction": "pos",
+   "score": 1.0
+  },
+  {
+   "input": "loved it",
+   "expected": "pos",
+   "prediction": "pos",
+   "score": 1.0
+  },
+  {
+   "input": "broken on arrival",
+   "expected": "neg",
+   "prediction": "pos",
+   "score": 0.0
+  },
+  {
+   "input": "una porqueria",
+   "expected": "neg",
+   "prediction": "pos",
+   "score": 0.0
+  },
+  {
+   "input": "never again",
+   "expected": "neg",
+   "prediction": "pos",
+   "score": 0.0
+  }
+ ],
+ "score": 0.5
+}
