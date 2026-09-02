@@ -1,6 +1,6 @@
 {
  "files": 1,
- "loc": 104,
+ "loc": 102,
  "deps": 0,
  "concepts": [
   "Benchmark",
@@ -9,6 +9,6 @@
   "invoke",
   "main"
  ],
- "cycles": 12,
+ "cycles": 14,
  "why": null
 }

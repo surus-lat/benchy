@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """benchy — the engine, one file.
 
-A benchmark is DATA (a bench.json: task + cases + scoring). The system is
+A benchmark is DATA (bench.json: task + cases; scoring weights optional). The system is
 the ARGUMENT:  exam = bench.run(system)   loss = bench.as_loss()(system).
 Ontology: every benchmark declares its home path /<task>/<domain>/<language>.
 """
@@ -43,15 +43,18 @@ def invoke(system, inp, ctx=None):
 
 # ---------------- SCORING pillar: what good means (and the loss) ----------------
 def grade(scoring, want, got):
-    """grade -> [0,1]. 'exact' or {'fields': {name: weight}} (importance)."""
-    if scoring == "exact":
+    """grade -> [0,1]: weights over the parts of want; a scalar want IS one part."""
+    # IDEAS: scoring derives from the output schema, then weights are tuned
+    # ("luego se tunean weights o pasa a binario"). want's shape IS the
+    # schema instantiated: dict -> per-field, scalar -> whole equality.
+    # scoring is just the weights map (absent = all 1 = binary; explicit 0
+    # = ignore a part) — no 'exact' sentinel, no {"fields": ...} wrapper.
+    if not isinstance(want, dict):
         return float(want == got)
-    if not isinstance(got, dict):              # fields scoring needs a dict out
+    if not isinstance(got, dict):
         return 0.0
-    w = {k: v for k, v in scoring["fields"].items() if k in want}
-    if not w:
-        return 0.0
-    return sum(v for k, v in w.items() if want.get(k) == got.get(k)) / sum(w.values())
+    w = {k: (scoring or {}).get(k, 1) for k in want}
+    return sum(v for k, v in w.items() if want[k] == got.get(k)) / (sum(w.values()) or 1)
 
 
 # ---------------- DATA pillar: the exam, taken ----------------
@@ -75,7 +78,7 @@ class Benchmark:
     def __init__(self, spec, path):
         self.path = Path(path)
         self.ont = spec["task"].get("ont", "")
-        self.scoring = spec.get("scoring", "exact")
+        self.scoring = spec.get("scoring")
         self.cases = spec["cases"]
         self.systems = spec.get("systems", {})
 
