@@ -40,8 +40,8 @@ def run(bench_dir, system):
     if isinstance(system, str):
         system = bench["system"]
     scoring = bench["scoring"]
-    if scoring["match"] != "exact":
-        raise ValueError(f"unknown match: {scoring['match']}")
+    if scoring != {"match": "exact", "points": 1}:
+        raise ValueError(f"unsupported scoring: {scoring!r}")
     points = scoring["points"]
     cases = []
     for c in bench["cases"]:

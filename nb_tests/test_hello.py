@@ -36,10 +36,28 @@ def test_as_loss_ranks_dumb_worse_than_good():
 
 def test_artifact_has_per_case_scores_and_aggregate():
     result = bench.run(HELLO, "dumb")
+    assert set(result) == {"benchmark", "task", "cases", "score"}
     assert len(result["cases"]) == 6
     per = [c["score"] for c in result["cases"]]
     assert sum(per) == 3
     assert result["score"] == pytest.approx(0.5)
+
+
+def test_scoring_format_is_loud_against_dead_keys(tmp_path):
+    """scoring.json carrying keys the engine does not interpret must
+    raise, not silently score — unread schema keys are noise (cycle 5)."""
+    for f in ("task.json", "scoring.json", "cases.jsonl"):
+        (tmp_path / f).write_text((HELLO / f).read_text(encoding="utf-8"),
+                                  encoding="utf-8")
+    (tmp_path / "systems").mkdir()
+    for s in (HELLO / "systems").glob("*.json"):
+        (tmp_path / "systems" / s.name).write_text(s.read_text(encoding="utf-8"),
+                                                   encoding="utf-8")
+    scoring = json.loads((tmp_path / "scoring.json").read_text(encoding="utf-8"))
+    scoring["aggregate"] = "mean"  # a key the engine no longer reads
+    (tmp_path / "scoring.json").write_text(json.dumps(scoring), encoding="utf-8")
+    with pytest.raises(ValueError):
+        bench.run(tmp_path, "dumb")
 
 
 def test_system_can_be_passed_as_data_dict_too():

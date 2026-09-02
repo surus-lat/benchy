@@ -31,7 +31,7 @@ the file extension is detail. Trade-off recorded in LEARNINGS.md.
 ```
 bench/<name>/
   task.json        REQUIRED  {"task": "sentiment"} — the ontology path segment
-  scoring.json     REQUIRED  {"match": "exact", "points": 1, "aggregate": "mean"}
+  scoring.json     REQUIRED  {"match": "exact", "points": 1} — unknown keys raise
   cases.jsonl      REQUIRED  {"input": "...", "expected": "pos"} per line
   systems/good.json, systems/dumb.json
 ```
