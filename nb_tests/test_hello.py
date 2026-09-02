@@ -14,8 +14,8 @@ sys.path.insert(0, str(ROOT))
 
 
 def _exam():
-    from nb.exam import load
-    return load(HELLO)
+    from nb.exam import locate
+    return locate(ROOT / "bench", "/sentiment")
 
 
 def _stub(name):
@@ -50,6 +50,7 @@ def test_locatable_by_ontology_path():
     from nb.exam import locate
     exam = locate(ROOT / "bench", "/sentiment")
     assert exam.path == "/sentiment" and len(exam.cases) == 6
+    assert exam.dir == HELLO
 
 
 def test_benchmark_is_pure_data():
@@ -81,7 +82,8 @@ def test_scorer_swap_needs_zero_engine_lines():
 def test_cli_runs_offline_end_to_end(tmp_path):
     hello = tmp_path / "hello"
     shutil.copytree(HELLO, hello)
-    r = subprocess.run([sys.executable, "-m", "nb", str(hello), "good"],
+    r = subprocess.run([sys.executable, "-m", "nb", str(tmp_path),
+                        "/sentiment", "good"],
                        capture_output=True, text=True, cwd=ROOT, check=False)
     assert r.returncode == 0, r.stderr
     art = json.loads((hello / "artifact_good.json").read_text())
