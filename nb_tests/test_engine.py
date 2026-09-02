@@ -165,6 +165,49 @@ def test_chain_backend_composes_systems():
     assert compile_system(chain)("meh") == "neg"
 
 
+def test_agent_backend_is_pure_data():
+    """THE falsification probe: an agent (loop + tools) is configuration.
+
+    The 'model' is a stub that asks for a tool once, then answers. The
+    tool is a stub. The spec is pure data; the loop is compiler code
+    (_backend_agent). The core (Task/Scoring/Exam/Benchmark) never
+    learned anything about agents.
+    """
+    # deterministic model: 1st call -> tool request, 2nd call -> answer
+    calls = {"n": 0}
+
+    def fake_model(text):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ["tool", "lookup", "the answer"]
+        return "pos"
+
+    tool = {"kind": "const", "const": "the answer is pos"}
+    spec = {"kind": "agent", "model": fake_model, "tools": {"lookup": tool},
+            "max_iters": 3}
+    assert compile_system(spec)("what is it?") == "pos"
+    assert calls["n"] == 2  # asked once, answered once: the loop worked
+
+
+def test_agent_budget_out_graded_honestly():
+    """a model that never answers returns its last utterance, not a crash."""
+    def loopy(text):
+        return ["tool", "lookup", "x"]  # constant request: never answers
+
+    tool = {"kind": "const", "const": "ignored"}
+    spec = {"kind": "agent", "model": loopy, "tools": {"lookup": tool},
+            "max_iters": 2}
+    pred = compile_system(spec)("q")
+    assert pred == ["tool", "lookup", "x"]  # budget out: utterance graded
+
+
+def test_agent_unknown_tool_is_prediction():
+    """unknown tool: the utterance IS the prediction (no raise, no magic)."""
+    spec = {"kind": "agent", "model": {"kind": "const", "const": ["tool", "nope", "x"]},
+            "tools": {}, "max_iters": 3}
+    assert compile_system(spec)("q") == ["tool", "nope", "x"]
+
+
 def test_unknown_kind_is_rejected():
     try:
         compile_system({"kind": "nope"})
