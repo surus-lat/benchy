@@ -19,6 +19,18 @@ in cycle 4: the graded artifact IS the report — JSON that interprets alone —
 and the vision loop (create → run → grade → export as loss) has no report
 word in it.
 
+**Final verdict (cycle 15): the three-command hypothesis is falsified; two
+verbs + one flag absorbed the whole vision loop, and every artifact field
+survived a per-field deletion attempt.**  Cycle 15 deleted each aggregate
+field of the graded artifact in turn (`loss`: 8 tests broke; `total`: the
+scope test broke; identity: pinned since c7) and the `new` verb itself
+(broke the two tests pinning the vision's create-loop, GOLEM law 6) —
+restored each time.  The artifact carries no write-only field: every key has
+a reader, and the composition is honest (grading composes loss ONCE at c13;
+identity composes ONCE at the write; nothing re-derives either).  The
+`expected`/`want` naming probe came up empty — one name, one address
+(enforced at load, read at scoring, taught by the scaffold's ack).
+
 ## shape
 
 ```
@@ -47,14 +59,16 @@ benchmark.json           {task, cases} — the whole exam, pure data; EXACTLY th
 systems.py               the exam-takers, NOT part of the benchmark:
                             a system is any invoked program; the cloud
                             taker (steering addendum) joins here as a spec
-Exam.run(system)         -> graded artifact {system, benchmark, cases:
-                            [{input, expected, prediction, score}], total,
-                            score, loss} (mean; loss = 1 - score graded ONCE
-                            — c13 killed the CLI's private formula, stdout
-                            only echoes the evidence; interprets alone — and
+Exam.run(system)         -> graded artifact {system, benchmark, total, cases:
+                            [{input, expected, prediction, score}], score,
+                            loss} (mean; loss = 1 - score graded ONCE — c13
+                            killed the CLI's private formula, stdout only
+                            echoes the evidence; interprets alone — and
                             names its own scope: total says graded-of-total,
                             so a smoke run cannot masquerade as a full run,
-                            c10).  Scoring is INSIDE (c11): exact match,
+                            c10; c15: EVERY field survived a deletion attempt
+                            — no write-only fields, the artifact is all
+                            evidence).  Scoring is INSIDE (c11): exact match,
                             derived from the output enum — engine code, not
                             data
 Exam.as_loss()           -> (system) -> graded loss (c13: reads the graded
@@ -74,10 +88,10 @@ CLI speaks.  `python -m nb` until packaging earns the console script.
 
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
-| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both; cycle 7: grading is PURE (cases) — path/dir address bookkeeping died as lenses (identity composes at the write, in the CLI); cycle 11: the scorer param died — scoring is DERIVED engine code (exact match ← output enum, IDEAS.md), the exam's whole state is its cases (one field, one concept) | 3 |
+| Exam | ALL | carries the vision invariant's own syntax — `benchmark.run(system)`, `benchmark.as_loss()` (GOLEM law 6); cycle 5 dissolution broke both; cycle 7: grading is PURE (cases) — path/dir address bookkeeping died as lenses (identity composes at the write, in the CLI); cycle 11: the scorer param died — scoring is DERIVED engine code (exact match ← output enum, IDEAS.md), the exam's whole state is its cases (one field, one concept); cycle 15: the graded composition itself is metal — deleting `loss` broke 8 tests (as_loss, the stdout ack and the report all READ it), grading owns the ONE address of the formula | 4 |
 | locate | DATA | the ontology path `/<task?>/<domain?>/<language?>` is the vision's addressing scheme — the DIRECTORY is the address; flat lookup, load-time honesty (unknown keys / zero cases / malformed cases refused BEFORE anything runs — c14 extended speak-words to the per-case contract: a case is at least {input, expected}, and data errors refuse at load, never mid-exam); the walk+`path`-field died in c6 (a registry re-deriving the address is noise) | 2 |
-| run | UX+SYSTEM+DATA | the take-the-exam command; binds the taker via runpy (c12: one line returning the dict — importlib's 3-line ceremony bought a module object whose only use was getattr) and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone); stdout only echoes the artifact (c13: the CLI's private 1-score formula died — grading composes the loss once) | 3 |
-| new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load; c9: teaches a BLANK task {} (a typed example is a type-lie the engine does not check) and the ack line teaches the case shape in words the engine NOW enforces (c14); overwrite refusal is TEST-pinned (c14 — was an unenforced claim) | 0 |
+| run | UX+SYSTEM+DATA | the take-the-exam command; binds the taker via runpy (c12: one line returning the dict — importlib's 3-line ceremony bought a module object whose only use was getattr) and writes evidence — artifact identity (system/benchmark fields) composes HERE (c7 BARE_METAL: a JSON that leans on its filename does not interpret alone); stdout only echoes the artifact (c13: the CLI's private 1-score formula died — grading composes the loss once); c15: `total` proved metal too (its deletion let a smoke run masquerade as full — the artifact names its own scope) | 3 |
+| new | DATA | CREATING benchmarks is benchy's focus (VISION p.2); the scaffold is pure data — one file, honest refusal at load; c9: teaches a BLANK task {} (a typed example is a type-lie the engine does not check) and the ack line teaches the case shape in words the engine NOW enforces (c14); overwrite refusal is TEST-pinned (c14 — was an unenforced claim); c15 BARE_METAL: full deletion broke the two tests pinning the create-loop (law 6) — a product for creating benchmarks needs the verb that creates one | 1 |
 | (main dissolved — cycle 8) | UX | dispatch is module code in __main__.py; if/elif over two verbs IS the table; tests drive the real process (subprocess), so the argv seam was dead weight | — |
 
 ## flags
