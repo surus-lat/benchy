@@ -37,13 +37,20 @@ class Exam:
             prediction = system.invoke(case["input"])
             pages.append({**case, "prediction": prediction,
                           "score": float(prediction == case["expected"])})
-        return {"cases": pages,
-                "score": sum(p["score"] for p in pages) / len(pages)}
+        score = sum(p["score"] for p in pages) / len(pages)
+        # c13: the loss is graded HERE, once — the vision's scoring function
+        # IS the loss (GOLEM law 6), so the graded artifact carries it; the
+        # CLI's print and as_loss() both READ it, never re-derive it (the
+        # 1-score formula had three addresses; now it has one).
+        return {"cases": pages, "score": score, "loss": 1.0 - score}
 
     def as_loss(self):
         """The benchmark as a loss function over systems: lower is better."""
         def loss(system):
-            return 1.0 - self.run(system)["score"]
+            # c13: reads the graded loss — grading owns the formula, the
+            # loss-view is a projection of the evidence, not a second
+            # implementation of it.
+            return self.run(system)["loss"]
         return loss
 
 

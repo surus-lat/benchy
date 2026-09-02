@@ -73,6 +73,18 @@ def test_artifact_names_its_own_scope():
     assert len(a["cases"]) == 4 and a["total"] == 6
 
 
+def test_artifact_carries_the_loss_stdout_only_echoes():
+    # c13: the ack line computed the loss IN THE CLI (1 - score) — a second
+    # address of as_loss's inner formula — and it was the one stdout fact the
+    # artifact lacked (the report test had to re-derive it too: three
+    # addresses for one formula).  Grading now composes the loss ONCE; stdout
+    # carries nothing the artifact doesn't.
+    r = _run("dumb")
+    a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
+    assert a["loss"] == 0.5
+    assert "loss=0.50" in r.stdout
+
+
 def test_as_loss_ranks_dumb_above_good():
     import importlib.util
     sys.path.insert(0, str(ROOT))
@@ -91,7 +103,7 @@ def test_report_reads_the_graded_run():
     a = json.loads((ROOT / "runs" / "sentiment-dumb.json").read_text())
     assert a["score"] == 0.5
     fails = [c for c in a["cases"] if not c["score"]]
-    assert len(fails) == 3 and 1.0 - a["score"] == 0.5
+    assert len(fails) == 3 and a["loss"] == 0.5
 
 
 def test_new_scaffolds_then_runs():

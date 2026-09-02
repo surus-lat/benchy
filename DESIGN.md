@@ -49,12 +49,18 @@ systems.py               the exam-takers, NOT part of the benchmark:
                             taker (steering addendum) joins here as a spec
 Exam.run(system)         -> graded artifact {system, benchmark, cases:
                             [{input, expected, prediction, score}], total,
-                            score} (mean; interprets alone — and names its
-                            own scope: total says graded-of-total, so a smoke
-                            run cannot masquerade as a full run, c10).
-                            Scoring is INSIDE (c11): exact match, derived
-                            from the output enum — engine code, not data
-Exam.as_loss()           -> (system) -> 1 - score, lower is better
+                            score, loss} (mean; loss = 1 - score graded ONCE
+                            — c13 killed the CLI's private formula, stdout
+                            only echoes the evidence; interprets alone — and
+                            names its own scope: total says graded-of-total,
+                            so a smoke run cannot masquerade as a full run,
+                            c10).  Scoring is INSIDE (c11): exact match,
+                            derived from the output enum — engine code, not
+                            data
+Exam.as_loss()           -> (system) -> graded loss (c13: reads the graded
+                            artifact's own loss field — a projection of the
+                            evidence, not a second implementation of the
+                            formula); lower is better
 locate(bench_root, path) ontology path -> exam (the address IS the registry);
                             flat lookup, load-time honesty: the exam is
                             EXACTLY {task, cases} (enforced, c9) and zero
