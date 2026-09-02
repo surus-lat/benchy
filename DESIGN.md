@@ -58,7 +58,6 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 | run | ALL | result = benchmark.run(system); the vision invariant; grade fused away cycle 2, its loop inlined cycle 6 | 0 |
 | score_case | SCORING | interprets the two pure-data scoring literals (exact / fields+weights); grown cycle 6 under --allow-growth, brief-mandated by the s05 key probe; "points" deleted same cycle | 0 |
 | as_loss | SCORING | loss = benchmark.as_loss(); the software-3.0 export | 0 |
-| save | DATA | graded artifact persistence (runs/<bench>/<system>.json) | 0 |
 
 Deleted so far: `main` (cycle 1, CLI noise), `grade` (cycle 2, fused into
 run's loop — scoring data is interpreted inline), `_read_json`/`_read_jsonl`
@@ -77,7 +76,10 @@ does not interpret now fails loudly instead of lying silently — the noise
 law, enforced by the interpreter's strictness, not by documentation),
 `"points": 1` in scoring.json (cycle 6 — deleted from the vocabulary and
 from the data: the cycle-5 loud check had pinned it to a single possible
-value, a constant masquerading as a variable).
+value, a constant masquerading as a variable), `save` (cycle 9 — its only
+production caller was `__main__`; the 3-line body inlined into the CLI
+block. The artifact contract survives unchanged: runs/<bench>/<system>.json
+is still written, by the same three lines, one concept poorer).
 
 ## Bare metal proven (BARE_METAL verdicts)
 
