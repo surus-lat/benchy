@@ -79,17 +79,14 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     try:
         if argv[:1] == ["run"]:
-            rest, limit = argv[1:], None
-            if "--limit" in rest:
-                i = rest.index("--limit")
-                limit = int(rest[i + 1])
-                del rest[i:i + 2]
-            run(rest[0], rest[1], limit)
+            flags = dict(zip(argv[3::2], argv[4::2]))
+            run(*argv[1:3], **{k.lstrip("-"): int(v) for k, v in flags.items()})
         elif argv[:1] == ["new"]:
             new(argv[1])
         elif argv[:1] == ["report"]:
             report(argv[1])
         else:
             raise SystemExit(__doc__.strip())
-    except (LookupError, ValueError, NotImplementedError, FileNotFoundError) as e:
+    except (LookupError, ValueError, NotImplementedError, FileNotFoundError,
+            TypeError) as e:
         raise SystemExit(f"benchy: {e}")
