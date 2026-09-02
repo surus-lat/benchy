@@ -327,6 +327,45 @@ def test_cli_runs_and_exit_codes(tmp_path):
     r2 = subprocess.run([sys.executable, "-m", "nb", "/sentiment", str(sp), "-o", str(tmp_path / "e.json")],
                         cwd=ROOT, capture_output=True, text=True)
     assert r2.returncode == 1  # errors -> non-zero, the artifact contract
+    # c13 mutation probe: score-gating (exit 1 iff score<1) survived the
+    # whole suite — the errors-projection claim was under-tested. The dumb
+    # stub discriminates: score 0.5, zero errors -> exit 0 (a wrong-but-
+    # completed exam is a SUCCESSFUL run; grading is the artifact's job,
+    # the exit code reports operability, not quality).
+    r2b = subprocess.run([sys.executable, "-m", "nb", "/sentiment", "dumb", "-o", str(tmp_path / "d.json")],
+                         cwd=ROOT, capture_output=True, text=True)
+    assert r2b.returncode == 0, r2b.stderr
+    assert "score=0.500" in r2b.stdout
+    assert "errors=0" in r2b.stdout
+    # c13 judge: the exit-code claim at the RESUME seam — a resumed CLI run
+    # re-attempts the errored cases; exit code must follow the CURRENT run's
+    # errors projection, not the stale artifact. failing stub -> exit 1;
+    # succeed-at-tries-4 stub resuming the same artifact -> exit 0.
+    d = tmp_path / "resume"
+    d.mkdir()
+    (d / "exam.json").write_text(json.dumps(
+        {"out": ["pos", "neg"],
+         "cases": [{"id": f"r{i}", "input": f"t{i}", "want": "pos"} for i in range(4)]}))
+    out3 = d / "a.json"
+    sp3 = d / "flaky3.json"
+    sp3.write_text(json.dumps({"kind": "flaky", "fails": 3,
+                                "of": {"kind": "always", "value": "pos"}}))
+    r3 = subprocess.run([sys.executable, "-m", "nb", str(d), str(sp3), "-o", str(out3),
+                         "--tries", "3"], cwd=ROOT, capture_output=True, text=True)
+    assert r3.returncode == 1, r3.stdout + r3.stderr
+    assert sum(c["status"] == "error" for c in json.loads(out3.read_text())["cases"]) == 4
+    # resume: same artifact path, all cases errored -> all re-attempted; the
+    # stub still fails 3 (>= tries) -> still errored -> exit 1 again
+    r4 = subprocess.run([sys.executable, "-m", "nb", str(d), str(sp3), "-o", str(out3),
+                         "--tries", "3"], cwd=ROOT, capture_output=True, text=True)
+    assert r4.returncode == 1, r4.stdout + r4.stderr
+    # now the stub succeeds within tries=4: resume re-attempts, all ok -> exit 0
+    r5 = subprocess.run([sys.executable, "-m", "nb", str(d), str(sp3), "-o", str(out3),
+                         "--tries", "4"], cwd=ROOT, capture_output=True, text=True)
+    assert r5.returncode == 0, r5.stdout + r5.stderr
+    art5 = json.loads(out3.read_text())
+    assert sum(c["status"] == "error" for c in art5["cases"]) == 0
+    assert art5["score"] == 1.0
 
 
 def test_unknown_system_kind_and_unknown_path_are_loud(tmp_path):

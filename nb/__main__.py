@@ -23,6 +23,10 @@ def main():
     errors = sum(c["status"] == "error" for c in art["cases"])
     print(f"{a.exam} score={art['score']:.3f} errors={errors} "
           f"done={len(art['cases'])}/{art['total']} -> {a.out}")
+    # errors-projection gate: the exit code reports operability (did every case
+    # complete?), not quality (how good were the answers?) — c13: a
+    # score<1 gate MUTATED in and survived the whole suite until the
+    # dumb-stub judge (score 0.5, zero errors must exit 0).
     sys.exit(1 if errors else 0)
 
 
