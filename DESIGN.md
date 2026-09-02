@@ -39,6 +39,7 @@ unknown names fail loud, never silently score 0.
 | load | DATA+SCORING | data must enter somehow; the only IO concept; returns the loss closure — one concept IS the whole engine | 1 |
 | `want` in trace cases | SCORING+DATA | the artifact must be SELF-CONTAINED: without `want`, a failed case reads "wrong, but about what?" and no reader (human or software-3.0 optimizer) can interpret or learn from the trace without joining bench.json — which the artifact no longer names (path deleted, cycle 9). Derivable-from-source is not the bar; interpretable-alone is. | 1 |
 | `scoring` key in bench.json + its load-time check | SCORING | scoring is a pillar of the benchmark identity (law #6). The key is the seat where the author names the policy the engine implements; the check is live honesty code — unknown or missing scoring fails loud, never silently exact-match. Survived deletion because nothing guarded the guard (cycle 11); the guard test now exists. | 1 |
+| the inner `loss` closure | DATA+SCORING | not style — the only honest home for the receipt. `spec` must be captured at load time, and `loss.trace` must be PER-INSTANCE state: a module-level loss() would share one trace across every loaded benchmark (cycle 12 hoist attempt broke 8 tests). The closure IS the loss-first identity: load() returns the loss itself. | 1 |
 
 (`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
 `system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
@@ -93,6 +94,12 @@ system is a callable and stdlib importlib is the loader.)
   ("hierarchy of importance between fields") — the key is the seat where the
   author names the policy. Fixed the gap: added a test that a missing or
   unknown scoring raises LookupError. The engine's loc is unchanged (35).
+- cycle 12: `ROOT` — deleted (inlined into load's glob, loc -1). Escalation:
+  hoist `loss()` to module level? BROKE — the closure needs `spec` at eval
+  time and `loss.trace` needs PER-INSTANCE state; a module-level function
+  shares one trace across every loaded benchmark. The closure is not style,
+  it is the only honest home for the receipt. BARE_METAL (the inner closure);
+  added a test proving two benchmarks keep independent traces.
 
 ## queued deletion candidates (loudest first)
 

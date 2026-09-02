@@ -108,6 +108,25 @@ def test_missing_path_raises():
         nb.load("/nope")
 
 
+def test_two_benchmarks_traces_are_independent():
+    # cycle 12 escalation: could loss be a module-level function with shared
+    # state instead of a per-load closure? Two benchmarks evaluated in
+    # interleaved order must keep independent receipts — shared state
+    # clobbers. The closure is the only honest home for trace.
+    loss_a = nb.load("/sentiment")
+    spec = json.loads(HELLO.read_text())
+    tmp = tmp_bench({**spec, "path": "/sentiment_twin"})
+    try:
+        loss_b = nb.load("/sentiment_twin")
+        loss_a(DUMB)
+        loss_b(GOOD)
+        assert loss_a.trace["score"] == 0.5
+        assert loss_b.trace["score"] == 1.0
+    finally:
+        import shutil
+        shutil.rmtree(tmp)
+
+
 def test_scoring_is_data_and_guards_itself():
     # cycle 11 probe: deleting the scoring key + check stayed green — the
     # honesty guard was UNGUARDED. Scoring is a PILLAR (law #6: benchmark =

@@ -17,22 +17,22 @@ produces a prediction. Model, node, workflow, agent — all the same thing here.
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-
 
 def load(path):
     """Load a benchmark by ontology path (/sentiment). Benchmarks are data;
-    the path is the identity. No second addressing scheme. Returns the loss
-    itself: (System) -> float, with the receipt at loss.trace."""
-    for f in ROOT.glob("bench/**/bench.json"):
+    the path is the identity. Returns the loss itself: (System) -> float,
+    with the receipt at loss.trace."""
+    for f in Path(__file__).resolve().parent.parent.glob("bench/**/bench.json"):
         spec = json.loads(f.read_text())
         if spec["path"] != path:
             continue
-        # SCORING is data: the benchmark must NAME a policy the engine really
-        # implements. Unknown or missing -> loud, never silently exact-match.
+        # scoring is data: the benchmark must NAME a policy the engine really
+        # implements; unknown or missing -> loud, never silently exact-match.
         if spec.get("scoring") != {"compare": "exact", "aggregate": "mean"}:
             raise LookupError(f"unknown scoring: {spec.get('scoring')!r}")
-
+        # the loss IS the benchmark: a per-load closure. trace must be
+        # PER-INSTANCE state (two loaded benchmarks must not clobber each
+        # other's receipts) — only a freshly-constructed callable gives that.
         def loss(system) -> float:
             cases = []
             for case in spec["cases"]:
