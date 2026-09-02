@@ -75,11 +75,12 @@ def test_trace_is_the_receipt_of_last_eval():
     loss = nb.load("/sentiment")
     loss(DUMB)
     trace = loss.trace
-    assert set(trace) >= {"path", "score", "cases"}
-    assert trace["path"] == "/sentiment"
+    # the artifact carries evidence only: per-case + aggregate. Identity is the
+    # loss itself (and the filename when serialized) — not schema inside.
+    assert set(trace) == {"score", "cases"}
     assert len(trace["cases"]) == 6
     for c in trace["cases"]:
-        assert set(c) >= {"in", "want", "got", "score"}
+        assert set(c) == {"in", "want", "got", "score"}
 
 
 def test_loss_score_is_one_minus_trace_score():

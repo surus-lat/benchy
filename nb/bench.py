@@ -37,8 +37,7 @@ def load(path):
                 got = system(case["in"])
                 cases.append({"in": case["in"], "want": case["want"],
                               "got": got, "score": float(got == case["want"])})
-            loss.trace = {"path": spec["path"],
-                          "score": sum(c["score"] for c in cases) / len(cases),
+            loss.trace = {"score": sum(c["score"] for c in cases) / len(cases),
                           "cases": cases}
             return 1.0 - loss.trace["score"]
 
