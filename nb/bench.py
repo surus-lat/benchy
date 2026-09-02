@@ -2,6 +2,7 @@
 Files: task.json, scoring.json, cases.jsonl, systems/*.json (schema with
 examples in DESIGN.md). Everything is data; zero user Python."""
 import json
+import re
 from pathlib import Path
 
 
@@ -23,13 +24,22 @@ def load(bench_dir, system=None):
 
 
 def invoke(system, case):
-    """The ONLY way a system takes the exam. system is a data dict."""
+    """The ONLY way a system takes the exam. system is a data dict.
+    regex has two shapes, dispatched loudly: extraction (fields: pattern
+    per field, group 1 = value, miss = default) and classification
+    (if: one pattern, then/else). The keyword kind was subsumed: a
+    keyword list IS an alternation pattern (cycle 14)."""
     kind = system["kind"]
     if kind == "constant":
         return system["out"]
-    if kind == "keyword":
-        hit = any(k in case["input"] for k in system["if_contains"])
-        return system["then"] if hit else system["else"]
+    if kind == "regex":
+        if "fields" in system:
+            return {f: m.group(1) if (m := re.search(p, case["input"]))
+                    else system["miss"] for f, p in system["fields"].items()}
+        if "if" in system:
+            return (system["then"]
+                    if re.search(system["if"], case["input"]) else system["else"])
+        raise ValueError(f"regex system needs 'fields' or 'if': {sorted(system)}")
     raise ValueError(f"unknown system kind: {kind}")
 
 

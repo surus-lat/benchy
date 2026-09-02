@@ -13,3 +13,4 @@
 11 | pushed=CLI save-to-disk (stdout IS the artifact; runs/*.json unread third projection; test fixed forward) | broke=yes | verdict=NOISE_REMOVED | loc=66 | concepts=5
 12 | pushed=as_loss (2 ranking tests broke; NAMED vision invariant — restored, fusion rejected) | broke=yes | verdict=BARE_METAL | loc=66 | concepts=5
 13 | pushed=score_case (fused into run's loop; scoring interpreted inline; only caller was run) | broke=no | verdict=HARD_PUSH | loc=66 | concepts=4
+14 | pushed=regex escape-hatch probe (regex system = pure data, scores 1.0; escalation deleted keyword kind — alternation IS the keyword list) | broke=no | verdict=HARD_PUSH | loc=76 | concepts=4

@@ -1,0 +1,9 @@
+{
+  "kind": "regex",
+  "miss": "?",
+  "fields": {
+    "total": "total \\$([0-9]+)",
+    "vendor": "from ([a-z]+)",
+    "date": "dated ([0-9]{4}-[0-9]{2}-[0-9]{2})"
+  }
+}
