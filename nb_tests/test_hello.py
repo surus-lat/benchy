@@ -4,6 +4,7 @@ Every invariant of search/GOLEM.md's hello section, as executable law.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -156,6 +157,24 @@ class TestOldBenchyDonations:
         b["cases"] = []
         with pytest.raises(ValueError, match="empty exam"):
             grade(b, lambda t: "pos")
+
+    def test_cli_refuses_mismatched_ontology_path(self, tmp_path):
+        # c18, donated from the old spine (OntologyPath: registry key ==
+        # on-disk layout; old load_benchmark resolved BY ontology): a file
+        # whose declared path != requested path is a broken exam install —
+        # running it would silently write artifacts under the wrong identity.
+        broken = tmp_path / "broken"
+        broken.mkdir()
+        shutil.copy(BENCH / "sentiment.json", broken / "other.json")
+        shutil.copy(BENCH / "systems.json", broken / "systems.json")
+        out = tmp_path / "artifact.json"
+        proc = subprocess.run(
+            [sys.executable, "-m", "nb", str(broken), "/other", str(out), "dumb"],
+            capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1],
+        )
+        assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
+        assert "declares" in proc.stderr
+        assert not out.exists()  # no artifact under a wrong identity
 
 
 class TestVisionInvariants:

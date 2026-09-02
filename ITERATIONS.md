@@ -67,3 +67,12 @@
 # crash, not a refusal; and the pin broke. exam data is fixed data: its defects
 # are refused, never surprised by. +2 loc under --allow-growth. 25 tests.
 17 | pushed=donation:empty-exam-refused (old no_samples status) | broke=yes (pin + live ZeroDivisionError in as_loss on probe-delete) | verdict=BARE_METAL | loc=97 | concepts=5
+# c18 (ARCHAEOLOGY, donation from old spine .staging/benchy/core.py OntologyPath —
+# "simultaneously the registry key and the on-disk layout"; old load_benchmark
+# resolved benchmarks BY ontology): the CLI refuses a benchmark whose declared
+# path != the requested path — a file declaring /other when you asked for
+# /sentiment is a broken exam install (copied/renamed without editing), and
+# running it would silently write artifacts under the wrong identity. ONE
+# literal check in the file layer (not a concept, no engine change). Pinned;
+# probe-deletion broke the pin. +4 loc under --allow-growth. 26 tests.
+18 | pushed=donation:path-coherence-cli-check (old OntologyPath registry==layout) | broke=yes (the pin on probe-delete) | verdict=BARE_METAL | loc=101 | concepts=5
