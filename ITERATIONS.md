@@ -15,3 +15,4 @@
 12 | pushed=invoke's dict/kind gate (load already validates specs — duplicate?) | broke=yes (unknown-kind spec raised KeyError not ValueError) | verdict=BARE_METAL | loc=89 | concepts=7
 13 | pushed=SCORE_KEYS indirection (one-entry set consulted once) | broke=no | verdict=HARD_PUSH | loc=87 | concepts=7
 14 | pushed=EXAM_KEYS schema check (the five literal reads make the set redundant?) | broke=yes (unknown top key silently ignored) | verdict=BARE_METAL | loc=87 | concepts=7
+15 | pushed=CLI artifact path echo (c11: "callers hold their own args" — same law?) | broke=yes (file on disk must interpret alone) | verdict=BARE_METAL | loc=87 | concepts=7

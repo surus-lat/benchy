@@ -16,6 +16,12 @@ def main(argv=None):
         return 2
     root, path, out = argv
     exam = locate(root, path)
+    # cycle 15 tried to delete the path echo (cycle 11 deleted run's echoes:
+    # "callers hold their own args") and restored: c11's law has TWO tiers.
+    # a RETURN VALUE leans on its caller; a FILE ON DISK outlives the
+    # invocation — whoever opens the artifact later holds no argv and no
+    # stdout. without path, evidence from two exams is indistinguishable.
+    # a file must interpret alone: identity is metal.
     artifact = {"path": exam["path"], "systems": {}}
     for name, spec in exam["systems"].items():
         artifact["systems"][name] = run(exam, spec)

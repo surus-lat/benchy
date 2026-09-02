@@ -26,6 +26,9 @@ The engine is two tiny pure functions over that data plus loud validation.
     as_loss(exam)      -> (system) -> float; lower is better (1 - score)
 
     python -m nb <bench_root> /sentiment artifact.json   (offline end-to-end)
+    artifact.json = { path, systems: { name: run-report } }  — a FILE on disk:
+    it must interpret alone, so it carries its own path (cycle 15); the
+    in-memory run-report does not (cycle 11 deleted its echoes).
 
 A benchmark is data, never required Python. Nothing is inferred: the task
 lens is DECLARED and every sample is validated against it; unknown keys and
@@ -48,6 +51,6 @@ the task wrapper object (a bare list carries the answer space honestly).
 | invoke | system | the compiler pillar: a spec must become a prediction; cloud specs land here. cycle 12 tried to delete its dict/kind gate (load already validates specs) and restored: load guards DATA entry, invoke guards ARGUMENT entry — a spec handed straight to as_loss/run (a prompt-optimizer's candidate) never passes load. the gate is a boundary, not a duplicate | 1 |
 | run | exam | take the exam: per-case evidence + aggregate; the artifact contract; the scoring lens lives here (cycle 6 fused grade in — the declared policy is validated at load, its application is 1 line; cycle 9 deleted run's duplicate policy gate: load is the only entry, a second gate was a copy) | 1 |
 | as_loss | scoring | cycle 5 tried to delete: broke the vision contract itself — GOLEM law 6 makes `loss = benchmark.as_loss()` unbreakable; the loss-export for prompt-optimizers is THE headline feature, not derivable noise | 1 |
-| main (CLI) | all | cycle 3 tried to delete it: engine ran only under pytest. the bar says offline end-to-end for a person, not a test file — CLI = metal | 1 |
+| main (CLI) | all | cycle 3 tried to delete it: engine ran only under pytest. the bar says offline end-to-end for a person, not a test file — CLI = metal. cycle 15 tried to delete the artifact's path echo (c11 deleted run's echoes: callers hold their own args) and restored: c11's law has TWO tiers — a return value leans on its caller, a FILE ON DISK outlives the invocation; whoever opens the artifact later holds no argv. without path, evidence from two exams is indistinguishable. a file must interpret alone | 2 |
 | task (declared answer space) | task | data: inferred enum absorbs typos + shrinks on unrepresented classes | 1 |
 | scoring.match (declared policy) | scoring | data: "what good means" belongs on the exam paper, not in code. cycle 13 inlined SCORE_KEYS into load: the one policy is the literal {"match": "exact"}, any deviation is "not the policy" — the NAME was the indirection, the check is the metal | 1 |
