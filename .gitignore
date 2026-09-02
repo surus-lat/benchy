@@ -51,6 +51,10 @@ logs/
 !configs/**/*.json
 !submissions/**/*.json
 !configs/**/*.yaml
+!bench/**/*.json
+!bench/**/*.jsonl
+!bench/**/.golem_state.json
+!.golem_state.json
 *.csv
 *.parquet
 /.data/
