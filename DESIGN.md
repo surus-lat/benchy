@@ -6,46 +6,58 @@ trivial one-liners.  Bare metal if swapping any implementation changes zero
 lines outside it and the public surface stays ≤ ~10 public types.  Falsified
 if protocols multiply beyond ~10.
 
-**Interim verdict (cycle 3): the angle is being partially falsified by the
-metal.**  Named protocols ARE noise when the convention carries the
-contract: Scorer (deleted as a type — it's `(case, prediction) -> float`,
-a convention), Scored (deleted — the artifact page is `{**case, prediction,
-score}`, self-describing JSON), Task (deleted from the engine — the task
-pillar lives in benchmark.json, which the engine passes through).  What
-survives is ONE runtime-checkable protocol (System) + ONE record (Case) +
-ONE interpreter (Exam).  The contract layer shrank from 6 named types to 2.
+**Interim verdict (cycle 6): the angle is falsified in its strong form,
+confirmed in its weak form.**  Every NAMED contract died as annotation-cargo:
+Scorer, Scored, Task, System (Protocol), Case (TypedDict), SCORINGS (registry).
+What survives is the contracts as CONVENTIONS carried by the values:
+scorer(case, pred)->float, system.invoke(x)->pred, case {input, expected},
+artifact {**case, prediction, score}.  Swapping any implementation still
+changes zero lines outside it — the seam is duck-typing on the convention,
+which is what contracts-first actually bought.  Public surface: 5 module
+names, not 10 types.
 
 ## shape
 
     benchmark.json      the exam as pure data: path (ontology), task (in/out
                         schema — pass-through, the engine does not read it),
-                        cases, scoring kind
+                        cases
     Exam.run(system)    -> graded artifact (per-case scores + aggregate + loss)
     Exam.as_loss()      -> (system) -> float, lower is better
     System.invoke(x)    -> prediction   (structural conformance, no inheritance)
-    scorer(case, pred)  -> float        (any callable; data-declared kind OR
-                        injected python — the swap seam)
+    scorer(case, pred)  -> float        (any callable, injected at Exam
+                        construction — the swap seam; exact_match is the
+                        built-in default; data-declared kinds deleted cycle 6)
 
 ## concept table
 
 | concept | pillar | why undeletable (so far) | survived |
 |---|---|---|---|
-| Case | DATA | one exam page (input, expected); the unit flowing through run; the only record the engine reads | 1 |
-| System | SYSTEM | the exam taker: invoke(input)->prediction; structural conformance IS the AI-API contract; runtime-checkable so `isinstance` tells friend from stranger | 1 |
-| exact_match | SCORING | the dumbest scorer; data-declared scoring needs at least one builtin kind | 0 |
+| exact_match | SCORING | the dumbest scorer; the built-in default | 0 |
 | Exam | ALL | benchmark = data+scoring; system is the argument (run / as_loss — two vision invariants) | 1 |
 | load | DATA | a benchmark is data; the only directory reader | 0 |
-| locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>) | 0 |
+| locate | DATA | ontology path -> exam (vision invariant /<task?>/<domain?>/<language?>) | 1 |
 | main | UX | `python -m nb <bench> <system>`: runnable without pytest archaeology | 0 |
 
-Deleted (noise — protocols that only had annotation-work):
-- Scorer protocol → class (cycle 1), Scorer type alias (cycle 2): the
+## bare metal (survived a deletion attempt)
+
+- locate (cycle 4): the ontology path is the vision's addressing scheme
+  (/<task?>/<domain?>/<language?>), not a directory convention.
+
+## deleted (noise — protocols that only had annotation-work)
+
+- Scorer protocol class (cycle 1), Scorer type alias (cycle 2): the
   convention `(case, prediction) -> float` carries the contract.
 - Scored record (cycle 3): `{**case, prediction, score}` is self-describing.
-- Task record + Exam.task + artifact `conforms` (cycle 3): the task pillar
-  is data (benchmark.json), not engine state; `conforms` was a second
-  verdict competing with `score` (two sources of truth).
+- Task record + Exam.task + artifact `conforms` (cycle 3): the task pillar is
+  data (benchmark.json), not engine state; `conforms` was a second verdict
+  competing with `score`.
+- System Protocol (cycle 5): structural conformance IS the contract; the
+  runtime-checkable type was annotation-cargo.
+- Case TypedDict (cycle 5): `{input, expected}` lives in the values.
+- All type annotations in core.py (cycle 5): core.py became a pure
+  conventions docstring — the honest endpoint of contracts-first.
+- SCORINGS registry (cycle 6): a registry of one entry is a fake choice;
+  load hardcodes exact_match, custom scoring rides the injected-scorer seam.
 
-Current: 7 concepts, 4 files, 77 loc.  Public surface: Case (TypedDict),
-System (Protocol), exact_match, SCORINGS, Exam, load, locate, main = 8 names.
-Cycle 4+ will attack System-as-Protocol and locate.
+Current: 5 concepts, 4 files, 69 loc.  Public surface (module names):
+exact_match, Exam (+run, as_loss), load, locate, main = 5.

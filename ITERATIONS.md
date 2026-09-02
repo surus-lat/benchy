@@ -8,3 +8,4 @@
 3 | pushed=Scored-TypedDict then escalated: conforms-artifact-field + Task-type + Exam.task-param (first push TOO_SOFT, escalation deleted 3 concepts) | broke=yes (tests guarded removed surface; fixed forward — task/conforms were annotation-cargo) | verdict=HARD_PUSH | loc=77 | concepts=7
 4 | pushed=locate (delete ontology search) | broke=yes (ontology test: path /sentiment -> exam is a vision invariant, not directory convention) | verdict=BARE_METAL | loc=77 | concepts=7
 5 | pushed=System-Protocol then escalated: Case-TypedDict + all typed annotations (core.py is now a conventions docstring, zero classes) | broke=no (deletion consumed its own only test; structural conformance was annotation-cargo) | verdict=HARD_PUSH | loc=70 | concepts=5
+6 | pushed=SCORINGS registry (scoring kind hardcoded in load; a registry of one entry was a fake choice, custom scoring rides the injected-scorer seam) | broke=no | verdict=HARD_PUSH | loc=69 | concepts=5
