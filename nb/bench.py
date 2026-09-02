@@ -44,12 +44,3 @@ def load(path):
 
         return loss
     raise LookupError(f"no benchmark with ontology path {path!r}")
-
-
-def system(name):
-    """Load a system program by file path: `bench/hello/systems/good.py`.
-    A system is its file — no second addressing scheme."""
-    p = Path(name)
-    ns = {}
-    exec(compile(p.read_text(), str(p), "exec"), ns)
-    return ns["solve"]

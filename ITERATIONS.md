@@ -7,3 +7,4 @@
 5 | pushed=SCORES/AGGS tables — deleted, inline honest scoring with loud vocab check | broke=no | verdict=HARD_PUSH | loc=44 | concepts=2
 6 | pushed=receipt `i` key + spec.get(cases) default — both deleted, order is the index, missing cases must fail loud | broke=no | verdict=HARD_PUSH | loc=43 | concepts=2
 7 | pushed=`task` key in bench.json — deleted, schema is visible in the cases (in values are the input type, want values are the output vocab); engine never read it | broke=no | verdict=HARD_PUSH | loc=43 | concepts=2
+8 | pushed=`system()` concept — deleted, stdlib importlib is the loader, a system is just a callable; tests fixed forward | broke=yes | verdict=NOISE_REMOVED | loc=36 | concepts=1

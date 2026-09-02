@@ -17,10 +17,12 @@ CLI, artifacts, grading: projections of `(Task, Data, Scoring, System) -> float`
 ## shapes
 
 - benchmark = `bench.json` (data): `path` (ontology /<task>/<domain>/<lang>),
-  `task` (in/out schema), `scoring` (compare + aggregate), `cases`.
-- system = a program: any importable `solve` callable, addressed by FILE PATH
-  only (`bench/hello/systems/good.py`). No second addressing scheme.
-- loss.trace = dict: path, score, cases [{i, in, want, got, score}].
+  `scoring` (compare + aggregate), `cases`. No task key — the schema is visible
+  in the cases themselves.
+- system = any callable: `solve(input) -> prediction`. Model, node, workflow,
+  agent — same thing: it is invoked, it predicts. The engine has NO loader;
+  Python's import machinery is the loader. A system enters as a callable.
+- loss.trace = dict: path, score, cases [{in, want, got, score}].
 
 ## scoring interpretation
 
@@ -33,12 +35,11 @@ unknown names fail loud, never silently score 0.
 
 | concept | pillar | why undeletable | survived N |
 |---|---|---|---|
-| load | DATA | data must enter somehow; the only IO concept; returns the loss closure | 1 |
-| system | SYSTEM | systems must enter as programs; the only loader concept | 1 |
-| ROOT | TASK | ontology path -> file must anchor somewhere | 0 |
+| load | DATA+SCORING | data must enter somehow; the only IO concept; returns the loss closure — one concept IS the whole engine | 1 |
 
-(`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5 —
-scoring is one inline interpretation, checked loud.)
+(`benchmark` fused into load in cycle 3; SCORES/AGGS tables deleted in cycle 5;
+`system` deleted in cycle 8 — the SYSTEM pillar needs zero engine code, a
+system is a callable and stdlib importlib is the loader.)
 
 ## what broke and what it proved
 
@@ -62,6 +63,10 @@ scoring is one inline interpretation, checked loud.)
   output vocab). Deleted from the data. CAVEAT recorded: cases carry the task
   only by EXAMPLE; a task-only description ("takes pdf, returns json fields")
   with no cases yet cannot be expressed — noted for unify, not re-added. HARD_PUSH.
+- cycle 8: `system()` — deleted; a system is a callable, stdlib importlib is the
+  loader, the SYSTEM pillar needs zero engine code. Tests fixed forward from
+  nb.system to importlib: the loader was guarded noise (tests referenced it)
+  but the GUARD was noise — the pillar is the protocol, not the loader. NOISE_REMOVED.
 
 ## queued deletion candidates (loudest first)
 
