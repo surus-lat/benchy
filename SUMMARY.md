@@ -28,9 +28,9 @@ genuinely interpreted, c8), as_loss (named vision invariant, c12).
 
 ## Best discovery
 
-The deletion law extends INTO the data format: unread schema keys are
-noise in data too (c4 in/out; c5 aggregate; c10 benchmark stamp). A data
-format where every key is interpreted is the honest benchmark-as-directory.
+The deletion law extends INTO the data format: unread schema keys are noise
+in data too (c4 in/out; c5 aggregate; c10 benchmark stamp). A data format
+where every key is interpreted is the honest benchmark-as-directory.
 
 ## Most expensive mistake
 
@@ -40,11 +40,10 @@ pattern. Verify what git tracks, not what the tree shows.
 
 ## Advice for the other nine
 
-The only tree where the scoring vocabulary grew HONESTLY under
---allow-growth — for the unified engine: scoring complexity belongs in
-interpreted data literals (weights maps, alternation), not engine
-branches. Loud checks make growth honest: the interpreter refuses until it
-actually reads the key.
+The only tree where scoring vocabulary grew HONESTLY under --allow-growth —
+for the unified engine: scoring complexity belongs in interpreted data
+literals (weights maps, alternation), not engine branches. Loud checks make
+growth honest: the interpreter refuses until it actually reads the key.
 
 ## One-line essence
 
