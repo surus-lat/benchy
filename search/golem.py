@@ -17,6 +17,27 @@ import re
 import sys
 from pathlib import Path
 
+# 3.10+ has sys.stdlib_module_names; ship a fallback floor for 3.9 so the
+# golem never treats a stdlib import as a violation on old interpreters.
+_BUILTIN = frozenset(sys.builtin_module_names)
+_EXTRA = frozenset("""
+    abc argparse ast asyncio base64 builtins collections concurrent configparser
+    contextlib copy copyreg csv datetime decimal difflib enum functools gc
+    getpass glob gzip hashlib heapq html http importlib inspect io ipaddress
+    itertools json logging math mimetypes multiprocessing numbers os pathlib
+    pickle platform pprint queue random re secrets selectors shutil signal
+    socket sqlite3 ssl stat string struct subprocess sys tempfile textwrap
+    threading time timeit traceback types typing unittest urllib uuid warnings
+    weakref zipfile zlib
+""".split())
+
+
+def _stdlib_names() -> frozenset:
+    names = getattr(sys, "stdlib_module_names", None)
+    if names:
+        return frozenset(names)
+    return _BUILTIN | _EXTRA
+
 ENGINE = Path("nb")
 STATE = Path(".golem_state.json")
 ITERLOG = Path("ITERATIONS.md")
@@ -30,7 +51,7 @@ def engine_metrics() -> dict:
     files = sorted(p for p in ENGINE.rglob("*.py") if "__pycache__" not in p.parts)
     loc = deps = 0
     concepts: list[str] = []
-    stdlib = set(getattr(sys, "stdlib_module_names", ()))
+    stdlib = _stdlib_names()
     for p in files:
         src = p.read_text(encoding="utf-8")
         loc += sum(
