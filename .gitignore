@@ -79,3 +79,7 @@ test.py
 .claude/
 .worktrees/
 .search/
+
+# s10: benchmark data is DATA — must be tracked (root *.json ignore would hide it)
+!bench/**/*.json
+!.golem_state.json

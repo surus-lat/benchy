@@ -1,0 +1,13 @@
+[
+  {
+    "name": "good",
+    "kind": "keyword",
+    "pos": ["great", "excelente", "loved"],
+    "default": "neg"
+  },
+  {
+    "name": "dumb",
+    "kind": "constant",
+    "value": "pos"
+  }
+]
