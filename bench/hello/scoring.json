@@ -1,5 +1,4 @@
 {
   "match": "exact",
-  "points": 1,
-  "aggregate": "mean"
+  "points": 1
 }

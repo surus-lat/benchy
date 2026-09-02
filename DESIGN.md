@@ -8,7 +8,7 @@ interpreter of directories. Zero Python to define, run, and score a benchmark.
 ```
 bench/<name>/
   task.json       {"task": "sentiment"} — the ontology locator
-  scoring.json    {"match": "exact", "points": 1, "aggregate": "mean"}
+  scoring.json    {"match": "exact", "points": 1} — whole-dict loud check, unknown keys raise
   cases.jsonl     {"input": ..., "expected": ...} per line
   systems/*.json  {"kind": "constant"|"keyword", ...}
 ```
@@ -47,4 +47,9 @@ accepts a system NAME or data dict; one loader concept, not two),
 schema keys are noise in the DATA format too; the deletion law extends into
 the benchmark files. The TASK pillar survives as the `task` name, which the
 engine reads as the ontology locator and stamps into the artifact; type
-documentation for authors lives in the cases themselves).
+documentation for authors lives in the cases themselves), `scoring.json
+"aggregate": "mean"` (cycle 5 — the last unread scoring key; its deletion
+was enabled by replacing the per-key read with a WHOLE-DICT loud check:
+`scoring != {"match": "exact", "points": 1}` raises. Any key the engine
+does not interpret now fails loudly instead of lying silently — the noise
+law, enforced by the interpreter's strictness, not by documentation).
