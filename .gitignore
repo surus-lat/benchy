@@ -50,6 +50,11 @@ logs/
 !configs/**/*.json
 !submissions/**/*.json
 !configs/**/*.yaml
+# bare-metal search: benchmark data + run artifacts are deliverables, never noise
+# (.search/ worktrees carry their own in-tree negations; git cannot re-include
+#  under an excluded parent dir, so only root roles are negated here)
+!bench/**/*.json
+!runs/*.json
 *.csv
 *.parquet
 /.data/
