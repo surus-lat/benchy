@@ -39,10 +39,9 @@ the task wrapper object (a bare list carries the answer space honestly).
 
 | concept | pillar | why it cannot be deleted | survived |
 |---|---|---|---|
-| load | exam | a benchmark must come from somewhere; one file, loud checks | 0 |
+| load | exam | the only entry to exam data: one file, loud checks, validation lives here (cycle 2 fused _check_exam in) | 0 |
 | locate | exam | the ontology path /sentiment must resolve to data (GOLEM bar) | 0 |
 | _check | exam | loud checks: unknown/missing keys must raise, not be ignored | 0 |
-| _check_exam | exam | the task lens validated against every sample; without it data lies | 0 |
 | invoke | system | the compiler pillar: a spec must become a prediction; cloud specs land here | 0 |
 | grade | scoring | the comparison policy; the whole scoring pillar is this one function | 1 |
 | run | exam | take the exam: per-case evidence + aggregate; the artifact contract | 0 |

@@ -29,8 +29,12 @@ def _check(allowed, got, where, required=None):
         raise ValueError(f"missing key(s) in {where}: {missing}")
 
 
-def _check_exam(data, where):
-    # the task lens is the declared answer space: every expected must honor it
+def load(path):
+    # load one exam file (a benchmark): data in, loudly validated, data out.
+    # no wrapper objects — the exam IS its data. validation lives here because
+    # load is the only entry to exam data (locate re-enters through load).
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    where = str(path)
     _check(EXAM_KEYS, data, where)
     task = data["task"]
     if (not isinstance(task, list) or not task
@@ -53,12 +57,6 @@ def _check_exam(data, where):
         kind = spec.get("kind") if isinstance(spec, dict) else None
         if kind not in KINDS:
             raise ValueError(f"{where} system {name!r}: unknown kind {kind!r}")
-
-
-def load(path):
-    # load one exam file (a benchmark): data in, validated data out. no wrappers.
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    _check_exam(data, str(path))
     return data
 
 
