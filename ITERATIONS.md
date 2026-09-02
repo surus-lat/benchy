@@ -12,3 +12,4 @@
 6 | pushed=_scribble/_read_scribble→answers.json | broke=yes | verdict=NOISE_REMOVED | loc=188 | concepts=9
 7 | pushed=Taker.sit method | broke=no | verdict=HARD_PUSH | loc=185 | concepts=9
 8 | pushed=AnswerKey class+dead combine field | broke=yes | verdict=NOISE_REMOVED | loc=177 | concepts=8
+9 | pushed=write(filename)+EXAM_RULES+rule field | broke=no | verdict=HARD_PUSH | loc=173 | concepts=8

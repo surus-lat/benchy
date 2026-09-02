@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     card = sit(exam, taker, limit=args.limit, workbox=workbox)
 
     out = Path(args.out) if args.out else Path.cwd()
-    path = card.write(out, filename=f"report_card_{taker.name}.json")
+    path = card.write(out)
     print(f"report card: {path}")
     print(f"{taker.name} scored {card.score} on {exam.path} (loss {card.loss})")
     return 0
