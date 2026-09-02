@@ -1,13 +1,12 @@
 {
  "files": 2,
- "loc": 72,
+ "loc": 69,
  "deps": 0,
  "concepts": [
   "as_loss",
   "invoke",
   "load",
   "run",
-  "save",
   "score_case"
  ],
  "cycles": 8,

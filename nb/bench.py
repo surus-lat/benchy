@@ -68,13 +68,6 @@ def as_loss(result):
     return 1 - result["score"]
 
 
-def save(result, bench_dir, system_name, out_dir="runs"):
-    out = Path(out_dir) / Path(bench_dir).name / f"{system_name}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    return out
-
-
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 3:
@@ -82,5 +75,7 @@ if __name__ == "__main__":
         sys.exit(2)
     _d, _s = sys.argv[1], sys.argv[2]
     _r = run(_d, _s)
-    save(_r, _d, _s)
+    _o = Path("runs") / Path(_d).name / f"{_s}.json"
+    _o.parent.mkdir(parents=True, exist_ok=True)
+    _o.write_text(json.dumps(_r, indent=2), encoding="utf-8")
     print(json.dumps(_r, indent=2))
