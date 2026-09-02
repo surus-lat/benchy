@@ -3,7 +3,8 @@
 # pure data, 15 invariant tests, golem PASS 3 files/112 loc/0 deps/7 concepts.
 # cycles 1-12: from zero. cycles 16-18: archaeology donations (c16 failure-
 # evidence, c17 empty-refused, c18 path-coherence — all BARE_METAL). c19: the
-# planned REJECTION cycle (old counts block — derivable, deleted).
+# planned REJECTION cycle (old counts block — derivable, deleted). c20:
+# escalation probe (cli usage-twin fused, future-import ceremony deleted).
 
 1 | pushed=_score_one+contains-rule | broke=no | verdict=HARD_PUSH | loc=107 | concepts=6
 2 | pushed=constant-kind->degenerate-keyword | broke=no | verdict=HARD_PUSH | loc=105 | concepts=6
@@ -91,3 +92,12 @@
 # counts because its aggregate EXCLUDED errored samples (score was blind to
 # reliability); ours includes them, so the one scalar already carries it.
 19 | pushed=donation:counts-block (old run_outcome.json) | broke=no (only the donation's own pin; derivable) | verdict=HARD_PUSH | loc=101 | concepts=5
+# c20 (escalation probe, per DESIGN.md's next-target list): the CLI's TWO
+# argv-length refusals (<3 -> __doc__ echo, <4 -> usage line) were the c11
+# shape — two same-kind refusals — fused into ONE check (len<4 -> usage,
+# which says the whole command anyway). Also deleted the unclaimed
+# `from __future__ import annotations` ceremony in BOTH engine files:
+# never read, never tested, never claimed in DESIGN.md — 3.12-native
+# annotations (PEP 585) make it pure boilerplate. Nothing broke; both
+# targets gone entirely. loc 101->95 (-6). 26 tests.
+20 | pushed=cli-usage-twin-fusion + future-import-ceremony | broke=no (deleted entirely) | verdict=HARD_PUSH | loc=95 | concepts=5

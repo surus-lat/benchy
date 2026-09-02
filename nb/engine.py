@@ -10,8 +10,6 @@ persistence; path->file resolution lives in the CLI (__main__), the file
 layer. The benchmark value is the metal; the file is one encoding of it.
 """
 
-from __future__ import annotations
-
 from typing import Callable
 
 

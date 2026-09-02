@@ -5,8 +5,6 @@ system (from bench_root systems.json — no silent default, c10), writes the
 graded artifact JSON.
 """
 
-from __future__ import annotations
-
 import json
 import sys
 from pathlib import Path
@@ -15,17 +13,15 @@ from . import engine
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 3:
-        print(__doc__.strip(), file=sys.stderr)
-        return 2
-    bench_root, path, artifact_path = argv[0], argv[1], argv[2]
+    # c20: the two argv-length refusals (was: <3 -> __doc__, <4 -> usage)
+    # fused into ONE — the c11 law, two same-kind refusals are one check.
     # c10: no silent default — the system taking the exam is named, always.
     # defaulting to systems[0] was a silent surprise (which stub ran?).
     if len(argv) < 4:
         print("usage: python -m nb <bench_root> <path> <artifact.json> <system>",
               file=sys.stderr)
         return 2
-    system_name = argv[3]
+    bench_root, path, artifact_path, system_name = argv[0], argv[1], argv[2], argv[3]
 
     benchmark = json.loads(
         (Path(bench_root) / (path.strip("/") + ".json")).read_text(encoding="utf-8"))
