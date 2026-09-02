@@ -9,3 +9,4 @@
 # plain sync functions, viral async would leak into the SYSTEM pillar.
 
 1 | pushed=ThreadPoolExecutor->serial (bound tightened first: sleep 0.01/attempt, serial floor 20s pure sleep vs 15s bound) | broke=yes (25.9s vs 15s; concurrent=1.55s, 16x gap) | verdict=BARE_METAL | loc=144 | concepts=7
+2 | pushed=fingerprint (sha256 content hash) -> explicit identity (scoring block + per-record input/want vs current cases); escalated: deleted the refusal check itself -> stale-evidence test broke in 0.03s -> restored; suite sharpened with scoring-edit refusal | broke=yes (escalation) | verdict=HARD_PUSH (noise out, refusal proven metal) | loc=141 | concepts=7

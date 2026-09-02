@@ -100,25 +100,21 @@ class Exam:
                 raise ValueError(
                     f"case {c['id']!r}: want {c['want']!r} outside declared out {outs}")
 
-    def fingerprint(self):
-        """Content hash of the exam: cases+scoring. Resume must match it —
-        an edited exam must never silently reuse stale per-case evidence."""
-        import hashlib
-        return hashlib.sha256(json.dumps(
-            {"cases": self.cases, "scoring": self.spec.get("scoring")},
-            sort_keys=True).encode()).hexdigest()[:16]
-
     def run(self, system, out=None, workers=WORKERS, tries=TRIES):
         """Take the exam concurrently (serial fails the 1000-case bar 16x over);
         `out` re-run = resume: ok cases kept, errored cases re-attempted."""
         spec = json.loads(Path(system).read_text()) if isinstance(system, (str, Path)) else system
-        art = {"exam": self.path, "system": spec, "fingerprint": self.fingerprint(),
+        art = {"exam": self.path, "system": spec, "scoring": self.spec.get("scoring"),
                "total": len(self.cases), "cases": []}
         out = Path(out) if out else None
         if out and out.exists():
             old = json.loads(out.read_text())
-            if (old.get("exam"), old.get("system"), old.get("fingerprint")) != (
-                    self.path, spec, self.fingerprint()):
+            cur = {c["id"]: c for c in self.cases}
+            stale = [r for r in old.get("cases", [])
+                     if (cur.get(r["id"]) or {}).get("input") != r.get("input")
+                     or (cur.get(r["id"]) or {}).get("want") != r.get("want")]
+            if stale or (old.get("exam"), old.get("system"), old.get("scoring")) != (
+                    self.path, spec, self.spec.get("scoring")):
                 raise ValueError(f"{out} belongs to a different exam/system — resume must match")
             art["cases"] = [r for r in old["cases"] if r.get("status") == "ok"]
         done = {r["id"]: r for r in art["cases"]}

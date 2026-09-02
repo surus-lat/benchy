@@ -152,6 +152,12 @@ def test_resume_refuses_mismatched_exam_or_system(tmp_path):
     p.write_text(json.dumps(spec))
     with pytest.raises(ValueError, match="different exam"):
         Exam(tmp_path).run({"kind": "always", "value": "pos"}, out=out)
+    # an edited scoring block (weights change) makes every kept score stale too
+    spec = json.loads(p.read_text())
+    spec["scoring"] = {"weights": {"critical": 9.0}}
+    p.write_text(json.dumps(spec))
+    with pytest.raises(ValueError, match="different exam"):
+        Exam(tmp_path).run({"kind": "always", "value": "pos"}, out=out)
 
 
 def test_weighted_scoring_is_data_not_code(tmp_path):
