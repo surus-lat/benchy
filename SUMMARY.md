@@ -55,7 +55,6 @@ trees: s04, s05, s06).
 
 ## One-line essence
 
-The exam is pure data located by ontology path, graded through one class-shaped
-surface (`Exam.run`, `Exam.as_loss`) over two duck-typed seams — everything
-named at the seams was annotation-cargo, everything on the public noun was the
-spec.
+Pure data located by ontology path, graded through one class-shaped surface
+(`Exam.run`, `Exam.as_loss`) over two duck-typed seams — everything named at the
+seams was annotation-cargo, everything on the public noun was the spec.
