@@ -13,9 +13,10 @@ bench/<name>/
   systems/*.json  {"kind": "constant"|"keyword", ...}
 ```
 
-Engine: `nb/bench.py` (interpreter) + `nb/run.py` (CLI: `python3 -m nb.run
-<bench> <system>`). Artifact: JSON to stdout + `runs/<bench>/<system>.json`,
-per-case scores + aggregate. `as_loss()` = 1 - score.
+Engine: `nb/bench.py` — interpreter + CLI in one file
+(`python3 nb/bench.py <bench_dir> <system>`). Artifact: JSON to stdout +
+`runs/<bench>/<system>.json`, per-case scores + aggregate. `as_loss()` =
+1 - score.
 
 ## The yaml question (cycle 0)
 
