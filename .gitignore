@@ -6,6 +6,7 @@
 
 # Python
 __pycache__/
+runs/
 *.py[cod]
 *$py.class
 *.so
