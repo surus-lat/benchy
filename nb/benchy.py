@@ -67,11 +67,10 @@ def grade(scoring, want, got):
 # end to end: written to disk unchanged, re-read by resume unchanged.
 
 
-def exam(ont, system, rows):
+def exam(ont, rows):
     """rows (per-case scores) -> the graded artifact: aggregate + evidence."""
     score = sum(r["score"] for r in rows) / len(rows) if rows else 0.0
-    return {"ont": ont, "system": system, "score": score,
-            "loss": 1.0 - score, "cases": rows}
+    return {"ont": ont, "score": score, "loss": 1.0 - score, "cases": rows}
 
 
 def _write(path, artifact):
@@ -110,7 +109,6 @@ class Benchmark:
 
     def run(self, system, limit=None, workers=1, out=None):
         """exam = bench.run(system). resume-safe (out), concurrent (workers)."""
-        name = system if isinstance(system, str) else getattr(system, "__name__", "system")
         if isinstance(system, str):
             system = self.systems[system]
         cases = self.cases[:limit] if limit else self.cases
@@ -127,16 +125,11 @@ class Benchmark:
 
         rows = dict(done)
         with ThreadPoolExecutor(max(1, workers)) as ex:   # 1 pool = the runner
-            a = exam(self.ont, name, [])
             for r in ex.map(take, todo):                  # write as they land
                 rows[r["id"]] = r
                 if out:
-                    a = exam(self.ont, name, [rows[i] for i in sorted(rows)])
-                    _write(out, a)
-        a = exam(self.ont, name, [rows[i] for i in sorted(rows)])
-        if out:
-            _write(out, a)
-        return a
+                    _write(out, exam(self.ont, [rows[i] for i in sorted(rows)]))
+        return exam(self.ont, [rows[i] for i in sorted(rows)])
 
     def as_loss(self):
         """the benchmark as a loss function for software-3.0 optimizers."""

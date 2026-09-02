@@ -54,6 +54,11 @@ filesystem — no registry object.
 ## noise policy
 
 Under the 400-line ceiling, every surviving concept must earn its lines.
-The loudest things right now, pre-cycle-1: `Task.spec` wrapping (the Task
-object may be just its dict), `_artifact` helper (fold into run?), the
-`system`/`py` path-resolution branch in run(), the `name` derivation.
+Noise removed so far: Task class (c1), Exam class (c2), invoke's const
+shape (c3), ok() enum gate (c4 — an out-of-enum prediction cannot match
+any want, grading already scores it 0), the py path-resolution branch in
+run() (c5 — py paths resolve from CWD like every data path).
+
+Remaining loudest things: the `name` derivation in run() (does the artifact
+need the system label?), main()'s flag parsing, the incremental mid-run
+write loop (three exam() rebuilds — can resume read + final write carry it?).
