@@ -44,6 +44,9 @@ def load(path):
     # load is the only entry to exam data (locate re-enters through load).
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     where = str(path)
+    # cycle 14 tried to delete the exam-schema check and it broke: an unknown
+    # top-level key was silently ignored. the file is DATA — drift (a typo'd
+    # "tasks", a stale "shuffle") must die at the door, not ride along.
     _check(EXAM_KEYS, data, where)
     task = data["task"]
     if (not isinstance(task, list) or not task
