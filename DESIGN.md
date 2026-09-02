@@ -91,3 +91,14 @@ was considered and rejected: the vision mandates the four pillars as
 separate modules ("a module to define the task, one for the scoring
 function...") and the pillar→file mapping is this angle's core claim.
 The TASK pillar = one data key, one file, zero engine concepts.
+
+`scoring.json` (cycle 8). Deletion attempt removed the file from both
+benchmarks; 11/12 broke. C5 had pinned its interpretive freedom to one
+literal, but the C6 probe restored real freedom: `extract`'s
+`{"match": "fields", "weights": {...}}` is genuinely interpreted data
+that ranks systems by hierarchy-of-importance — deleting the file
+deletes the SCORING pillar. Fusion rejected: into cases.jsonl would
+duplicate the weights on every line (data noise); into task.json
+violates pillar separation (same reason as cycle 7). Score_case's
+survived-N stays 0 — the concept was never the target; the FILE was,
+and the file is bare metal.
