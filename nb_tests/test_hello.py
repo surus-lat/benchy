@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-import nb
 from nb import as_loss, grade, invoke, load, locate, run
 
 HERE = Path(__file__).parent
@@ -23,8 +22,7 @@ def exam():
 # --- locate / the ontology path ------------------------------------------------
 
 def test_locate_by_ontology_path(exam):
-    found = locate(ROOT, "/sentiment")
-    assert found == exam
+    assert locate(ROOT, "/sentiment") == exam
 
 
 def test_locate_missing_raises():
@@ -61,7 +59,7 @@ def test_artifact_has_per_case_and_aggregate(exam):
     assert c["want"] == "neg" and c["got"] == "pos" and c["score"] == 0.0
 
 
-# --- the scoring lens ------------------------------------------------------------
+# --- the scoring lens: declared policy, loud -------------------------------------
 
 def test_grade_exact_match():
     s = {"id": "x", "input": "i", "expected": "pos"}
@@ -93,11 +91,12 @@ def test_invoke_unknown_kind_raises():
 def _mutate(exam, fn):
     data = json.loads(json.dumps(exam))
     fn(data)
-    Path(ROOT / "hello" / "_tmp_exam.json").write_text(json.dumps(data), encoding="utf-8")
+    p = ROOT / "hello" / "_tmp_exam.json"
+    p.write_text(json.dumps(data), encoding="utf-8")
     try:
-        load(ROOT / "hello" / "_tmp_exam.json")
+        load(p)
     finally:
-        (ROOT / "hello" / "_tmp_exam.json").unlink()
+        p.unlink()
 
 
 def test_unknown_top_key_raises(exam):
@@ -115,19 +114,21 @@ def test_missing_sample_key_raises(exam):
         _mutate(exam, lambda d: d["samples"][0].pop("expected"))
 
 
-def test_expected_outside_enum_raises(exam):
-    with pytest.raises(ValueError, match="not in enum"):
+def test_expected_outside_declared_space_raises(exam):
+    with pytest.raises(ValueError, match="not in task"):
         _mutate(exam, lambda d: d["samples"][0].update({"expected": "zzz"}))
+
+
+def test_typo_expected_is_not_silently_a_new_class(exam):
+    # the datacentric trap: inferred enum would absorb "negg" as a 3rd class.
+    # the declared task must reject it loudly.
+    with pytest.raises(ValueError, match="not in task"):
+        _mutate(exam, lambda d: d["samples"][0].update({"expected": "negg"}))
 
 
 def test_unknown_scoring_policy_raises(exam):
     with pytest.raises(ValueError, match="unknown"):
         _mutate(exam, lambda d: d.update({"scoring": {"match": "rouge"}}))
-
-
-def test_unknown_task_input_type_raises(exam):
-    with pytest.raises(ValueError, match="unknown"):
-        _mutate(exam, lambda d: d["task"].update({"input": "image"}))
 
 
 # --- offline end-to-end: the CLI, no pytest needed --------------------------------

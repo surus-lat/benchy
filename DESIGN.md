@@ -10,8 +10,8 @@ The engine is two tiny pure functions over that data plus loud validation.
 ## shape
 
     exam.json  = { path, task, scoring, samples, systems }
-    task       = { input: "text", output: {"enum": [...] } }   (the type lens)
-    scoring    = { match: "exact" }                            (the policy lens)
+    task       = ["pos", "neg"]            the declared answer space (a bare list)
+    scoring    = { match: "exact" }        the declared comparison policy
     sample     = { id, input, expected, context? }
     system     = { kind: "const", value } | { kind: "keyword", any, then, else }
 
@@ -26,8 +26,14 @@ The engine is two tiny pure functions over that data plus loud validation.
 
 A benchmark is data, never required Python. Nothing is inferred: the task
 lens is DECLARED and every sample is validated against it; unknown keys and
-unknown policies raise. Inference (deriving shape from cases) was tried in
-spirit and killed: explicit beats implicit — see cycle 1.
+unknown policies raise. Cycle 1 attempted the full datacentric inference
+program (enum from observed expecteds, scoring hard-coded) and it broke:
+a typo'd expected silently becomes a third class; an unrepresented class
+silently shrinks the space (an all-pos exam makes the dumb stub perfect);
+scoring in code means "what good means" is not exam data. Inference is
+noise; the exam must declare its answer space and its grading policy. The
+push still deleted the `{"input": "text"}` type key (never read — dead) and
+the task wrapper object (a bare list carries the answer space honestly).
 
 ## concept table
 
@@ -38,7 +44,9 @@ spirit and killed: explicit beats implicit — see cycle 1.
 | _check | exam | loud checks: unknown/missing keys must raise, not be ignored | 0 |
 | _check_exam | exam | the task lens validated against every sample; without it data lies | 0 |
 | invoke | system | the compiler pillar: a spec must become a prediction; cloud specs land here | 0 |
-| grade | scoring | the comparison policy; the whole scoring pillar is this one function | 0 |
+| grade | scoring | the comparison policy; the whole scoring pillar is this one function | 1 |
 | run | exam | take the exam: per-case evidence + aggregate; the artifact contract | 0 |
 | as_loss | scoring | vision invariant: loss(dumb) > loss(good); benchmark-as-new-loss | 0 |
 | main (CLI) | all | offline end-to-end without pytest; prints scores, writes artifact | 0 |
+| task (declared answer space) | task | data: inferred enum absorbs typos + shrinks on unrepresented classes | 1 |
+| scoring.match (declared policy) | scoring | data: "what good means" belongs on the exam paper, not in code | 1 |

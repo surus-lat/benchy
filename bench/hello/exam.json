@@ -1,6 +1,6 @@
 {
  "path": "/sentiment",
- "task": {"input": "text", "output": {"enum": ["pos", "neg"]}},
+ "task": ["pos", "neg"],
  "scoring": {"match": "exact"},
  "samples": [
   {"id": "s1", "input": "this works great", "expected": "pos"},

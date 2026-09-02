@@ -1,19 +1,20 @@
 # nb/engine.py — the exam engine.
 # s07 datacentric: the Sample record (id, input, expected, context?) is the
 # root record. a benchmark is ONE data file (exam.json) plus two tiny pure
-# functions: grade (the scoring lens) and run (take the exam). task is the
-# type lens over samples, validated loudly. the system is a spec in data,
-# interpreted by invoke — the compiler pillar (cloud specs later, same slot).
+# functions: grade (the scoring lens) and run (take the exam). the system is
+# a spec in data, interpreted by invoke — the compiler pillar (cloud specs
+# later, same slot). the declared lenses are data, not inference: the answer
+# space cannot be derived from observed expecteds (a typo'd expected would
+# silently become a new class; an unrepresented class would shrink the space).
 # explicit beats implicit: unknown keys raise, nothing is inferred silently.
 
 import json
 from pathlib import Path
 
 EXAM_KEYS = {"path", "task", "scoring", "samples", "systems"}
-TASK_KEYS = {"input", "output"}
+SCORE_KEYS = {"match"}
 SAMPLE_REQUIRED = {"id", "input", "expected"}
 SAMPLE_ALLOWED = SAMPLE_REQUIRED | {"context"}
-SCORE_KEYS = {"match"}
 KINDS = {"const": {"kind", "value"}, "keyword": {"kind", "any", "then", "else"}}
 
 
@@ -29,26 +30,23 @@ def _check(allowed, got, where, required=None):
 
 
 def _check_exam(data, where):
-    # the task lens: input/output types are declared; every sample must honor them
+    # the task lens is the declared answer space: every expected must honor it
     _check(EXAM_KEYS, data, where)
-    _check(TASK_KEYS, data["task"], f"{where} task")
-    if data["task"]["input"] != "text":
-        raise ValueError(f"unknown task.input type: {data['task']['input']!r}")
-    out = data["task"]["output"]
-    if set(out) != {"enum"} or not isinstance(out["enum"], list) or not out["enum"]:
-        raise ValueError(f"task.output must be {{'enum': [...]}}, got: {out}")
+    task = data["task"]
+    if (not isinstance(task, list) or not task
+            or any(not isinstance(t, str) for t in task) or len(set(task)) != len(task)):
+        raise ValueError(f"{where} task must be a non-empty list of unique outputs")
     _check(SCORE_KEYS, data["scoring"], f"{where} scoring")
     if data["scoring"]["match"] != "exact":
-        raise ValueError(f"unknown scoring.match policy: {data['scoring']['match']!r}")
+        raise ValueError(f"unknown scoring policy: {data['scoring']['match']!r}")
     if not isinstance(data["samples"], list) or not data["samples"]:
         raise ValueError(f"{where} samples must be a non-empty list")
-    enum = out["enum"]
     for s in data["samples"]:
         _check(SAMPLE_ALLOWED, s, f"{where} sample {s.get('id')!r}", required=SAMPLE_REQUIRED)
         if not isinstance(s["input"], str):
             raise ValueError(f"sample {s['id']!r} input must be text")
-        if s["expected"] not in enum:
-            raise ValueError(f"sample {s['id']!r} expected {s['expected']!r} not in enum {enum}")
+        if s["expected"] not in task:
+            raise ValueError(f"sample {s['id']!r} expected {s['expected']!r} not in task {task}")
     if not isinstance(data["systems"], dict) or not data["systems"]:
         raise ValueError(f"{where} systems must be a non-empty dict of specs")
     for name, spec in data["systems"].items():
@@ -89,9 +87,9 @@ def invoke(system, inp, context=None):
 
 
 def grade(sample, got, scoring):
-    # the scoring lens: the comparison policy (data) applied to one sample
-    if scoring["match"] != "exact":
-        raise ValueError(f"unknown scoring.match policy: {scoring['match']!r}")
+    # the scoring lens: the exam's declared comparison policy applied to one case
+    if scoring.get("match") != "exact":
+        raise ValueError(f"unknown scoring policy: {scoring.get('match')!r}")
     return 1.0 if got == sample["expected"] else 0.0
 
 
