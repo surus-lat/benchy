@@ -46,6 +46,6 @@ the task wrapper object (a bare list carries the answer space honestly).
 | grade | scoring | the comparison policy; the whole scoring pillar is this one function | 1 |
 | run | exam | take the exam: per-case evidence + aggregate; the artifact contract | 0 |
 | as_loss | scoring | vision invariant: loss(dumb) > loss(good); benchmark-as-new-loss | 0 |
-| main (CLI) | all | offline end-to-end without pytest; prints scores, writes artifact | 0 |
+| main (CLI) | all | cycle 3 tried to delete it: engine ran only under pytest. the bar says offline end-to-end for a person, not a test file — CLI = metal | 1 |
 | task (declared answer space) | task | data: inferred enum absorbs typos + shrinks on unrepresented classes | 1 |
 | scoring.match (declared policy) | scoring | data: "what good means" belongs on the exam paper, not in code | 1 |
