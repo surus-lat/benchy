@@ -66,6 +66,11 @@ def test_dumb_stub_scores_half():
 
 
 def test_loss_is_pure_float():
+    # cycle 13 probe: moving the receipt into the RETURN value (a tuple) broke
+    # this test and 6 others. The vision exports the benchmark as "a new loss
+    # function" for software-3.0 optimizers — an optimizer calls loss(system)
+    # and must receive a scalar, nothing else. The receipt lives at loss.trace:
+    # per-instance state, invisible to the calling convention. BARE_METAL.
     loss = nb.load("/sentiment")
     assert isinstance(loss(lambda t: "pos"), float)
     assert loss(lambda t: "pos") == 0.5  # always-pos: 3/6 wrong
