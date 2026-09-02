@@ -13,18 +13,22 @@ from pathlib import Path
 
 EXAM_KEYS = {"path", "task", "scoring", "samples", "systems"}
 SCORE_KEYS = {"match"}
-SAMPLE_REQUIRED = {"id", "input", "expected"}
-SAMPLE_ALLOWED = SAMPLE_REQUIRED
+SAMPLE_KEYS = {"id", "input", "expected"}
+# cycle 8 escalation tried to drop "kind" from the key set (presence is
+# guaranteed by the kind gate) — broke: kind is a REAL key of the spec in
+# data, the loud check must see every key the file carries.
 KINDS = {"keyword": {"kind", "any", "then", "else"}}
 
 
-def _check(allowed, got, where, required=None):
-    # loud: unknown keys raise, missing required keys raise. no silent defaults.
-    req = required if required is not None else allowed
+def _check(allowed, got, where):
+    # loud: unknown keys raise, missing keys raise. no silent defaults.
+    # cycle 8 deleted the `required` param: at every call site the required
+    # set equalled the allowed set (SAMPLE_REQUIRED == SAMPLE_ALLOWED), so
+    # allowed==required is the only honest shape: a schema's keys are its keys.
     unknown = sorted(set(got) - allowed)
     if unknown:
         raise ValueError(f"unknown key(s) in {where}: {unknown}")
-    missing = sorted(req - set(got))
+    missing = sorted(allowed - set(got))
     if missing:
         raise ValueError(f"missing key(s) in {where}: {missing}")
 
@@ -46,7 +50,7 @@ def load(path):
     if not isinstance(data["samples"], list) or not data["samples"]:
         raise ValueError(f"{where} samples must be a non-empty list")
     for s in data["samples"]:
-        _check(SAMPLE_ALLOWED, s, f"{where} sample {s.get('id')!r}", required=SAMPLE_REQUIRED)
+        _check(SAMPLE_KEYS, s, f"{where} sample {s.get('id')!r}")
         if not isinstance(s["input"], str):
             raise ValueError(f"sample {s['id']!r} input must be text")
         if s["expected"] not in task:
@@ -61,7 +65,12 @@ def load(path):
 
 
 def locate(root, path):
-    # resolve an ontology path (/<task?>/<domain?>/<language?>) to its exam data
+    # resolve an ontology path (/<task?>/<domain?>/<language?>) to its exam data.
+    # cycle 9 tried to fuse the double-read (probe with load, skip invalid) and
+    # restored it: the two reads have DIFFERENT duties. the raw read is a PROBE
+    # (never validates — garbage siblings crash loudly, wrong-path files skip);
+    # load is the ENTRY (the matching file must validate loudly, or be reported
+    # as its real error, not as "not found"). probe != entry — that is the shape.
     for p in sorted(Path(root).rglob("exam.json")):
         data = json.loads(p.read_text(encoding="utf-8"))
         if data.get("path") == path:
@@ -90,9 +99,8 @@ def run(exam, system):
     # aggregate. the scoring lens is fused here (cycle 6): the declared policy
     # is validated at load — the only entry to exam data — so grading is just
     # its application: exact match of the declared expected, 1 point per case.
-    scoring = exam["scoring"]
-    if scoring.get("match") != "exact":
-        raise ValueError(f"unknown scoring policy: {scoring.get('match')!r}")
+    # cycle 9 deleted run's re-check of the policy: load already rejected any
+    # match != "exact", a second gate was a duplicate of load's validation.
     cases = []
     for s in exam["samples"]:
         got = invoke(system, s["input"])
