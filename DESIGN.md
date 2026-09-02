@@ -38,6 +38,5 @@ METAL — "benchmark = directory of data files, engine = pure interpreter"
 | run | ALL | result = benchmark.run(system); the vision invariant | 0 |
 | as_loss | SCORING | loss = benchmark.as_loss(); the software-3.0 export | 0 |
 | save | DATA | graded artifact persistence (runs/<bench>/<system>.json) | 0 |
-| main | — (CLI) | entrypoint; the exam is runnable without importing Python | 0 |
 | _read_json | DATA | file -> dict | 0 |
 | _read_jsonl | DATA | file -> list of dicts (the exam lines) | 0 |

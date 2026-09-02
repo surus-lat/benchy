@@ -56,12 +56,14 @@ def test_dumb_case_scores_prove_discrimination():
     assert all(c["expected"] == "neg" for c in wrong)
 
 
-def test_cli_runs(tmp_path, capsys):
-    from nb import run as nb_run
-    code = nb_run.main([str(HELLO), "good"])
-    out = capsys.readouterr().out
-    artifact = json.loads(out)
+def test_cli_runs(tmp_path, capsys, monkeypatch):
+    import subprocess
+    import sys as _sys
+    monkeypatch.chdir(tmp_path)
+    code = subprocess.call(
+        [_sys.executable, str(ROOT / "nb" / "bench.py"), str(HELLO), "good"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
     assert code == 0
-    assert artifact["score"] == 1.0
-    saved = json.loads(Path("runs/hello/good.json").read_text())
+    saved = json.loads((tmp_path / "runs/hello/good.json").read_text())
     assert saved["score"] == 1.0
