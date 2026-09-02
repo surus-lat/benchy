@@ -17,8 +17,7 @@ def main(argv=None):
         return 2
     root, path, out = argv
     exam = locate(root, path)
-    artifact = {"path": exam["path"], "task": exam["task"], "scoring": exam["scoring"],
-                "systems": {}}
+    artifact = {"path": exam["path"], "systems": {}}
     for name, spec in exam["systems"].items():
         artifact["systems"][name] = run(exam, spec)
     Path(out).write_text(json.dumps(artifact, indent=1), encoding="utf-8")
