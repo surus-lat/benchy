@@ -6,9 +6,8 @@
   "as_loss",
   "invoke",
   "load",
-  "run",
-  "score_case"
+  "run"
  ],
- "cycles": 11,
+ "cycles": 12,
  "why": null
 }
