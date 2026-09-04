@@ -1,0 +1,30 @@
+# bench/extract.yaml — weighted/partial scoring, the s05-proven pillar:
+# scoring complexity is pure data, no Python escape hatch.
+# in: text  ->  out: {total, vendor, date}   (ontology: /extraction.invoice)
+#
+# Run: python3 nb.py bench/extract.yaml
+
+task:
+  in: text
+  out: fields
+
+scoring:
+  match: fields
+  weights:
+    total: 5
+    vendor: 1
+    date: 1
+
+system:
+  kind: regex
+  fields:
+    total: '\$(\d+)'
+    vendor: '(?:invoice|receipt) from (\w+)'
+    date: 'dated ([\w-]+)'
+  miss: ""
+
+cases:
+  - input: "invoice from acme dated 2026-01-01: total $100"
+    expected: {total: "100", vendor: "acme", date: "2026-01-01"}
+  - input: "receipt from acme dated 2026-01-01: total $100"
+    expected: {total: "100", vendor: "acme", date: "2026-01-01"}

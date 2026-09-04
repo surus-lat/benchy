@@ -1,0 +1,42 @@
+# bench/sentiment.yaml — the 4 pillars of benchy's ontology in one file.
+# in: text  ->  out: label in {pos, neg}   (ontology: /sentiment)
+#
+# system: stub (deterministic, offline) — swap for a cloud taker, e.g.
+#   system:
+#     kind: http
+#     url: https://api.together.xyz/v1
+#     model: Qwen/Qwen2.5-7B-Instruct-Turbo
+#
+# Run: python3 nb.py bench/sentiment.yaml
+
+task:
+  in: text
+  out: label
+
+scoring:
+  match: exact          # mean of exact matches, 1.0 = perfect
+
+system:
+  kind: stub
+  rules:
+    great: pos
+    excelente: pos
+    loved: pos
+    broken: neg
+    porqueria: neg
+    "never again": neg
+  default: neg
+
+cases:
+  - input: this works great
+    expected: pos
+  - input: excelente servicio
+    expected: pos
+  - input: loved it
+    expected: pos
+  - input: broken on arrival
+    expected: neg
+  - input: una porqueria
+    expected: neg
+  - input: never again
+    expected: neg

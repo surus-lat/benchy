@@ -1,0 +1,9 @@
+[project]
+name = "benchy"
+version = "0.2.0.dev0"
+requires-python = ">=3.12"
+dependencies = ["pyyaml>=6.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"

@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Benchy — New Engine Design Explorer</title>
+<style>
+  :root{
+    --bg:#0f1113;
+    --bg2:#15181b;
+    --panel:#1a1e22;
+    --panel2:#20252a;
+    --ink:#e8e6e1;
+    --ink-dim:#9aa0a6;
+    --ink-faint:#6b7178;
+    --border:#2b3138;
+    --border-soft:#23282e;
+    --amber:#e8a33d;
+    --amber-dim:#8a6420;
+    --keep:#4caf7d;
+    --adapt:#e8a33d;
+    --nuke:#e05d4f;
+    --gate:#c9b8ff;
+    --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--amber-dim);color:var(--ink)}
+
+  /* ---------- layout ---------- */
+  .shell{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+  nav{
+    position:sticky;top:0;height:100vh;
+    border-right:1px solid var(--border-soft);
+    padding:28px 0;
+    display:flex;flex-direction:column;
+    background:var(--bg);
+  }
+  .brand{padding:0 22px 22px;border-bottom:1px solid var(--border-soft)}
+  .brand .name{font-family:var(--serif);font-size:22px;letter-spacing:.2px}
+  .brand .sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);margin-top:4px;letter-spacing:.4px}
+  .nav-links{padding:16px 10px;flex:1}
+  .nav-links a{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 12px;border-radius:7px;
+    color:var(--ink-dim);text-decoration:none;font-size:13.5px;
+    margin-bottom:2px;transition:background .12s,color .12s;
+  }
+  .nav-links a:hover{background:var(--panel);color:var(--ink)}
+  .nav-links a.active{background:var(--panel2);color:var(--ink)}
+  .nav-links a .num{font-family:var(--mono);font-size:10px;color:var(--ink-faint);width:16px}
+  .nav-links a.active .num{color:var(--amber)}
+  .nav-foot{padding:14px 22px;border-top:1px solid var(--border-soft);font-family:var(--mono);font-size:10px;color:var(--ink-faint);line-height:1.7}
+  .nav-foot b{color:var(--ink-dim);font-weight:500}
+
+  main{padding:0 0 120px}
+  .view{display:none;max-width:1120px;padding:44px 48px 0}
+  .view.on{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.view.on{animation:none}}
+
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--amber);margin-bottom:10px}
+  h1{font-family:var(--serif);font-size:34px;font-weight:500;line-height:1.15;letter-spacing:-.2px;margin-bottom:14px}
+  .lede{color:var(--ink-dim);font-size:16px;max-width:760px;margin-bottom:36px}
+  .lede code{font-family:var(--mono);font-size:13px;background:var(--panel);padding:1px 6px;border-radius:4px;color:var(--ink)}
+  h2{font-family:var(--serif);font-size:22px;font-weight:500;margin:44px 0 6px}
+  .h2-sub{color:var(--ink-faint);font-size:13.5px;margin-bottom:20px;max-width:720px}
+
+  /* ---------- shared ---------- */
+  .tag{font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;padding:2px 8px;border-radius:99px;border:1px solid var(--border);color:var(--ink-dim);white-space:nowrap}
+  .tag.keep{color:var(--keep);border-color:#2a4a3a;background:#16241d}
+  .tag.adapt{color:var(--adapt);border-color:#4a3c1e;background:#241d10}
+  .tag.nuke{color:var(--nuke);border-color:#4a2622;background:#241312}
+  .tag.gate{color:var(--gate);border-color:#3d3454;background:#1d1929}
+  .tag.amber{color:var(--amber);border-color:#4a3c1e;background:#241d10}
+  code.inline{font-family:var(--mono);font-size:12.5px;background:var(--panel);padding:1px 6px;border-radius:4px;color:var(--ink)}
+  .hl{outline:2px solid var(--amber);outline-offset:3px;border-radius:8px}
+
+  /* ---------- OVERVIEW: pipeline ---------- */
+  .pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:8px}
+  .mod{
+    background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;
+    padding:20px 18px 16px;cursor:pointer;position:relative;
+    transition:border-color .15s,transform .15s,background .15s;
+  }
+  .mod:hover{border-color:var(--amber-dim);transform:translateY(-2px)}
+  .mod.sel{border-color:var(--amber);background:var(--panel2)}
+  .mod .m-name{font-family:var(--mono);font-size:14px;color:var(--amber);margin-bottom:2px}
+  .mod .m-role{font-family:var(--serif);font-size:17px;margin-bottom:8px}
+  .mod .m-q{font-size:12.5px;color:var(--ink-dim);font-style:italic;margin-bottom:12px}
+  .mod .m-body{font-size:12.5px;color:var(--ink-dim);line-height:1.6}
+  .mod .m-key{margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);line-height:1.6}
+  .flow-arrows{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:-4px 0 26px;pointer-events:none}
+  .flow-arrows div{text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:11px}
+  .compose{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--border);border-radius:12px;padding:22px 24px;
+    display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;align-items:center;
+  }
+  .compose .c-left{grid-row:span 3}
+  .compose .c-name{font-family:var(--mono);font-size:15px;color:var(--ink);margin-bottom:6px}
+  .compose .c-desc{color:var(--ink-dim);font-size:13.5px;max-width:460px}
+  .prop{display:flex;gap:10px;align-items:baseline;font-size:13px;color:var(--ink-dim)}
+  .prop b{color:var(--ink);font-weight:600;font-family:var(--mono);font-size:11px;letter-spacing:.4px;text-transform:uppercase;min-width:92px;color:var(--amber)}
+  .codeblock{
+    font-family:var(--mono);font-size:12.5px;line-height:1.75;
+    background:#101315;border:1px solid var(--border-soft);border-radius:10px;
+    padding:18px 22px;overflow-x:auto;color:#c9cdd3;white-space:pre;
+  }
+  .codeblock .cm{color:#5c636b}
+  .codeblock .kw{color:var(--amber)}
+  .codeblock .st{color:#8fce9f}
+  .codeblock .fn{color:#9ec9f0}
+
+  .onto-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+  .onto-path{display:flex;align-items:center;gap:0;font-family:var(--mono);font-size:13px;margin:14px 0;flex-wrap:wrap}
+  .onto-seg{background:var(--panel);border:1px solid var(--border);padding:6px 14px;border-radius:8px;color:var(--ink)}
+  .onto-seg.opt{border-style:dashed;color:var(--ink-faint)}
+  .onto-sep{color:var(--ink-faint);padding:0 6px}
+  ul.tight{list-style:none}
+  ul.tight li{padding:5px 0 5px 18px;position:relative;color:var(--ink-dim);font-size:13.5px}
+  ul.tight li::before{content:"—";position:absolute;left:0;color:var(--ink-faint)}
+  ul.tight li b{color:var(--ink);font-weight:600}
+
+  /* ---------- DECISIONS ---------- */
+  .dec{
+    background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;
+    margin-bottom:14px;overflow:hidden;
+  }
+  .dec-head{
+    display:grid;grid-template-columns:52px 1fr auto auto;gap:16px;align-items:center;
+    padding:16px 20px;cursor:pointer;user-select:none;
+  }
+  .dec-head:hover{background:var(--panel2)}
+  .dec-id{font-family:var(--mono);font-size:12px;color:var(--ink-faint)}
+  .dec-q{font-size:15px;font-weight:500}
+  .dec-status{font-family:var(--mono);font-size:10px;letter-spacing:.8px;text-transform:uppercase}
+  .dec-status.open{color:var(--amber)}
+  .dec-status.locked{color:var(--keep)}
+  .dec-chevron{color:var(--ink-faint);transition:transform .2s;font-size:12px}
+  .dec.open .dec-chevron{transform:rotate(90deg)}
+  .dec-body{display:none;border-top:1px solid var(--border-soft);padding:20px 22px 22px}
+  .dec.open .dec-body{display:block}
+  .dec-why{color:var(--ink-dim);font-size:13.5px;margin-bottom:16px;max-width:820px}
+  .opts{display:grid;gap:10px}
+  .opt{
+    border:1px solid var(--border-soft);border-radius:9px;padding:13px 16px;
+    display:grid;grid-template-columns:1fr auto;gap:4px 16px;
+  }
+  .opt.rec{border-color:var(--amber-dim);background:#1e1a12}
+  .opt-name{font-family:var(--mono);font-size:13px;color:var(--ink)}
+  .opt-rec-badge{font-family:var(--mono);font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--amber);align-self:center}
+  .opt-desc{grid-column:1/-1;font-size:12.5px;color:var(--ink-dim)}
+  .opt-pros{grid-column:1/-1;font-size:12px;color:var(--keep)}
+  .opt-cons{grid-column:1/-1;font-size:12px;color:var(--nuke)}
+  .dec-consequence{margin-top:14px;padding:12px 16px;border-left:2px solid var(--amber-dim);background:#181510;border-radius:0 8px 8px 0;font-size:12.5px;color:var(--ink-dim)}
+  .dec-consequence b{color:var(--amber);font-weight:600}
+
+  /* ---------- DEPENDENCIES ---------- */
+  .dep-wrap{display:grid;grid-template-columns:1fr 300px;gap:28px;align-items:start}
+  .depsvg{width:100%;height:auto;display:block}
+  .depsvg .node{cursor:pointer}
+  .depsvg .node rect{fill:var(--panel);stroke:var(--border);stroke-width:1;rx:10;transition:stroke .15s,fill .15s}
+  .depsvg .node:hover rect{stroke:var(--amber-dim)}
+  .depsvg .node.sel rect{stroke:var(--amber);fill:var(--panel2)}
+  .depsvg .node text{fill:var(--ink);font-family:var(--mono);font-size:12px}
+  .depsvg .node .sub{fill:var(--ink-faint);font-size:9.5px}
+  .depsvg .node.gate rect{stroke:#4a3f66;stroke-dasharray:5 3}
+  .depsvg .node.gate.sel rect{stroke:var(--gate)}
+  .depsvg .edge{stroke:#3a424a;stroke-width:1.4;fill:none;marker-end:url(#arr)}
+  .depsvg .edge.hot{stroke:var(--amber);stroke-width:2}
+  .depsvg .edge-label{fill:var(--ink-faint);font-family:var(--mono);font-size:9px}
+  .dep-detail{
+    position:sticky;top:24px;
+    background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;padding:20px;
+  }
+  .dep-detail h3{font-family:var(--mono);font-size:14px;color:var(--amber);margin-bottom:4px}
+  .dep-detail .dd-days{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-bottom:12px}
+  .dep-detail p{font-size:13px;color:var(--ink-dim);margin-bottom:14px}
+  .dep-detail .dd-sec{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-faint);margin:14px 0 6px}
+  .dep-detail ul{list-style:none}
+  .dep-detail li{font-size:12.5px;color:var(--ink-dim);padding:3px 0 3px 14px;position:relative}
+  .dep-detail li::before{content:"·";position:absolute;left:2px;color:var(--amber)}
+  .dep-detail li.crit::before{content:"!";color:var(--nuke);font-weight:700}
+  .dep-legend{display:flex;gap:18px;margin:0 0 18px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint)}
+  .dep-legend span{display:flex;align-items:center;gap:6px}
+  .swatch{width:14px;height:10px;border-radius:2px;display:inline-block}
+
+  /* ---------- CONSEQUENCES ---------- */
+  .cons-controls{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+  .pill{
+    font-family:var(--mono);font-size:11.5px;padding:6px 14px;border-radius:99px;
+    border:1px solid var(--border);background:var(--panel);color:var(--ink-dim);
+    cursor:pointer;transition:all .12s;
+  }
+  .pill:hover{border-color:var(--amber-dim);color:var(--ink)}
+  .pill.on{background:var(--amber);border-color:var(--amber);color:#14100a;font-weight:600}
+  .cons-group{margin-bottom:34px}
+  .cons-group-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+  .cons-group-head h3{font-family:var(--serif);font-size:18px;font-weight:500}
+  .cons-group-head .count{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  table.cons{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.cons th{
+    text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.8px;text-transform:uppercase;
+    color:var(--ink-faint);font-weight:500;padding:8px 12px;border-bottom:1px solid var(--border);
+  }
+  table.cons td{padding:9px 12px;border-bottom:1px solid var(--border-soft);color:var(--ink-dim);vertical-align:top}
+  table.cons td.path{font-family:var(--mono);font-size:11.5px;color:var(--ink);white-space:nowrap}
+  table.cons td.reason{max-width:520px}
+  table.cons tr:hover td{background:var(--panel)}
+  .cons-bar{display:flex;height:10px;border-radius:99px;overflow:hidden;margin:8px 0 6px;max-width:520px}
+  .cons-bar div{height:100%}
+  .cons-bar .b-keep{background:var(--keep)}
+  .cons-bar .b-adapt{background:var(--adapt)}
+  .cons-bar .b-nuke{background:var(--nuke)}
+  .cons-bar-labels{display:flex;gap:18px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);margin-bottom:26px}
+
+  /* ---------- CHOICES ---------- */
+  .choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .choice{
+    background:var(--panel);border:1px solid var(--border-soft);border-radius:12px;padding:22px;
+    display:flex;flex-direction:column;
+  }
+  .choice.wide{grid-column:1/-1}
+  .choice-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+  .choice-name{font-family:var(--mono);font-size:14px;color:var(--amber)}
+  .choice-layer{font-family:var(--mono);font-size:10px;color:var(--ink-faint);letter-spacing:.6px;text-transform:uppercase}
+  .choice-q{font-family:var(--serif);font-size:17px;margin-bottom:10px}
+  .choice-desc{font-size:13px;color:var(--ink-dim);margin-bottom:14px;flex:1}
+  .choice-opts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .choice-dep{font-size:12px;color:var(--ink-faint);border-top:1px dashed var(--border);padding-top:10px}
+  .choice-dep b{color:var(--ink-dim);font-weight:600}
+  .chip{font-family:var(--mono);font-size:10.5px;padding:3px 10px;border-radius:99px;background:var(--panel2);border:1px solid var(--border);color:var(--ink-dim)}
+  .chip.rec{border-color:var(--amber-dim);color:var(--amber)}
+  .trace{
+    margin-top:44px;background:#101315;border:1px solid var(--border-soft);border-radius:12px;padding:24px 26px;
+  }
+  .trace h3{font-family:var(--serif);font-size:19px;font-weight:500;margin-bottom:4px}
+  .trace .t-sub{font-size:12.5px;color:var(--ink-faint);margin-bottom:18px}
+  .trace-line{font-family:var(--mono);font-size:12px;line-height:2.1;color:#c9cdd3;white-space:pre;overflow-x:auto}
+  .trace-line .tk{color:var(--amber)}
+  .trace-line .cm{color:#5c636b}
+  .trace-cols{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}
+  .trace-col{font-size:11.5px;color:var(--ink-dim);line-height:1.6}
+  .trace-col b{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px}
+
+  footer{max-width:1120px;padding:60px 48px 0;color:var(--ink-faint);font-family:var(--mono);font-size:10.5px;line-height:1.8}
+
+  @media (max-width:980px){
+    .shell{grid-template-columns:1fr}
+    nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:14px 18px}
+    .brand{border:none;padding:0 18px 0 0}
+    .nav-links{display:flex;flex-wrap:wrap;padding:0}
+    .nav-foot{display:none}
+    .view{padding:28px 20px 0}
+    .pipeline,.trace-cols{grid-template-columns:1fr 1fr}
+    .flow-arrows{display:none}
+    .compose,.onto-grid,.dep-wrap,.choice-grid{grid-template-columns:1fr}
+    .dep-detail{position:static}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav>
+    <div class="brand">
+      <div class="name">benchy</div>
+      <div class="sub">new engine · design explorer</div>
+    </div>
+    <div class="nav-links">
+      <a href="#overview" data-view="overview" class="active"><span class="num">01</span>The Design</a>
+      <a href="#decisions" data-view="decisions"><span class="num">02</span>Decisions</a>
+      <a href="#dependencies" data-view="dependencies"><span class="num">03</span>Dependencies</a>
+      <a href="#consequences" data-view="consequences"><span class="num">04</span>Consequences</a>
+      <a href="#choices" data-view="choices"><span class="num">05</span>Technical Choices</a>
+    </div>
+    <div class="nav-foot">
+      branch <b>REF/new-benchy</b><br>
+      north star <b>VISION.md</b><br>
+      spec <b>2026-06-22</b><br>
+      status <b>awaiting approval</b>
+    </div>
+  </nav>
+
+  <main>
+    <!-- ============ 01 OVERVIEW ============ -->
+    <section class="view on" id="view-overview">
+      <div class="kicker">The Design</div>
+      <h1>Four peers, one composition.</h1>
+      <p class="lede">
+        Every benchmark framework before benchy picked the <em>model</em> as its primitive and
+        shipped other people's benchmarks. Benchy inverts both: the primitive is the
+        <em>AI-system</em> — model, node, workflow, or agent — and the product is
+        <em>authoring</em> benchmarks, the translation layer between a business problem and the
+        system that solves it. Click a module to trace it.
+      </p>
+
+      <div class="pipeline" id="modPipeline">
+        <div class="mod" data-mod="task">
+          <div class="m-name">benchy.task</div>
+          <div class="m-role">the exam contract</div>
+          <div class="m-q">what shape does a solution have?</div>
+          <div class="m-body">Input/output schema and prompt scaffolding. Never data, never scoring, never inference details.</div>
+          <div class="m-key">Task(input=ImageIn(), output=InvoiceExtraction, domain, language)</div>
+        </div>
+        <div class="mod" data-mod="scoring">
+          <div class="m-name">benchy.scoring</div>
+          <div class="m-role">the rubric as program</div>
+          <div class="m-q">what does correctness mean?</div>
+          <div class="m-body">A symbolic expression — composable, introspectable, transformable. Not a class-per-rubric.</div>
+          <div class="m-key">evaluate() → breakdown · fitness() → float · aggregate() · repr round-trips</div>
+        </div>
+        <div class="mod" data-mod="system">
+          <div class="m-name">benchy.system</div>
+          <div class="m-role">the opaque program</div>
+          <div class="m-q">what are we grading?</div>
+          <div class="m-body">One protocol hides model, node, workflow, agent. Transports, venvs, loaders are plumbing.</div>
+          <div class="m-key">System.load("openai:…" | "hf:…" | "./agent.py:Agent") → run(sample)</div>
+        </div>
+        <div class="mod" data-mod="data">
+          <div class="m-name">benchy.data</div>
+          <div class="m-role">the evidence</div>
+          <div class="m-q">what do we grade against?</div>
+          <div class="m-body">Sample streams satisfying the task schema. Loading, caching, validation, splits.</div>
+          <div class="m-key">Data(source="hf:…" | local | synth, schema=task.schema)</div>
+        </div>
+      </div>
+      <div class="flow-arrows"><div>schema ↓</div><div>fitness ↓</div><div>predictions ↓</div><div>samples ↓</div></div>
+
+      <div class="compose">
+        <div class="c-left">
+          <div class="c-name">benchy.Benchmark</div>
+          <div class="c-desc">The only object that ties the four peers together. Fixes task, scoring, and data — the system is the free variable, so a benchmark is already almost a loss function.</div>
+        </div>
+        <div class="prop"><b>runnable</b><span>await bench.run(limit=200) executes + scores per sample</span></div>
+        <div class="prop"><b>exportable</b><span>bench.as_loss() → (system, examples) → float for DSPy / TextGrad / GEPA</span></div>
+        <div class="prop"><b>serializable</b><span>round-trips to a 4-field YAML, no hidden state</span></div>
+      </div>
+
+      <h2>The authoring workflow</h2>
+      <p class="h2-sub">The developer's mental model, mirrored 1:1 by CLI and SDK. No mention of interfaces, adapters, providers, pipelines, checkpoints, runners, or probes — those are plumbing under the hood.</p>
+      <div class="codeblock"><span class="cm"># CLI</span>
+$ benchy <span class="kw">new</span> image_extraction/invoices/es-AR        <span class="cm"># scaffold benchmark.yaml + scoring.py</span>
+$ benchy <span class="kw">run</span> image_extraction/invoices/es-AR --system openai:gpt-5-mini
+$ benchy <span class="kw">export-loss</span> image_extraction/invoices/es-AR --to dspy
+
+<span class="cm"># SDK</span>
+<span class="kw">import</span> benchy <span class="kw">as</span> b
+task    = b.Task.<span class="fn">load</span>(<span class="st">"image_extraction/invoices/es-AR"</span>)
+scoring = b.<span class="fn">field_wise_weighted</span>(fields=INVOICE_FIELDS, weights=WEIGHTS)
+data    = b.Data.<span class="fn">load</span>(<span class="st">"./data/invoices/*.pdf"</span>, schema=task.schema)
+system  = b.System.<span class="fn">load</span>(<span class="st">"openai:gpt-5-mini"</span>)
+result  = <span class="kw">await</span> b.<span class="fn">Benchmark</span>(task, scoring, data, system).<span class="fn">run</span>()</div>
+
+      <h2>The ontology</h2>
+      <p class="h2-sub"><code class="inline">/&lt;task?&gt;/&lt;domain?&gt;/&lt;language?&gt;</code> — the organizing structure for naming, filesystem layout, and registry lookup. Every level is optional; missing levels are implied.</p>
+      <div class="onto-grid">
+        <div>
+          <div class="onto-path">
+            <span class="onto-seg">image_extraction</span><span class="onto-sep">/</span>
+            <span class="onto-seg">invoices</span><span class="onto-sep">/</span>
+            <span class="onto-seg">es-AR</span>
+          </div>
+          <div class="onto-path">
+            <span class="onto-seg">transcription</span><span class="onto-sep">/</span>
+            <span class="onto-seg opt">fleurs?</span><span class="onto-sep">/</span>
+            <span class="onto-seg opt">pt-BR?</span>
+          </div>
+          <div class="onto-path">
+            <span class="onto-seg">transcription</span><span class="onto-sep">/</span>
+            <span class="onto-seg opt">·</span><span class="onto-sep">/</span>
+            <span class="onto-seg opt">·</span>
+          </div>
+        </div>
+        <ul class="tight">
+          <li><b>Filesystem</b> — benchmarks/&lt;task&gt;/&lt;domain&gt;/&lt;language&gt;/benchmark.yaml</li>
+          <li><b>Registry key</b> — image_extraction/invoices/es-AR</li>
+          <li><b>Task level</b> — not a magic string; references a Task shape declared in benchy.task</li>
+          <li><b>Domain + language</b> — pure organizational labels</li>
+        </ul>
+      </div>
+
+      <h2>The reference example</h2>
+      <p class="h2-sub">The sanity check for whether four modules and their composition are actually enough. If this can't be expressed end-to-end, the design fails.</p>
+      <ul class="tight" style="max-width:760px">
+        <li><b>Task</b> — input Image, output InvoiceExtraction (vendor, total, due_date, line_items…)</li>
+        <li><b>Scoring</b> — default field_wise over invoice fields; weighted variant (total×3, due_date×2) for business view; binary(default) for a perfect-extraction leaderboard</li>
+        <li><b>Data</b> — ~200 real Argentine invoice PDFs with ground-truth JSON</li>
+        <li><b>System</b> — any VLM via System.load: raw model, model+prompt node, or pre-processing agent</li>
+      </ul>
+    </section>
+
+    <!-- ============ 02 DECISIONS ============ -->
+    <section class="view" id="view-decisions">
+      <div class="kicker">Decisions</div>
+      <h1>What's locked, what's open.</h1>
+      <p class="lede">The two beliefs are non-negotiable — everything else is a decision with options, a recommendation, and a consequence. Open decisions get resolved with concrete code during milestone 1, not in the spec.</p>
+      <div id="decList"></div>
+    </section>
+
+    <!-- ============ 03 DEPENDENCIES ============ -->
+    <section class="view" id="view-dependencies">
+      <div class="kicker">Dependencies</div>
+      <h1>Nine milestones, two gates.</h1>
+      <p class="lede">Milestones are demo-shaped, not layer-shaped — each ends with a runnable command. Nothing destructive lands before a gate. Click a node to inspect it; edges show what unblocks what.</p>
+      <div class="dep-legend">
+        <span><span class="swatch" style="background:var(--panel);border:1px solid var(--border)"></span>milestone</span>
+        <span><span class="swatch" style="background:transparent;border:1px dashed #4a3f66"></span>user gate</span>
+        <span><span class="swatch" style="background:var(--amber)"></span>selected path</span>
+      </div>
+      <div class="dep-wrap">
+        <svg class="depsvg" id="depSvg" viewBox="0 0 760 560" role="img" aria-label="Milestone dependency graph">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" fill="#3a424a"></path>
+            </marker>
+          </defs>
+        </svg>
+        <div class="dep-detail" id="depDetail">
+          <h3>select a milestone</h3>
+          <div class="dd-days">~9–14 focused days total</div>
+          <p>Each milestone ends with a demo, not an internal refactor. The nuke (M8) waits for two green demos and explicit per-group user approval.</p>
+          <div class="dd-sec">Critical path</div>
+          <ul>
+            <li class="crit">M1 → M2 → M3 → M4 → M5 → M6 → M8 → M9</li>
+            <li>M7 branches off M5 (only needs a working benchmark)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 04 CONSEQUENCES ============ -->
+    <section class="view" id="view-consequences">
+      <div class="kicker">Consequences</div>
+      <h1>~18k lines in, ~2.5k out.</h1>
+      <p class="lede">The salvage audit judges every area of the current tree against the vision. The ratio is not a mistake: the old code solved <em>running benchmarks against many models on many frameworks</em> — and the vision says benchy is not that project.</p>
+
+      <div class="cons-bar">
+        <div class="b-keep" style="width:7%"></div>
+        <div class="b-adapt" style="width:4%"></div>
+        <div class="b-nuke" style="width:89%"></div>
+      </div>
+      <div class="cons-bar-labels">
+        <span style="color:var(--keep)">KEEP ~1.2k</span>
+        <span style="color:var(--adapt)">ADAPT ~0.8k</span>
+        <span style="color:var(--nuke)">NUKE ~16k</span>
+      </div>
+
+      <div class="cons-controls" id="consControls">
+        <button class="pill on" data-f="all">all</button>
+        <button class="pill" data-f="keep">keep</button>
+        <button class="pill" data-f="adapt">adapt</button>
+        <button class="pill" data-f="nuke">nuke</button>
+      </div>
+      <div id="consGroups"></div>
+    </section>
+
+    <!-- ============ 05 CHOICES ============ -->
+    <section class="view" id="view-choices">
+      <div class="kicker">Technical Choices</div>
+      <h1>The stack, traced to a belief.</h1>
+      <p class="lede">Every technical choice exists to serve one of the two beliefs — or it's plumbing that stays under the hood. Each card names the options considered and the dependency it creates.</p>
+      <div class="choice-grid" id="choiceGrid"></div>
+
+      <div class="trace">
+        <h3>One run, end to end</h3>
+        <div class="t-sub">How the choices compose when the reference benchmark executes.</div>
+        <div class="trace-line"><span class="cm">$</span> benchy run image_extraction/invoices/es-AR --system openai:gpt-5-mini --limit 5
+
+  <span class="tk">task</span>     registry resolves ontology path → pydantic InvoiceExtraction schema
+  <span class="tk">data</span>     local source streams PDFs → validated against task.schema (fail loud)
+  <span class="tk">system</span>   "openai:" scheme → OpenAISystem → run(sample) per image
+  <span class="tk">scoring</span>  field_wise_weighted.evaluate(pred, truth) per sample → aggregate()
+  <span class="tk">report</span>   scoring report printed · benchmark.yaml untouched · result serializable</div>
+        <div class="trace-cols">
+          <div class="trace-col"><b>belief 1</b>The system swap is one flag. Node, workflow, or agent would run identically — the run loop never learns which shape it graded.</div>
+          <div class="trace-col"><b>belief 2</b>The benchmark was authored, not downloaded: schema, rubric, and evidence all named explicitly in the ontology path.</div>
+          <div class="trace-col"><b>loss hook</b>The same objects power bench.as_loss() — task fixes contract, data fixes evidence, scorer fixes fitness.</div>
+          <div class="trace-col"><b>absent</b>No interface, adapter, provider, pipeline, checkpoint, runner, or probe appears. Plumbing stayed under the hood.</div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      sources: VISION.md · docs/superpowers/specs/2026-06-22-new-benchy-design.md ·<br>
+      2026-06-22-new-benchy-salvage-audit.md · plans/2026-06-22-new-benchy-execution.md
+    </footer>
+  </main>
+</div>
+
+<script>
+/* ================= DATA ================= */
+const DECISIONS = [
+  {id:"D1", q:"The primitive is the AI-system, not the model", status:"locked", belief:true,
+   why:"Belief 1 from VISION.md. A raw model, a node (model + prompt), a workflow (composed models), and an agent (models + tools + loop) are all the same kind of thing: a program that performs a task.",
+   opts:[
+     {name:"model-centric (status quo)", desc:"The model is the primitive; prompts, workflows, agents are wrappers evaluated indirectly.", cons:"Rejected — cannot express 'grade the agent, not its LLM'."},
+     {name:"system-centric", rec:true, desc:"One System protocol: async run(sample) → Prediction. All four shapes behind it.", pros:"Inference, swapping, and scoring are blind to which shape they talk to."}
+   ],
+   consequence:"Everything downstream — transports, loaders, scoring calls — must be shape-blind. This is what lets the leaderboard compare a raw VLM against a pre-processing agent fairly."},
+  {id:"D2", q:"Benchy creates benchmarks; it does not run other people's", status:"locked", belief:true,
+   why:"Belief 2 from VISION.md. The benchmark is the first step of AI development — the bridge between a business problem and an AI-system. Authoring must feel like designing an exam.",
+   opts:[
+     {name:"runner of global benchmarks", desc:"Expose popular benchmarks developer-friendly, any model against any benchmark.", cons:"Rejected — that is lm-evaluation-harness's project, and the old tree's."},
+     {name:"authoring-first", rec:true, desc:"Four modules mirror the authoring concerns: task, scoring, system, data.", pros:"Engineering aids the mental model instead of fighting it."}
+   ],
+   consequence:"~16k lines of glue-framework code become out of scope. Features that don't serve authoring (leaderboard publishing, multi-provider orchestration) leave the repo."},
+  {id:"D3", q:"Scoring is a symbolic algebra, not a class hierarchy", status:"locked",
+   why:"A rubric you can read, compose, and transform. default → strict = binary(default) → weighted = field_wise_weighted(...) are expressions, not subclasses.",
+   opts:[
+     {name:"class-per-rubric (old tree)", desc:"Handler subclasses bake rubrics into inheritance.", cons:"Rejected — unreadable, uncomposable, rubric invisible to the author."},
+     {name:"symbolic scorer tree", rec:true, desc:"Every node is a Scorer exposing evaluate / fitness / aggregate / repr.", pros:"Introspectable, transformable, and fitness() gives optimizers a scalar for free."}
+   ],
+   consequence:"Adding a scorer family is a contributor activity; authoring a rubric is composition. The repr round-trip makes benchmark.yaml diffable and reviewable."},
+  {id:"D4", q:"Modules are peers; only Benchmark composes them", status:"locked",
+   why:"No module owns another. Task never imports scoring; data never imports system. The composition object is the single seam.",
+   opts:[
+     {name:"layered hierarchy", desc:"Engine owns handlers own interfaces (old tree's shape).", cons:"Rejected — produced the god-objects being nuked."},
+     {name:"four peers + one composition", rec:true, desc:"Benchmark(task, scoring, data, system) is the only cross-module object.", pros:"Each module is testable in isolation; M2 proves scoring works without any other module."}
+   ],
+   consequence:"The milestone order can build modules in any sequence as long as M5 assembles them. Coupling surface is one constructor signature."},
+  {id:"D5", q:"Task schema language", status:"open", when:"decide by end of M1",
+   why:"How authors declare input/output shapes. The spec's open question #1.",
+   opts:[
+     {name:"pydantic authoring + JSON Schema exchange", rec:true, desc:"Pydantic v2 as the authoring surface; JSON Schema as the wire/exchange format.", pros:"Pythonic authoring, typed validation, and an interchange format other tools can consume."},
+     {name:"raw JSON Schema only", desc:"Author directly in JSON Schema.", cons:"No IDE help, verbose, easy to write invalid schemas."},
+     {name:"pydantic only", desc:"Skip the exchange format.", cons:"Non-Python systems can't read the contract; as_loss() handoff gets awkward."}
+   ],
+   consequence:"Ripples through M4 (task registry, data validation) and M7 (optimizer adapters read the schema). Must be settled before the reference benchmark's Task is written."},
+  {id:"D6", q:"System URL scheme", status:"open", when:"decide during M1/M3",
+   why:"How System.load() parses 'openai:gpt-5-mini' vs './my_agent.py:Agent'.",
+   opts:[
+     {name:"pluggable register(scheme, loader)", rec:true, desc:"System.register with defaults openai:, hf:, local:, endpoint:.", pros:"New transports are user-land; core stays small. Kills the 55-file configs/models/ directory."},
+     {name:"fixed provider:model grammar", desc:"Hard-coded provider list.", cons:"Every new provider is a core patch — the old world's config sprawl."},
+     {name:"type://path URLs", desc:"Scheme encodes shape, path encodes location.", cons:"Conflates shape with transport; a node and an agent can share a transport."}
+   ],
+   consequence:"Determines M3's module layout and whether bespoke model families (Voxtral, Qwen3-ASR, Canary) are schemes or per-family routing under hf:."},
+  {id:"D7", q:"Data validation strictness", status:"open", when:"decide during M4",
+   why:"What happens when a sample doesn't satisfy the task schema.",
+   opts:[
+     {name:"fail loud in run(), filter+warn in iter()", rec:true, desc:"Authoring iteration is forgiving; the graded run is strict.", pros:"Bad evidence can never silently inflate a score; exploration stays fast."},
+     {name:"always fail loud", desc:"Any mismatch anywhere aborts.", cons:"Painful while curating data."},
+     {name:"always filter+warn", desc:"Drop bad samples everywhere.", cons:"A benchmark can quietly grade on 60% of its evidence."}
+   ],
+   consequence:"Shapes benchy.data's API surface and the run report's sample-count accounting."},
+  {id:"D8", q:"Nuke strategy: parallel build, gated demolition", status:"locked",
+   why:"The new tree grows at src/benchy/ while the old tree keeps working. Demolition waits for two green demos.",
+   opts:[
+     {name:"big-bang rewrite", desc:"Delete first, rebuild in the rubble.", cons:"Rejected — no cross-check against old numbers, no fallback."},
+     {name:"parallel + gates", rec:true, desc:"M5 gate 1 (reference demo), M6 regression check, M8 gate 2 (per-group approval, one commit per group).", pros:"Every deletion is reviewable and revertable; FLEURS numbers must match within tolerance before anything burns."}
+   ],
+   consequence:"~2k lines ported, ~500 new, ~16k deleted — but nothing is deleted before the user approves each group at gate 2."},
+  {id:"D9", q:"Latamboard publishing leaves the repo", status:"locked",
+   why:"The leaderboard pipeline is a downstream consumer of benchmark results, not part of authoring them.",
+   opts:[
+     {name:"keep in-tree", desc:"Ship publishing with the engine.", cons:"Rejected — drags a deployment pipeline into an authoring tool."},
+     {name:"split repo + JSON contract", rec:true, desc:"latamboard-publish consumes a stable JSON result format from new benchy.", pros:"Each repo gets one reason to change."}
+   ],
+   consequence:"src/leaderboard/* is nuked from benchy; the JSON run-result format becomes a public contract that must stay stable."}
+];
+
+const MILESTONES = [
+  {id:"M1", x:60,  y:60,  name:"M1 · skeletons", days:"0.5d",
+   goal:"Land the empty tree: src/benchy/{task,scoring,system,data,benchmark,loss,cli} stubs + reference benchmark.yaml + public-API import test.",
+   writes:["module stubs with docstrings","benchmarks/image_extraction/invoices/es-AR/benchmark.yaml (placeholders)","tests/benchy/test_public_api.py"],
+   ends:"pytest tests/benchy/test_public_api.py passes",
+   resolves:["D5 schema language (by end of M1)","D6 URL scheme sketch"]},
+  {id:"M2", x:290, y:60,  name:"M2 · scoring algebra", days:"1–2d",
+   goal:"Symbolic scorer works end-to-end for structured extraction, in isolation.",
+   writes:["scoring/base.py — Scorer protocol","primitives from common/metrics.py + image_metrics.py","structural/field_wise(+_weighted) from structured_metrics_calculator + partial_matching","transforms: binary, threshold, restrict, mean","scoring/registry.py"],
+   ends:"binary(field_wise(...)) scores a fake prediction with no other benchy module",
+   resolves:["D3 proven in code"]},
+  {id:"M3", x:520, y:60,  name:"M3 · system abstraction", days:"2–3d",
+   goal:"System implementations for the shapes we already know how to run.",
+   writes:["system/base.py — protocol, capabilities, register(scheme, loader)","schemes/openai.py (from openai_interface + openai_audio_interface)","schemes/hf.py (transformers_audio_interface + voxtral/qwen3/canary routing)","schemes/endpoint.py — generic HTTP"],
+   ends:"System.load('openai:gpt-5-mini') and System.load('hf:Voxtral…') both answer a single-sample run()",
+   resolves:["D6 settled"]},
+  {id:"M4", x:60,  y:230, name:"M4 · data + task", days:"1–2d",
+   goal:"Load one dataset, validate it against one task schema.",
+   writes:["task/base.py — pydantic v2 schemas, JSON Schema exchange","task/registry.py — ontology path resolution","data/base.py — iter(), validation, splits","data/sources/{hf,local,jsonl}.py (from dataset_adapters/utils)","data/cache.py (from dataset_loaders)"],
+   ends:"Data.iter(schema=task.schema) yields validated samples for the reference benchmark",
+   resolves:["D5 implemented","D7 settled"]},
+  {id:"M5", x:290, y:230, name:"M5 · first run", days:"1–2d", gate:true,
+   goal:"GATE 1 — end-to-end run of the reference benchmark on the new tree.",
+   writes:["benchmark.py — Benchmark(task, scoring, data, system).run()","cli.py — new / list / run (minimum viable)","benchmark.yaml filled in for real + scoring.py (default + binary variant)","invoice data assets under benchmarks/"],
+   ends:"benchy run image_extraction/invoices/es-AR --system openai:gpt-5-mini --limit 5 prints a scoring report",
+   resolves:["user approval required to proceed"]},
+  {id:"M6", x:520, y:230, name:"M6 · second reference", days:"1d",
+   goal:"Prove generality: FLEURS transcription, a categorically different benchmark.",
+   writes:["benchmarks/transcription/fleurs/{es-419,pt-BR}/benchmark.yaml","(should need zero new primitives or schemes)"],
+   ends:"whisper + voxtral runs match current-tree numbers within tolerance",
+   resolves:["regression gate before any nuke"]},
+  {id:"M7", x:290, y:390, name:"M7 · as_loss + DSPy", days:"1–2d",
+   goal:"The vision's 'new loss function' hook, end-to-end.",
+   writes:["loss.py — Benchmark.as_loss() → (system, examples) → float","loss/dspy.py — as_dspy_metric() adapter","docs example: optimize a node's prompt with BootstrapFewShot"],
+   ends:"DSPy smoke test runs an iteration and updates a candidate, driven by the benchy loss",
+   resolves:["DSPy Metric conformance risk retired"]},
+  {id:"M8", x:520, y:390, name:"M8 · nuke + rename", days:"0.5d", gate:true,
+   goal:"GATE 2 — collapse to a single tree. Destructive, per-group approval.",
+   writes:["git rm -r NUKE paths (one commit per group)","pyproject scripts → new CLI only","delete .plans/* + configs/*","regenerate Makefile; rewrite README/AGENTS/CONTRIBUTING/CLAUDE"],
+   ends:"old tree gone, new tree green",
+   resolves:["final layout: src/benchy/ vs src/ (open)"]},
+  {id:"M9", x:60,  y:390, name:"M9 · ship", days:"0.5d",
+   goal:"Merge REF/new-benchy → main, tag, ship.",
+   writes:["merge + tag v0.next"],
+   ends:"the vision is now the implementation",
+   resolves:[]}
+];
+
+const EDGES = [
+  ["M1","M2"],["M2","M3"],["M3","M4"],["M1","M4"],
+  ["M2","M5"],["M3","M5"],["M4","M5"],
+  ["M5","M6"],["M5","M7"],
+  ["M6","M8"],["M7","M8"],["M8","M9"]
+];
+
+const SALVAGE = [
+  {group:"scoring sources", items:[
+    {path:"src/tasks/common/metrics.py", lines:327, v:"keep", reason:"ExactMatch, F1, WER, CER, Pearson, MSE, MCAccuracy → atomic primitives of benchy.scoring.primitives"},
+    {path:"src/tasks/common/image_metrics.py", lines:268, v:"keep", reason:"mask/IoU utilities → primitives for image tasks"},
+    {path:"src/tasks/common/utils/structured_metrics_calculator.py", lines:500, v:"keep", reason:"this IS field_wise with partial credit → scoring.structural"},
+    {path:"src/tasks/common/utils/partial_matching.py", lines:300, v:"keep", reason:"nuts-and-bolts of partial matching → scoring.structural"},
+    {path:"src/tasks/common/utils/choice_utils.py", lines:150, v:"adapt", reason:"choice parsing → primitives for multiple_choice scoring"},
+    {path:"src/tasks/common/utils/text_utils.py", lines:100, v:"keep", reason:"small text normalization helpers"},
+    {path:"src/tasks/common/visualization.py", lines:204, v:"keep", reason:"small; lands under benchy.benchmark or benchy.report"}
+  ]},
+  {group:"data sources", items:[
+    {path:"src/tasks/common/dataset_loaders.py", lines:211, v:"adapt", reason:"CachedDatasetMixin → cache logic inside benchy.data; drop the mixin shape"},
+    {path:"src/tasks/common/dataset_adapters.py", lines:870, v:"adapt", reason:"extract HF/JSONL/CSV/TSV loading paths; drop schema-driven task-config wiring"},
+    {path:"src/tasks/common/utils/dataset_utils.py", lines:200, v:"keep", reason:"HF download + JSONL cache primitives, still needed"}
+  ]},
+  {group:"system sources", items:[
+    {path:"src/adapters/voxtral_chat.py", lines:null, v:"keep", reason:"real per-family inference code; renames Adapter → System"},
+    {path:"src/adapters/qwen3_asr_chat.py", lines:null, v:"keep", reason:"same"},
+    {path:"src/adapters/canary_nemo.py", lines:null, v:"keep", reason:"same, once NeMo is unblocked"},
+    {path:"src/interfaces/openai_interface.py", lines:1005, v:"adapt", reason:"extract only request shape + response parsing → schemes/openai.py"},
+    {path:"src/interfaces/openai_audio_interface.py", lines:null, v:"adapt", reason:"folds into an audio-shaped System"},
+    {path:"src/interfaces/transformers_audio_interface.py", lines:null, v:"adapt", reason:"default System for HF audio pipelines"},
+    {path:"configs/systems/*.yaml", lines:null, v:"adapt", reason:"closest in spirit to benchy.system — port intent, not schema"}
+  ]},
+  {group:"benchmark assets", items:[
+    {path:"src/tasks/transcription/ (FLEURS)", lines:null, v:"adapt", reason:"data survives as benchmarks/transcription/fleurs/{es-419,pt-BR}/; handler code doesn't"},
+    {path:"src/tasks/{structured,document,image}_extraction/", lines:null, v:"adapt", reason:"data survives under benchmarks/; benchmarks re-authored via the four peers"},
+    {path:"src/tasks/image_manipulation/", lines:null, v:"adapt", reason:"data + scoring metric survive; task re-authored"}
+  ]},
+  {group:"handler god-objects", items:[
+    {path:"src/tasks/common/base.py (BaseHandler)", lines:405, v:"nuke", reason:"the four modules replace it; nothing to port"},
+    {path:"src/tasks/common/freeform.py", lines:356, v:"nuke", reason:"rubric baked into a subclass; expressed via benchy.scoring now"},
+    {path:"src/tasks/common/structured.py", lines:503, v:"nuke", reason:"useful part (MetricsCalculator) lives elsewhere and survives"},
+    {path:"src/tasks/common/multiple_choice.py", lines:585, v:"nuke", reason:"same"},
+    {path:"src/tasks/common/multimodal_*.py", lines:654, v:"nuke", reason:"same"},
+    {path:"src/tasks/common/task_config_schema.py + config_generator.py", lines:542, v:"nuke", reason:"task shape comes from benchy.task, not a YAML schema registry"}
+  ]},
+  {group:"engine + pipeline", items:[
+    {path:"src/pipeline.py", lines:1056, v:"nuke", reason:"Prefect flow orchestrating the old handler+interface world"},
+    {path:"src/engine/benchmark_runner.py", lines:888, v:"nuke", reason:"rewritten smaller as benchy.benchmark.run()"},
+    {path:"src/engine/connection.py", lines:525, v:"nuke", reason:"vLLM/provider glue; replaced by System.run"},
+    {path:"src/engine/protocols.py", lines:null, v:"nuke", reason:"old task+interface protocols"},
+    {path:"src/engine/{checkpoint,retry,output_diagnostics}.py", lines:null, v:"adapt", reason:"retry + per-sample checkpointing port slimmed-down only when a milestone needs them"},
+    {path:"src/probe/*", lines:1900, v:"nuke", reason:"if needed later it's a ~50-line `benchy system probe`, not 1900 lines of orchestration"}
+  ]},
+  {group:"interfaces + inference", items:[
+    {path:"src/interfaces/{generic_api,http,_template}.py", lines:null, v:"nuke", reason:"provider-shaped abstraction; the System protocol makes them redundant"},
+    {path:"src/adapters/base.py", lines:null, v:"nuke", reason:"replaced by benchy.system.System"},
+    {path:"src/inference/vllm_*", lines:null, v:"nuke", reason:"vLLM is one transport; wire it as an endpoint: System"},
+    {path:"src/inference/venv_manager.py", lines:null, v:"nuke", reason:"per-model venvs were a workaround; Systems declare their own dependency envelope"}
+  ]},
+  {group:"downstream + config sprawl", items:[
+    {path:"src/leaderboard/*", lines:null, v:"nuke", reason:"latamboard publishing pipeline → split repo, fed by a stable JSON contract"},
+    {path:"configs/models/*.yaml (55 files)", lines:null, v:"nuke", reason:"System URLs replace per-model YAMLs"},
+    {path:"configs/providers|templates|tests", lines:null, v:"nuke", reason:"providers become URL schemes; old config format dropped"},
+    {path:"src/{config_manager,config_loader,gpu_config,generation_config}.py", lines:null, v:"nuke", reason:"old YAML schema + vLLM path; benchmark.yaml is 4 fields deep"},
+    {path:"src/{run_id_manager,signal_utils,task_completion_checker,outcome,logging_utils,prefect_compat}.py", lines:null, v:"nuke", reason:"old-pipeline plumbing; port back <50 lines only if a milestone demands it"},
+    {path:"src/benchy_cli*.py", lines:null, v:"nuke", reason:"replaced by a much smaller benchy.cli (new, run, list, export-loss)"}
+  ]},
+  {group:"legacy tasks + tests", items:[
+    {path:"src/tasks/{classify,portuguese,spanish,structured,translation,audit,_template_handler}", lines:null, v:"nuke", reason:"legacy benchmarks glued from third-party frameworks; re-author as small YAMLs if still needed"},
+    {path:"src/tasks/{registry,group_runner}.py", lines:null, v:"nuke", reason:"old discovery; replaced by ontology filesystem + benchy.registry"},
+    {path:"tests/", lines:null, v:"nuke", reason:"old tests target Handler/Interface contracts; new tests written alongside milestones"},
+    {path:".plans/* (16 files)", lines:null, v:"nuke", reason:"legacy scratch; anything load-bearing already distilled into VISION.md"}
+  ]}
+];
+
+const CHOICES = [
+  {name:"pydantic v2", layer:"task", q:"How is the exam contract authored?",
+   desc:"Typed, IDE-friendly schema authoring with JSON Schema as the exchange format. Validation errors name the failing field — which is exactly what a benchmark author needs while curating data.",
+   opts:["pydantic v2","JSON Schema"], rec:0,
+   dep:"M4 · settles D5 · constrains loss adapters (M7)",
+   belief:2},
+  {name:"symbolic scorer tree", layer:"scoring", q:"How is the rubric represented?",
+   desc:"evaluate() returns a rich breakdown; fitness() returns the scalar an optimizer consumes; aggregate() summarizes a run; repr round-trips so YAML is reviewable. Transforms (binary, threshold, restrict, mean) produce new scorers from old ones.",
+   opts:["expression tree","class hierarchy"], rec:0,
+   dep:"M2 · ports common/metrics.py + structured_metrics_calculator.py",
+   belief:2},
+  {name:"async System protocol", layer:"system", q:"How do four shapes share one contract?",
+   desc:"capabilities + async run(sample) → Prediction. A raw HF model, an OpenAI endpoint, a DSPy program, and a LangGraph agent are indistinguishable to the run loop.",
+   opts:["Protocol + register()","ABC hierarchy"], rec:0,
+   dep:"M3 · settles D6 · replaces interfaces/ + adapters/base.py",
+   belief:1},
+  {name:"pluggable URL schemes", layer:"system", q:"How is a system located?",
+   desc:"System.register(scheme, loader) with openai:, hf:, local:, endpoint: in-tree. Bespoke families (Voxtral, Qwen3-ASR, Canary) route under hf: — real inference code, renamed not rewritten.",
+   opts:["openai:","hf:","local:","endpoint:"], rec:null,
+   dep:"M3 · kills configs/models/*.yaml (55 files)",
+   belief:1},
+  {name:"ontology filesystem", layer:"data + registry", q:"How are benchmarks named and found?",
+   desc:"/<task?>/<domain?>/<language?> as both directory layout and registry key. All levels optional with fallback lookup — no magic strings, no central registry file to merge-conflict.",
+   opts:["filesystem = registry","central registry file"], rec:0,
+   dep:"M4 · replaces tasks/registry.py + group_runner.py",
+   belief:2},
+  {name:"fail-loud run / forgiving iter", layer:"data", q:"How strict is evidence validation?",
+   desc:"Data.iter() filters and warns while you curate; Benchmark.run() fails loud so a graded number can never silently rest on partial evidence.",
+   opts:["two modes","always strict","always lenient"], rec:0,
+   dep:"M4 · settles D7",
+   belief:2},
+  {name:"as_loss() hook", layer:"loss", q:"How does a benchmark become a loss function?",
+   desc:"Task fixes the contract, data fixes the evidence, scorer fixes fitness — the system is the only free variable. as_loss() returns (system, examples) → float; a thin DSPy adapter proves the handoff.",
+   opts:["generic callable","DSPy Metric adapter"], rec:null,
+   dep:"M7 · needs M5 green · DSPy conformance is the risk",
+   belief:2},
+  {name:"4-field benchmark.yaml", layer:"composition", q:"What does serialization look like?",
+   desc:"task / scoring / data / system — one field per peer, no hidden state. A benchmark is reviewable in a diff and reconstructable from its YAML alone.",
+   opts:["4 fields, one per peer","nested config tree"], rec:0,
+   dep:"M5 · replaces configs/ sprawl",
+   belief:2},
+  {name:"parallel build, gated nuke", layer:"process", q:"How does ~16k lines leave safely?",
+   desc:"New tree grows at src/benchy/ beside the old one. M5 and M6 must demo green; M8 deletes per group, one commit per group, each behind explicit user approval.",
+   opts:["parallel + 2 gates","big-bang rewrite"], rec:0,
+   dep:"M8 · FLEURS numbers must match within tolerance first",
+   belief:null},
+  {name:"httpx + asyncio", layer:"plumbing", q:"What carries the calls?",
+   desc:"Already in the dependency tree. Async-first because run() is async; concurrency is a run-loop concern, not a System concern.",
+   opts:["httpx async","requests + threads"], rec:0,
+   dep:"M3/M5 · stays under the hood",
+   belief:null}
+];
+
+/* ================= NAV ================= */
+const links=[...document.querySelectorAll('.nav-links a')];
+function show(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='view-'+name));
+  links.forEach(a=>a.classList.toggle('active',a.dataset.view===name));
+  if(location.hash!=='#'+name) history.replaceState(null,'','#'+name);
+  window.scrollTo({top:0});
+}
+links.forEach(a=>a.addEventListener('click',e=>{e.preventDefault();show(a.dataset.view)}));
+const h=location.hash.slice(1); if(h&&document.getElementById('view-'+h)) show(h);
+
+/* ================= OVERVIEW interactions ================= */
+const MOD_TRACE={
+  task:{view:'choices', chip:'pydantic v2'},
+  scoring:{view:'choices', chip:'symbolic scorer tree'},
+  system:{view:'choices', chip:'async System protocol'},
+  data:{view:'choices', chip:'ontology filesystem'}
+};
+document.querySelectorAll('#modPipeline .mod').forEach(m=>{
+  m.addEventListener('click',()=>{
+    const t=MOD_TRACE[m.dataset.mod];
+    show(t.view);
+    const el=[...document.querySelectorAll('.choice')].find(c=>c.querySelector('.choice-name').textContent===t.chip);
+    if(el){el.classList.add('hl');el.scrollIntoView({block:'center'});setTimeout(()=>el.classList.remove('hl'),2200);}
+  });
+});
+
+/* ================= DECISIONS ================= */
+const decList=document.getElementById('decList');
+DECISIONS.forEach(d=>{
+  const el=document.createElement('div'); el.className='dec';
+  el.innerHTML=`
+    <div class="dec-head">
+      <span class="dec-id">${d.id}</span>
+      <span class="dec-q">${d.q}</span>
+      <span class="dec-status ${d.status}">${d.status==='locked'?'● locked':'○ open'+(d.when?' · '+d.when:'')}</span>
+      <span class="dec-chevron">▶</span>
+    </div>
+    <div class="dec-body">
+      <p class="dec-why">${d.why}</p>
+      <div class="opts">${d.opts.map(o=>`
+        <div class="opt ${o.rec?'rec':''}">
+          <span class="opt-name">${o.name}</span>
+          ${o.rec?'<span class="opt-rec-badge">recommended</span>':'<span></span>'}
+          ${o.desc?`<span class="opt-desc">${o.desc}</span>`:''}
+          ${o.pros?`<span class="opt-pros">+ ${o.pros}</span>`:''}
+          ${o.cons?`<span class="opt-cons">− ${o.cons}</span>`:''}
+        </div>`).join('')}
+      </div>
+      <div class="dec-consequence"><b>consequence →</b> ${d.consequence}</div>
+    </div>`;
+  el.querySelector('.dec-head').addEventListener('click',()=>el.classList.toggle('open'));
+  decList.appendChild(el);
+});
+document.querySelector('.dec').classList.add('open');
+
+/* ================= DEPENDENCIES SVG ================= */
+const svg=document.getElementById('depSvg');
+const NS='http://www.w3.org/2000/svg';
+const W=200,H=64;
+function el(t,attrs){const e=document.createElementNS(NS,t);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+EDGES.forEach(([a,b])=>{
+  const A=MILESTONES.find(m=>m.id===a),B=MILESTONES.find(m=>m.id===b);
+  const x1=A.x+W,y1=A.y+H/2,x2=B.x,y2=B.y+H/2;
+  let path;
+  if(A.y===B.y){path=`M${x1} ${y1} L${x2} ${y2}`;}
+  else{
+    const mx=(x1+x2)/2;
+    path=`M${A.x+W/2} ${A.y+H} C ${A.x+W/2} ${A.y+H+40}, ${B.x+W/2} ${B.y-40}, ${B.x+W/2} ${B.y}`;
+    if(Math.abs(A.x-B.x)>10){path=`M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;}
+  }
+  const p=el('path',{d:path,class:'edge','data-from':a,'data-to':b});
+  svg.appendChild(p);
+});
+MILESTONES.forEach(m=>{
+  const g=el('g',{class:'node'+(m.gate?' gate':''),'data-id':m.id});
+  g.appendChild(el('rect',{x:m.x,y:m.y,width:W,height:H,rx:10}));
+  const t1=el('text',{x:m.x+14,y:m.y+26}); t1.textContent=m.name;
+  const t2=el('text',{x:m.x+14,y:m.y+44,class:'sub'}); t2.textContent=m.days+(m.gate?' · GATE':'');
+  g.appendChild(t1);g.appendChild(t2);
+  g.addEventListener('click',()=>selectM(m.id));
+  svg.appendChild(g);
+});
+function selectM(id){
+  const m=MILESTONES.find(x=>x.id===id);
+  svg.querySelectorAll('.node').forEach(n=>n.classList.toggle('sel',n.dataset.id===id));
+  svg.querySelectorAll('.edge').forEach(e=>e.classList.toggle('hot',e.dataset.from===id||e.dataset.to===id));
+  const d=document.getElementById('depDetail');
+  d.innerHTML=`
+    <h3>${m.name}</h3>
+    <div class="dd-days">${m.days}${m.gate?' · <span style="color:var(--gate)">USER GATE</span>':''}</div>
+    <p>${m.goal}</p>
+    <div class="dd-sec">writes</div>
+    <ul>${m.writes.map(w=>`<li>${w}</li>`).join('')}</ul>
+    <div class="dd-sec">ends when</div>
+    <ul><li>${m.ends}</li></ul>
+    ${m.resolves.length?`<div class="dd-sec">resolves</div><ul>${m.resolves.map(r=>`<li class="crit">${r}</li>`).join('')}</ul>`:''}
+    <div class="dd-sec">unblocks</div>
+    <ul>${EDGES.filter(e=>e[0]===id).map(e=>`<li>${e[1]}</li>`).join('')||'<li>—</li>'}</ul>`;
+}
+selectM('M5');
+
+/* ================= CONSEQUENCES ================= */
+const groupsEl=document.getElementById('consGroups');
+function renderCons(filter){
+  groupsEl.innerHTML='';
+  SALVAGE.forEach(g=>{
+    const items=g.items.filter(i=>filter==='all'||i.v===filter);
+    if(!items.length)return;
+    const grp=document.createElement('div');grp.className='cons-group';
+    grp.innerHTML=`
+      <div class="cons-group-head"><h3>${g.group}</h3><span class="count">${items.length} paths</span></div>
+      <table class="cons">
+        <thead><tr><th style="width:38%">path</th><th style="width:8%">lines</th><th style="width:10%">verdict</th><th>reason</th></tr></thead>
+        <tbody>${items.map(i=>`
+          <tr>
+            <td class="path">${i.path}</td>
+            <td>${i.lines??'—'}</td>
+            <td><span class="tag ${i.v}">${i.v.toUpperCase()}</span></td>
+            <td class="reason">${i.reason}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+    groupsEl.appendChild(grp);
+  });
+}
+renderCons('all');
+document.querySelectorAll('#consControls .pill').forEach(p=>{
+  p.addEventListener('click',()=>{
+    document.querySelectorAll('#consControls .pill').forEach(x=>x.classList.remove('on'));
+    p.classList.add('on');renderCons(p.dataset.f);
+  });
+});
+
+/* ================= CHOICES ================= */
+const grid=document.getElementById('choiceGrid');
+CHOICES.forEach(c=>{
+  const el=document.createElement('div');el.className='choice'+(c.wide?' wide':'');
+  el.innerHTML=`
+    <div class="choice-head"><span class="choice-name">${c.name}</span><span class="choice-layer">${c.layer}</span></div>
+    <div class="choice-q">${c.q}</div>
+    <p class="choice-desc">${c.desc}</p>
+    <div class="choice-opts">${c.opts.map((o,i)=>`<span class="chip ${i===c.rec?'rec':''}">${o}</span>`).join('')}</div>
+    <div class="choice-dep"><b>dependency →</b> ${c.dep}${c.belief?` &nbsp;·&nbsp; <b>serves belief ${c.belief}</b>`:''}</div>`;
+  grid.appendChild(el);
+});
+</script>
+</body>
+</html>

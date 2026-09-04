@@ -91,18 +91,40 @@ class TestCapabilities:
         caps = Capabilities(audio_in=True)
         assert caps.accepts(AudioPart(path="/tmp/a.wav"))
 
-    def test_default_kind_is_model(self):
-        assert Capabilities().kind == "model"
+    def test_the_field_set_is_cut_to_the_metal_and_locked(self):
+        """The Cutting Theorem, enforced: a Capabilities field exists iff
+        exam rendering or grading branches on it. Adding a sixth field is a
+        deliberate act that must update this test and cite its branch."""
+        import dataclasses
 
-    def test_all_four_system_shapes_are_expressible(self):
-        for kind in ("model", "node", "workflow", "agent"):
-            assert Capabilities(kind=kind).kind == kind  # type: ignore[arg-type]
+        fields = {f.name for f in dataclasses.fields(Capabilities)}
+        assert fields == {
+            "text_in", "image_in", "audio_in",
+            "structured_output", "max_concurrency",
+        }
 
 
 class TestResponse:
     def test_ok_is_false_when_error_is_set(self):
         assert Response(text="hi").ok
         assert not Response(error="boom").ok
+
+    def test_response_has_no_souvenir_fields(self):
+        import dataclasses
+
+        fields = {f.name for f in dataclasses.fields(Response)}
+        assert fields == {"text", "data", "usage", "latency_ms", "error"}
+
+    def test_aclose_is_not_part_of_the_system_protocol(self):
+        from benchy.core import System
+
+        class Minimal:
+            url = "fake:1"
+            capabilities = Capabilities()
+
+            async def invoke(self, request): ...
+
+        assert isinstance(Minimal(), System)
 
 
 class TestValueObjectDefaults:
@@ -142,9 +164,16 @@ class TestProtocolsAreStructural:
             capabilities = Capabilities()
 
             async def invoke(self, request): ...
-            async def aclose(self): ...
 
         assert isinstance(Duck(), System)
+
+        # The protocol does not mandate `aclose`: lifecycle belongs to the
+        # system's owner (the caller), not to the exam. A duck with an
+        # aclose is still a System; a duck without one is too.
+        class DuckWithClose(Duck):
+            async def aclose(self): ...
+
+        assert isinstance(DuckWithClose(), System)
 
     def test_scorer_protocol_is_runtime_checkable(self):
         from benchy.core import Scorer
@@ -157,3 +186,33 @@ class TestProtocolsAreStructural:
             def aggregate(self, scores): ...
 
         assert isinstance(Duck(), Scorer)
+
+
+class TestSpineIsExhaustivelyMinimal:
+    """Minimality by exhaustion: every public name in the spine must be
+    citable under the Cutting Theorem (branch / consumer / minimal wire).
+    This census is the proof obligation; if a name loses all its citations,
+    delete it here first, then in core.py."""
+
+    def test_the_public_surface_census(self):
+        import benchy.core as core
+
+        assert set(core.__all__) == {
+            # ontology
+            "OntologyPath",
+            # content
+            "TextPart", "ImagePart", "AudioPart", "Part", "Message", "Role",
+            # io
+            "Sample", "Request", "Response", "Usage", "Prediction",
+            # capability
+            "Capabilities",
+            # protocols
+            "Task", "Scorer", "System", "Data",
+            # results
+            "Score", "Record", "Report",
+            # types
+            "LossFn", "SystemLoader",
+            # errors
+            "BenchyError", "LoadError", "SchemaViolation",
+            "SystemFailure", "CapabilityError",
+        }
