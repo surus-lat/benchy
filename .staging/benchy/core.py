@@ -45,7 +45,7 @@ __all__ = [
     # io
     "Sample", "Request", "Response", "Usage", "Prediction",
     # capability
-    "Capabilities",
+    "Capabilities", "SystemKind",
     # protocols
     "Task", "Scorer", "System", "Data",
     # results
@@ -53,7 +53,7 @@ __all__ = [
     # types
     "LossFn", "SystemLoader",
     # errors
-    "BenchyError", "LoadError", "SchemaViolation",
+    "BenchyError", "LoadError", "SchemaViolation", "ParseFailure",
     "SystemFailure", "CapabilityError",
 ]
 
@@ -202,12 +202,12 @@ class Response:
     """Raw output from an AI-system, before the Task interprets it.
 
     `data` is populated only when the system natively returned structured
-    output. Otherwise the Task parses `text`. There is no `raw` field: a
-    provider-native payload nobody reads is not wire, it is a souvenir.
+    output. Otherwise the Task parses `text`.
     """
 
     text: str | None = None
     data: Any = None
+    raw: Any = None
     usage: Usage | None = None
     latency_ms: float | None = None
     error: str | None = None
@@ -231,28 +231,30 @@ class Prediction:
 # Capabilities — how benchy hides AI-system configuration
 # --------------------------------------------------------------------------
 
+SystemKind = Literal["model", "node", "workflow", "agent"]
+
 
 @dataclass(frozen=True, slots=True)
 class Capabilities:
     """What a System can be handed and what it can hand back.
 
-    This is the negotiation record for the Task<->System bridge: the Task
-    consults it when rendering a Request and when parsing a Response. A
-    system with `structured_output=True` gets a schema-constrained request;
-    one without gets the schema encoded in the prompt and its text repaired
-    on the way back. Same for audio-in vs transcribe-then-prompt. The author
-    never sees it.
-
-    The field set is the Cutting Theorem's (a)/(b) survivors and is locked by
-    tests: a field earns a place here only if exam rendering or grading
-    actually branches on it. Writers without readers are superstition.
+    The Task consults this when rendering a Request: a system with
+    `structured_output=True` gets a schema-constrained request; one without
+    gets the schema encoded in the prompt and its text repaired on the way
+    back. That negotiation is why authoring stays clean.
     """
 
+    kind: SystemKind = "model"
     text_in: bool = True
     image_in: bool = False
     audio_in: bool = False
+    video_in: bool = False
     structured_output: bool = False
+    tools: bool = False
+    streaming: bool = False
+    batch: bool = False
     max_concurrency: int = 4
+    context_tokens: int | None = None
 
     def accepts(self, part: Part) -> bool:
         match part:
@@ -284,6 +286,8 @@ class System(Protocol):
     capabilities: Capabilities
 
     async def invoke(self, request: Request) -> Response: ...
+
+    async def aclose(self) -> None: ...
 
 
 @runtime_checkable
@@ -328,17 +332,15 @@ class Scorer(Protocol):
 
 @runtime_checkable
 class Data(Protocol):
-    """The evidence: a stream of Samples that satisfy the Task's schema.
-
-    Splits are a *source* concern, not a protocol concern — a `jsonl:` or
-    `hf:` source selects its partition at load time, so there is no
-    `split()` method here. Partitioning for an optimize/evaluate loop is
-    done by constructing one Data per partition.
-    """
+    """The evidence: a stream of Samples that satisfy the Task's schema."""
 
     def __iter__(self) -> Iterator[Sample]: ...
+
     def __len__(self) -> int: ...
+
     def take(self, n: int) -> Data: ...
+
+    def split(self, name: str) -> Data: ...
 
 
 # --------------------------------------------------------------------------
@@ -409,6 +411,10 @@ class LoadError(BenchyError):
 
 class SchemaViolation(BenchyError):
     """A Sample or a Prediction does not satisfy the Task's schema."""
+
+
+class ParseFailure(BenchyError):
+    """A Response could not be interpreted against the output schema."""
 
 
 class SystemFailure(BenchyError):

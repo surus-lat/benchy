@@ -1,3 +1,30 @@
+can we build benchy agent around pi agent? 
+
+
+the ui is for visualizing the yaml, editing it directly, and calling the agent to edit the yaml indirectly
+
+benchy agent is the program: 
+
+in: human request
+out: .yaml
+
+and
+
+in: human request
+out: synthethic data
+
+all of these benchy agent subprograms can be just skills.
+
+
+
+
+benchy engine is the program: 
+
+in: .yaml
+out: benchmark run
+
+
+
 el scoring function se puede derivar del output schema! luego se tunean weights o pasa a binario. 
 
 
@@ -63,6 +90,25 @@ await bench.run(system)                  # grade a candidate
 bench.as_loss()                          # (System) -> float
 
 as_loss is now three lines instead of a bolt-on, and reusing one exam across many systems — the actual daily use — is the native path.
+
+
+
+----
+
+parece un error definir las tasks en categorias desde el vamos, porque establece limites no muy claros. en realidad la tarea es el programa, el input-output schema, luego ese input output schema se clasifica en una tarea. porque si vos tenes un texto y un json de output, es necesariamente un extract? puede ser un classify en texto? cuales son esas reglas? creo que todavia no lo sabemos, pero el nucleo es el programa, y el programa se define como su input output schema. y luego la scoring function se deriva del input-output schema, con posibilidad de cambiarle los pesos o hacer que sea un test binario de pass si todo esta bien, fail si al menos una cosa esta mal (que tal vez se puede representar con pesos, pero no se me ocurre ahora mismo). 
+
+luego el /<domain> se deriva de la data, junto con /<language>
+y asi lleva la ontologia de /<task?>/<domain?>/<language?>, pero no se limita desde el vamos. 
+
+
+luego cosas de ingenieria o programacion mas a bajo nivel si usar kwargs, que clases, etc, es secundario. lo principla es definir la ontologia, la forma de pensar indicada en este proyecto para lograr la vision, para transmitir una forma particular de ver el mundo que creemos es la mejor para hacer benchmarks. igual eventualmente vamos a bajar ahi, pero no todavia. 
+
+
+exam.data se ve suficientemente bueno, tal vez a mejorar luego. lo mismo con el system. son piezas de ingenieria que ahora funcionan, luego vemos si las mejoramos o las rediseñamos. 
+
+querria pensar en la forma del .yaml, porque se puede diseñar/representar de varias formas y quisiera llega a algo que me guste y me parezca que es pura señal. 
+
+
 
 
 

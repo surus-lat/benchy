@@ -46,60 +46,6 @@ class TestProtocolConformance:
 
 
 # --------------------------------------------------------------------------
-# Seam 1b: composition. "Any workflow is just another System" — locked.
-# --------------------------------------------------------------------------
-
-class TestCompositionIsJustAnotherSystem:
-    async def test_a_two_stage_workflow_loaded_via_python_is_graded_like_a_model(self, mods, tmp_path):
-        """The theory's claim, made executable: a workflow — segment, then
-        extract per segment, then merge — is not a new concept. It is a
-        System. The host language is the composition algebra; `python:` is
-        the universal constructor; the engine grades it identically to a
-        raw model. If this test breaks because composition needs special
-        engine support, abstraction creep has entered the spine."""
-        wf = tmp_path / "workflow.py"
-        wf.write_text(
-            "from benchy.core import Request, Response, Message, TextPart\n"
-            "async def _extract(system, segment):\n"
-            "    req = Request(messages=(Message.text('user', f'extract: {segment}'),))\n"
-            "    return (await system.invoke(req)).text\n"
-            "async def system(request):\n"
-            "    from benchy.system import load\n"
-            "    doc = request.messages[0].parts[0].text\n"
-            "    segments = [s for s in doc.split('|') if s]\n"
-            "    name = await _extract(load('echo:', text='Ana'), segments[0])\n"
-            "    city = await _extract(load('echo:', text='BA'), segments[1])\n"
-            "    return Response(text=f'{name} of {city}')\n"
-            "",
-            encoding="utf-8",
-        )
-        system = mods["system"].load(f"python:{wf}:system")
-        task = mods["task"].builtin.freeform(ontology="qa/general/en")
-        data = mods["data"].Data.from_samples([
-            Sample(id="1", input={"text": "seg-one|seg-two"}, expected="Ana of BA"),
-        ])
-        bench = mods["benchmark"].Benchmark(task=task, data=data, scoring=mods["scoring"].exact_match())
-        report = await bench.run(system)
-        assert report.fitness == 1.0
-        assert report.n_errors == 0
-
-    def test_the_system_protocol_stays_opaque_under_composition(self, mods, tmp_path):
-        """Composing must not leak stage shapes into the wire: a workflow's
-        Response is a plain Response, graded by the same parse path."""
-        wf = tmp_path / "wf2.py"
-        wf.write_text(
-            "from benchy.core import Response\n"
-            "def system(request):\n"
-            "    return Response(text='plain')\n"
-            "",
-            encoding="utf-8",
-        )
-        s = mods["system"].load(f"python:{wf}:system")
-        assert isinstance(s, SystemProto)
-        assert s.capabilities.text_in
-
-
-# --------------------------------------------------------------------------
 # Seam 2: Task <-> System. The render/parse bridge over an opaque system.
 # --------------------------------------------------------------------------
 

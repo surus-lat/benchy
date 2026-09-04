@@ -29,6 +29,7 @@ from benchy.core import (
     LossFn,
     Message,
     OntologyPath,
+    ParseFailure,
     Part,
     Prediction,
     Record,
@@ -41,6 +42,7 @@ from benchy.core import (
     Scorer,
     System,
     SystemFailure,
+    SystemKind,
     Task,
     TextPart,
     Usage,
@@ -68,8 +70,8 @@ def __getattr__(name: str):  # pragma: no cover - trivial dispatch
 __all__ = [
     "AudioPart", "BenchyError", "Capabilities", "CapabilityError", "Data",
     "ImagePart", "LoadError", "LossFn", "Message", "OntologyPath",
-    "Part", "Prediction", "Record", "Report", "Request",
+    "ParseFailure", "Part", "Prediction", "Record", "Report", "Request",
     "Response", "Sample", "SchemaViolation", "Score", "Scorer", "System",
-    "SystemFailure", "Task", "TextPart", "Usage",
+    "SystemFailure", "SystemKind", "Task", "TextPart", "Usage",
     "Benchmark", "load_benchmark", "__version__",
 ]
