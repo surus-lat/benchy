@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("transformers")
+
 from benchy.core import LoadError
 from benchy.system import load
 from benchy.system.hf import _detect_family, known_families
