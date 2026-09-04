@@ -81,6 +81,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "coverage>=7.0.0",
     "ruff>=0.6.0",
+    "jiwer>=3.0.0",
 ]
 
 [tool.pytest.ini_options]
