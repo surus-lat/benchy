@@ -10,7 +10,9 @@
 
 - Fecha del handoff: 2026-09-04
 - Rama: `REF/new-benchy` (este commit). `main` está congelado atrás en 7c2f4e0.
-- Test: `make test` → **991 passed, 43 skipped** (los 43 = system/hf sin red/hardware).
+- Test gate: `make test` → **950 passed, 49 skipped, 0 failed** en un clone limpio
+  con solo `.[dev]` (los skips = system/hf sin transformers/torch). En la máquina
+  origin con venv completo da 991/43 — mismo suite, más deps pesadas.
 - Python 3.12+ (pyproject `requires-python >= 3.12`); venv vía `make setup-venv-default` o `uv venv`.
 
 ## 0. Qué es esto
@@ -141,9 +143,11 @@ $300 max, "Esto es recontra importante salga bien."**
   Aprende de `search/UNIFIED.md` como formato de harvest (10/10 arms,
   invariantes numerados, divergencias resueltas con veredicto).
 - **Bar idéntico entre árboles**: el golem define idéntico bar en todos los
-  worktrees (mismos tests, mismo fingerprint). Los 8 worktrees existentes
-  (`.worktrees/{scoring,task,system,data,engine,cli,adapters,core}`) son de
-  ronda 1; crea los tuyos para ronda 2.
+  worktrees (mismos tests, mismo fingerprint). Evidencia de ronda 1: las
+  branches remotas `search/s01..s10` (cada arm de UNIFIED.md vive ahí —
+  `git log search/sNN` / `git diff main...search/sNN` para ver qué hizo cada
+  arm). Los worktrees `.worktrees/` de la máquina origin son de ronda 1;
+  crea los tuyos propios para ronda 2.
 - **Presupuesto**: $300 max. "no super-API de scoring, no DSL de workflows,
   no optimizer surfaces antes del merge, no tocar el spine" (anti-goals del
   roadmap).
