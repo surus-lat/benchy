@@ -10,7 +10,8 @@ from __future__ import annotations
 import io
 
 import pytest
-import soundfile as sf
+
+sf = pytest.importorskip("soundfile")
 
 from benchy.core import AudioPart, Message, Request
 from benchy.system import load
