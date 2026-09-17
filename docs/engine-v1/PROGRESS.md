@@ -364,7 +364,7 @@ in a scratch clone of `llm-client`: expose finish_reason; merge extra_body into 
 "hit its token limit… raise max_tokens", and nested `stop` now truncates. benchy already
 honours finish_reason when present (tested with an injected client), so it improves the
 moment the fix lands. Not pushed because the second commit changes behaviour for the
-IHSA backend.
+internal backend.
 
 Gates: clean clone `[dev]` — 286 passed, 42 provider tests skipped, installs benchy +
 PyYAML only. Clean clone `[dev,providers]` — 328 passed, live example 3/3, score 1.0.
@@ -375,19 +375,19 @@ Pushed `benchy/finish-reason-and-extra-body` and opened
 [surus-lat/llm-client#1](https://github.com/surus-lat/llm-client/pull/5), reviewers
 `marianbasti` and `KennBro`, plus issues #2 and #3 for what it deliberately leaves open.
 
-**The IHSA question, answered before writing the PR.** `ihsa-a4-carga-traslados` does not
+**The blast-radius question, answered before writing the PR.** The internal backend that vendors this client does not
 depend on this package: every caller imports `src.services.llm_client`, its own vendored
 module, and `llm-client` is absent from `backend/pyproject.toml`. So no production impact
 today — the risk is at migration (`#108`/`#109`).
 
-**That investigation changed the fix.** IHSA's only `extra_body` use is
+**That investigation changed the fix.** Its only `extra_body` use is
 `{"enable_thinking": False}`, and its vendored client sends *both* the nested key and
 `chat_template_kwargs.enable_thinking` — the latter being what vLLM reads. The package's
 generic profile sent only the nested one. A plain flatten would have turned a
 silently-ignored key into a top-level `enable_thinking` that a strict server may 400 on,
 and neither form is the one vLLM honours. So commit 2 now maps `enable_thinking` to
 `chat_template_kwargs`, matching the vendored behaviour exactly. The PR therefore
-*removes* a migration landmine — had IHSA migrated first, thinking suppression would have
+*removes* a migration landmine — had it migrated first, thinking suppression would have
 silently stopped working and extraction would have begun failing to parse with nothing to
 point at.
 
@@ -474,7 +474,7 @@ passed; working tree clean; ruff clean.
 Challenged on "blocked on review" and the challenge was right. benchy itself was never
 blocked: 336 green against `llm-client` **main**, 0 conflicts against `origin/main`. Only
 Claude on Bedrock needed unmerged code, and only **one of five commits** actually needed
-an IHSA reviewer.
+an internal backend reviewer.
 
 **Split the llm-client work by risk.** #1 and #4 are closed, replaced by two independent
 PRs to `main`:
