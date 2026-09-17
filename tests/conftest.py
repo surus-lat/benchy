@@ -1,46 +1,64 @@
-"""Shared pytest configuration for Benchy tests."""
+"""Shared fixtures: the canonical benchmark from paper §9."""
 
-import asyncio
-import inspect
+from __future__ import annotations
+
+import textwrap
+
 import pytest
+import yaml
 
-# Import all fixtures so they're available to all tests
-from tests.fixtures import *  # noqa: F401, F403
+CANONICAL = textwrap.dedent("""
+    version: "1.0"
+    ontology_version: "1.0"
+
+    benchmark:
+      task: extract
+      domain: finance
+      language: es
+
+    program:
+      input:
+        image: image
+      output:
+        invoice_number: string
+        date: date
+        supplier: string
+        subtotal: float
+        total: float
+
+    scoring:
+      weights:
+        invoice_number: 1
+        date: 1
+        supplier: 1
+        subtotal: 1
+        total: 5
+      aggregator: weighted_mean
+
+    data:
+      path: ./data/invoices.jsonl
+
+    ai-system:
+      type: external
+      id: invoice-extractor-v7
+""").strip()
 
 
-def pytest_configure(config):
-    """Register markers used across test suites."""
-    config.addinivalue_line("markers", "asyncio: mark test as asyncio-compatible")
-    config.addinivalue_line("markers", "anyio: mark test to run with anyio backend")
+def edit(**changes) -> str:
+    """The canonical document with top-level sections replaced or removed.
 
-
-def pytest_collection_modifyitems(config, items):
-    """Support asyncio-marked tests even when pytest-asyncio isn't installed."""
-    if config.pluginmanager.hasplugin("asyncio"):
-        return
-
-    for item in items:
-        if item.get_closest_marker("asyncio") and not item.get_closest_marker("anyio"):
-            item.add_marker(pytest.mark.anyio)
-
-
-def pytest_pyfunc_call(pyfuncitem):
-    """Run async tests when no async plugin is available.
-
-    This keeps the suite runnable in environments that have neither
-    `pytest-asyncio` nor anyio-based async test auto-handling enabled.
+    A value of `None` deletes the key, so unknown/missing-key cases stay readable.
     """
-    if pyfuncitem.config.pluginmanager.hasplugin("asyncio"):
-        return None
+    doc = yaml.safe_load(CANONICAL)
+    for key, value in changes.items():
+        key = key.replace("ai_system", "ai-system")
+        if value is None:
+            doc.pop(key, None)
+        else:
+            doc[key] = value
+    return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
 
-    test_func = pyfuncitem.obj
-    if not inspect.iscoroutinefunction(test_func):
-        return None
 
-    funcargs = {
-        arg: pyfuncitem.funcargs[arg]
-        for arg in pyfuncitem._fixtureinfo.argnames
-        if arg in pyfuncitem.funcargs
-    }
-    asyncio.run(test_func(**funcargs))
-    return True
+@pytest.fixture
+def canonical() -> str:
+    return CANONICAL
