@@ -29,6 +29,24 @@ pytestmark = pytest.mark.skipif(
     reason="needs the providers extra: pip install 'benchy[providers]'",
 )
 
+
+def _has_converse() -> bool:
+    """Bedrock Converse support lives in llm_client; it is unmerged as of writing.
+
+    See surus-lat/llm-client#4. These tests activate the moment it lands.
+    """
+    try:
+        from llm_client import profiles
+
+        return hasattr(profiles, "BedrockConverseProfile")
+    except ImportError:
+        return False
+
+
+needs_converse = pytest.mark.skipif(
+    not _has_converse(), reason="needs llm_client with BedrockConverseProfile (surus-lat/llm-client#4)"
+)
+
 TEXT = edit(
     program={"input": {"text": "string"}, "output": {"supplier": "string", "total": "float"}},
     scoring={"weights": {"supplier": 1, "total": 1}, "aggregator": "weighted_mean"},
@@ -38,14 +56,15 @@ TEXT = edit(
 GOOD = json.dumps({"supplier": "ACME", "total": 121.0})
 
 
-def benchmark(provider="openai", *, inp=None, out=None, **system):
+def benchmark(provider="openai", *, inp=None, out=None, model_override=None, **system):
     out = out or {"total": "float"}
     weights = {name: 1 for name in out}
+    system.setdefault("model", model_override or "test-model")
     return compile_benchmark(edit(
         program={"input": inp or {"text": "string"}, "output": out},
         scoring={"weights": weights, "aggregator": "weighted_mean"},
         data={"path": "./exam.jsonl"},
-        ai_system={"type": "model", "provider": provider, "model": "test-model", **system},
+        ai_system={"type": "model", "provider": provider, **system},
     ))
 
 
@@ -403,7 +422,8 @@ async def test_an_empty_reply_explains_itself(workspace, response):
         result = await execute(compile_benchmark(TEXT), workspace, empty)
         (only,) = result["results"]
         assert only["status"] == "execution_error"
-        assert "no content" in only["error"]["message"]
+        # Which message depends on whether the client surfaces finish_reason; both say
+        # what to do about it, which is the part that matters.
         assert "max_tokens" in only["error"]["message"]
     finally:
         empty.close()
@@ -482,3 +502,108 @@ async def test_without_finish_reason_a_truncation_still_scores_nothing(workspace
     (only,) = result["results"]
     assert (only["status"], only["score"], only["contribution"]) == ("invalid_output", None, 0.0)
     assert only["prediction"] == '{\n  "supplier": "ACME",'
+
+
+# ---------------------------------------------------------------------------
+# Bedrock + Claude: Converse rather than chat completions
+# ---------------------------------------------------------------------------
+
+class ConverseProvider(Provider):
+    """A stand-in Bedrock Converse endpoint: forced tool in, tool input out."""
+
+    def __init__(self, stop_reason="tool_use", output=None):
+        self.stop_reason = stop_reason
+        self.output = {"invoice": "A-001"} if output is None else output
+        super().__init__()
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                outer.requests.append({"path": self.path, "headers": dict(self.headers),
+                                       "payload": json.loads(body)})
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "stopReason": outer.stop_reason,
+                    "usage": {"inputTokens": 1, "outputTokens": 1, "totalTokens": 2},
+                    "output": {"message": {"content": [{"toolUse": {"input": outer.output}}]}},
+                }).encode())
+
+        self.server.shutdown()
+        self.server.server_close()
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+
+def bedrock_adapter(ir, workspace, provider):
+    return providers.for_system(ir, workspace, env={
+        "BEDROCK_BASE_URL": provider.base_url.replace("/v1", ""),
+        "AWS_BEARER_TOKEN_BEDROCK": "bedrock-key",
+    })
+
+
+@needs_converse
+async def test_a_claude_model_on_bedrock_goes_to_converse_with_a_forced_tool(workspace):
+    """Claude does not serve Bedrock's chat-completions endpoint, so llm_client routes
+    it to Converse. benchy needs no Anthropic-specific code for that to work."""
+    converse = ConverseProvider(output={"supplier": "ACME", "total": 121.0})
+    try:
+        ir = benchmark("bedrock", out={"supplier": "string", "total": "float"},
+                       model_override="us.anthropic.claude-haiku-4-5-20251001-v1:0")
+        result = await run(ir, workspace, bedrock_adapter(ir, workspace, converse))
+        assert result["benchmark_score"] == 1.0
+
+        payload = converse.payload
+        assert "/model/us.anthropic.claude-haiku-4-5-20251001-v1:0/converse" in converse.requests[0]["path"]
+        assert payload["system"] == [{"text": "Answer with a JSON object matching the required schema."}]
+        tool = payload["toolConfig"]["tools"][0]["toolSpec"]
+        assert tool["inputSchema"]["json"]["required"] == ["supplier", "total"]
+        assert payload["toolConfig"]["toolChoice"] == {"tool": {"name": tool["name"]}}
+        assert "response_format" not in payload
+    finally:
+        converse.close()
+
+
+@needs_converse
+async def test_a_converse_truncation_is_explained_like_any_other(workspace):
+    """Converse reports stopReason max_tokens; llm_client maps it to finish_reason length."""
+    converse = ConverseProvider(stop_reason="max_tokens", output={"supplier": "ACME", "total": 121.0})
+    try:
+        ir = benchmark("bedrock", out={"supplier": "string", "total": "float"},
+                       model_override="us.anthropic.claude-sonnet-4-6")
+        (only,) = (await run(ir, workspace, bedrock_adapter(ir, workspace, converse)))["results"]
+        assert only["status"] == "execution_error"
+        assert "max_tokens" in only["error"]["message"]
+    finally:
+        converse.close()
+
+
+async def test_a_non_claude_bedrock_model_still_uses_chat_completions(workspace, provider):
+    ir = benchmark("bedrock", out={"supplier": "string", "total": "float"}, model_override="openai.gpt-oss-120b")
+    await run(ir, workspace, providers.for_system(ir, workspace, env={
+        "BEDROCK_BASE_URL": provider.base_url, "AWS_BEARER_TOKEN_BEDROCK": "k"}))
+    assert provider.requests[0]["path"].endswith("/chat/completions")
+    assert provider.payload["response_format"]["type"] == "json_schema"
+
+
+def test_claude_on_bedrock_without_converse_support_fails_at_setup(tmp_path):
+    """Better a named setup error than one mystery execution_error per example."""
+
+    class WithoutConverse:  # an llm_client whose ProviderProfile has no Converse member
+        pass
+
+    ir = benchmark("bedrock", model_override="us.anthropic.claude-sonnet-4-6")
+    with pytest.raises(BenchyError) as exc:
+        providers.OpenAIChat(
+            ir, tmp_path,
+            {"AWS_BEARER_TOKEN_BEDROCK": "k", "AWS_REGION": "us-east-1"},
+            call=None, profiles=WithoutConverse(),
+        )
+    assert exc.value.code == "adapter_not_bound"
+    assert "Converse" in exc.value.message
+    assert "llm-client#4" in exc.value.message

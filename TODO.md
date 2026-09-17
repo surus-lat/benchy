@@ -8,39 +8,49 @@ Everything below is what is *not* done. Each item says who it needs.
 
 ---
 
-## 1. Providers — **Together live; Bedrock built, needs credentials**
+## 1. Providers — **Together and Bedrock both live, including Claude**
 
-The adapter's transport is now SURUS's `llm-client` (`pip install -e '.[providers]'`).
-Together is the main backend and runs live: `examples/together/` scores 1.0.
+Transport is SURUS's `llm-client` (`pip install -e '.[providers]'`). Three examples run
+the *same* benchmark against different AI-systems: `examples/invoices` (offline stand-in),
+`examples/together`, `examples/bedrock-claude`.
 
-Done, each verified against the real endpoint:
+- [x] Together live: `Qwen/Qwen3.8-2.4T-A95B` scores 3/3
+- [x] **Bedrock + Claude live:** `us.anthropic.claude-haiku-4-5-20251001-v1:0` scores 3/3
+      with nested objects, dates and floats all schema-conformant
+- [x] Strict structured outputs, 429 retry, no-fallback and no-dropped-parameter
+      guarantees all verified against real endpoints
+- [x] Region settled by evidence: `us-east-1` has 6 Claude models on mantle, `us-west-2`
+      has 1. Use `us-east-1`.
 
-- [x] Strict structured outputs honoured exactly; no `json_object` fallback needed
-- [x] Together's WAF 403s `Python-urllib` but accepts `llm-client`'s httpx agent
-- [x] A null `max_tokens` is accepted, so `llm-client`'s 2000 default is never injected
-- [x] A 429 is retried rather than scored; a rejected schema is never retried without it
-- [x] Parameters beyond `temperature` / `max_tokens` refused at setup — through
-      `llm-client` they would be silently ignored (proven with `stop` on Together)
-- [x] Bedrock endpoint shape confirmed: `bedrock-runtime.<region>/openai/v1` answers an
-      invalid bearer token with an OpenAI-shaped 401
+Two findings worth keeping:
+
+- **Claude needs a cross-region inference profile id** (`us.anthropic.…`). Every Anthropic
+  model on Bedrock is `INFERENCE_PROFILE`-only; a bare `anthropic.claude-…` is refused
+  with *"on-demand throughput isn't supported"*.
+- **Bedrock's `openai.gpt-oss-120b` ignores `response_format` entirely** and emits
+  `<reasoning>…` inline, so it scores 0 on a schema-constrained benchmark. Verified with
+  raw curl — that is a true measurement of that deployment, not an adapter defect.
 
 Open:
 
-- [ ] **Bedrock live run — needs from you:** a Bedrock **API key** (not IAM access
-      keys) as `AWS_BEARER_TOKEN_BEDROCK`, an `AWS_REGION`, and which model(s).
-- [ ] **Decide on Claude via Bedrock.** Bedrock's Chat Completions endpoint serves
-      OpenAI, Qwen, Mistral, Google, NVIDIA, xAI and others — but **not** Claude
-      (0 of 17), Nova (0 of 13) or Llama (0 of 12). Claude on Bedrock needs the
-      Anthropic Messages API or Converse, i.e. a new request shape in `llm-client`.
-      Only worth building if Claude is why Bedrock is wanted.
-- [ ] `image` input round-trip against a vision model (the invoice example is text-only)
+- [ ] **Enable the newer Claude models on the AWS account** if they are wanted for evals.
+      8 of 15 `us.*` profiles are available on account `354918377724`; not available:
+      `sonnet-5`, `opus-5`, `opus-4-7`, `opus-4-8`, `fable-5`, `fable-5-1`
+      (*"is not available for this account"*). Available: `haiku-4-5`, `sonnet-4`,
+      `sonnet-4-5`, `sonnet-4-6`, `opus-4-1`, `opus-4-5`, `opus-4-6`, `claude-3-haiku`.
+- [ ] `image` input round-trip against a vision model. The Converse profile translates
+      data URLs to Converse image blocks and is unit-tested, but never run live.
+- [ ] Rotate the Together and Bedrock keys — both were pasted into a chat transcript.
 
 ---
 
 ## 1b. `llm-client` upstream — **PR open, awaiting review**
 
-[surus-lat/llm-client#1](https://github.com/surus-lat/llm-client/pull/1) — 3 commits,
-+101/-4, 24 tests passing. Reviewers: `marianbasti`, `KennBro`.
+Two PRs, stacked. Reviewers on both: `marianbasti`, `KennBro`.
+
+**[#1](https://github.com/surus-lat/llm-client/pull/1)** → `main` — 3 commits, 24 tests.
+**[#4](https://github.com/surus-lat/llm-client/pull/4)** → #1's branch — Bedrock Converse,
+32 tests. Merge #1 first.
 
 - [x] Expose `finish_reason`, so a truncated reply is distinguishable from a malformed
       one. Verified live: `max_tokens 16` goes from `invalid_output` ("expected an
@@ -54,9 +64,14 @@ Open:
       `llm-client` is absent from `backend/pyproject.toml`. No production impact today;
       the PR in fact *removes* a migration landmine, since the generic profile would have
       silently dropped IHSA's `enable_thinking` suppression.
-- [ ] Merge, then widen benchy's accepted parameters beyond `temperature` / `max_tokens`
-      for chat-completions endpoints, and drop benchy's forward-compatible
-      `finish_reason` branch comment about clients that lack it.
+- [x] **#4: Bedrock Converse profile**, so Claude is reachable at all. Also lets a caller
+      *state* the profile instead of inferring it from the hostname — benchy does, because
+      a `BEDROCK_BASE_URL` pointing at a gateway would otherwise silently get the wrong
+      request shape and fail every example.
+- [ ] Merge #1 then #4. Until #4 lands, benchy raises a named setup error for Claude on
+      Bedrock, and two of its tests skip (`needs_converse`).
+- [ ] After merging: widen benchy's accepted parameters beyond `temperature` /
+      `max_tokens` for chat-completions endpoints.
 
 Deliberately left open, tracked upstream:
 

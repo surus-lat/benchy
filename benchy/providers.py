@@ -13,9 +13,16 @@ selected — an external adapter runs without it.
 This file owns only what is specific to *benchmarking*: turning the program contract
 into a request, and refusing anything that would make the measurement lie.
 
-**One adapter, a table of endpoints.** OpenAI, Together and Bedrock all speak OpenAI
-chat completions, so a provider is an endpoint plus the name of its credential, and any
-of them can be pointed elsewhere with `<PROVIDER>_BASE_URL`.
+**One adapter, a table of endpoints.** A provider is an endpoint plus the name of its
+credential, and any of them can be pointed elsewhere with `<PROVIDER>_BASE_URL`.
+
+Anthropic models on Bedrock are the one exception to "everything speaks chat
+completions": they do not serve that endpoint at all, and are reached through Converse,
+where the output schema becomes a forced tool call. `llm_client` owns that translation;
+this file only says *which* request shape applies, explicitly rather than letting a
+hostname heuristic decide — a `BEDROCK_BASE_URL` pointing at a gateway would otherwise
+silently get the wrong one. Claude on Bedrock must be named by its cross-region
+inference profile (`us.anthropic.…`), the only form it is invocable under.
 
 Five refusals, each tested:
 
@@ -97,14 +104,14 @@ def for_system(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None
             ["ai-system", "provider"],
         )
     try:
-        from llm_client import call
+        from llm_client import ProviderProfile, call
     except ImportError:
         raise BenchyError(
             "runtime", "adapter_not_bound",
             "model providers need the providers extra: pip install 'benchy[providers]'",
             ["ai-system", "provider"],
         ) from None
-    return OpenAIChat(ir, Path(workspace), os.environ if env is None else env, call)
+    return OpenAIChat(ir, Path(workspace), os.environ if env is None else env, call, ProviderProfile)
 
 
 class OpenAIChat:
@@ -114,7 +121,7 @@ class OpenAIChat:
     fails at setup rather than producing a column of identical `execution_error`s.
     """
 
-    def __init__(self, ir: Mapping, workspace: Path, env: Mapping[str, str], call) -> None:
+    def __init__(self, ir: Mapping, workspace: Path, env: Mapping[str, str], call, profiles=None) -> None:
         system = ir["ai-system"]
         provider = system["provider"]
         endpoint, credential = _ENDPOINTS[provider]
@@ -144,6 +151,19 @@ class OpenAIChat:
             )
 
         self.call = call
+        # Bedrock serves Anthropic models only through Converse. Stated, not inferred:
+        # a BEDROCK_BASE_URL pointing at a gateway would defeat a hostname heuristic.
+        self.profile = None
+        if provider == "bedrock" and "anthropic" in system["model"].lower():
+            self.profile = getattr(profiles, "BEDROCK_CONVERSE", None)
+            if self.profile is None:
+                raise BenchyError(
+                    "runtime", "adapter_not_bound",
+                    "Claude on Bedrock needs an llm_client with Bedrock Converse support "
+                    "(surus-lat/llm-client#4); the installed one has none, and Anthropic models "
+                    "do not serve Bedrock's chat-completions endpoint",
+                    ["ai-system", "model"],
+                )
         self.base_url = base_url.rstrip("/")
         self.api_key = env[credential]
         self.model = system["model"]
@@ -159,6 +179,9 @@ class OpenAIChat:
         self.prompt = _prompt(system, workspace)
 
     async def invoke(self, input_object: dict) -> object:
+        # Only sent when set: an llm_client without the parameter still works for every
+        # provider that needs no explicit profile.
+        routing = {"profile": self.profile} if self.profile is not None else {}
         try:
             reply = await self.call(
                 messages=[
@@ -173,6 +196,7 @@ class OpenAIChat:
                 response_format=self.response_format,
                 timeout=self.timeout,
                 operation="benchy",
+                **routing,
             )
         except Exception as exc:
             # llm_client raises its transport's HTTP error; the body is what says why.
