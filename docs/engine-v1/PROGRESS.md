@@ -211,3 +211,26 @@ Not done, deliberately, each with a reason recorded above:
   Add on measured need, not on principle.
 - **Field evaluators / `transcribe`** — explicit non-goal. Paper Appendix E holds the
   design, including the measured 9–15 point size of the normalization decision.
+
+## 2026-09-17 09:45 -03 — clean-clone gate, and the bug it caught
+
+Ran the clean-clone gate the old HANDOFF used: fresh `git clone`, fresh venv,
+`pip install -e '.[dev]'`, full suite. It immediately caught a bug the 280-test suite
+could not:
+
+**`examples/invoices/exam.jsonl` was gitignored and absent from every clone.** A
+repo-wide `*.jsonl` ignore — correct for datasets and run artifacts — also ate the
+example's exam. The suite passed locally because the file existed locally; on a fresh
+clone the README's headline command failed with `data_not_found`. Negated the ignore
+under `examples/` and added a test asserting every example file is present and not
+ignored, because the suite passing while the repo was broken is the exact failure mode
+worth pinning.
+
+Re-verified after the fix, from a clean clone at `dd4c425`: **281 passed**, and the
+README's headline command produces the score the README quotes.
+
+Lesson worth keeping: three separate defects this session were invisible to the test
+suite and visible only to *running the real thing* — the missing `package-data` entry
+for the ontology registry, the dependency list that pulled openai/pandas/datasets into
+a supposedly PyYAML-only engine, and this. Tests check the code; only installing and
+cloning check the artifact.
