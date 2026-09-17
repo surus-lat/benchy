@@ -90,7 +90,10 @@ benchy run examples/invoices/benchmark.yaml \
 }
 ```
 
-`examples/invoices/` is real and runnable — the tests execute it.
+`examples/` holds the same benchmark evaluated four ways — an offline stand-in, Together,
+Claude on Bedrock, and `examples/vision/`, where the input is a *picture* of the invoice
+rather than its text. Only `ai-system` differs between them, which is what it means for
+the benchmark to be separate from the system taking it. The tests execute them.
 
 ## The AI-system
 

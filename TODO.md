@@ -39,8 +39,10 @@ Open:
       `opus-4-7`, `opus-4-8`, `fable-5`, `fable-5-1` answer *"is not available for this
       account"*. Not a console toggle — `enableAccessToAllModelsByDefault` is already
       `true`, so it is an AWS-side allowlist. Not a benchy task.
-- [ ] `image` input round-trip against a vision model. The Converse profile translates
-      data URLs to Converse image blocks and is unit-tested, but never run live.
+- [x] `image` input round-trip against a vision model — **done live**. `examples/vision/`
+      feeds rendered invoice PNGs to `claude-haiku-4-5` on Bedrock and scores 3/3,
+      exercising workspace-confined artifact resolution, base64 inlining and Converse
+      image blocks end to end.
 - [ ] Rotate the Together and Bedrock keys — both were pasted into a chat transcript.
 
 ---

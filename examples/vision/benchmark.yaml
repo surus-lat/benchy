@@ -1,0 +1,48 @@
+# Multimodal: the same invoice extraction, but the input is a picture of the invoice
+# rather than its text. Demonstrates the `image` semantic type end to end.
+#
+#   export AWS_BEARER_TOKEN_BEDROCK=...
+#   export AWS_REGION=us-east-1
+#   benchy run examples/vision/benchmark.yaml
+#
+# The engine resolves `assets/invoice-001.png` relative to the JSONL file, confines it
+# to the benchmark workspace, and hands the adapter an absolute path. The adapter reads
+# the bytes and inlines them; for Claude on Bedrock, llm-client turns that into a
+# Converse image block. Scores 3/3 on claude-haiku-4-5.
+version: "1.0"
+ontology_version: "1.0"
+
+benchmark:
+  task: extract
+  domain: finance
+  language: es
+
+program:
+  input:
+    image: image
+  output:
+    invoice_number: string
+    date: date
+    supplier: string
+    subtotal: float
+    total: float
+
+scoring:
+  weights:
+    invoice_number: 1
+    date: 1
+    supplier: 1
+    subtotal: 1
+    total: 5
+  aggregator: weighted_mean
+
+data:
+  path: ./exam.jsonl
+
+ai-system:
+  type: model
+  provider: bedrock
+  model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  parameters:
+    temperature: 0
+    max_tokens: 2048

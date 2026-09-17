@@ -45,11 +45,10 @@ logs/
 
 # Data
 *.jsonl
-# ...but an example's exam is source, not a run artifact.
-!examples/**/*.jsonl
 *.json
-!src/tasks/**/task.json
-!configs/**/*.json
+# ...but an example's files are source, not run artifacts.
+!examples/**/*.jsonl
+!examples/**/*.json
 !submissions/**/*.json
 !configs/**/*.yaml
 # bare-metal search: benchmark data + run artifacts are deliverables, never noise
