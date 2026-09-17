@@ -140,7 +140,7 @@ ai-system:
 | provider | credential | endpoint |
 |---|---|---|
 | `together` | `TOGETHER_API_KEY` | `api.together.xyz/v1` |
-| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, plus `AWS_REGION` | `bedrock-runtime.<region>.amazonaws.com` |
+| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, plus `AWS_REGION` | `bedrock-runtime.<region>.amazonaws.com/openai/v1` |
 | `openai` | `OPENAI_API_KEY` | `api.openai.com/v1` |
 
 Any of them can be pointed elsewhere with `<PROVIDER>_BASE_URL` — vLLM, LM Studio,
