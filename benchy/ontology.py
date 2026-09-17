@@ -159,15 +159,15 @@ def _sole_output(output_ir: Mapping, expected: str, task: str) -> None:
         )
 
 
-def _extract_program(input_ir, output_ir) -> None:
+def _extract_program(*_: Mapping) -> None:
     """No task-specific structural constraint beyond the normal program rules."""
 
 
-def _classify_program(input_ir, output_ir) -> None:
+def _classify_program(_input_ir: Mapping, output_ir: Mapping) -> None:
     _sole_output(output_ir, "enum", "classify")
 
 
-def _translate_program(input_ir, output_ir) -> None:
+def _translate_program(input_ir: Mapping, output_ir: Mapping) -> None:
     if "string" not in _leaf_types(input_ir):
         raise BenchyError(
             "compile", "task_program_mismatch",

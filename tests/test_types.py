@@ -8,10 +8,6 @@ from benchy.errors import BenchyError
 from benchy.types import compile_schema, equal, leaves, validate
 
 
-def code(exc: pytest.ExceptionInfo) -> str:
-    return exc.value.code
-
-
 def compile_err(node):
     with pytest.raises(BenchyError) as exc:
         compile_schema(node)
@@ -84,7 +80,7 @@ def test_null_field_value_is_rejected():
     assert err.path == ["total"]
 
 
-def test_list_field_value_is_rejected():
+def test_c04_variable_length_collection_is_rejected():
     assert compile_err({"items": ["a", "b"]}).code == "invalid_schema"
 
 

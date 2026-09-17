@@ -4,6 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 
+[tool.setuptools.package-data]
+# The ontology registry is shipped data, resolved by version at compile time.
+benchy = ["ontologies/*.yaml"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["benchy", "benchy.*", "src", "src.*"]  # benchy/* = engine 1.0; src/* = legacy

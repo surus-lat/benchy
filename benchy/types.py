@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import math
 import os
 import re
 from collections.abc import Callable, Mapping
@@ -33,7 +34,7 @@ from benchy.errors import BenchyError
 
 __all__ = [
     "PRIMITIVES", "ARTIFACTS",
-    "compile_schema", "validate", "leaves", "equal",
+    "compile_schema", "validate", "leaves", "at", "equal",
 ]
 
 #: Paper §2 type vocabulary. `enum` is excluded: it is a declaration form
@@ -225,7 +226,7 @@ def validate(
     if t == "float":
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise BenchyError(phase, "wrong_type", f"expected a number, got {_name(value)}", list(path))
-        if value != value or value in (float("inf"), float("-inf")):
+        if not math.isfinite(value):
             raise BenchyError(phase, "invalid_value", "float must be finite", list(path))
         return value
 
@@ -275,9 +276,8 @@ def equal(a: object, b: object, node: Mapping) -> bool:
         return _same_file(str(a), str(b))
     if t == "bool":
         return a is b
-    if t in ("int", "float"):
-        # bool was excluded at validation, so no True == 1 confusion can arise.
-        return a == b
+    # string, enum, int and float are all plain value equality; bool was excluded at
+    # validation, so no `True == 1` confusion can reach here.
     return a == b
 
 

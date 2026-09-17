@@ -77,3 +77,45 @@ Design decisions taken for the runtime layer, before writing it:
   sync or async. Six lines instead of a class hierarchy.
 - Dataset errors propagate from the generator *outside* the try blocks that classify
   adapter failures, so "abort the run" vs "score as execution_error" needs no flag.
+
+## 2026-09-16 23:20 -03 — P7 through P10 done. ENGINE 1.0 COMPLETE.
+
+- **P7 `adapter.py`** (37 code lines). `invoker()` normalizes an Adapter instance or
+  a bare callable, sync or async, in six lines — which is why no adapter base class,
+  wrapper class or `FunctionAdapter` exists. The `bind`/`resolve` registry is off the
+  execution path; `run()` takes its adapter directly.
+- **P8 `score.py`** (28 code lines) — the three levels of the paper as three
+  functions, no I/O. `run.py` (69 code lines) — the loop, flat enough that the whole
+  of Benchy's execution semantics is one screen.
+- **P9 `cli.py`** + acceptance. `benchy compile` / `benchy run`. C33 verified two
+  ways: as a test, and by hand through the installed entry point — compile, delete
+  the YAML, rerun from `ir.json`, byte-identical result.
+- **P10** ruff clean on the project config *and* on a broad sweep
+  (F,E,W,I,UP,B,SIM,ARG,RET,C4,PIE). Six self-review cleanups applied, notably a
+  branch in `types.equal` that was identical to its own fallback and a dead
+  `except BenchyError: raise` in `parse`.
+- Added `tests/test_conformance_matrix.py`: scans test names for `cNN` tokens and
+  fails if any of C01–C33 (minus the withdrawn C07/C08) loses coverage.
+- **Fixed a real packaging bug** found only by smoke-testing the installed CLI:
+  `benchy/ontologies/1.0.yaml` is shipped data and had no `package-data` entry, so it
+  would have been missing from a wheel.
+
+### Final accounting
+
+| | |
+|---|---|
+| modules | 8 + `__init__` + `cli` |
+| code lines (no blanks/comments/docstrings) | **777** |
+| file lines incl. docs | 1363 |
+| tests | 268 passing, 1771 lines |
+| dependencies | **stdlib + PyYAML** (verified by importing with every heavy dep blocked) |
+| old tree, for comparison | 7801 lines across 49 files |
+
+Definition of done (handoff §19): all 15 items met. Conformance matrix: 31/31
+applicable cases green.
+
+**Next:** the engine core is done, so the remaining work is, in order:
+1. Apply `paper/v10-transcribe-removal-brief.md` to the paper (v10.2 -> v10.3) — the
+   implementation is now *ahead* of the paper, the reverse of the brief's complaint.
+2. `examples/` — a real runnable benchmark in-tree.
+3. Phase 11 provider adapters, designed fresh (NOT mined from the old tree).
