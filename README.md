@@ -137,12 +137,26 @@ ai-system:
 | provider | credential | endpoint |
 |---|---|---|
 | `together` | `TOGETHER_API_KEY` | `api.together.xyz/v1` |
-| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, plus `AWS_REGION` | `bedrock-runtime.<region>.amazonaws.com/openai/v1` |
+| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, plus `AWS_REGION` | `bedrock-runtime.<region>.amazonaws.com` |
 | `openai` | `OPENAI_API_KEY` | `api.openai.com/v1` |
 
 Any of them can be pointed elsewhere with `<PROVIDER>_BASE_URL` — vLLM, LM Studio,
-Ollama, a gateway. Bedrock's OpenAI-compatible endpoint takes a Bedrock API key and
-serves OpenAI, Qwen, Mistral, Google and others, but **not** Claude, Nova or Llama.
+Ollama, a gateway. Bedrock takes a Bedrock **API key** (not IAM keys), so no request
+signing is involved.
+
+**Claude on Bedrock** works, with two things to know. It does not serve Bedrock's
+OpenAI-compatible endpoint at all, so it is routed to the Converse API and the output
+schema becomes a forced tool call — handled for you. And it must be named by its
+cross-region inference profile, the only form it is invocable under:
+
+```yaml
+ai-system:
+  type: model
+  provider: bedrock
+  model: us.anthropic.claude-haiku-4-5-20251001-v1:0   # not `anthropic.claude-…`
+```
+
+`us-east-1` carries the most Claude models. See `examples/bedrock-claude/`.
 
 The adapter asks for structured output against a JSON schema derived from your
 program's output schema, and refuses anything that would make the measurement lie:
@@ -216,7 +230,7 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-780 lines of code, plus 185 in the optional provider adapter. There is exactly one
+780 lines of code, plus 198 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 

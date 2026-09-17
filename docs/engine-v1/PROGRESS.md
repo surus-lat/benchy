@@ -393,3 +393,46 @@ point at.
 
 Lesson: the blast-radius check was worth more than the fix. Reading the consumer turned a
 change that could have broken them into one that protects them.
+
+## 2026-09-17 — Claude on Bedrock, live
+
+User gave a Bedrock API key and asked for Claude. Region: "don't care unless important"
+— it is. `us-east-1` carries 6 Claude models on mantle, `us-west-2` carries 1.
+
+**Four dead ends, each checked rather than assumed**, before any code:
+
+| route | result |
+|---|---|
+| `bedrock-runtime` `/openai/v1/chat/completions` | Claude absent (AWS table: 0 of 17 Anthropic models) |
+| `bedrock-mantle` `/v1/chat/completions` | 400 — "does not support the '/v1/chat/completions' API" |
+| `bedrock-mantle` `/anthropic/v1/messages` | path exists, but rejects Bedrock's `us.*` ids |
+| `bedrock-runtime` `/model/{id}/converse` | **works** |
+
+Plus the thing that made every early attempt fail: Anthropic models on Bedrock are
+`INFERENCE_PROFILE`-only, so only `us.anthropic.…` / `global.anthropic.…` ids are
+invocable. A bare id gets "on-demand throughput isn't supported", which reads like an
+entitlement problem and is not one.
+
+**Built `BedrockConverseProfile` in llm-client** (PR #4, stacked on #1). Converse differs
+three ways and the profile absorbs all three: model in the URL path, `system` as a
+top-level list, and no `response_format` — a schema becomes a *forced tool call* whose
+`input` is returned as `content` JSON. That last choice is why **benchy needed no
+Anthropic-specific code in `invoke` at all**: it still just `json.loads(content)`.
+
+**A design bug my own test caught.** Routing was by hostname substring
+(`"bedrock-runtime" in url`), so the local stand-in — and in production any
+`BEDROCK_BASE_URL` pointing at a gateway — silently fell back to chat completions and
+failed every example. The live run had only passed because the real hostname matched. Fixed
+by letting a caller *state* the profile; benchy does, since it knows its own provider
+table. Deterministic beats magic when a wrong guess means a failed run.
+
+Live, all three backends, same benchmark, only `ai-system` differing:
+Claude on Bedrock 3/3 · Together 3/3 · offline stand-in 0.8148.
+
+And one honest measurement: Bedrock's `openai.gpt-oss-120b` **ignores `response_format`**
+and emits `<reasoning>…` inline, so it scores 0. Confirmed by raw curl. benchy reporting
+`invalid_output` rather than salvaging JSON from the prose is the no-coercion rule doing
+its job.
+
+Gates: 331 passed + 2 skipped against llm-client main (the two Converse tests skip via
+`needs_converse`); 333 passed against the PR branch. ruff clean.
