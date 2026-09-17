@@ -37,25 +37,35 @@ Open:
 
 ---
 
-## 1b. `llm-client` upstream fixes — **ready on a local branch, needs your OK to push**
+## 1b. `llm-client` upstream — **PR open, awaiting review**
 
-Found while wiring benchy to it; both proven live on Together. Branch
-`benchy/finish-reason-and-extra-body` in a local clone, two independent commits,
-23 tests passing (19 original + 4 new). **Not pushed** — it is a shared repo, and the
-second commit changes behaviour for its other consumers.
+[surus-lat/llm-client#1](https://github.com/surus-lat/llm-client/pull/1) — 3 commits,
++101/-4, 24 tests passing. Reviewers: `marianbasti`, `KennBro`.
 
-- [ ] **Expose `finish_reason`.** Today a reply cut off by its token budget returns
-      partial JSON and `llm-client` drops the reason, so benchy scores it as the
-      system's own malformed answer (*"expected an object, got str"*). With the fix it
-      becomes *"hit its token limit… raise max_tokens"* — verified live, before and
-      after. Contract change: the result dict gains a key.
-- [ ] **Merge `extra_body` into the request instead of nesting it.** Nested, servers
-      ignore it without an error, so `seed` / `top_p` / `stop` never reached the model.
-      **Behaviour change for the internal backend:** parameters it currently passes this way
-      will start taking effect. Needs review by whoever owns those calls.
-- [ ] Once merged: widen benchy's accepted parameters beyond `temperature` / `max_tokens`
-      for chat-completions endpoints. (`OpenAIProfile` drops `extra_body` by design, so
-      the `openai` provider stays restricted.)
+- [x] Expose `finish_reason`, so a truncated reply is distinguishable from a malformed
+      one. Verified live: `max_tokens 16` goes from `invalid_output` ("expected an
+      object, got str") to `execution_error` ("hit its token limit… raise max_tokens").
+      Contract change — the result dict gains a key.
+- [x] Deliver `extra_body` to the model instead of nesting it, mapping
+      `enable_thinking` to `chat_template_kwargs` the way the internal backend's own client does.
+- [x] README section recording what a measurement caller must switch off and why.
+- [x] **Checked the the internal backend blast radius:** `the-internal-backend` does **not** depend on
+      this package — every caller imports its own `src.services.llm_client`, and
+      `llm-client` is absent from `backend/pyproject.toml`. No production impact today;
+      the PR in fact *removes* a migration landmine, since the generic profile would have
+      silently dropped the internal backend's `enable_thinking` suppression.
+- [ ] Merge, then widen benchy's accepted parameters beyond `temperature` / `max_tokens`
+      for chat-completions endpoints, and drop benchy's forward-compatible
+      `finish_reason` branch comment about clients that lack it.
+
+Deliberately left open, tracked upstream:
+
+- [ ] [#2](https://github.com/surus-lat/llm-client/issues/2) `OpenAIProfile` drops
+      `extra_body`, so extras never reach `api.openai.com` or `gpt-*`. This is why
+      benchy's parameter restriction cannot simply be lifted for the `openai` provider.
+- [ ] [#3](https://github.com/surus-lat/llm-client/issues/3) `parse_response`
+      substitutes `reasoning` for a null `content`, and reads `reasoning` where Together
+      uses `reasoning_content`.
 
 ---
 

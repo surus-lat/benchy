@@ -368,3 +368,28 @@ internal backend.
 
 Gates: clean clone `[dev]` — 286 passed, 42 provider tests skipped, installs benchy +
 PyYAML only. Clean clone `[dev,providers]` — 328 passed, live example 3/3, score 1.0.
+
+## 2026-09-17 — llm-client PR opened (user-authorised)
+
+Pushed `benchy/finish-reason-and-extra-body` and opened
+[surus-lat/llm-client#1](https://github.com/surus-lat/llm-client/pull/1), reviewers
+`marianbasti` and `KennBro`, plus issues #2 and #3 for what it deliberately leaves open.
+
+**The the internal backend question, answered before writing the PR.** `the-internal-backend` does not
+depend on this package: every caller imports `src.services.llm_client`, its own vendored
+module, and `llm-client` is absent from `backend/pyproject.toml`. So no production impact
+today — the risk is at migration (`#108`/`#109`).
+
+**That investigation changed the fix.** the internal backend's only `extra_body` use is
+`{"enable_thinking": False}`, and its vendored client sends *both* the nested key and
+`chat_template_kwargs.enable_thinking` — the latter being what vLLM reads. The package's
+generic profile sent only the nested one. A plain flatten would have turned a
+silently-ignored key into a top-level `enable_thinking` that a strict server may 400 on,
+and neither form is the one vLLM honours. So commit 2 now maps `enable_thinking` to
+`chat_template_kwargs`, matching the vendored behaviour exactly. The PR therefore
+*removes* a migration landmine — had the internal backend migrated first, thinking suppression would have
+silently stopped working and extraction would have begun failing to parse with nothing to
+point at.
+
+Lesson: the blast-radius check was worth more than the fix. Reading the consumer turned a
+change that could have broken them into one that protects them.
