@@ -8,28 +8,32 @@ Everything below is what is *not* done. Each item says who it needs.
 
 ---
 
-## 1. Validate the provider adapter against a real provider — **needs a key**
+## 1. Provider validation — **DONE for Together, 2026-09-17**
 
-The only hard blocker. `benchy/providers.py` is proven against a local HTTP server:
-schema generation, message construction, transport, response parsing. That cannot
-prove a real vendor's quirks — how strictly it honours `strict: true`, whether it
-rejects a schema shape, how its errors come back.
+Together AI is the main backend. `examples/together/` runs live and scores 1.0.
 
-**Needs from you:** an `OPENAI_API_KEY`, or an `OPENAI_BASE_URL` pointing at a
-vLLM / LM Studio / Ollama box.
+- [x] First live run — `Qwen/Qwen3.8-2.4T-A95B`, 3/3 valid, benchmark score 1.0
+- [x] Strict structured outputs confirmed: `response_format.json_schema` with
+      `strict: true` and `additionalProperties: false` is honoured exactly
+- [x] `json_object` fallback confirmed **unnecessary** — correctly not built
+- [x] Real 4xx/5xx body shape: Cloudflare HTML-ish, `provider_error` truncation at
+      500 chars is adequate
+- [x] **Found only by running live:** Together's WAF 403s urllib's default
+      `User-Agent` (Cloudflare code 1010). Fixed with an explicit `benchy/1.0` header
+      and pinned by `test_requests_do_not_go_out_as_python_urllib`.
 
-```bash
-export OPENAI_API_KEY=...
-benchy run examples/invoices/benchmark.yaml     # after switching it to type: model
-```
+Still open for this adapter:
 
-- [ ] First live run against a real endpoint
-- [ ] Confirm structured outputs behave as assumed (`response_format.json_schema`,
-      `strict: true`, `additionalProperties: false`)
-- [ ] Confirm an `image` input round-trips as a base64 data URL
-- [ ] Check what a real 4xx/5xx body looks like; `provider_error` truncates at 500 chars
-- [ ] Decide whether a `json_object` fallback is needed for servers without
-      `json_schema` support — **do not add it speculatively**
+- [ ] Confirm an `image` input round-trips to a vision model (needs a vision-capable
+      model on Together; the invoice example is text-only)
+- [ ] Exercise a reasoning model with a deliberately small `max_tokens` against the
+      live endpoint, to confirm the `finish_reason: length` diagnostic fires in the
+      wild as it does against the stand-in
+- [ ] AWS Bedrock as the secondary backend — **needs credentials from you**. Bedrock
+      is *not* OpenAI-compatible (SigV4 auth, different request shape), so unlike
+      Together it cannot be a one-line entry in `_ENDPOINTS`. Decide then whether it
+      justifies a second adapter or is better reached through a proxy that speaks
+      OpenAI.
 
 ---
 

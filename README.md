@@ -122,23 +122,29 @@ becomes optional:
 ```yaml
 ai-system:
   type: model
-  provider: openai
-  model: gpt-5
+  provider: together           # or openai
+  model: Qwen/Qwen3.8-2.4T-A95B
   prompt: ./prompt.md          # optional
   parameters:                  # optional, passed through verbatim
     temperature: 0
+    max_tokens: 2048
 ```
 
 ```bash
-export OPENAI_API_KEY=...
+export TOGETHER_API_KEY=...    # or OPENAI_API_KEY, per the provider
 benchy run benchmark.yaml
 ```
 
-One adapter covers the OpenAI-compatible world. Point it anywhere:
+A provider is just a default endpoint plus the name of its credential, and both are
+overridable — so the one adapter covers the whole OpenAI-compatible world:
 
 ```bash
 export OPENAI_BASE_URL=http://localhost:8000/v1   # vLLM, LM Studio, Ollama, a gateway
 ```
+
+If the model is a reasoning model, give it room: reasoning tokens are spent before any
+answer is written, so a small `max_tokens` returns thinking and nothing else. Benchy
+says so explicitly rather than letting it look like a bad answer.
 
 It asks for structured output against a JSON schema derived from your program's output
 schema, and it **does not coerce types**: a model that returns `"121.00"` for a `float`
@@ -205,7 +211,7 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-780 lines of code, plus 149 in the optional provider adapter. There is exactly one
+780 lines of code, plus 175 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 

@@ -6,9 +6,11 @@ A.11 permits the runtime to select a reusable provider adapter for
 `ai-system.type: model`. The engine still sees only `invoke(dict) -> dict`.
 
 **One adapter, not many.** An OpenAI-compatible `/v1/chat/completions` endpoint
-reaches OpenAI, vLLM, LM Studio, Ollama's compatibility mode, the hosted aggregators,
-any self-hosted gateway, and a user's own agent behind a route. A per-vendor adapter
-reaches one vendor. So there is one here, and `OPENAI_BASE_URL` points it anywhere.
+reaches OpenAI, Together, vLLM, LM Studio, Ollama's compatibility mode, the hosted
+aggregators, any self-hosted gateway, and a user's own agent behind a route. A
+per-vendor adapter reaches one vendor. So there is one adapter here and a table of
+endpoints: a provider is a default base URL plus the name of its credential, both
+overridable, and nothing else.
 
 Two deliberate refusals:
 
@@ -16,7 +18,11 @@ Two deliberate refusals:
   `invalid_output`, and that is the correct measurement — the AI-system did not honour
   the program contract. Quietly repairing it would make the benchmark lie.
 - **No SDK.** Transport is `urllib`, so installing benchy does not install a vendor
-  package. The engine's dependency is PyYAML; this file adds nothing.
+  package. The engine's dependency is PyYAML; this file adds nothing. One consequence
+  is worth knowing: `urllib` announces itself as `Python-urllib/x.y`, which sits on
+  Cloudflare's default block list — Together returns 403 (code 1010) for it. Hence the
+  explicit `User-Agent` below. Found by running against the real endpoint; no local
+  stand-in would have shown it.
 
 Credentials come from the environment, never from benchmark YAML (spec §11).
 """
@@ -47,6 +53,16 @@ _FORMATS = {
 
 _JSON_TYPES = {"int": "integer", "float": "number", "bool": "boolean"}
 
+#: Anything but urllib's default, which providers' WAFs block. See the module docstring.
+_USER_AGENT = "benchy/1.0"
+
+#: A provider is its default endpoint. Credentials and overrides derive from the name
+#: (`together` -> `TOGETHER_API_KEY`, `TOGETHER_BASE_URL`), so adding one is one line.
+_ENDPOINTS = {
+    "openai": "https://api.openai.com/v1",
+    "together": "https://api.together.xyz/v1",
+}
+
 
 def for_system(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None = None) -> object:
     """The provider adapter for this IR's AI-system, or a run setup error.
@@ -62,11 +78,12 @@ def for_system(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None
             f"provider adapter. Bind an adapter explicitly for an external AI-system.",
             ["ai-system"],
         )
-    if system["provider"] != "openai":
+    if system["provider"] not in _ENDPOINTS:
         raise BenchyError(
             "runtime", "adapter_not_bound",
             f"no built-in adapter for provider {system['provider']!r}; benchy ships "
-            f"'openai', which speaks to any OpenAI-compatible endpoint via OPENAI_BASE_URL",
+            f"{', '.join(sorted(_ENDPOINTS))}, and each reaches any OpenAI-compatible "
+            f"endpoint via <PROVIDER>_BASE_URL",
             ["ai-system", "provider"],
         )
     return OpenAIChat(ir, Path(workspace), env)
@@ -84,15 +101,17 @@ class OpenAIChat:
         self.parameters = dict(ir["ai-system"].get("parameters") or {})
         self.input_schema = ir["program"]["input"]
         self.schema = _json_schema(ir["program"]["output"])
-        self.base_url = env.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        provider = ir["ai-system"]["provider"]
+        prefix = provider.upper()
+        self.base_url = env.get(f"{prefix}_BASE_URL", _ENDPOINTS[provider]).rstrip("/")
         self.timeout = float(env.get("BENCHY_TIMEOUT", "120"))
 
-        key = env.get("OPENAI_API_KEY")
+        key = env.get(f"{prefix}_API_KEY")
         if not key:
             raise BenchyError(
                 "runtime", "adapter_not_bound",
-                "OPENAI_API_KEY is not set; credentials are runtime policy and never "
-                "belong in benchmark YAML",
+                f"{prefix}_API_KEY is not set; credentials are runtime policy and never "
+                f"belong in benchmark YAML",
             )
         self.api_key = key
 
@@ -147,7 +166,25 @@ class OpenAIChat:
             **self.parameters,
         }
         body = await asyncio.to_thread(self._post, payload)
-        text = body["choices"][0]["message"]["content"]
+        choice = body["choices"][0]
+        text = choice["message"].get("content")
+
+        # A reasoning model spends completion tokens on thinking before it writes
+        # anything, so too small a budget returns reasoning and no answer. Saying so
+        # beats letting it surface as an inscrutable invalid_output.
+        if choice.get("finish_reason") == "length":
+            raise BenchyError(
+                "runtime", "provider_error",
+                "the model hit its token limit before completing the output; raise "
+                "max_tokens in ai-system.parameters (reasoning models spend the budget "
+                "on reasoning_content first)",
+            )
+        if not text:
+            raise BenchyError(
+                "runtime", "provider_error",
+                "the model returned no content"
+                + (" (only reasoning_content)" if choice["message"].get("reasoning_content") else ""),
+            )
         try:
             return json.loads(text)
         except json.JSONDecodeError:
@@ -159,7 +196,12 @@ class OpenAIChat:
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                # urllib's default UA is blocked by some providers' WAF; see above.
+                "User-Agent": _USER_AGENT,
+            },
             method="POST",
         )
         try:

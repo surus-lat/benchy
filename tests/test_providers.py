@@ -373,3 +373,131 @@ def test_an_explicit_adapter_still_wins(workspace, provider, monkeypatch, capsys
     result = json.loads(capsys.readouterr().out)
     assert result["results"][0]["prediction"]["supplier"] == "MINE"
     assert provider.requests == []   # the provider was never contacted
+
+
+# ---------------------------------------------------------------------------
+# provider endpoints
+# ---------------------------------------------------------------------------
+
+def _model_ir(provider, model="m"):
+    return compile_benchmark(edit(
+        program={"input": {"text": "string"}, "output": {"total": "float"}},
+        scoring={"weights": {"total": 1}, "aggregator": "weighted_mean"},
+        data={"path": "./exam.jsonl"},
+        ai_system={"type": "model", "provider": provider, "model": model},
+    ))
+
+
+@pytest.mark.parametrize(
+    "provider,default_url,key_var",
+    [
+        ("openai", "https://api.openai.com/v1", "OPENAI_API_KEY"),
+        ("together", "https://api.together.xyz/v1", "TOGETHER_API_KEY"),
+    ],
+)
+def test_each_provider_has_its_own_endpoint_and_credential(tmp_path, provider, default_url, key_var):
+    adapter = providers.for_system(_model_ir(provider), tmp_path, env={key_var: "k"})
+    assert adapter.base_url == default_url
+    assert adapter.api_key == "k"
+
+
+@pytest.mark.parametrize("provider,key_var", [("openai", "OPENAI_API_KEY"), ("together", "TOGETHER_API_KEY")])
+def test_a_providers_base_url_is_overridable(tmp_path, provider, key_var):
+    env = {key_var: "k", f"{provider.upper()}_BASE_URL": "http://localhost:8000/v1"}
+    assert providers.for_system(_model_ir(provider), tmp_path, env=env).base_url == "http://localhost:8000/v1"
+
+
+def test_each_provider_names_its_own_key_variable_in_the_error(tmp_path):
+    with pytest.raises(BenchyError) as exc:
+        providers.for_system(_model_ir("together"), tmp_path, env={})
+    assert "TOGETHER_API_KEY" in exc.value.message
+
+
+# ---------------------------------------------------------------------------
+# reasoning-model hazards
+# ---------------------------------------------------------------------------
+
+class TruncatingProvider(Provider):
+    """A model that spends its budget on reasoning and returns nothing usable."""
+
+    def _handler(self):
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"choices": [{
+                    "finish_reason": "length",
+                    "message": {"content": outer.reply, "reasoning_content": "thinking..."},
+                }]}).encode())
+
+        return Handler
+
+
+async def test_a_truncated_reply_explains_itself_rather_than_looking_like_a_bad_answer(workspace):
+    """Reasoning tokens count toward the budget, so a low max_tokens yields no answer.
+
+    That must not surface as an inscrutable invalid_output.
+    """
+    truncating = TruncatingProvider(reply="")
+    try:
+        ir = compile_benchmark(TEXT)
+        result = await run(ir, workspace, adapter_for(ir, workspace, truncating))
+        (only,) = result["results"]
+        assert only["status"] == "execution_error"
+        assert "max_tokens" in only["error"]["message"]
+    finally:
+        truncating.close()
+
+
+async def test_an_empty_content_field_is_reported_clearly(workspace):
+    empty = Provider(reply=None)
+
+    class NullContent(Provider):
+        def _handler(self):
+            class Handler(BaseHTTPRequestHandler):
+                def log_message(self, *args):
+                    pass
+
+                def do_POST(self):
+                    self.rfile.read(int(self.headers["Content-Length"]))
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"choices": [{
+                        "finish_reason": "stop",
+                        "message": {"content": None, "reasoning_content": "thought"},
+                    }]}).encode())
+            return Handler
+
+    empty.close()
+    null = NullContent()
+    try:
+        ir = compile_benchmark(TEXT)
+        result = await run(ir, workspace, adapter_for(ir, workspace, null))
+        (only,) = result["results"]
+        assert only["status"] == "execution_error"
+        assert "no content" in only["error"]["message"].lower()
+    finally:
+        null.close()
+
+
+async def test_requests_do_not_go_out_as_python_urllib(workspace, provider):
+    """Together's WAF returns 403 (Cloudflare 1010) for urllib's default User-Agent.
+
+    Found by running against the real endpoint; a local stand-in accepts anything, so
+    this pins the header rather than the behaviour it avoids.
+    """
+    provider.reply = json.dumps({"supplier": "ACME", "total": 121.0})
+    ir = compile_benchmark(TEXT)
+    await run(ir, workspace, adapter_for(ir, workspace, provider))
+
+    agent = provider.requests[0]["headers"]["User-Agent"]
+    assert "urllib" not in agent.lower()
+    assert agent == "benchy/1.0"

@@ -18,6 +18,10 @@ pytestmark = pytest.mark.skipif(not EXAMPLES.is_dir(), reason="examples/ is not 
 
 BENCHMARKS = sorted(EXAMPLES.glob("*/benchmark.yaml"))
 
+#: Examples shipping their own `system.py` run offline. Examples whose `ai-system` is
+#: a `model` need credentials and a live provider, so they are compiled but not run.
+OFFLINE = [b for b in BENCHMARKS if (b.parent / "system.py").is_file()]
+
 
 @pytest.mark.parametrize("benchmark", BENCHMARKS, ids=lambda p: p.parent.name)
 def test_example_compiles(benchmark, capsys):
@@ -26,7 +30,7 @@ def test_example_compiles(benchmark, capsys):
     assert ir["version"] == "1.0"
 
 
-@pytest.mark.parametrize("benchmark", BENCHMARKS, ids=lambda p: p.parent.name)
+@pytest.mark.parametrize("benchmark", OFFLINE, ids=lambda p: p.parent.name)
 def test_example_runs(benchmark, capsys):
     adapter = f"{benchmark.parent / 'system.py'}:extractor"
     assert main(["run", str(benchmark), "--adapter", adapter]) == 0
