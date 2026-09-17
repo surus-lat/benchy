@@ -160,7 +160,7 @@ class OpenAIChat:
                 raise BenchyError(
                     "runtime", "adapter_not_bound",
                     "Claude on Bedrock needs an llm_client with Bedrock Converse support "
-                    "(surus-lat/llm-client#4); the installed one has none, and Anthropic models "
+                    "(surus-lat/llm-client#5); the installed one has none, and Anthropic models "
                     "do not serve Bedrock's chat-completions endpoint",
                     ["ai-system", "model"],
                 )

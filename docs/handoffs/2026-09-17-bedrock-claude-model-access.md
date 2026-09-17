@@ -131,7 +131,7 @@ A working model scores 3/3 on that fixture (`claude-haiku-4-5` already does).
 
 - Claude on Bedrock does **not** serve the OpenAI-compatible chat-completions
   endpoint; benchy reaches it through the Converse API. See
-  [surus-lat/llm-client#4](https://github.com/surus-lat/llm-client/pull/4), where this
+  [surus-lat/llm-client#5](https://github.com/surus-lat/llm-client/pull/5), where this
   entitlement gap is also noted for reviewers.
 - benchy's side is done and needs nothing from this work — it is only that the newest
   models cannot currently be benchmarked.

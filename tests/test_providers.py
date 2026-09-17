@@ -33,7 +33,7 @@ pytestmark = pytest.mark.skipif(
 def _has_converse() -> bool:
     """Bedrock Converse support lives in llm_client; it is unmerged as of writing.
 
-    See surus-lat/llm-client#4. These tests activate the moment it lands.
+    See surus-lat/llm-client#5. These tests activate the moment it lands.
     """
     try:
         from llm_client import profiles
@@ -44,7 +44,7 @@ def _has_converse() -> bool:
 
 
 needs_converse = pytest.mark.skipif(
-    not _has_converse(), reason="needs llm_client with BedrockConverseProfile (surus-lat/llm-client#4)"
+    not _has_converse(), reason="needs llm_client with BedrockConverseProfile (surus-lat/llm-client#5)"
 )
 
 TEXT = edit(
@@ -606,4 +606,4 @@ def test_claude_on_bedrock_without_converse_support_fails_at_setup(tmp_path):
         )
     assert exc.value.code == "adapter_not_bound"
     assert "Converse" in exc.value.message
-    assert "llm-client#4" in exc.value.message
+    assert "llm-client#5" in exc.value.message
