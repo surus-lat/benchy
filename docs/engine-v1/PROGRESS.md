@@ -323,3 +323,48 @@ Heartbeat cron `8e09cc98` deleted — the 12-hour window is over.
 `Untitled.base`, `Untitled 1.base`, `uv.lock`, `env.example`). None of these are
 referenced by the engine or its docs, but several look like personal notes rather than
 project files, so they were not touched.
+
+## 2026-09-17 — providers moved onto `llm-client`; Bedrock wired
+
+User direction: solve Bedrock with SURUS's `llm-client` (github.com/surus-lat/llm-client).
+
+**What `llm-client` is.** 11 files, ~1300 lines, httpx. `call()` with provider fallback,
+a json_schema -> json_object -> none format ladder, 429 back-off, per-endpoint profiles
+(OpenAI, Ollama, OpenRouter, Responses). **No Bedrock support at all** — zero mentions.
+
+**Bedrock.** Checked AWS docs rather than memory: `bedrock-runtime.<region>/openai/v1`
+accepts a Bedrock API key as a bearer token, which is exactly `llm-client`'s shape, so
+Bedrock is one row in `_ENDPOINTS`. Confirmed live that the URL answers an invalid
+token with an OpenAI-shaped 401. But Chat Completions on Bedrock does **not** serve
+Claude (0/17), Nova (0/13) or Llama (0/12) — that needs a different request shape.
+
+**Migrated `benchy/providers.py` onto `llm-client.call()`**, direct path only. benchy
+keeps what is specific to benchmarking and refuses what would make a measurement lie:
+no provider fallback (would score a mixture as one system), no format fallback (would
+score an easier task), no injected defaults (`llm-client` defaults temperature 0.1,
+max_tokens 2000), no silently dropped parameters, no coercion. Optional extra, imported
+only when a model provider is selected.
+
+**Live findings — four, none visible to the stand-in server:**
+1. `python-httpx` is *not* on Together's block list (only `Python-urllib` is), so the
+   User-Agent workaround goes away with urllib.
+2. `llm-client` sends extra parameters as a literal nested `extra_body` key. Proven
+   deterministic on Together: top-level `stop` truncates at "1, 2, 3, "; nested, it is
+   ignored without an error. Hence benchy refuses such parameters at setup.
+3. A null `max_tokens` is accepted, so benchy passes None and injects nothing.
+4. **Truncation regressed.** With max_tokens 16 the provider reports finish_reason
+   "length" and returns *partial JSON*. `llm-client` drops finish_reason, so benchy
+   scored it `invalid_output` — "expected an object, got str". Scores are unaffected
+   (null, zero contribution) but the diagnosis was lost. My stand-in test had passed
+   because it scripted *empty* content: a stand-in only proves what you script into it.
+
+**Upstream fixes prepared, not pushed.** Local branch `benchy/finish-reason-and-extra-body`
+in a scratch clone of `llm-client`: expose finish_reason; merge extra_body into the body.
+23 tests green. Proven live as a pair: max_tokens 16 goes from `invalid_output` to
+"hit its token limit… raise max_tokens", and nested `stop` now truncates. benchy already
+honours finish_reason when present (tested with an injected client), so it improves the
+moment the fix lands. Not pushed because the second commit changes behaviour for the
+internal backend.
+
+Gates: clean clone `[dev]` — 286 passed, 42 provider tests skipped, installs benchy +
+PyYAML only. Clean clone `[dev,providers]` — 328 passed, live example 3/3, score 1.0.

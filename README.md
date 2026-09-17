@@ -117,42 +117,47 @@ branches, and `type: model` is not a special execution path.
 ## Running a real model
 
 When `ai-system.type` is `model`, benchy selects a built-in adapter and `--adapter`
-becomes optional:
+becomes optional. Its transport is SURUS's `llm-client`, installed as an extra:
+
+```bash
+pip install -e '.[providers]'      # needs GitHub access to surus-lat
+```
 
 ```yaml
 ai-system:
   type: model
-  provider: together           # or openai
+  provider: together               # together | bedrock | openai
   model: Qwen/Qwen3.8-2.4T-A95B
-  prompt: ./prompt.md          # optional
-  parameters:                  # optional, passed through verbatim
+  prompt: ./prompt.md              # optional
+  parameters:                      # optional: temperature and max_tokens
     temperature: 0
     max_tokens: 2048
 ```
 
-```bash
-export TOGETHER_API_KEY=...    # or OPENAI_API_KEY, per the provider
-benchy run benchmark.yaml
-```
+| provider | credential | endpoint |
+|---|---|---|
+| `together` | `TOGETHER_API_KEY` | `api.together.xyz/v1` |
+| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, plus `AWS_REGION` | `bedrock-runtime.<region>.amazonaws.com/openai/v1` |
+| `openai` | `OPENAI_API_KEY` | `api.openai.com/v1` |
 
-A provider is just a default endpoint plus the name of its credential, and both are
-overridable — so the one adapter covers the whole OpenAI-compatible world:
+Any of them can be pointed elsewhere with `<PROVIDER>_BASE_URL` — vLLM, LM Studio,
+Ollama, a gateway. Bedrock's OpenAI-compatible endpoint takes a Bedrock API key and
+serves OpenAI, Qwen, Mistral, Google and others, but **not** Claude, Nova or Llama.
 
-```bash
-export OPENAI_BASE_URL=http://localhost:8000/v1   # vLLM, LM Studio, Ollama, a gateway
-```
+The adapter asks for structured output against a JSON schema derived from your
+program's output schema, and refuses anything that would make the measurement lie:
 
-If the model is a reasoning model, give it room: reasoning tokens are spent before any
-answer is written, so a small `max_tokens` returns thinking and nothing else. Benchy
-says so explicitly rather than letting it look like a bad answer.
+- **no type coercion** — a model returning `"121.00"` for a `float` is an
+  `invalid_output`, because that is the true measurement;
+- **no fallback** to another model or to a looser output format;
+- **no injected defaults** — a parameter you did not set is not sent;
+- **no silently dropped parameters** — anything beyond `temperature` and `max_tokens`
+  is refused at setup, because `llm-client` would forward it where endpoints ignore it.
 
-It asks for structured output against a JSON schema derived from your program's output
-schema, and it **does not coerce types**: a model that returns `"121.00"` for a `float`
-produces an `invalid_output`, because that is the true measurement. Credentials come
-from the environment and never from benchmark YAML.
-
-Text and `image` inputs are supported; `audio` and `document` inputs, and artifact
-outputs, are rejected at setup rather than failing silently per example.
+A rate limit is retried rather than scored, since it says nothing about the system.
+Credentials come from the environment, never from benchmark YAML. Text and `image`
+inputs are supported; `audio` and `document` inputs, and artifact outputs, are refused
+at setup rather than failing once per example.
 
 ## Compile once, run from the IR
 
@@ -211,7 +216,7 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-780 lines of code, plus 175 in the optional provider adapter. There is exactly one
+780 lines of code, plus 185 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 
@@ -249,7 +254,8 @@ other by `tests/test_doc_agreement.py`.
 python -m pytest tests -q
 ```
 
-303 tests. Conformance cases C01–C33 from the build plan are named
+Without the `providers` extra, the provider tests skip and the engine suite still
+runs in full. Conformance cases C01–C33 from the build plan are named
 `test_cNN_*`, and `tests/test_conformance_matrix.py` fails if any loses coverage.
 
 `.attic/` holds the previous implementation, preserved in git history.

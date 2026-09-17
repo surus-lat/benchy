@@ -24,7 +24,7 @@ vocabulary in one, change it in all four or that test will tell you.
 ## Working here
 
 ```bash
-python -m pytest tests -q          # the gate, ~300 tests, under 10s
+python -m pytest tests -q          # the gate, ~330 tests, ~12s
 python -m ruff check benchy tests
 ```
 
@@ -33,7 +33,9 @@ Conformance cases from the build plan are named `test_cNN_*`;
 
 **The engine core is `errors, types, ontology, compiler, data, score, adapter, run`.**
 It imports nothing beyond the standard library, PyYAML, and itself. `providers.py` is
-outside that core and `cli.py` may select from it; nothing else may.
+outside that core and `cli.py` may select from it; nothing else may. Its transport is
+SURUS's `llm-client`, an optional extra — `tests/test_acceptance.py` pins that neither
+it nor `providers` leaks into the core.
 
 ## The standard this codebase is held to
 

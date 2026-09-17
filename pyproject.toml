@@ -18,9 +18,8 @@ version = "1.0.0"
 description = "A semantic language and execution engine for benchmarking AI programs"
 readme = "README.md"
 requires-python = ">=3.12"
-# PyYAML and nothing else. A provider integration's requirements belong to that
-# integration, not to benchy (paper A.11) - the shipped OpenAI-compatible adapter
-# uses urllib precisely so installing benchy installs no vendor package.
+# PyYAML and nothing else. Provider integrations live outside the core (paper A.11),
+# so their transport - SURUS's llm-client - is the optional `providers` extra.
 dependencies = [
     "pyyaml>=6.0",
 ]
@@ -29,6 +28,11 @@ dependencies = [
 benchy = "benchy.cli:main"
 
 [project.optional-dependencies]
+# Needed only for `ai-system.type: model`. Private repository: installing needs GitHub
+# access to surus-lat. External adapters and the whole engine run without it.
+providers = [
+    "llm-client @ git+https://github.com/surus-lat/llm-client.git",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
