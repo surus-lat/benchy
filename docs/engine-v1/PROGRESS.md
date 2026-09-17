@@ -234,3 +234,46 @@ suite and visible only to *running the real thing* — the missing `package-data
 for the ontology registry, the dependency list that pulled openai/pandas/datasets into
 a supposedly PyYAML-only engine, and this. Tests check the code; only installing and
 cloning check the artifact.
+
+## 2026-09-17 09:20 -03 — heartbeat 2. Phase 11 BUILT.
+
+Note on timestamps: the entries above drifted ahead of the real clock (I was
+estimating). This one is the system clock. The 12-hour window ends 09:53, so ~33
+minutes remain; suite green, all P0–P10 done, so the heartbeat's stop condition was
+not met and the next real work was Phase 11.
+
+Built it from the design note written last heartbeat — **`benchy/providers.py`, 149
+code lines, 23 tests**, all against a local `http.server` speaking chat-completions,
+so it needs no API key and no network.
+
+Decisions, all as designed:
+- **One adapter, not many.** OpenAI-compatible `/v1/chat/completions` reaches OpenAI,
+  vLLM, LM Studio, Ollama, the hosted aggregators, any gateway. `OPENAI_BASE_URL`
+  points it anywhere.
+- **`urllib`, not the `openai` SDK.** Verified on a clean clone: runtime dependencies
+  are still PyYAML alone. Installing benchy still installs no vendor package.
+- **No type coercion.** A model returning `"121.00"` for a `float` yields
+  `invalid_output`. Pinned by `test_the_adapter_does_not_coerce_types`. Repairing it
+  would make the benchmark lie about the system under test.
+- **A non-JSON reply is returned as raw text**, so the engine records it as the
+  prediction and classifies it `invalid_output` — strictly more informative than
+  raising, and it needs no special case anywhere.
+- **Fail at setup, not per example.** Audio/document inputs, artifact outputs and a
+  missing `OPENAI_API_KEY` raise at construction rather than producing a column of
+  identical `execution_error`s.
+- `parameters` passes through verbatim (the open question in the design note —
+  verbatim is fewer parts and matches the spec's intent).
+- CLI: `--adapter` is now optional and falls back to provider selection for
+  `ai-system.type: model` (A.11). An explicit adapter still wins, asserted by a test
+  that also checks the provider was never contacted.
+
+The boundary holds: `test_the_engine_core_does_not_import_providers` asserts none of
+the eight core modules references this file. Only `cli.py` does, which is A.11's
+"the runtime may select a reusable provider adapter".
+
+**The LOC guard added earlier today caught its first real drift**: `providers.py`
+changed the count, and the README's figure was stale within the hour. Split into
+"780 lines of code, plus 149 in the optional provider adapter", since `providers.py`
+is deliberately outside the core and the README lists it separately.
+
+Gate: **303 passed**, ruff clean, clean-clone verified, working tree clean.
