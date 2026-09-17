@@ -21,6 +21,18 @@ The paper, the spec, the handoff and the shipped ontology registry are checked
 against each other by `tests/test_doc_agreement.py`. If you change the task
 vocabulary in one, change it in all four or that test will tell you.
 
+## Skills
+
+`.agent/skills/<name>/SKILL.md`, invoked with the `Skill` tool or read directly.
+
+| skill | when |
+|---|---|
+| `author-benchmark` | turning a business problem into a `benchmark.yaml` |
+| `run-and-interpret` | running one, and reading the result correctly |
+| `write-adapter` | exposing any AI-system through `invoke(dict) -> dict` |
+| `add-provider` | adding a hosted provider, or spotting one that needs a new request shape |
+| `extend-ontology` | adding a task — registry, validator, and the four documents that must agree |
+
 ## Working here
 
 ```bash

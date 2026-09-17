@@ -83,3 +83,37 @@ def test_spec_and_handoff_never_declare_a_withdrawn_task(stem):
             continue
         # A declaration is a registry entry, a validator-table row, or a rule bullet.
         assert not re.match(r'^\s*(transcribe:|"transcribe":|- `transcribe`)', line), line
+
+
+# ---------------------------------------------------------------------------
+# provider documentation matches the shipped table
+# ---------------------------------------------------------------------------
+
+def test_every_documented_provider_exists_and_vice_versa():
+    """A provider added to the code and forgotten in the docs, or the reverse.
+
+    Not string-matching the snippets — that breaks on reformatting. This pins the one
+    thing that actually matters: the set of provider names a reader is told about.
+    """
+    from benchy import providers
+
+    root = PAPER.parent
+    readme = (root / "README.md").read_text()
+    skill = root / ".agent" / "skills" / "add-provider" / "SKILL.md"
+
+    shipped = set(providers._ENDPOINTS)
+    documented = {name for name in shipped if f"`{name}`" in readme}
+    assert documented == shipped, f"README omits: {sorted(shipped - documented)}"
+
+    if skill.is_file():
+        text = skill.read_text()
+        missing = {name for name in shipped if f'"{name}"' not in text}
+        assert not missing, f"add-provider skill omits: {sorted(missing)}"
+
+
+def test_each_provider_names_a_credential_the_docs_mention():
+    from benchy import providers
+
+    readme = (PAPER.parent / "README.md").read_text()
+    for name, (_endpoint, credential) in providers._ENDPOINTS.items():
+        assert credential in readme, f"{name}'s credential {credential} is undocumented"
