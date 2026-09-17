@@ -94,3 +94,35 @@ def test_readme_quotes_the_engines_actual_size():
     text = readme.read_text()
     assert f"{engine} lines of code" in text, f"README should say {engine} lines of code"
     assert f"plus {provider} in the optional provider adapter" in text, f"provider is {provider}"
+
+
+@pytest.mark.parametrize("benchmark", BENCHMARKS, ids=lambda p: p.parent.name)
+def test_every_file_an_example_needs_is_committed(benchmark):
+    """An example that is not in the repository is a broken promise to every reader.
+
+    `*.jsonl` is ignored repo-wide — right for datasets and run artifacts, wrong for an
+    example's exam, which once left `examples/invoices` broken in every clone while the
+    suite stayed green. Artifacts the exam points at count too.
+
+    Note what `git check-ignore` does and does not prove: a *tracked* file is never
+    reported as ignored, so this fires only for files not yet committed. That is exactly
+    where the bug lives — a new file silently skipped by `git add -A`, never committed,
+    and missing from every clone. Files already tracked are safe by construction.
+    """
+    import subprocess
+
+    needed = [benchmark, benchmark.parent / "exam.jsonl"]
+    if benchmark in OFFLINE:
+        needed.append(benchmark.parent / "system.py")
+    for line in (benchmark.parent / "exam.jsonl").read_text().splitlines():
+        if line.strip():
+            needed += [
+                benchmark.parent / value
+                for value in json.loads(line)["input"].values()
+                if isinstance(value, str) and "/" in value
+            ]
+
+    for path in needed:
+        assert path.is_file(), f"{path} is missing"
+        ignored = subprocess.run(["git", "check-ignore", str(path)], capture_output=True, cwd=EXAMPLES.parent)
+        assert ignored.returncode != 0, f"{path} is gitignored and would not survive a clone"
