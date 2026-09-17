@@ -1,0 +1,47 @@
+# The paper's canonical extraction benchmark (§9), runnable as-is:
+#
+#   benchy run examples/invoices/benchmark.yaml \
+#     --adapter examples/invoices/system.py:extractor
+#
+# It exercises most of the semantics in one file: a nested output object, mixed
+# semantic types, and explicit per-leaf weights where one field matters more than
+# the rest.
+version: "1.0"
+ontology_version: "1.0"
+
+benchmark:
+  task: extract
+  domain: finance
+  language: es
+
+program:
+  input:
+    text: string
+  output:
+    invoice_number: string
+    date: date
+    supplier:
+      name: string
+      tax_id: string
+    subtotal: float
+    total: float
+
+scoring:
+  # The total is what the business cares about; the tax id is recorded and
+  # validated but deliberately does not move the score.
+  weights:
+    invoice_number: 1
+    date: 1
+    supplier:
+      name: 1
+      tax_id: 0
+    subtotal: 1
+    total: 5
+  aggregator: weighted_mean
+
+data:
+  path: ./exam.jsonl
+
+ai-system:
+  type: external
+  id: invoice-extractor-v7

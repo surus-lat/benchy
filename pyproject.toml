@@ -18,9 +18,21 @@ version = "0.1.0"
 description = "LATAMBoard benchmarking suite"
 readme = "README.md"
 requires-python = ">=3.12"
+# The engine core depends on PyYAML and nothing else. Everything a provider
+# integration needs belongs to that integration, not to benchy (paper A.11), and
+# the legacy `src/` tree's requirements live in the `legacy` extra below.
 dependencies = [
-    "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
+]
+
+[project.scripts]
+benchy = "benchy.cli:main"
+benchy-legacy = "src.benchy_cli:main"
+
+[project.optional-dependencies]
+# Everything the legacy src/ tree needs. Not required by the engine.
+legacy = [
+    "python-dotenv>=1.0.0",
     "typing-extensions>=4.0.0",
     "requests>=2.25.0",
     "httpx>=0.25.0",
@@ -41,11 +53,6 @@ dependencies = [
     "pillow>=12.1.0",
 ]
 
-[project.scripts]
-benchy = "benchy.cli:main"
-benchy-legacy = "src.benchy_cli:main"
-
-[project.optional-dependencies]
 local = [
     "vllm>=0.13.0; sys_platform == 'linux'",
     "timm",
@@ -85,7 +92,6 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "coverage>=7.0.0",
     "ruff>=0.6.0",
-    "jiwer>=3.0.0",
 ]
 
 [tool.pytest.ini_options]
