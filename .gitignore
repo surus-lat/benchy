@@ -45,6 +45,8 @@ logs/
 
 # Data
 *.jsonl
+# ...but an example's exam is source, not a run artifact.
+!examples/**/*.jsonl
 *.json
 !src/tasks/**/task.json
 !configs/**/*.json
