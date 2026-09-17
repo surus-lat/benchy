@@ -10,83 +10,25 @@ benchy = ["ontologies/*.yaml"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["benchy", "benchy.*", "src", "src.*"]  # benchy/* = engine 1.0; src/* = legacy
+include = ["benchy", "benchy.*"]
 
 [project]
 name = "benchy"
-version = "0.1.0"
-description = "LATAMBoard benchmarking suite"
+version = "1.0.0"
+description = "A semantic language and execution engine for benchmarking AI programs"
 readme = "README.md"
 requires-python = ">=3.12"
-# The engine core depends on PyYAML and nothing else. Everything a provider
-# integration needs belongs to that integration, not to benchy (paper A.11), and
-# the legacy `src/` tree's requirements live in the `legacy` extra below.
+# PyYAML and nothing else. A provider integration's requirements belong to that
+# integration, not to benchy (paper A.11) - the shipped OpenAI-compatible adapter
+# uses urllib precisely so installing benchy installs no vendor package.
 dependencies = [
     "pyyaml>=6.0",
 ]
 
 [project.scripts]
 benchy = "benchy.cli:main"
-benchy-legacy = "src.benchy_cli:main"
 
 [project.optional-dependencies]
-# Everything the legacy src/ tree needs. Not required by the engine.
-legacy = [
-    "python-dotenv>=1.0.0",
-    "typing-extensions>=4.0.0",
-    "requests>=2.25.0",
-    "httpx>=0.25.0",
-    "psutil>=5.9.0",
-    "pandas>=1.5.0",
-    "openpyxl>=3.0.0",
-    "huggingface-hub>=0.20.0",
-    "openai>=1.0.0",
-    "anthropic>=0.18.0",
-    "google-genai>=0.1.0",
-    "datasets>=2.14.0",
-    "jsonschema>=4.19.0",
-    "python-Levenshtein>=0.21.0",
-    "scipy>=1.9.0",
-    "numpy>=1.24.0",
-    "rapidfuzz>=3.0.0",
-    "tqdm>=4.66.0",
-    "pillow>=12.1.0",
-]
-
-local = [
-    "vllm>=0.13.0; sys_platform == 'linux'",
-    "timm",
-    "transformers>=4.56.2",
-]
-prefect = [
-    "prefect>=3.4.19",
-]
-document = [
-    "pymupdf>=1.24.0",
-]
-translation = [
-    "sacrebleu>=2.3.0",
-    "unbabel-comet>=2.0.0"
-]
-transcription = [
-    "jiwer>=3.0.0",
-    "soundfile>=0.12.0",
-    # Whisper paths work on transformers >= 4.45. Voxtral support requires
-    # transformers >= 5.13 (not yet on PyPI as of 2026-06-20); install via:
-    #   uv pip install 'git+https://github.com/huggingface/transformers.git'
-    # The upper bound is removed to allow the from-git install to satisfy.
-    "transformers>=4.45.0",
-    "torch>=2.4.0",
-    "librosa>=0.10.0",
-    "accelerate>=0.34.0",
-    # Required by VoxtralRealtimeProcessor's tokenizer. Only consumed when
-    # actually using Voxtral; safe to install on Whisper-only setups.
-    "mistral-common>=1.11.0",
-    # Required by the canary_nemo adapter (NVIDIA Canary ASR models).
-    # NeMo's tests/ package collides with our local tests/ — keep
-    # tests/__init__.py committed so pytest's pythonpath=["."] wins.
-    "nemo-toolkit[asr]>=2.7.0",
-]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
@@ -101,8 +43,7 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "seam: cross-module integration tests; the merge gate for the parallel worktrees",
-    "integration: touches the network or downloads a model; excluded from the default suite",
+    "integration: touches the network or a real provider; excluded from the default suite",
 ]
 
 [tool.ruff]

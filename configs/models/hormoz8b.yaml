@@ -1,9 +1,0 @@
-model:
-  name: "mann-e/Hormoz-8B"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "latam_board"

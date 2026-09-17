@@ -26,8 +26,8 @@ jobs:
 
       - name: Lint (ruff)
         run: |
-          ruff check src tests
+          ruff check benchy tests
 
       - name: Run tests
         run: |
-          pytest -q
+          pytest tests -q

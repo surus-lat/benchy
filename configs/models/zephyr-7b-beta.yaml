@@ -1,9 +1,0 @@
-model:
-  name: "HuggingFaceH4/zephyr-7b-beta"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "latam_board"
