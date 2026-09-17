@@ -8,10 +8,10 @@ from __future__ import annotations
 import json
 
 import pytest
+from conftest import CANONICAL, edit
 
 from benchy.compiler import compile_benchmark
 from benchy.errors import BenchyError
-from conftest import CANONICAL, edit
 
 
 def fails(text: str) -> BenchyError:

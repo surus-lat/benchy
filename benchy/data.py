@@ -33,16 +33,24 @@ from benchy.errors import BenchyError
 __all__ = ["examples", "resolve_within"]
 
 
-def resolve_within(reference: str, base: Path, workspace: Path, path: list[str] | None = None) -> Path:
+def resolve_within(
+    reference: str,
+    base: Path,
+    workspace: Path,
+    path: list[str] | None = None,
+    *,
+    phase: str = "dataset",
+) -> Path:
     """Resolve `reference` against `base` and require the result to stay in `workspace`.
 
     Absolute references replace `base` on join, and `resolve()` collapses `..` and
     follows symlinks, so one containment check covers traversal and link escape.
+    Shared with the run loop, which confines adapter artifact *outputs* the same way.
     """
     resolved = (base / reference).resolve()
     if not resolved.is_relative_to(workspace):
         raise BenchyError(
-            "dataset", "path_escape",
+            phase, "path_escape",
             f"{reference!r} resolves to {resolved}, outside the benchmark workspace {workspace}",
             path,
         )

@@ -8,11 +8,11 @@ from __future__ import annotations
 import json
 
 import pytest
+from conftest import edit
 
 from benchy import data
 from benchy.compiler import compile_benchmark
 from benchy.errors import BenchyError
-from conftest import CANONICAL, edit
 
 TEXT_IR = compile_benchmark(edit(
     program={"input": {"text": "string"}, "output": {"total": "float"}},
@@ -50,10 +50,6 @@ def row(text="hola", total=1.0):
 # ---------------------------------------------------------------------------
 # streaming
 # ---------------------------------------------------------------------------
-
-def test_single_row_streams():
-    pass  # covered by the parametrized cases below; kept for phase readability
-
 
 def test_one_and_many_rows(tmp_path):
     ws = write(tmp_path, row("a"), row("b"), row("c"))

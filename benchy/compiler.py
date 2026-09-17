@@ -80,8 +80,6 @@ def parse(text: str) -> dict:
     """
     try:
         doc = yaml.load(text, Loader=_StrictLoader)
-    except BenchyError:
-        raise
     except yaml.MarkedYAMLError as exc:
         message = str(exc.problem or exc)
         if exc.problem_mark is not None:

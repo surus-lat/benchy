@@ -33,7 +33,7 @@ def test_key_order_is_preserved():
     assert list(parse("b: 1\na: 2\nc: 3")) == ["b", "a", "c"]
 
 
-def test_duplicate_top_level_key_is_rejected():
+def test_c02_duplicate_top_level_key_is_rejected():
     e = err("a: 1\na: 2")
     assert e.code == "duplicate_key"
     assert "a" in e.message

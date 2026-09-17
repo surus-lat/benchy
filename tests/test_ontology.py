@@ -158,7 +158,7 @@ def test_translate_requires_at_least_one_string_input_leaf():
 
 
 def test_translate_requires_exactly_one_string_output_leaf():
-    base = dict(task="translate", domain="general", language={"source": "es", "target": "en"})
+    base = {"task": "translate", "domain": "general", "language": {"source": "es", "target": "en"}}
     assert fails(**base, out={"translation": "float"}).code == "task_program_mismatch"
     assert fails(**base, out={"a": "string", "b": "string"}).code == "task_program_mismatch"
 
