@@ -177,3 +177,37 @@ Gate: **279 passed**, ruff clean, lean install verified.
 **Next (not started — deliberately):** Phase 11 provider adapters. See the design note
 below; starting a ~150-line integration with under an hour left would have left a
 half-built part, which is worse than none.
+
+## 2026-09-17 09:32 -03 — close-out of the 12-hour window
+
+- Marked P0–P10 done in `PLAN.md` and fixed its own stale references: `compile.py` ->
+  `compiler.py` (renamed during P2), normative sources -> v10.3/v1.2, and the two
+  lines that still described the old tree as a source to mine for adapters.
+  Verified every path `PLAN.md` names resolves; the one that does not is
+  `benchy/providers/openai.py`, which Phase 11 explicitly has not built.
+- Added **Phase 11 as an executable design note** rather than a half-built module.
+  The leverage decision is recorded: one OpenAI-compatible adapter parameterized by
+  `base_url` reaches OpenAI, vLLM, LM Studio, Ollama, the hosted aggregators and any
+  self-hosted gateway; per-vendor adapters reach one each. Also recorded: use
+  `urllib` rather than the `openai` SDK so the zero-dependency property survives, and
+  do **not** coerce types in the adapter — a model returning `"121.00"` for a `float`
+  *should* land as `invalid_output`, because that is a true measurement.
+- Caught and fixed my own drift: the README claimed 777 engine lines, but the P10
+  review cleanups made it 775. Added a test that recomputes the figure from source,
+  so that number cannot go stale again.
+
+Final gate: **280 passed**, ruff clean on both rulesets, working tree clean,
+five commits on `REF/benchy-v1.0`.
+
+### Where things stand
+
+Engine 1.0 is complete and conformant. Definition of done (handoff §19): 15/15.
+Conformance matrix: 31/31 applicable cases, each a named `test_cNN_*`.
+
+Not done, deliberately, each with a reason recorded above:
+- **Phase 11 provider adapters** — designed, not built. Under an hour left in the
+  window; a half-built integration is worse than an executable design note.
+- **Concurrency** — sequential is conformant; spec §16 makes it an optimization.
+  Add on measured need, not on principle.
+- **Field evaluators / `transcribe`** — explicit non-goal. Paper Appendix E holds the
+  design, including the measured 9–15 point size of the normalization decision.
