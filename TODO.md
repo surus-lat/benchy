@@ -33,11 +33,12 @@ Two findings worth keeping:
 
 Open:
 
-- [ ] **Enable the newer Claude models on the AWS account** if they are wanted for evals.
-      8 of 15 `us.*` profiles are available on account `354918377724`; not available:
-      `sonnet-5`, `opus-5`, `opus-4-7`, `opus-4-8`, `fable-5`, `fable-5-1`
-      (*"is not available for this account"*). Available: `haiku-4-5`, `sonnet-4`,
-      `sonnet-4-5`, `sonnet-4-6`, `opus-4-1`, `opus-4-5`, `opus-4-6`, `claude-3-haiku`.
+- [ ] **Enable the newer Claude models on the AWS account** — handed off:
+      [`docs/handoffs/2026-09-17-bedrock-claude-model-access.md`](docs/handoffs/2026-09-17-bedrock-claude-model-access.md).
+      8 of 15 `us.*` profiles work on account `354918377724`; `sonnet-5`, `opus-5`,
+      `opus-4-7`, `opus-4-8`, `fable-5`, `fable-5-1` answer *"is not available for this
+      account"*. Not a console toggle — `enableAccessToAllModelsByDefault` is already
+      `true`, so it is an AWS-side allowlist. Not a benchy task.
 - [ ] `image` input round-trip against a vision model. The Converse profile translates
       data URLs to Converse image blocks and is unit-tested, but never run live.
 - [ ] Rotate the Together and Bedrock keys — both were pasted into a chat transcript.
