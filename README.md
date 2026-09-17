@@ -114,6 +114,40 @@ about *how* your system runs (credentials, HTTP, an SDK, a local model, a whole 
 with a while-loop) lives on your side of that line. The engine has no provider
 branches, and `type: model` is not a special execution path.
 
+## Running a real model
+
+When `ai-system.type` is `model`, benchy selects a built-in adapter and `--adapter`
+becomes optional:
+
+```yaml
+ai-system:
+  type: model
+  provider: openai
+  model: gpt-5
+  prompt: ./prompt.md          # optional
+  parameters:                  # optional, passed through verbatim
+    temperature: 0
+```
+
+```bash
+export OPENAI_API_KEY=...
+benchy run benchmark.yaml
+```
+
+One adapter covers the OpenAI-compatible world. Point it anywhere:
+
+```bash
+export OPENAI_BASE_URL=http://localhost:8000/v1   # vLLM, LM Studio, Ollama, a gateway
+```
+
+It asks for structured output against a JSON schema derived from your program's output
+schema, and it **does not coerce types**: a model that returns `"121.00"` for a `float`
+produces an `invalid_output`, because that is the true measurement. Credentials come
+from the environment and never from benchmark YAML.
+
+Text and `image` inputs are supported; `audio` and `document` inputs, and artifact
+outputs, are rejected at setup rather than failing silently per example.
+
 ## Compile once, run from the IR
 
 Valid YAML compiles deterministically into a canonical JSON IR. The engine consumes
@@ -168,11 +202,12 @@ benchy/
   adapter.py     the runtime boundary
   run.py         the engine loop
   cli.py         compile / run
+  providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-775 lines of code. There is exactly one representation of a schema anywhere in the
-system — the IR JSON node — so nothing marshals between an internal form and the IR,
-and nothing can drift.
+780 lines of code, plus 149 in the optional provider adapter. There is exactly one
+representation of a schema anywhere in the system — the IR JSON node — so nothing
+marshals between an internal form and the IR, and nothing can drift.
 
 ## Scope
 
@@ -208,7 +243,7 @@ other by `tests/test_doc_agreement.py`.
 python -m pytest tests -q
 ```
 
-281 tests. Conformance cases C01–C33 from the build plan are named
+303 tests. Conformance cases C01–C33 from the build plan are named
 `test_cNN_*`, and `tests/test_conformance_matrix.py` fails if any loses coverage.
 
 `.attic/` holds the previous implementation, preserved in git history.

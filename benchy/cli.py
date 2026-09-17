@@ -5,9 +5,13 @@ execution turns IR plus an adapter into a result. Keeping them separate on the
 command line is what makes paper A.8's invariant observable from a shell — compile
 once, delete the YAML, and the IR still runs.
 
-`--adapter module:attr` is required to run, and deliberately explicit: no searching
-a module for something that looks adapter-shaped, and no inference about which
-provider was meant. Naming the object is one word longer and never wrong.
+`--adapter module:attr` names your AI-system's adapter explicitly: no searching a
+module for something that looks adapter-shaped. Naming the object is one word longer
+and never wrong.
+
+It may be omitted when `ai-system.type` is `model`, in which case the runtime selects
+a built-in provider adapter (A.11). An `external` AI-system always needs one, because
+only the runtime knows what that identifier means.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ import json
 import sys
 from pathlib import Path
 
+from benchy import providers
 from benchy.compiler import compile_benchmark
 from benchy.errors import BenchyError
 from benchy.run import run
@@ -37,7 +42,10 @@ def main(argv: list[str] | None = None) -> int:
 
     run_verb = verbs.add_parser("run", help="evaluate an AI-system against a benchmark")
     run_verb.add_argument("source", type=Path, help="benchmark YAML, or a compiled .json IR")
-    run_verb.add_argument("--adapter", required=True, metavar="MODULE:ATTR", help="the AI-system's adapter")
+    run_verb.add_argument(
+        "--adapter", metavar="MODULE:ATTR",
+        help="the AI-system's adapter; optional when ai-system.type is 'model'",
+    )
     run_verb.add_argument("-w", "--workspace", type=Path, help="benchmark workspace root (default: source directory)")
     run_verb.add_argument("-o", "--output", type=Path, help="write the result here instead of stdout")
 
@@ -60,7 +68,8 @@ def _run(args: argparse.Namespace) -> int:
         else compile_benchmark(_read(args.source))
     )
     workspace = args.workspace or args.source.parent
-    result = asyncio.run(run(ir, workspace, _load_adapter(args.adapter)))
+    adapter = _load_adapter(args.adapter) if args.adapter else providers.for_system(ir, workspace)
+    result = asyncio.run(run(ir, workspace, adapter))
     return _emit(result, args.output)
 
 
