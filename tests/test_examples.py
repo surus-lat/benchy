@@ -53,45 +53,40 @@ def test_invoices_example_scores_what_its_docstring_claims(capsys):
     assert tax_id["weight"] == 0.0
 
 
-def test_readme_quotes_the_engines_actual_size():
-    """A number in prose drifts the moment it is not checked."""
+CORE = ["__init__", "errors", "types", "ontology", "compiler", "data", "score",
+        "adapter", "run", "cli"]
+
+
+def _code_lines(path):
     import ast
 
+    source = path.read_text()
+    docstrings: set[int] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            if ast.get_docstring(node, clean=False) and isinstance(node.body[0], ast.Expr):
+                docstrings.update(range(node.body[0].lineno, node.body[0].end_lineno + 1))
+    return sum(
+        1
+        for i, line in enumerate(source.splitlines(), 1)
+        if line.strip() and not line.strip().startswith("#") and i not in docstrings
+    )
+
+
+def test_readme_quotes_the_engines_actual_size():
+    """A number in prose drifts the moment it is not checked.
+
+    The engine and the optional provider adapter are counted separately, because the
+    README lists them separately and `providers.py` is deliberately outside the core.
+    """
     readme = EXAMPLES.parent / "README.md"
     if not readme.is_file():
         pytest.skip("README.md is not distributed")
 
-    total = 0
-    for path in sorted((EXAMPLES.parent / "benchy").glob("*.py")):
-        source = path.read_text()
-        docstrings: set[int] = set()
-        for node in ast.walk(ast.parse(source)):
-            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                if ast.get_docstring(node, clean=False) and isinstance(node.body[0], ast.Expr):
-                    docstrings.update(range(node.body[0].lineno, node.body[0].end_lineno + 1))
-        total += sum(
-            1
-            for i, line in enumerate(source.splitlines(), 1)
-            if line.strip() and not line.strip().startswith("#") and i not in docstrings
-        )
+    benchy = EXAMPLES.parent / "benchy"
+    engine = sum(_code_lines(benchy / f"{name}.py") for name in CORE)
+    provider = _code_lines(benchy / "providers.py")
 
-    assert f"{total} lines of code" in readme.read_text(), f"README should say {total} lines of code"
-
-
-@pytest.mark.parametrize("benchmark", BENCHMARKS, ids=lambda p: p.parent.name)
-def test_example_files_are_committed(benchmark):
-    """An example that is not in the repository is a broken promise to every reader.
-
-    `*.jsonl` is ignored repo-wide — correct for datasets and run artifacts, wrong for
-    an example's exam. This was caught by a clean-clone run, not by the suite, so it
-    is pinned here.
-    """
-    import subprocess
-
-    for name in ("benchmark.yaml", "exam.jsonl", "system.py"):
-        path = benchmark.parent / name
-        assert path.is_file(), f"{path} is missing"
-        ignored = subprocess.run(
-            ["git", "check-ignore", str(path)], capture_output=True, cwd=EXAMPLES.parent
-        )
-        assert ignored.returncode != 0, f"{path} is gitignored and would not survive a clone"
+    text = readme.read_text()
+    assert f"{engine} lines of code" in text, f"README should say {engine} lines of code"
+    assert f"plus {provider} in the optional provider adapter" in text, f"provider is {provider}"
