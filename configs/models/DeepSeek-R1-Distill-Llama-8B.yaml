@@ -1,9 +1,0 @@
-model:
-  name: "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "latam_board"

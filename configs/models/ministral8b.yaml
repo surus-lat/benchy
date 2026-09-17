@@ -1,9 +1,0 @@
-model:
-  name: "mistralai/Ministral-8B-Instruct-2410"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "latam_board"

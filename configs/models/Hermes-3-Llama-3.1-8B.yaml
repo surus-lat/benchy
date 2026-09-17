@@ -1,9 +1,0 @@
-model:
-  name: "NousResearch/Hermes-3-Llama-3.1-8B"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "structured_extraction"

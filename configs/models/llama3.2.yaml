@@ -1,9 +1,0 @@
-model:
-  name: "meta-llama/Llama-3.2-3B-Instruct"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "latam_board"

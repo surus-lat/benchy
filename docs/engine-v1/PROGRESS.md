@@ -277,3 +277,49 @@ changed the count, and the README's figure was stale within the hour. Split into
 is deliberately outside the core and the README lists it separately.
 
 Gate: **303 passed**, ruff clean, clean-clone verified, working tree clean.
+
+## 2026-09-17 09:40 -03 — legacy cleanup, on the user's call
+
+Four decisions taken by the user; all executed.
+
+**Deleted outright** (git history preserves everything):
+`src/` (169 tracked files), `configs/` (80), `.staging/` (57), `submissions/` (15),
+`benchy-engine-v1-agent-bundle/` (superseded by `paper/`), `config_loader.py`,
+`.agent/` (21 skills, 13 of which described the deleted architecture), `Makefile` and
+`setup.sh` (tooling for the deleted tree), `scripts/` (ASR-panel and vLLM venv
+management).
+
+**Moved to `.attic/`** rather than deleted, being reference material:
+34 stale `docs/*` files -> `.attic/docs-v0/`, the old `AGENTS.md`, and the
+`publish-submission` workflow plus its PR template -> `.attic/workflows-v0/`.
+
+**Rewritten because they were actively misleading:**
+- `CLAUDE.md` — routed every future agent session into `.agent/skills/`, now deleted.
+  Replaced with orientation, the gate, the core-import rule, the three optimization
+  targets, and the two lessons this rebuild paid for.
+- `AGENTS.md` — was "the machine-facing contract for running Benchy", describing the
+  old CLI. Now a pointer to `CLAUDE.md`, kept only because tools look for the filename.
+- `CONTRIBUTING.md` — its three "where to start" links pointed into `.attic/`.
+- `pyproject.toml` — dropped the `src` package, the `benchy-legacy` script and every
+  legacy extra (`legacy`, `local`, `prefect`, `document`, `translation`,
+  `transcription`). Only `dev` survives. Version 0.1.0 -> 1.0.0, and the description
+  no longer says "LATAMBoard benchmarking suite".
+
+**Caught two things that would have broken silently:**
+- `.github/workflows/ci.yml` ran `ruff check src tests`. With `src/` deleted, every
+  push would have failed lint. Now `benchy tests`, and `pytest -q` -> `pytest tests -q`.
+- `publish-submission.yml` triggered on `submissions/**` and ran
+  `python -m src.leaderboard.merge_and_publish`. Both gone; workflow retired.
+
+Verified: every `./path` and backticked repo path in README, CLAUDE, AGENTS and
+CONTRIBUTING resolves. Tracked files 1100 -> 318. Suite **303 passed**, ruff clean,
+CI steps simulated locally.
+
+Heartbeat cron `8e09cc98` deleted — the 12-hour window is over.
+
+**Left in place, for the user to call:** `misc/`, `proto/`, `reference/`, `logs/`,
+`search/`, `.notes/`, `.plans/`, `.workshop/`, `.search/`, and the loose root files
+(`ai-notes.md`, `IDEAS.md`, `HANDOFF.md`, `seed.md`, `canonical-json-ir.md.md`,
+`Untitled.base`, `Untitled 1.base`, `uv.lock`, `env.example`). None of these are
+referenced by the engine or its docs, but several look like personal notes rather than
+project files, so they were not touched.
