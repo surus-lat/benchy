@@ -148,3 +148,53 @@ def test_c33_ir_alone_carries_every_semantic_the_engine_needs(bench):
     assert ir["scoring"]["evaluator"] == "exact_match"
     assert ir["scoring"]["benchmark_aggregator"] == "mean"
     assert ir["data"]["format"] == "jsonl"
+
+
+# ---------------------------------------------------------------------------
+# the provider boundary — these run whether or not the providers extra is installed
+# ---------------------------------------------------------------------------
+
+CORE = ["errors", "types", "ontology", "compiler", "data", "score", "adapter", "run"]
+
+
+@pytest.mark.parametrize("dependency", ["providers", "llm_client"])
+def test_the_engine_core_imports_no_provider_machinery(dependency):
+    """A.11: provider integrations live outside the core. Only `cli` may select one."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "benchy"
+    for name in CORE:
+        assert dependency not in (root / f"{name}.py").read_text(), name
+
+
+def test_an_external_ai_system_still_needs_an_explicit_adapter(tmp_path, capsys):
+    (tmp_path / "benchmark.yaml").write_text(edit(data={"path": "./exam.jsonl"}))
+    (tmp_path / "exam.jsonl").write_text("{}")
+    assert cli("run", tmp_path / "benchmark.yaml") == 1
+    assert json.loads(capsys.readouterr().err)["code"] == "adapter_not_bound"
+
+
+def test_a_model_benchmark_without_the_providers_extra_says_how_to_get_it(tmp_path, monkeypatch, capsys):
+    """`llm_client` is optional. Without it, a model run fails at setup with the fix."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "llm_client", None)  # makes `import llm_client` raise
+    monkeypatch.setenv("TOGETHER_API_KEY", "k")
+    (tmp_path / "benchmark.yaml").write_text(edit(
+        data={"path": "./exam.jsonl"},
+        ai_system={"type": "model", "provider": "together", "model": "m"},
+    ))
+    (tmp_path / "exam.jsonl").write_text("{}")
+
+    assert cli("run", tmp_path / "benchmark.yaml") == 1
+    error = json.loads(capsys.readouterr().err)
+    assert error["code"] == "adapter_not_bound"
+    assert "benchy[providers]" in error["message"]
+
+
+def test_the_cli_works_for_external_adapters_without_the_providers_extra(bench, monkeypatch, capsys):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "llm_client", None)
+    assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'system.py'}:extractor") == 0
+    assert json.loads(capsys.readouterr().out)["summary"]["examples"] == 2

@@ -1,48 +1,66 @@
-"""Provider adapters — outside the engine core, on the far side of A.10's boundary.
+"""The built-in provider adapter — outside the engine core, on the far side of A.10.
 
 Nothing in `benchy`'s eight core modules imports this file. It exists because VISION
 asks benchy to handle "all the different ai-system configurations under the hood", and
 A.11 permits the runtime to select a reusable provider adapter for
 `ai-system.type: model`. The engine still sees only `invoke(dict) -> dict`.
 
-**One adapter, not many.** An OpenAI-compatible `/v1/chat/completions` endpoint
-reaches OpenAI, Together, vLLM, LM Studio, Ollama's compatibility mode, the hosted
-aggregators, any self-hosted gateway, and a user's own agent behind a route. A
-per-vendor adapter reaches one vendor. So there is one adapter here and a table of
-endpoints: a provider is a default base URL plus the name of its credential, both
-overridable, and nothing else.
+**Transport is `llm_client`**, SURUS's shared LLM client, so there is one HTTP layer
+for every SURUS system rather than one per project. It is an optional dependency
+(`pip install 'benchy[providers]'`), imported only when a model provider is actually
+selected — an external adapter runs without it.
 
-Two deliberate refusals:
+This file owns only what is specific to *benchmarking*: turning the program contract
+into a request, and refusing anything that would make the measurement lie.
 
+**One adapter, a table of endpoints.** OpenAI, Together and Bedrock all speak OpenAI
+chat completions, so a provider is an endpoint plus the name of its credential, and any
+of them can be pointed elsewhere with `<PROVIDER>_BASE_URL`.
+
+Five refusals, each tested:
+
+- **No provider fallback.** A run evaluates one AI-system (`R = (B, AI)`); failing over
+  to another model would score a mixture under one name.
+- **No format fallback.** Retrying without the schema would score the system on an
+  easier task than the benchmark declares.
+- **No injected defaults.** `llm_client.call` defaults to `temperature=0.1` and
+  `max_tokens=2000`; both are passed explicitly as whatever the benchmark said, or none.
+- **No silently dropped parameters.** `llm_client` forwards anything beyond its named
+  arguments as a nested `extra_body`, which chat-completions endpoints ignore without an
+  error — verified live on Together. Such parameters are refused at setup.
 - **No type coercion.** A model that returns `"121.00"` for a `float` produces an
-  `invalid_output`, and that is the correct measurement — the AI-system did not honour
-  the program contract. Quietly repairing it would make the benchmark lie.
-- **No SDK.** Transport is `urllib`, so installing benchy does not install a vendor
-  package. The engine's dependency is PyYAML; this file adds nothing. One consequence
-  is worth knowing: `urllib` announces itself as `Python-urllib/x.y`, which sits on
-  Cloudflare's default block list — Together returns 403 (code 1010) for it. Hence the
-  explicit `User-Agent` below. Found by running against the real endpoint; no local
-  stand-in would have shown it.
+  `invalid_output`, because the AI-system did not honour the program contract.
 
 Credentials come from the environment, never from benchmark YAML (spec §11).
 """
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
+import logging
 import mimetypes
 import os
-import urllib.error
-import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
 
 from benchy import types
+from benchy.data import resolve_within
 from benchy.errors import BenchyError
 
 __all__ = ["for_system", "OpenAIChat"]
+
+#: provider -> (endpoint, credential variable). `{NAME}` in an endpoint is read from the
+#: environment. Bedrock's OpenAI-compatible endpoint takes a Bedrock API key as a bearer
+#: token under AWS's own variable name; it does not serve Claude, Nova or Llama.
+_ENDPOINTS = {
+    "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
+    "together": ("https://api.together.xyz/v1", "TOGETHER_API_KEY"),
+    "bedrock": ("https://bedrock-runtime.{AWS_REGION}.amazonaws.com/openai/v1", "AWS_BEARER_TOKEN_BEDROCK"),
+}
+
+#: The parameters `llm_client` delivers correctly on every endpoint profile.
+_FORWARDED = ("temperature", "max_tokens")
 
 #: Formats the model must produce, since JSON schema has no type for them (paper A.6).
 _FORMATS = {
@@ -53,15 +71,8 @@ _FORMATS = {
 
 _JSON_TYPES = {"int": "integer", "float": "number", "bool": "boolean"}
 
-#: Anything but urllib's default, which providers' WAFs block. See the module docstring.
-_USER_AGENT = "benchy/1.0"
-
-#: A provider is its default endpoint. Credentials and overrides derive from the name
-#: (`together` -> `TOGETHER_API_KEY`, `TOGETHER_BASE_URL`), so adding one is one line.
-_ENDPOINTS = {
-    "openai": "https://api.openai.com/v1",
-    "together": "https://api.together.xyz/v1",
-}
+# A library does not print; the host decides. Keeps `benchy run`'s stderr for diagnostics.
+logging.getLogger("llm_client").addHandler(logging.NullHandler())
 
 
 def for_system(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None = None) -> object:
@@ -69,7 +80,6 @@ def for_system(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None
 
     `env` is injectable so tests need neither real credentials nor a real endpoint.
     """
-    env = os.environ if env is None else env
     system = ir["ai-system"]
     if system.get("type") != "model":
         raise BenchyError(
@@ -86,104 +96,108 @@ def for_system(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None
             f"endpoint via <PROVIDER>_BASE_URL",
             ["ai-system", "provider"],
         )
-    return OpenAIChat(ir, Path(workspace), env)
+    try:
+        from llm_client import call
+    except ImportError:
+        raise BenchyError(
+            "runtime", "adapter_not_bound",
+            "model providers need the providers extra: pip install 'benchy[providers]'",
+            ["ai-system", "provider"],
+        ) from None
+    return OpenAIChat(ir, Path(workspace), os.environ if env is None else env, call)
 
 
 class OpenAIChat:
-    """An OpenAI-compatible chat-completions AI-system.
+    """An OpenAI-compatible chat-completions AI-system, reached through `llm_client`.
 
     Everything that can be known to be unsupported is rejected in `__init__`, so a run
     fails at setup rather than producing a column of identical `execution_error`s.
     """
 
-    def __init__(self, ir: Mapping, workspace: Path, env: Mapping[str, str]) -> None:
-        self.model = ir["ai-system"]["model"]
-        self.parameters = dict(ir["ai-system"].get("parameters") or {})
-        self.input_schema = ir["program"]["input"]
-        self.schema = _json_schema(ir["program"]["output"])
-        provider = ir["ai-system"]["provider"]
-        prefix = provider.upper()
-        self.base_url = env.get(f"{prefix}_BASE_URL", _ENDPOINTS[provider]).rstrip("/")
-        self.timeout = float(env.get("BENCHY_TIMEOUT", "120"))
-
-        key = env.get(f"{prefix}_API_KEY")
-        if not key:
+    def __init__(self, ir: Mapping, workspace: Path, env: Mapping[str, str], call) -> None:
+        system = ir["ai-system"]
+        provider = system["provider"]
+        endpoint, credential = _ENDPOINTS[provider]
+        try:
+            base_url = env.get(f"{provider.upper()}_BASE_URL") or endpoint.format_map(env)
+        except KeyError as missing:
             raise BenchyError(
                 "runtime", "adapter_not_bound",
-                f"{prefix}_API_KEY is not set; credentials are runtime policy and never "
-                f"belong in benchmark YAML",
+                f"{missing.args[0]} is not set; the {provider} endpoint needs it",
+            ) from None
+        if not env.get(credential):
+            raise BenchyError(
+                "runtime", "adapter_not_bound",
+                f"{credential} is not set; credentials are runtime policy and never belong in "
+                f"benchmark YAML",
             )
-        self.api_key = key
 
-        self._reject_unsupported(ir)
-        self.prompt = self._load_prompt(ir, workspace)
+        parameters = dict(system.get("parameters") or {})
+        dropped = sorted(set(parameters) - set(_FORWARDED))
+        if dropped:
+            raise BenchyError(
+                "runtime", "adapter_not_bound",
+                f"ai-system.parameters {', '.join(dropped)} would not reach the model: llm_client "
+                f"sends only {' and '.join(_FORWARDED)} as request parameters, and anything else as "
+                f"a nested extra_body that chat-completions endpoints silently ignore",
+                ["ai-system", "parameters"],
+            )
 
-    def _reject_unsupported(self, ir: Mapping) -> None:
-        for path in types.leaves(ir["program"]["input"]):
-            kind = types.at(ir["program"]["input"], path)["type"]
-            if kind in ("audio", "document"):
-                raise BenchyError(
-                    "runtime", "adapter_not_bound",
-                    f"input field {'.'.join(path)} is {kind}, which this adapter does not "
-                    f"send; only text-valued fields and image are supported",
-                    list(path),
-                )
-        for path in types.leaves(ir["program"]["output"]):
-            kind = types.at(ir["program"]["output"], path)["type"]
-            if kind in types.ARTIFACTS:
-                raise BenchyError(
-                    "runtime", "adapter_not_bound",
-                    f"output field {'.'.join(path)} is {kind}; a chat completion returns "
-                    f"text, so it cannot produce an artifact",
-                    list(path),
-                )
-
-    def _load_prompt(self, ir: Mapping, workspace: Path) -> str:
-        reference = ir["ai-system"].get("prompt")
-        if not reference:
-            return "Answer with a JSON object matching the required schema."
-        # Benchmark-owned paths resolve from the workspace root (amendment §2).
-        from benchy.data import resolve_within
-
-        path = resolve_within(reference, workspace.resolve(), workspace.resolve(),
-                              ["ai-system", "prompt"], phase="runtime")
-        if not path.is_file():
-            raise BenchyError("runtime", "adapter_not_bound", f"prompt file not found: {path}",
-                              ["ai-system", "prompt"])
-        return path.read_text(encoding="utf-8")
+        self.call = call
+        self.base_url = base_url.rstrip("/")
+        self.api_key = env[credential]
+        self.model = system["model"]
+        self.temperature = parameters.get("temperature")
+        self.max_tokens = parameters.get("max_tokens")
+        self.timeout = float(env.get("BENCHY_TIMEOUT", "120"))
+        self.input_schema = ir["program"]["input"]
+        self.response_format = {
+            "type": "json_schema",
+            "json_schema": {"name": "program_output", "strict": True, "schema": _json_schema(ir["program"]["output"])},
+        }
+        _reject_unsupported(ir)
+        self.prompt = _prompt(system, workspace)
 
     async def invoke(self, input_object: dict) -> object:
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": self.prompt},
-                {"role": "user", "content": self._content(input_object)},
-            ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"name": "program_output", "strict": True, "schema": self.schema},
-            },
-            **self.parameters,
-        }
-        body = await asyncio.to_thread(self._post, payload)
-        choice = body["choices"][0]
-        text = choice["message"].get("content")
+        try:
+            reply = await self.call(
+                messages=[
+                    {"role": "system", "content": self.prompt},
+                    {"role": "user", "content": self._content(input_object)},
+                ],
+                base_url=self.base_url,
+                api_key=self.api_key,
+                model_name=self.model,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                response_format=self.response_format,
+                timeout=self.timeout,
+                operation="benchy",
+            )
+        except Exception as exc:
+            # llm_client raises its transport's HTTP error; the body is what says why.
+            response = getattr(exc, "response", None)
+            if response is None:
+                raise
+            raise BenchyError("runtime", "provider_error", f"{response.status_code}: {response.text[:500]}") from None
 
-        # A reasoning model spends completion tokens on thinking before it writes
-        # anything, so too small a budget returns reasoning and no answer. Saying so
-        # beats letting it surface as an inscrutable invalid_output.
-        if choice.get("finish_reason") == "length":
+        # A budget that runs out mid-answer truncates the output. Checked live: the
+        # provider reports finish_reason "length" and returns partial JSON, which would
+        # otherwise be scored as the system's own malformed answer. llm_client only
+        # surfaces finish_reason from the version that exposes it; before that, a
+        # truncation is still null-scored and zero-contributing, just less well explained.
+        if reply.get("finish_reason") == "length":
             raise BenchyError(
                 "runtime", "provider_error",
-                "the model hit its token limit before completing the output; raise "
-                "max_tokens in ai-system.parameters (reasoning models spend the budget "
-                "on reasoning_content first)",
+                "the model hit its token limit before completing the output; raise max_tokens in "
+                "ai-system.parameters (reasoning models spend the budget on reasoning first)",
             )
+        text = reply["content"]
         if not text:
             raise BenchyError(
                 "runtime", "provider_error",
-                "the model returned no content"
-                + (" (only reasoning_content)" if choice["message"].get("reasoning_content") else ""),
+                "the model returned no content; if it is a reasoning model, raise max_tokens in "
+                "ai-system.parameters, since reasoning tokens are spent before the answer is written",
             )
         try:
             return json.loads(text)
@@ -192,30 +206,10 @@ class OpenAIChat:
             # classify it as invalid_output, which says more than an exception would.
             return text
 
-    def _post(self, payload: dict) -> dict:
-        request = urllib.request.Request(
-            f"{self.base_url}/chat/completions",
-            data=json.dumps(payload).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                # urllib's default UA is blocked by some providers' WAF; see above.
-                "User-Agent": _USER_AGENT,
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as exc:
-            raise BenchyError("runtime", "provider_error",
-                              f"{exc.code} {exc.reason}: {exc.read()[:500].decode(errors='replace')}") from None
-
     def _content(self, input_object: dict, path: tuple[str, ...] = ()) -> list[dict]:
         """One content part per input leaf, named so the model knows what it is."""
         parts: list[dict] = []
-        node = types.at(self.input_schema, path)
-        for name, child in node["fields"].items():
+        for name, child in types.at(self.input_schema, path)["fields"].items():
             value, here = input_object[name], path + (name,)
             if child["type"] == "object":
                 parts.extend(self._content(value, here))
@@ -225,6 +219,34 @@ class OpenAIChat:
             else:
                 parts.append({"type": "text", "text": f"{'.'.join(here)}: {value}"})
         return parts
+
+
+def _reject_unsupported(ir: Mapping) -> None:
+    for side, refused, why in (
+        ("input", ("audio", "document"), "which this adapter does not send; only text-valued fields and image are"),
+        ("output", types.ARTIFACTS, "and a chat completion returns text, so it cannot produce an artifact;"),
+    ):
+        schema = ir["program"][side]
+        for path in types.leaves(schema):
+            kind = types.at(schema, path)["type"]
+            if kind in refused:
+                raise BenchyError(
+                    "runtime", "adapter_not_bound",
+                    f"{side} field {'.'.join(path)} is {kind}, {why} supported",
+                    list(path),
+                )
+
+
+def _prompt(system: Mapping, workspace: Path) -> str:
+    reference = system.get("prompt")
+    if not reference:
+        return "Answer with a JSON object matching the required schema."
+    # Benchmark-owned paths resolve from the workspace root (amendment §2).
+    root = workspace.resolve()
+    path = resolve_within(reference, root, root, ["ai-system", "prompt"], phase="runtime")
+    if not path.is_file():
+        raise BenchyError("runtime", "adapter_not_bound", f"prompt file not found: {path}", ["ai-system", "prompt"])
+    return path.read_text(encoding="utf-8")
 
 
 def _data_url(path: str) -> str:

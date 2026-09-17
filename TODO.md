@@ -1,39 +1,71 @@
 # Benchy — TODO
 
-State as of 2026-09-17. Engine 1.0 is complete: 303 tests, conformance 31/31,
-PyYAML the only dependency, verified from a clean clone. Branch `REF/benchy-v1.0`,
+State as of 2026-09-17. Engine 1.0 is complete: conformance 31/31, PyYAML the only
+core dependency, verified from a clean clone with and without the providers extra. Branch `REF/benchy-v1.0`,
 unmerged.
 
 Everything below is what is *not* done. Each item says who it needs.
 
 ---
 
-## 1. Provider validation — **DONE for Together, 2026-09-17**
+## 1. Providers — **Together live; Bedrock built, needs credentials**
 
-Together AI is the main backend. `examples/together/` runs live and scores 1.0.
+The adapter's transport is now SURUS's `llm-client` (`pip install -e '.[providers]'`).
+Together is the main backend and runs live: `examples/together/` scores 1.0.
 
-- [x] First live run — `Qwen/Qwen3.8-2.4T-A95B`, 3/3 valid, benchmark score 1.0
-- [x] Strict structured outputs confirmed: `response_format.json_schema` with
-      `strict: true` and `additionalProperties: false` is honoured exactly
-- [x] `json_object` fallback confirmed **unnecessary** — correctly not built
-- [x] Real 4xx/5xx body shape: Cloudflare HTML-ish, `provider_error` truncation at
-      500 chars is adequate
-- [x] **Found only by running live:** Together's WAF 403s urllib's default
-      `User-Agent` (Cloudflare code 1010). Fixed with an explicit `benchy/1.0` header
-      and pinned by `test_requests_do_not_go_out_as_python_urllib`.
+Done, each verified against the real endpoint:
 
-Still open for this adapter:
+- [x] Strict structured outputs honoured exactly; no `json_object` fallback needed
+- [x] Together's WAF 403s `Python-urllib` but accepts `llm-client`'s httpx agent
+- [x] A null `max_tokens` is accepted, so `llm-client`'s 2000 default is never injected
+- [x] A 429 is retried rather than scored; a rejected schema is never retried without it
+- [x] Parameters beyond `temperature` / `max_tokens` refused at setup — through
+      `llm-client` they would be silently ignored (proven with `stop` on Together)
+- [x] Bedrock endpoint shape confirmed: `bedrock-runtime.<region>/openai/v1` answers an
+      invalid bearer token with an OpenAI-shaped 401
 
-- [ ] Confirm an `image` input round-trips to a vision model (needs a vision-capable
-      model on Together; the invoice example is text-only)
-- [ ] Exercise a reasoning model with a deliberately small `max_tokens` against the
-      live endpoint, to confirm the `finish_reason: length` diagnostic fires in the
-      wild as it does against the stand-in
-- [ ] AWS Bedrock as the secondary backend — **needs credentials from you**. Bedrock
-      is *not* OpenAI-compatible (SigV4 auth, different request shape), so unlike
-      Together it cannot be a one-line entry in `_ENDPOINTS`. Decide then whether it
-      justifies a second adapter or is better reached through a proxy that speaks
-      OpenAI.
+Open:
+
+- [ ] **Bedrock live run — needs from you:** a Bedrock **API key** (not IAM access
+      keys) as `AWS_BEARER_TOKEN_BEDROCK`, an `AWS_REGION`, and which model(s).
+- [ ] **Decide on Claude via Bedrock.** Bedrock's Chat Completions endpoint serves
+      OpenAI, Qwen, Mistral, Google, NVIDIA, xAI and others — but **not** Claude
+      (0 of 17), Nova (0 of 13) or Llama (0 of 12). Claude on Bedrock needs the
+      Anthropic Messages API or Converse, i.e. a new request shape in `llm-client`.
+      Only worth building if Claude is why Bedrock is wanted.
+- [ ] `image` input round-trip against a vision model (the invoice example is text-only)
+
+---
+
+## 1b. `llm-client` upstream fixes — **ready on a local branch, needs your OK to push**
+
+Found while wiring benchy to it; both proven live on Together. Branch
+`benchy/finish-reason-and-extra-body` in a local clone, two independent commits,
+23 tests passing (19 original + 4 new). **Not pushed** — it is a shared repo, and the
+second commit changes behaviour for its other consumers.
+
+- [ ] **Expose `finish_reason`.** Today a reply cut off by its token budget returns
+      partial JSON and `llm-client` drops the reason, so benchy scores it as the
+      system's own malformed answer (*"expected an object, got str"*). With the fix it
+      becomes *"hit its token limit… raise max_tokens"* — verified live, before and
+      after. Contract change: the result dict gains a key.
+- [ ] **Merge `extra_body` into the request instead of nesting it.** Nested, servers
+      ignore it without an error, so `seed` / `top_p` / `stop` never reached the model.
+      **Behaviour change for the IHSA backend:** parameters it currently passes this way
+      will start taking effect. Needs review by whoever owns those calls.
+- [ ] Once merged: widen benchy's accepted parameters beyond `temperature` / `max_tokens`
+      for chat-completions endpoints. (`OpenAIProfile` drops `extra_body` by design, so
+      the `openai` provider stays restricted.)
+
+---
+
+## 1c. CI does not exercise providers — **needs a secret**
+
+`.github/workflows/ci.yml` installs `.[dev]`, so the 42 provider tests skip there:
+`llm-client` is private. Installing the extra in CI needs a GitHub token with read
+access to `surus-lat/llm-client`, added as a repository secret.
+
+- [ ] Add the token and install `.[dev,providers]` in CI
 
 ---
 
@@ -76,8 +108,8 @@ Each was left out on purpose. The reason matters more than the item.
       dataset order. Add when a real run is measurably too slow, not before.
 - [ ] **Field evaluators (`wer` / `cer`) and the return of `transcribe`.** Design is
       written in paper Appendix E. Blocked on one decision below.
-- [ ] **A second provider adapter.** Only if something genuinely cannot be reached
-      through an OpenAI-compatible endpoint.
+- [ ] **A second request shape.** Only if something genuinely cannot be reached
+      through OpenAI chat completions — Claude on Bedrock is the live candidate (§1).
 - [ ] **`audio` / `document` inputs and artifact outputs** in the provider adapter.
       Currently rejected at setup with a clear message rather than failing per example.
 
