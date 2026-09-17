@@ -85,3 +85,10 @@ test.py
 .claude/
 .worktrees/
 .search/
+
+# Local run data and environments — never committed, and kept out of `git status`.
+/.data/
+/outputs/
+/logs/
+/.venv-vox/
+/benchy.egg-info/
