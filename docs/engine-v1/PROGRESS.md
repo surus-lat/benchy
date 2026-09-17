@@ -372,7 +372,7 @@ PyYAML only. Clean clone `[dev,providers]` — 328 passed, live example 3/3, sco
 ## 2026-09-17 — llm-client PR opened (user-authorised)
 
 Pushed `benchy/finish-reason-and-extra-body` and opened
-[surus-lat/llm-client#1](https://github.com/surus-lat/llm-client/pull/1), reviewers
+[surus-lat/llm-client#1](https://github.com/surus-lat/llm-client/pull/5), reviewers
 `marianbasti` and `KennBro`, plus issues #2 and #3 for what it deliberately leaves open.
 
 **The the internal backend question, answered before writing the PR.** `the-internal-backend` does not
@@ -468,3 +468,32 @@ instead of four, and checking why rather than accepting the green.
 
 Gates: clean clone engine-only 292 passed + 46 skipped; with the providers extra 338
 passed; working tree clean; ruff clean.
+
+## 2026-09-17 — unblocked for shipping
+
+Challenged on "blocked on review" and the challenge was right. benchy itself was never
+blocked: 336 green against `llm-client` **main**, 0 conflicts against `origin/main`. Only
+Claude on Bedrock needed unmerged code, and only **one of five commits** actually needed
+an internal backend reviewer.
+
+**Split the llm-client work by risk.** #1 and #4 are closed, replaced by two independent
+PRs to `main`:
+
+- **#5 — additive only, merge now.** finish_reason, Bedrock Converse, explicit `profile`
+  argument, README. Audited every line it *removes* from main: all signature widenings.
+  `extra_body` handling is byte-identical to main.
+- **#6 — the one reviewable change**, extra_body delivery, on its own.
+
+**Caught my own mistake before it shipped.** `benchy/bedrock-support` already existed from
+a failed cherry-pick, so `git checkout -b` silently failed and my commit landed on the
+wrong branch — PR #5 briefly contained *only* `finish_reason`, while its description
+claimed Converse. Found by running the examples against the pushed branch rather than
+trusting the description. Corrected, then verified by diffing the PR itself:
+Converse present, `extra_body` absent, and no leak between #5 and #6.
+
+**benchy PR opened:** surus-lat/benchy#33, 40 commits, MERGEABLE. Merged `origin/main`
+first to **preserve `submissions/latam_asr_es_full` (#32)** — a colleague's ASR results
+that landed after this branch's base, so not part of the legacy set that was approved for
+deletion. Keeping it cost nothing; dropping it would have been a silent side effect.
+
+With #5's branch installed: Together 3/3, Bedrock+Claude 3/3, vision 3/3, 338 tests.

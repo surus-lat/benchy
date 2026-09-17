@@ -49,11 +49,17 @@ Open:
 
 ## 1b. `llm-client` upstream — **PR open, awaiting review**
 
-Two PRs, stacked. Reviewers on both: `marianbasti`, `KennBro`.
+Two PRs, **both straight to `main`, independent**. Reviewers: `marianbasti`, `KennBro`.
 
-**[#1](https://github.com/surus-lat/llm-client/pull/1)** → `main` — 3 commits, 24 tests.
-**[#4](https://github.com/surus-lat/llm-client/pull/4)** → #1's branch — Bedrock Converse,
-32 tests. Merge #1 first.
+**[#5](https://github.com/surus-lat/llm-client/pull/5) — merge now, no review needed.**
+Additive only: `finish_reason`, the Bedrock Converse profile, an explicit `profile`
+argument, the README section. Every line it removes from main is a signature widening;
+`extra_body` handling is byte-identical to main. 30 tests. Merging it is what makes
+Claude on Bedrock work from a plain `pip install`.
+
+**[#6](https://github.com/surus-lat/llm-client/pull/6) — needs an internal backend reviewer.**
+The single behaviour change: delivering `extra_body` to the model. No impact today
+(the internal backend does not depend on the package); at migration it removes a landmine. 22 tests.
 
 - [x] Expose `finish_reason`, so a truncated reply is distinguishable from a malformed
       one. Verified live: `max_tokens 16` goes from `invalid_output` ("expected an
