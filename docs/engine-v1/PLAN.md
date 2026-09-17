@@ -125,49 +125,31 @@ C01–C33 from `benchy-engine-v1-agent-bundle/benchy-engine-build-plan-v1.md`, m
 C07/C08 (transcribe). Each C-case is a named test so the mapping is auditable:
 `test_c01_canonical_extraction_benchmark_compiles`, etc.
 
-## Phase 11 — provider adapters (designed, NOT built)
+## Phase 11 — provider adapters — **BUILT**
 
-The build plan places this after conformance, which the engine has now passed. It is
-the next real work, and it is what VISION means by "handling all the different
-ai-system configurations under the hood".
+Shipped as a single `benchy/providers.py` (not the `benchy/providers/openai.py` package
+this section originally sketched — one file was enough). The core imports none of it;
+`tests/test_acceptance.py` pins that.
 
-**The leverage decision: build one adapter, not many.** An OpenAI-compatible
-`/v1/chat/completions` endpoint covers OpenAI, vLLM, LM Studio, Ollama's compat mode,
-Together/Groq/Fireworks, any self-hosted gateway, and a user's own agent behind a
-route. One adapter parameterized by `base_url` reaches most of the space; a per-vendor
-adapter for each reaches one each. Start with the one.
+What the design got right, confirmed by building it:
 
-Where it goes: `benchy/providers/openai.py`. The core must not import it — verify with
-a test that `benchy/*.py` contains no reference to `providers`.
+- **One adapter, not many.** An OpenAI-compatible endpoint reaches OpenAI, Together and
+  most of Bedrock. A provider is a row in `_ENDPOINTS`.
+- **No SDK.** Transport is SURUS's `llm-client`, so benchy's core dependency is still
+  PyYAML alone.
+- **No type coercion.** A model returning `"121.00"` for a `float` is an
+  `invalid_output`, because that is the true measurement.
 
-What it owes the contract (`async invoke(dict) -> dict`), in order of difficulty:
+What the design got wrong, and what running it live taught:
 
-1. **Output schema -> JSON schema.** Walk the output IR into a JSON-schema object for
-   structured outputs. ~30 lines, recursive, mirrors `types.leaves`.
-   `date`/`time`/`datetime`/artifacts become `string` with a format note in the prompt.
-2. **Input object -> message.** Text fields inline; `image`/`audio`/`document` leaves
-   are resolved absolute paths, so read and base64 them into the provider's content
-   parts. The prompt comes from `ai-system.prompt` when present.
-3. **Transport.** `urllib.request` keeps the engine's zero-dependency property intact;
-   an `openai` SDK dependency would put a vendor package in the install path for
-   everyone. Prefer stdlib unless something concrete forces otherwise.
-4. **Response -> output object.** Parse the JSON body. Do **not** coerce types — the
-   engine validates strictly, and a model returning `"121.00"` for a `float` *should*
-   land as `invalid_output`. That is a true measurement of the system, not a defect to
-   paper over.
-
-Wiring: `--adapter` becomes optional, and `cli._run` falls back to
-`providers.for_system(ir)` when `ai-system.type == model`. A missing provider stays
-`adapter_not_bound` (A.11).
-
-Testing without network or keys: run a `http.server` fixture on localhost that speaks
-the chat-completions shape. That exercises every line above — schema generation,
-encoding, transport, parsing — and is honest about what it does not prove (real
-provider quirks).
-
-Open question to settle first: `ai-system.parameters` is provider-specific by
-definition (handoff §3). Decide whether the adapter passes it through verbatim or
-validates a known subset. Verbatim is fewer parts and matches the spec's intent.
+- **"One adapter reaches everything" is not quite true.** Anthropic models on Bedrock do
+  not serve chat completions at all; they need the Converse API, where a schema becomes a
+  forced tool call. That lives in `llm-client`, not here.
+- **Routing must be stated, not inferred.** Picking a request shape from a hostname
+  substring silently breaks whenever a base URL points at a gateway.
+- **Parameters cannot be passed through blindly.** Anything beyond `temperature` and
+  `max_tokens` would be delivered somewhere endpoints ignore without erroring, so it is
+  refused at setup instead.
 
 ## Deferred, with reasons
 
