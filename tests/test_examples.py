@@ -51,3 +51,28 @@ def test_invoices_example_scores_what_its_docstring_claims(capsys):
     # The zero-weight field is still validated and still reported.
     tax_id = next(f for f in result["results"][0]["field_scores"] if f["path"] == ["supplier", "tax_id"])
     assert tax_id["weight"] == 0.0
+
+
+def test_readme_quotes_the_engines_actual_size():
+    """A number in prose drifts the moment it is not checked."""
+    import ast
+
+    readme = EXAMPLES.parent / "README.md"
+    if not readme.is_file():
+        pytest.skip("README.md is not distributed")
+
+    total = 0
+    for path in sorted((EXAMPLES.parent / "benchy").glob("*.py")):
+        source = path.read_text()
+        docstrings: set[int] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                if ast.get_docstring(node, clean=False) and isinstance(node.body[0], ast.Expr):
+                    docstrings.update(range(node.body[0].lineno, node.body[0].end_lineno + 1))
+        total += sum(
+            1
+            for i, line in enumerate(source.splitlines(), 1)
+            if line.strip() and not line.strip().startswith("#") and i not in docstrings
+        )
+
+    assert f"{total} lines of code" in readme.read_text(), f"README should say {total} lines of code"

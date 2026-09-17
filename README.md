@@ -170,7 +170,7 @@ benchy/
   cli.py         compile / run
 ```
 
-777 lines of code. There is exactly one representation of a schema anywhere in the
+775 lines of code. There is exactly one representation of a schema anywhere in the
 system — the IR JSON node — so nothing marshals between an internal form and the IR,
 and nothing can drift.
 
