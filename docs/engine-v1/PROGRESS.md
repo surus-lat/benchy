@@ -119,3 +119,33 @@ applicable cases green.
    implementation is now *ahead* of the paper, the reverse of the brief's complaint.
 2. `examples/` — a real runnable benchmark in-tree.
 3. Phase 11 provider adapters, designed fresh (NOT mined from the old tree).
+
+## 2026-09-17 08:45 -03 — heartbeat 1. Paper sync done (queued item 1).
+
+Resumed from green: 275 passed, ruff clean, nothing uncommitted.
+
+- Applied `paper/v10-transcribe-removal-brief.md`, producing **`technical-paper-v10.3.md`**.
+  All five edits landed; all of the brief's §4 consistency checks pass:
+  `transcrib` appears only in §10 and Appendix E, Appendix B and A.4 list the same
+  three tasks in the same order, `audio` survives in 11 places, §9's canonical YAML
+  still uses `extract`, and no "four tasks" prose exists.
+- Wrote **Appendix E** (field evaluators as a described extension, not 1.0 behavior).
+  Preserved the brief's technical claims and `evaluators:` syntax sketch. Added two
+  things the brief left implicit and a future implementer needs:
+  - keeping the raw numerator/denominator, not just the ratio, because mean-of-
+    per-example is a macro-average while published WER is a micro-average;
+  - the measured size of the normalization question — 9 to 15 points of per-example
+    word accuracy across the ASR predictions stored in this repo. The brief said the
+    decision "deserves its own treatment"; now it has a number attached.
+- Synced the other two normative docs, which still contradicted the engine:
+  **`benchy-engine-spec-v1.2.md`** and **`benchy-engine-agent-handoff-v1.2.md`**.
+- Added `tests/test_doc_agreement.py` (7 tests): the paper's Appendix B and A.4, the
+  spec's §5 and the handoff's validator table must all equal the shipped registry.
+  **Verified the guard fails when it should** by smuggling `transcribe` back into
+  `ontologies/1.0.yaml` — 4 of 7 went red, then restored.
+  Skips cleanly when `paper/` is absent, so an installed distribution is unaffected.
+
+Gate: **275 passed**, ruff clean on both rulesets.
+
+**Next:** 2. `examples/` in-tree runnable benchmark. 3. Phase 11 provider adapters,
+designed fresh.
