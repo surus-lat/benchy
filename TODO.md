@@ -59,7 +59,7 @@ Claude on Bedrock work from a plain `pip install`.
 
 **[#6](https://github.com/surus-lat/llm-client/pull/6) — needs an internal backend reviewer.**
 The single behaviour change: delivering `extra_body` to the model. No impact today
-(the internal backend does not depend on the package); at migration it removes a landmine. 22 tests.
+(that backend does not depend on the package); at migration it removes a landmine. 22 tests.
 
 - [x] Expose `finish_reason`, so a truncated reply is distinguishable from a malformed
       one. Verified live: `max_tokens 16` goes from `invalid_output` ("expected an
@@ -68,11 +68,11 @@ The single behaviour change: delivering `extra_body` to the model. No impact tod
 - [x] Deliver `extra_body` to the model instead of nesting it, mapping
       `enable_thinking` to `chat_template_kwargs` the way the internal backend's own client does.
 - [x] README section recording what a measurement caller must switch off and why.
-- [x] **Checked the the internal backend blast radius:** `the-internal-backend` does **not** depend on
+- [x] **Checked the blast radius:** the internal backend that vendors this client does **not** depend on
       this package — every caller imports its own `src.services.llm_client`, and
       `llm-client` is absent from `backend/pyproject.toml`. No production impact today;
       the PR in fact *removes* a migration landmine, since the generic profile would have
-      silently dropped the internal backend's `enable_thinking` suppression.
+      silently dropped its `enable_thinking` suppression.
 - [x] **#4: Bedrock Converse profile**, so Claude is reachable at all. Also lets a caller
       *state* the profile instead of inferring it from the hostname — benchy does, because
       a `BEDROCK_BASE_URL` pointing at a gateway would otherwise silently get the wrong
