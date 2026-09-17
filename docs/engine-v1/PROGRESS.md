@@ -149,3 +149,31 @@ Gate: **275 passed**, ruff clean on both rulesets.
 
 **Next:** 2. `examples/` in-tree runnable benchmark. 3. Phase 11 provider adapters,
 designed fresh.
+
+## 2026-09-17 09:10 -03 — examples, README, dependency cleanup
+
+- **`examples/invoices/`** — the paper's canonical extraction benchmark, runnable
+  offline. Exercises nested output, mixed semantic types and explicit weights: the
+  stand-in system gets five of six fields right on the third example but misses the
+  one carrying weight 5 of 9, so it scores 4/9 and the benchmark scores 22/27.
+  `supplier.tax_id` has weight 0, so the score is identical whether the system
+  extracts it correctly or not — which is what a zero weight *means*.
+- **`tests/test_examples.py`** — every `examples/*/benchmark.yaml` compiles and runs
+  through the real CLI, and the invoices example is pinned to the exact score the
+  README quotes. Documentation that is never executed rots.
+- **Rewrote `README.md`.** The old one (31,707 bytes) described the architecture now
+  in `.attic/`; moved to `.attic/README-v0.md`. Verified every claim in the new one
+  against a real run — which caught the quoted score's last digit (`...149`, not
+  `...148`) and confirmed the `missing_weight` diagnostic reproduces verbatim.
+- **Fixed a dependency lie the README rewrite exposed.** `pyproject` listed openai,
+  anthropic, pandas, datasets, scipy, pillow and more as *core* dependencies — all of
+  them requirements of the legacy `src/` tree, none of them used by the engine. Moved
+  to a `legacy` extra; dropped `jiwer` from `dev` (no evaluators in 1.0). Core is now
+  `pyyaml` alone. Verified by building a fresh venv, `pip install -e .`, and running
+  the example end-to-end: the venv contains PyYAML and benchy, nothing else.
+
+Gate: **279 passed**, ruff clean, lean install verified.
+
+**Next (not started — deliberately):** Phase 11 provider adapters. See the design note
+below; starting a ~150-line integration with under an hour left would have left a
+half-built part, which is worse than none.
