@@ -76,3 +76,22 @@ def test_readme_quotes_the_engines_actual_size():
         )
 
     assert f"{total} lines of code" in readme.read_text(), f"README should say {total} lines of code"
+
+
+@pytest.mark.parametrize("benchmark", BENCHMARKS, ids=lambda p: p.parent.name)
+def test_example_files_are_committed(benchmark):
+    """An example that is not in the repository is a broken promise to every reader.
+
+    `*.jsonl` is ignored repo-wide — correct for datasets and run artifacts, wrong for
+    an example's exam. This was caught by a clean-clone run, not by the suite, so it
+    is pinned here.
+    """
+    import subprocess
+
+    for name in ("benchmark.yaml", "exam.jsonl", "system.py"):
+        path = benchmark.parent / name
+        assert path.is_file(), f"{path} is missing"
+        ignored = subprocess.run(
+            ["git", "check-ignore", str(path)], capture_output=True, cwd=EXAMPLES.parent
+        )
+        assert ignored.returncode != 0, f"{path} is gitignored and would not survive a clone"
