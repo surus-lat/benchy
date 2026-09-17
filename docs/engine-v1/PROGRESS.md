@@ -436,3 +436,35 @@ its job.
 
 Gates: 331 passed + 2 skipped against llm-client main (the two Converse tests skip via
 `needs_converse`); 333 passed against the PR branch. ruff clean.
+
+## 2026-09-17 — vision live; a lost test found and restored
+
+**Handoff written** for the AWS side: `docs/handoffs/2026-09-17-bedrock-claude-model-access.md`.
+Grounded rather than speculative — it rules out the four things I tried first. The
+important one: this is **not** the console model-access toggle, because
+`GET /foundation-models` already reports `enableAccessToAllModelsByDefault: true`. The
+six newest Claude models are gated beyond it, and the error points at AWS Sales. The
+brief also draws a boundary: do not accept EULAs, Marketplace subscriptions or paid
+support cases without a human, and note the Bedrock API key is runtime plus read-only
+control plane, so anything mutating needs real IAM credentials.
+
+**`examples/vision/` — image inputs, live.** Rendered three invoice PNGs and ran them
+through `claude-haiku-4-5` on Bedrock: 3/3, score 1.0. First live exercise of the whole
+artifact path — workspace-confined resolution, base64 inlining, Converse image blocks.
+Previously only unit-tested. Closes the last open item for the provider adapter.
+
+**A test I claimed to have added was never there.** `dd4c425`'s message says it "adds a
+test asserting every example file is present and not ignored". It is in no commit: a
+later `python3` edit of mine truncated `tests/test_examples.py` and deleted it silently,
+and I trusted the commit message instead of the file. Restored, widened to cover
+artifacts the exam references, and this time verified to fail three ways before believing
+it: artifact missing, artifact ignored, exam ignored.
+
+Its docstring now records what `git check-ignore` actually proves — a *tracked* file is
+never reported as ignored, so the check fires only for uncommitted files. That is not a
+hole; it is exactly where the bug lives (a new file silently skipped by `git add -A`).
+I only learned this by noticing that removing the `.jsonl` negation failed one example
+instead of four, and checking why rather than accepting the green.
+
+Gates: clean clone engine-only 292 passed + 46 skipped; with the providers extra 338
+passed; working tree clean; ruff clean.
