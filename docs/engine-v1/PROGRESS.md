@@ -497,3 +497,25 @@ that landed after this branch's base, so not part of the legacy set that was app
 deletion. Keeping it cost nothing; dropping it would have been a silent side effect.
 
 With #5's branch installed: Together 3/3, Bedrock+Claude 3/3, vision 3/3, 338 tests.
+
+## 2026-09-17 — client-name scrub, then hygiene
+
+**Scrub first, on report of leakage.** Client names were in both repos: 22 mentions across
+four llm-client PR bodies, one PR comment, three commit messages, seven source/test
+locations (six of them pre-existing on `main`), twelve lines across benchy's TODO and
+PROGRESS, and one benchy commit message. All replaced with "the internal backend" —
+meaning intact for anyone internal, identity gone. Commit-message fixes needed history
+rewrites, so three branches were force-pushed.
+
+Two things recorded rather than assumed: I scrubbed the *pre-existing* mentions in
+llm-client's own source too, because leaving them would have made the exercise theatre;
+and **deleting from HEAD does not purge git history** — the text still exists in older
+commits on both `main` branches, which needs a deliberate `filter-repo` decision.
+
+**Then hygiene.** 344 -> 265 tracked files. The urgent one was
+`.plans/audit-ai-algorithms.md`: 490 lines of client operational data — procedure names,
+client-name fields, internal identifiers — sitting in a repo about to be merged.
+
+Local run data was *not* deleted: `.data` (6.7G), `logs` (171M), `outputs` (18M),
+`.venv-vox` (1.6G) are untracked working data, so removing them was never mine to do.
+They are gitignored now instead.

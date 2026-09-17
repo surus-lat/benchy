@@ -168,20 +168,19 @@ available.
 
 ---
 
-## 6. Repo hygiene — **your call**
+## 6. Repo hygiene — **done 2026-09-17**
 
-Not referenced by the engine or any current document. Several look like personal
-notes rather than project files, so they were left alone.
-
-- [ ] `misc/`, `proto/`, `reference/`, `logs/`, `search/`
-- [ ] `.notes/`, `.plans/`, `.workshop/`, `.search/`
-- [ ] Root: `ai-notes.md`, `IDEAS.md`, `HANDOFF.md`, `seed.md`,
-      `canonical-json-ir.md.md`, `Untitled.base`, `Untitled 1.base`, `env.example`,
-      `uv.lock`
-- [ ] `.attic/` itself — deletable whenever you stop wanting the old tree browsable;
-      git history keeps it either way
-
----
+- [x] Deleted: `.plans/`, `.notes/`, `.workshop/`, `.search/`, `search/`, `proto/`,
+      `reference/`, `misc/`, `logs/`, and root `HANDOFF.md`, `ai-notes.md`, `seed.md`,
+      `canonical-json-ir.md.md`, `Untitled*.base`, `uv.lock`, `env.example`.
+      Tracked files 344 -> 265. `IDEAS.md` kept.
+- [x] `.plans/audit-ai-algorithms.md` removed — it carried client operational data.
+- [x] Local run data (`.data` 6.7G, `logs` 171M, `outputs` 18M, `.venv-vox` 1.6G) left on
+      disk untouched and now gitignored, so `git status` is quiet. Delete those yourself
+      whenever you want the space back; nothing references them.
+- [ ] **Git history still contains everything deleted here, including the client data.**
+      Purging it means rewriting `main` with `git filter-repo` and force-pushing — a
+      shared-history operation that needs a deliberate decision. Not done.
 
 ## 7. Landing — **yours**
 
