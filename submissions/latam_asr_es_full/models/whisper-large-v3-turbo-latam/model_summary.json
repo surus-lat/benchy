@@ -1,0 +1,38 @@
+{
+  "model_name": "whisper-large-v3-turbo-latam",
+  "publisher": "surus-ai",
+  "full_model_name": "surus-ai/whisper-large-v3-turbo-latam",
+  "categories": {
+    "transcription": {
+      "model_name": "whisper-large-v3-turbo-latam",
+      "task_scores": {
+        "fleurs_es_latam": {
+          "score": 0.8493,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "fleurs_es_latam",
+          "wer": 0.1507,
+          "cer": 0.0458
+        }
+      },
+      "category_scores": {
+        "transcription": {
+          "score": 0.8493,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "top_level_scores": {
+        "transcription": {
+          "score": 0.8493,
+          "stderr": 0.0,
+          "metric": "word_accuracy",
+          "alias": "transcription"
+        }
+      },
+      "overall_score": 0.8493,
+      "evaluation_time": "unknown"
+    }
+  }
+}

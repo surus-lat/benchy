@@ -1,0 +1,11 @@
+{
+  "run_id": "latam_asr_es_full",
+  "packaged_at": "2026-06-23T01:55:02Z",
+  "models": [
+    "Qwen/Qwen3-ASR-0.6B",
+    "nvidia/canary-1b-flash",
+    "openai/whisper-large-v3-turbo",
+    "surus-ai/whisper-large-v3-turbo-latam"
+  ],
+  "model_count": 4
+}
