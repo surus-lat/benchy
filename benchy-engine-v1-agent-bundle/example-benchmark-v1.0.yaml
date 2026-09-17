@@ -1,0 +1,33 @@
+version: "1.0"
+ontology_version: "1.0"
+
+benchmark:
+  task: extract
+  domain: finance
+  language: es
+
+program:
+  input:
+    image: image
+  output:
+    invoice_number: string
+    date: date
+    supplier: string
+    subtotal: float
+    total: float
+
+scoring:
+  weights:
+    invoice_number: 1
+    date: 1
+    supplier: 1
+    subtotal: 1
+    total: 5
+  aggregator: weighted_mean
+
+data:
+  path: ./data/invoices.jsonl
+
+ai-system:
+  type: external
+  id: invoice-extractor-v7

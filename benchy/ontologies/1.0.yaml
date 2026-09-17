@@ -1,0 +1,35 @@
+# Shared SURUS task-oriented AI ontology — /<task>/<domain>/<language>/
+#
+# Registry version 1.0. Identifiers and descriptions only: the structural rules
+# that decide whether a program is a valid instance of a task are Benchy code
+# (see benchy/ontology.py), deliberately not a constraint DSL (paper Appendix B).
+#
+# `transcribe` is absent by design. Engine 1.0 fixes field correctness to exact
+# match (paper A.7), which cannot rank transcription systems — a transcript
+# differing by one word scores the same as one that is entirely wrong. Declaring
+# `transcribe` therefore fails compilation as an unknown task rather than
+# producing uninterpretable scores. See paper Appendix E for the field-evaluator
+# extension that would readmit it.
+version: "1.0"
+
+tasks:
+  extract:
+    description: Extract named information from an input.
+
+  classify:
+    description: Assign one declared categorical label.
+
+  translate:
+    description: Transform text from a source language to a target language.
+
+domains:
+  general: {}
+  finance: {}
+  healthcare: {}
+  legal: {}
+  retail: {}
+
+languages:
+  es: {}
+  pt: {}
+  en: {}
