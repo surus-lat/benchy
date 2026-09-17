@@ -208,7 +208,7 @@ other by `tests/test_doc_agreement.py`.
 python -m pytest tests -q
 ```
 
-279 tests. Conformance cases C01–C33 from the build plan are named
+280 tests. Conformance cases C01–C33 from the build plan are named
 `test_cNN_*`, and `tests/test_conformance_matrix.py` fails if any loses coverage.
 
 `.attic/` holds the previous implementation, preserved in git history.
