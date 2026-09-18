@@ -1,813 +1,278 @@
-<h1 align="center"><strong>Benchy</strong></h1>
-<p align="center"> A benchmarking engine for evaluating AI systems on task-specific performance.</p>
+# Benchy
 
-<p align="center">
-    <img src="./docs/benchy_2.png" alt="readme_image" style="width:220px;height:220px;" />
-</p>
+A semantic language and execution engine for benchmarking AI programs.
 
-Benchy is a benchmarking suite for evaluating AI systems (models, hosted endpoints, or task-specific
-pipelines) on task-specific performance. It currently powers the [LatamBoard](https://latamboard.ai/), so if
-you are here to browse results, the leaderboard site is the best starting point. If you are using
-Benchy to run evaluations (not contributing code), start with `docs/evaluating_models.md` for the
-step-by-step usage guide.
+Most benchmark frameworks are model-centric and exist to *run* benchmarks that
+already exist. Benchy is neither. Its primitive is the **AI-system** — a model, a
+model with an optimized prompt, a composed workflow, a tool-using agent, all the same
+thing from outside — and its purpose is to help you *create* the benchmark that
+represents your problem, because that benchmark is the first step in building the
+system that solves it.
 
-## What Benchy Offers
-
-- **AI systems first**: Evaluate general models and task-optimized endpoints with the same task suite.
-- **Task/interface decoupling**: Tasks define data and metrics; interfaces handle provider IO.
-- **Local or cloud**: Start vLLM automatically for local runs or use cloud providers via configs.
-- **Reproducible outputs**: Organized run folders with task summaries and metadata.
-- **Contributor-friendly**: Add tasks or providers without rewriting the rest of the system.
-
-## How Benchy Works
-
-- **Tasks** are built using **format handlers** (MultipleChoice, Structured, Freeform, Multimodal)
-- **Handlers** provide data loading, prompt formatting, metrics, and capability checking
-- **Interfaces** translate task samples into provider-specific requests
-- **TaskGroupRunner** builds connection info, instantiates tasks, and dispatches to the engine
-- **BenchmarkRunner** batches requests, retries failures, and aggregates metrics
-
-This design lets you add a new task with ~30-50 lines of code (vs. 200-400 in the old system),
-and add a new provider without changing evaluation logic. Tasks focus on **what to evaluate**,
-while handlers and interfaces handle **how to evaluate it**.
-
-## Quickstart (Developers)
-
-### Prerequisites
-
-- Python 3.12+
-- [uv](https://github.com/astral-sh/uv) (recommended, but optional - traditional venv + pip also works)
-- CUDA-compatible GPU(s) — only required for local vLLM inference
-- Docker (optional, for Prefect UI)
-
-### Install
-
-**Option 1: Using the setup script (recommended)**
-
-```bash
-bash setup.sh
+```
+B = (P, S, D)      a benchmark is a program, a scoring function, and a dataset
+R = (B, AI)        a run binds a benchmark to an AI-system
 ```
 
-This will:
-- Create a virtual environment (`.venv`)
-- Install all dependencies
-- Optionally download structured extraction dataset
+The benchmark is separate from the thing taking it.
 
-Optional extras (comma-separated) and dataset skip:
+## Install
 
 ```bash
-BENCHY_EXTRAS=local,translation BENCHY_SKIP_DATASET=1 bash setup.sh
-```
-
-**Option 2: Manual setup with uv (recommended for developers)**
-
-```bash
-# Install uv if you haven't already
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Create venv and install dependencies (cloud providers only)
-uv venv --python 3.12
-source .venv/bin/activate
-uv sync
-
-# For local vLLM inference, add the local extra:
-uv sync --extra local
-```
-
-**Option 3: Manual setup with traditional venv + pip**
-
-```bash
-# Create virtual environment (use Python 3.12)
-python3.12 -m venv .venv
-source .venv/bin/activate
-
-# Upgrade pip
-pip install --upgrade pip setuptools wheel
-
-# Install dependencies (cloud providers only)
 pip install -e .
-
-# For local vLLM inference, add the local extra:
-pip install -e '.[local]'
 ```
 
-**Optional extras**
+The engine's only dependency is PyYAML.
 
-Local inference via vLLM (requires Linux + CUDA GPU):
+## A benchmark
 
-```bash
-pip install -e '.[local]'
-# or with uv:
-uv sync --extra local
-```
-
-Prefect orchestration (optional):
-
-```bash
-pip install -e '.[prefect]'
-# or with uv:
-uv sync --extra prefect
-```
-
-Translation metrics (only for translation tasks):
-
-```bash
-pip install -e '.[translation]'
-# or with uv:
-uv sync --extra translation
-```
-
-**Environment setup**
-
-If you use cloud providers, copy `env.example` to `.env` and fill in API keys:
-
-```bash
-cp env.example .env
-# Edit .env with your API keys
-```
-
-### Prefect UI (Optional)
-
-Prefect is disabled by default; enable it with `BENCHY_ENABLE_PREFECT=1` to automatically track
-runs in the Prefect UI. Install the extra dependency first.
-
-```bash
-# Start Prefect server (if not already running)
-docker run -p 4200:4200 -d --rm prefecthq/prefect:3-python3.12 prefect server start --host 0.0.0.0
-
-# Enable Prefect tracking (runs will automatically appear in UI)
-export BENCHY_ENABLE_PREFECT=1
-benchy eval configs/models/your_model.yaml --tasks document_extraction --limit 10
-```
-
-**Note:** The `--register` flag is for deploying flows as long-running workers (different use case).
-When `BENCHY_ENABLE_PREFECT=1` is set, runs are automatically tracked in the UI without needing `--register`.
-
-### Run a First Benchmark
-
-```bash
-# Local model via vLLM (merged safetensors + tokenizer assets)
-benchy eval --model-path /path/to/local-model --model-name my-sft --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10
-
-# Local model via vLLM, writing outputs next to the model
-benchy eval --model-path /path/to/local-model --output-path model --tasks latam_board --limit 10
-
-# Hugging Face model via vLLM (no config file needed)
-benchy eval --model-name unsloth/Qwen3-VL-8B-Instruct-unsloth-bnb-4bit --vllm-config vllm_two_cards_mm --tasks latam_board --limit 10
-
-# Config-based smoke test (limited samples)
-benchy eval --config configs/tests/spanish-gptoss.yaml --limit 10
-
-# Cloud example (config name lookup searches under configs/models, configs/systems, etc.)
-benchy eval --config openai_gpt-4o-mini.yaml --limit 10
-```
-
-If `benchy` is not on your PATH (for example when running directly from the repo), use:
-`python -m src.benchy_cli ...`
-
-### Run Unit Tests
-
-```bash
-pytest -q
-```
-
-If you want to run the same task list across multiple models, you can override tasks
-on the command line with `--tasks`, `--tasks-file`, or `--task-group`. See
-`docs/evaluating_models.md` for full examples and behavior.
-`--tasks` accepts either space-separated values (e.g. `--tasks spanish portuguese`)
-or comma-separated values (e.g. `--tasks spanish,portuguese`).
-
-For automation/agents, use `--exit-policy` and parse run artifacts under
-`outputs/benchmark_outputs/<run_id>/<model>/`.
-`run_outcome.json` is the status source of truth. `run_summary.json` is metric-focused.
-For a strict machine-facing contract, see `AGENTS.md`.
-
-Canonical automation recipes:
-
-```bash
-# Smoke run (fast validation)
-benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
-  --limit 5 --run-id smoke_20260206 --exit-policy smoke
-
-# Full run (after smoke passes)
-benchy eval --config openai_gpt-4o-mini.yaml --tasks document_extraction image_extraction \
-  --run-id full_20260206 --exit-policy strict
-```
-
-Automation artifact contract:
-- `run_outcome.json`: run status, exit recommendation, counts, per-task statuses, invocation metadata, artifact pointers, structured errors.
-- `run_summary.json`: compact per-task metric summaries.
-- `<task>/task_status.json`: per-task status used by resume logic when reusing a run-id.
-
-Benchy writes `run_outcome.json` on successful runs, already-completed runs, and fatal
-pipeline failures that happen after run directory initialization.
-
-`run_outcome.json` includes:
-- `schema_version`, `benchy_version`
-- `status`, `exit_policy`, `exit_code`
-- `started_at`, `ended_at`, `duration_s`
-- `git` (`repo`, `commit`, `dirty`) when available
-- `counts`, `tasks`
-- `invocation`, `artifacts`, `errors`
-
-Task status semantics used by `run_outcome`/`task_status`:
-- `passed`: no connectivity/invalid-response/error-rate signal.
-- `degraded`: partial issues (any `error_rate > 0`, `invalid_response_rate > 0`, or `connectivity_error_rate > 0`) but not total failure.
-- `failed`: no valid samples for a non-empty task, all samples failed, or any subtask failed.
-- `skipped`: at least one subtask was skipped due to compatibility/requirements.
-- `no_samples`: task/subtask had zero samples or no metrics.
-
-Structured-output concessions (shared across structured handlers):
-- Date values on date-like schema fields accept `YYYY-MM-DD` and `DD-MM-YYYY` (also `DD/MM/YYYY`) and are normalized to `YYYY-MM-DD` for validation/scoring.
-- The literal string `"null"` is coerced to JSON `null` before validation/scoring, with a bounded score penalty (`normalization_penalty`, default `0.02` per coercion, capped at `0.20`) so quality is still penalized.
-  Configure via `metrics.normalization_penalty.null_string_to_null` and `metrics.normalization_penalty.max`.
-
-**Dataset selection**: Some tasks support multiple datasets. Use `--dataset <name>` to specify:
-
-```bash
-# Use custom dataset for background removal
-benchy eval --config surus-remove-background --dataset your-dataset --limit 10
-
-# Use ICM57 dataset (default)
-benchy eval --config surus-remove-background --dataset ICM57 --limit 10
-```
-
-## CLI Dataset Usage
-
-Benchy supports creating tasks directly from the CLI without writing code. Drop a dataset in `.data/`, and evaluate it with a single command.
-
-### Zero-Code Evaluation from `.data/`
-
-Parquet datasets in `.data/<name>/` are auto-discovered. Benchy reads `dataset_info.json` and `schema.json` to infer labels, ground-truth mappings, multimodal input, and schema — no flags needed beyond dataset name and task type.
-
-```bash
-# Document classification (labels auto-discovered from dataset_info.json)
-benchy eval --dataset-name my-doc-classification --task-type classification \
-  --provider openai --model-name gpt-4o --limit 3
-
-# Structured extraction (schema + GT mapping auto-discovered from schema.json)
-benchy eval --dataset-name my-extraction-dataset --task-type structured \
-  --provider openai --model-name gpt-4o --limit 3
-```
-
-**What happens automatically:**
-- Binary columns (`large_binary`) are materialized to disk and rendered to PNG for LLM providers
-- `schema.json` is converted to JSON Schema (if custom format) and sanitized for OpenAI strict mode
-- Ground-truth columns (`gt_*`) are mapped to expected output via schema annotations
-- Labels are inferred from `label_distribution` in `dataset_info.json`
-- Multimodal input is auto-enabled when binary columns are detected
-
-### Dataset Discovery
-
-```bash
-# List all datasets in .data/
-benchy datasets
-
-# Detailed view with schemas and labels
-benchy datasets --verbose
-
-# Machine-readable
-benchy datasets --json
-```
-
-### Custom Prompts Per Dataset
-
-Override the default prompt for any dataset:
-
-```bash
-# Custom system prompt for classification
-benchy eval --dataset-name my-doc-classification --task-type classification \
-  --provider openai --model-name gpt-4o --limit 5 \
-  --system-prompt "Classify documents based on the presence of a specific keyword."
-
-# Custom extraction prompt
-benchy eval --dataset-name my-extraction-dataset --task-type structured \
-  --provider openai --model-name gpt-4o --limit 5 \
-  --system-prompt "You are an expert document reader." \
-  --user-prompt-template "Read this document and extract fields.\n\nSchema:\n{schema}\n\nReturn valid JSON."
-```
-
-### Quick Start Examples (HuggingFace / Local)
-
-**Classification Task** (binary or multi-class):
-```bash
-benchy eval --model-name gpt-4o-mini --provider openai \
-  --task-type classification \
-  --dataset-name climatebert/environmental_claims \
-  --dataset-labels '{"0": "No", "1": "Yes"}' \
-  --limit 10
-```
-
-**Structured Extraction** (JSON output with schema):
-```bash
-benchy eval --model-name gpt-4o-mini --provider openai \
-  --task-type structured \
-  --dataset-name my-org/invoice-extraction \
-  --dataset-schema-path schemas/invoice_schema.json \
-  --limit 10
-```
-
-**Freeform Generation** (open-ended text):
-```bash
-benchy eval --model-name gpt-4o-mini --provider openai \
-  --task-type freeform \
-  --dataset-name ./data/questions.jsonl \
-  --dataset-source local \
-  --limit 10
-```
-
-### Key Features
-
-- **Three Task Types**: Classification, Structured Extraction, Freeform Generation
-- **Multiple Dataset Sources**: HuggingFace Hub, local JSONL/Parquet files, `.data/` auto-discovery
-- **Auto-Discovery**: Datasets in `.data/` auto-configure labels, schema, GT mapping, and multimodal input
-- **Document Rendering**: Binary blobs (PDF, TIFF, HEIC) rendered to PNG for LLM providers at configurable DPI
-- **Flexible Field Mapping**: Map your dataset fields to expected inputs/outputs
-- **Custom Prompts**: Override system/user prompts per dataset via `--system-prompt` and `--user-prompt-template`
-- **Config Generation**: Save your CLI setup with `--save-config output.yaml` for reuse
-
-### Common CLI Flags
-
-**Task Type & Dataset**:
-- `--task-type {classification,structured,freeform}` - Type of task to create
-- `--dataset-name <name>` - HuggingFace dataset, local path, or `.data/` dataset name
-- `--dataset-source {auto,huggingface,local,parquet,directory}` - Dataset source (default: auto)
-- `--dataset-split <split>` - Dataset split for HuggingFace (default: test)
-
-**Field Mappings**:
-- `--dataset-input-field <field>` - Input text field (default: text)
-- `--dataset-output-field <field>` - Expected output field (default: expected/label)
-- `--dataset-id-field <field>` - Sample ID field (auto-generated if missing)
-
-**Classification-Specific**:
-- `--dataset-labels <json>` - Label mapping: `'{"0": "No", "1": "Yes"}'`
-- `--dataset-label-field <field>` - Label field name (default: label)
-
-**Structured Extraction-Specific**:
-- `--dataset-schema-field <field>` - Schema field in dataset
-- `--dataset-schema-path <path>` - JSON file with schema
-- `--dataset-schema-json <json>` - Inline JSON schema
-
-**Multimodal & Document Rendering**:
-- `--multimodal-input` - Enable multimodal input (auto-enabled for binary parquet datasets)
-- `--multimodal-image-field <field>` - Image path field (default: image_path)
-- `--render-documents` / `--no-render-documents` - Control PDF/TIFF to PNG rendering (auto for LLM providers)
-- `--render-dpi <int>` - Rendering DPI (default: 200)
-- `--render-max-pages <int>` - Max pages to render per document (default: 1)
-
-**Prompts**:
-- `--system-prompt <text>` - Custom system prompt
-- `--user-prompt-template <text>` - Template with {field} placeholders
-
-**Config Generation**:
-- `--save-config <path>` - Save CLI parameters as reusable YAML config
-
-### Override Existing Task Datasets
-
-You can also override the dataset for any existing task:
-
-```bash
-# Use your own dataset with an existing task
-benchy eval --config my-model.yaml \
-  --tasks classify.environmental_claims \
-  --dataset-name my-org/my-climate-dataset \
-  --dataset-split validation \
-  --limit 10
-```
-
-### Multimodal Classification Example
-
-```bash
-benchy eval --model-name gpt-4o-mini --provider openai \
-  --task-type classification \
-  --dataset-name my-org/image-classification \
-  --multimodal-input \
-  --dataset-labels '{"0": "Cat", "1": "Dog"}' \
-  --limit 10
-```
-
-### Save and Reuse Configurations
-
-```bash
-# Create and save a config
-benchy eval --model-name gpt-4o-mini --provider openai \
-  --task-type structured \
-  --dataset-name my-org/invoices \
-  --dataset-schema-path schemas/invoice.json \
-  --save-config configs/my-invoice-task.yaml \
-  --limit 10
-
-# Reuse the saved config
-benchy eval --config configs/my-invoice-task.yaml --limit 100
-```
-
-For detailed documentation on dataset formats and advanced usage, see `docs/CLI_DATASET_USAGE.md`.
-
-## Providerless CLI (OpenAI-compatible)
-
-When no config file is provided, Benchy infers the provider from CLI flags:
-
-- `--model-path` or `--vllm-config` -> local vLLM (Benchy starts the server)
-- `--base-url` -> OpenAI-compatible remote endpoint (defaults to OpenAI behavior unless `--provider` is set)
-- `--api-key` -> explicit API key value for OpenAI-compatible providers (overrides env lookup)
-- `--exit-policy` -> automation-friendly process exit behavior (`relaxed`, `smoke`, `strict`)
-- `--image-max-edge` -> optional in-memory image downscaling before request (preserves aspect ratio; originals unchanged). Also works with multimodal system/provider configs (e.g. Google, SURUS).
-- no provider hints -> OpenAI defaults (`https://api.openai.com/v1`, `OPENAI_API_KEY`)
-
-This means the model name alone does not determine the provider. The provider comes from
-flags like `--provider` and `--base-url`. The model name is just the string sent in requests.
-
-### Common use cases
-
-```bash
-# OpenAI default (model name + OPENAI_API_KEY)
-benchy eval --model-name gpt-4o-mini --tasks spanish --limit 2
-
-# Together AI defaults (TOGETHER_API_KEY + together base URL)
-benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider together  --tasks spanish --limit 2
-
-# Custom OpenAI-compatible endpoint
-benchy eval --model-name mymodel --base-url http://host:8000/v1 --tasks spanish --limit 2
-
-# Custom OpenAI-compatible endpoint + explicit API key (no .env needed)
-benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key --tasks spanish --limit 2
-
-# Same endpoint with optional image downscaling to reduce multimodal token load
-benchy eval --model-name mymodel --base-url http://host:8000/v1 --api-key local-key \
-  --tasks document_extraction image_extraction --image-max-edge 1536 --limit 2
-
-# Local vLLM from Hugging Face (server started by Benchy)
-benchy eval --model-name meta-llama/Llama-3.1-8B-Instruct --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
-
-# Local vLLM from a model directory
-benchy eval --model-name my-sft --model-path /models/my-sft --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
-```
-
-### Same model name on multiple providers
-
-If a model is available on multiple providers (or a local vLLM server), you choose where it runs:
-
-```bash
-# Together-hosted model
-benchy eval --model-name mymodel --provider together  --tasks spanish --limit 2
-
-# OpenAI-hosted model
-benchy eval --model-name mymodel --provider openai  --tasks spanish --limit 2
-
-# Local vLLM for the same model name
-benchy eval --model-name mymodel --provider vllm  --vllm-config vllm_two_cards_mm --tasks spanish --limit 2
-```
-
-### Benchmarking any API endpoint (Generic API mode)
-
-Benchy can benchmark arbitrary HTTP APIs directly from the CLI using `--api-url`. This lets you evaluate entire pipelines (not just individual models) by targeting any endpoint that accepts JSON and returns JSON.
-
-**New CLI flags:**
-
-| Flag | Description |
-|------|-------------|
-| `--api-url <url>` | Target endpoint URL (sets provider to `api`) |
-| `--api-body-template <json>` | JSON body template with `{{field}}` placeholders from dataset samples |
-| `--api-response-path <path>` | Dot-notation path to extract output from the response |
-| `--api-method <method>` | HTTP method (default: `POST`) |
-| `--api-headers <json>` | Extra HTTP headers as a JSON object |
-
-**Template placeholders:**
-
-- `{{field}}` — plain string substitution from dataset sample
-- `{{field|base64_image}}` — reads an image file and encodes it as a base64 data URL
-- `{{field|json}}` — embeds the value as raw JSON (preserves dicts/lists)
-
-**Response path examples:**
-
-- `data` → `response["data"]`
-- `choices.0.message.content` → `response["choices"][0]["message"]["content"]`
-- *(omit for root)* → uses the entire response object
-
-**Examples:**
-
-```bash
-# Benchmark SURUS facturas API (image → structured invoice extraction)
-benchy eval \
-  --api-url "https://api.surus.ai/factura" \
-  --api-key-env SURUS_API_KEY \
-  --api-body-template '{"image": "{{image_path|base64_image}}"}' \
-  --api-response-path "data" \
-  --tasks document_extraction.facturas_argentinas \
-  --model-name "surus-factura-v1" \
-  --limit 10
-
-# Benchmark a text extraction API with schema
-benchy eval \
-  --api-url "https://my-api.com/extract" \
-  --api-key-env MY_API_KEY \
-  --api-body-template '{"text": "{{text}}", "schema": "{{schema|json}}"}' \
-  --api-response-path "result" \
-  --tasks spanish \
-  --model-name "my-extractor-v1" \
-  --limit 5
-
-# Benchmark with custom headers
-benchy eval \
-  --api-url "https://my-api.com/classify" \
-  --api-key-env MY_API_KEY \
-  --api-body-template '{"text": "{{text}}"}' \
-  --api-response-path "prediction" \
-  --api-headers '{"X-Version": "2"}' \
-  --tasks spanish.spam_detection \
-  --model-name "my-classifier-v2" \
-  --limit 10
-```
-
-The `--model-name` parameter acts as a label for the system under test in output artifacts. Auth is handled via `--api-key-env` (environment variable name) or `--api-key` (direct value). All existing flags like `--limit`, `--tasks`, `--exit-policy`, `--image-max-edge`, etc. work with API mode.
-
-### Benchmarking SURUS AI nodes (preconfigured)
-
-Surus AI nodes are also available as preconfigured systems with their relevant tasks. Remember to add the necessary SURUS_API_KEY in your .env:
-
-```bash
-# surus extraction endpoint
-benchy eval --config surus-extract --limit 5
-
-# Surus classification endpoint
-benchy eval --config surus-classify --limit 5
-```
-
-### Benchmarking Google Gemini models
-
-Google Gemini models work across text, multimodal, and image manipulation tasks. Add your `GOOGLE_API_KEY` to `.env`:
-
-```bash
-# Text generation
-benchy eval --model-name gemini-2.5-flash --provider google \
-  --tasks spanish --limit 10
-
-# Multimodal tasks (text + images)
-benchy eval --model-name gemini-2.5-flash --provider google \
-  --tasks image_manipulation.remove_background --limit 10
-
-# Image manipulation with gemini-2.5-flash-image
-benchy eval --model-name gemini-2.5-flash-image --provider google \
-  --tasks image_manipulation.remove_background --dataset your-dataset
-
-# Use different dataset with --dataset parameter
-benchy eval --model-name gemini-2.5-flash-image --provider google \
-  --tasks image_manipulation.remove_background --dataset ICM57
-```
-
-The `--dataset` parameter allows you to select different datasets for tasks that support it. For example, the `remove_background` task supports multiple datasets (`ICM57`, `your-dataset`, or any custom dataset you drop in `.data/`).
-
-### Benchmarking a new OpenAI model (example: "gpt-5.2")
-
-```bash
-benchy eval --provider openai --model-name gpt-5.2 --tasks spanish --limit 2
-```
-
-If the model requires a nonstandard max-tokens parameter or API key name, set:
-
-```bash
-benchy eval --provider openai --model-name gpt-5.2 \
-  --max-tokens-param-name max_completion_tokens \
-  --api-key-env OPENAI_API_KEY \
-  --tasks spanish --limit 2
-```
-
-Or pass the key directly at runtime:
-
-```bash
-benchy eval --provider openai --model-name gpt-5.2 \
-  --api-key your-api-key \
-  --tasks spanish --limit 2
-```
-
-## Probe System
-
-Benchy includes a capability detection system that identifies model features and compatibility issues before running evaluations.
-
-### Standalone Probe Command
-
-Test model capabilities without running a full evaluation:
-
-```bash
-# Probe OpenAI model
-benchy probe --provider openai --model-name gpt-4o-mini
-
-# Probe local vLLM endpoint
-benchy probe --base-url http://localhost:8001/v1 --model-name mymodel
-
-# Probe with custom settings
-benchy probe --provider openai --model-name gpt-5-mini \
-  --profile quick --global-timeout 120
-```
-
-### What the Probe Detects
-
-The probe system checks:
-
-1. **Access Readiness**: Fast preflight for invalid API key, model not found, insufficient credits/quota, and similar blockers
-2. **API Endpoints**: Which endpoints work (chat, completions, logprobs)
-3. **Schema Transports**: Structured output support (structured_outputs vs response_format)
-4. **Multimodal Support**: Whether the model accepts image inputs
-5. **Truncation Behavior**: How the model handles token limits (detects repetition patterns)
-6. **Max Tokens Parameter**: Which output-token parameter variant is required (`max_tokens` vs `max_completion_tokens`)
-7. **Provider Fingerprint**: Model server metadata and version information
-
-### Probe Profiles
-
-- `quick` (default): Fast capability check (30-60 seconds)
-
-Probe check definitions, pass criteria, and blindspots are documented in:
-- `docs/benchy_probe_contract.md`
-
-For schema transports, probe reports two levels:
-- `accepted_by_api`: parameter accepted by provider API
-- `reliable_for_eval`: output quality is reliable enough for structured extraction
-
-Probe summaries also include `Schema transport options` so `Schema transport: none`
-is immediately contextualized with alternatives (`usable`, `accepted_but_unreliable`,
-`unsupported_or_failed`, `not_tested`) and error reasons.
-
-### Probe Outputs
-
-Probe results are written to `outputs/probe_outputs/<run_id>/<model>/`:
-
-- `probe_report.json`: Machine-readable capability report
-- `probe_summary.txt`: Human-readable summary
-
-### Integration with Eval
-
-The probe system runs automatically during `benchy eval` to detect capabilities and configure requests appropriately. It ensures:
-
-- Tasks requiring multimodal support skip if images aren't supported
-- Structured output requests use the correct parameter format
-- Logprobs are only requested when supported
-- The correct max_tokens parameter name is used (critical for gpt-5, o1, o3, o4 models)
-
-### How Decisions Are Made During Eval
-
-When you run `benchy eval`, here's how the system decides which parameters to use:
-
-1. **Initial Configuration**: `connection_info` is built from provider config and CLI arguments
-2. **Probe Detection**: The probe tests actual API behavior:
-   - Tests `max_tokens` explicitly (disabling auto-detection)
-   - Tests `max_completion_tokens` if `max_tokens` fails
-   - Tests which structured output format works
-   - Tests logprobs support
-3. **Apply Probe Results**: Detected capabilities update `connection_info`:
-   - `api_endpoint` → from probe's selected endpoint
-   - `supports_logprobs` → from probe's logprobs test
-   - `use_structured_outputs` → from probe's schema transport test
-   - `max_tokens_param_name` → from probe's parameter test
-4. **Interface Initialization**: `OpenAIInterface` reads the configured values
-5. **Request Building**: Each request uses the probed/configured parameters
-
-You'll see clear logging at each step:
-```
-INFO - Using max_completion_tokens (detected by probe)
-INFO - Initialized OpenAIInterface for gpt-5-mini
-INFO -   Max tokens parameter: max_completion_tokens
-```
-
-### Example: gpt-5-mini Configuration
-
-OpenAI's gpt-5 models require `max_completion_tokens` instead of `max_tokens`. The probe detects this automatically:
-
-```bash
-# Probe will detect max_completion_tokens is required
-benchy probe --provider openai --model-name gpt-5-mini
-
-# Eval will use the probed parameter automatically
-benchy eval --provider openai --model-name gpt-5-mini \
-  --tasks spanish --limit 10
-```
-
-You can also configure it explicitly in a model config:
+One YAML file says what the program is, what "good" means, and where the exam lives.
 
 ```yaml
-# configs/models/openai_gpt-5-mini.yaml
-model:
-  name: gpt-5-mini
-openai:
-  provider_config: openai
-  overrides:
-    max_tokens_param_name: "max_completion_tokens"
+version: "1.0"
+ontology_version: "1.0"
+
+benchmark:
+  task: extract          # /task/domain/language — the shared SURUS ontology
+  domain: finance
+  language: es
+
+program:                 # the typed contract: P : X -> Y
+  input:
+    text: string
+  output:
+    invoice_number: string
+    date: date
+    supplier:
+      name: string
+      tax_id: string
+    subtotal: float
+    total: float
+
+scoring:                 # the output leaves ARE the scoring dimensions
+  weights:
+    invoice_number: 1
+    date: 1
+    supplier:
+      name: 1
+      tax_id: 0          # validated, reported, but does not move the score
+    subtotal: 1
+    total: 5             # what the business actually cares about
+  aggregator: weighted_mean
+
+data:
+  path: ./exam.jsonl
+
+ai-system:
+  type: external
+  id: invoice-extractor-v7
 ```
 
-Or via CLI:
+The exam is JSONL, one `(input, expected)` pair per line:
+
+```json
+{"input": {"text": "Factura A-001 ..."}, "expected": {"invoice_number": "A-001", "...": "..."}}
+```
+
+## Run it
 
 ```bash
-benchy eval --provider openai --model-name gpt-5-mini \
-  --max-tokens-param-name max_completion_tokens \
-  --tasks spanish --limit 10
+benchy run examples/invoices/benchmark.yaml \
+  --adapter examples/invoices/system.py:extractor
 ```
 
-### Risk Flags
+```json
+{
+  "version": "1.0",
+  "benchmark_score": 0.8148148148148149,
+  "summary": {"examples": 3, "valid": 3, "invalid_outputs": 0, "execution_errors": 0},
+  "results": [...]
+}
+```
 
-The probe generates risk flags for common issues:
+`examples/` holds the same benchmark evaluated four ways — an offline stand-in, Together,
+Claude on Bedrock, and `examples/vision/`, where the input is a *picture* of the invoice
+rather than its text. Only `ai-system` differs between them, which is what it means for
+the benchmark to be separate from the system taking it. The tests execute them.
 
-- **truncation_risk**: Model produces repetition patterns when hitting token limits
-- **repetition_risk**: Model shows degenerate repetition behavior
-- **schema_unreliable**: Structured output may not work correctly
-- **multimodal_unreliable**: Image inputs may not be supported
+## The AI-system
 
-These flags help diagnose evaluation failures and guide configuration adjustments.
+Benchy knows exactly one runtime contract:
 
-## Configuration Overview
+```
+named-field input object  ->  named-field output object
+```
 
-### Project Structure
+An adapter is anything that honours it. A function is enough:
+
+```python
+async def extractor(input_object):
+    text = input_object["text"]
+    ...
+    return {"invoice_number": "A-001", "total": 121.0, ...}
+```
+
+Sync or async, a plain callable or an object with `invoke` — all accepted. Everything
+about *how* your system runs (credentials, HTTP, an SDK, a local model, a whole agent
+with a while-loop) lives on your side of that line. The engine has no provider
+branches, and `type: model` is not a special execution path.
+
+## Running a real model
+
+When `ai-system.type` is `model`, benchy selects a built-in adapter and `--adapter`
+becomes optional. Its transport is SURUS's `llm-client`, installed as an extra:
+
+```bash
+pip install -e '.[providers]'      # needs GitHub access to surus-lat
+```
+
+```yaml
+ai-system:
+  type: model
+  provider: together               # together | bedrock | openai
+  model: Qwen/Qwen3.8-2.4T-A95B
+  prompt: ./prompt.md              # optional
+  parameters:                      # optional: temperature and max_tokens
+    temperature: 0
+    max_tokens: 2048
+```
+
+| provider | credential | endpoint |
+|---|---|---|
+| `together` | `TOGETHER_API_KEY` | `api.together.xyz/v1` |
+| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, plus `AWS_REGION` | `bedrock-runtime.<region>.amazonaws.com/openai/v1` |
+| `openai` | `OPENAI_API_KEY` | `api.openai.com/v1` |
+
+Any of them can be pointed elsewhere with `<PROVIDER>_BASE_URL` — vLLM, LM Studio,
+Ollama, a gateway. Bedrock takes a Bedrock **API key** (not IAM keys), so no request
+signing is involved.
+
+**Claude on Bedrock** works, with two things to know. It does not serve Bedrock's
+OpenAI-compatible endpoint at all, so it is routed to the Converse API and the output
+schema becomes a forced tool call — handled for you. And it must be named by its
+cross-region inference profile, the only form it is invocable under:
+
+```yaml
+ai-system:
+  type: model
+  provider: bedrock
+  model: us.anthropic.claude-haiku-4-5-20251001-v1:0   # not `anthropic.claude-…`
+```
+
+`us-east-1` carries the most Claude models. See `examples/bedrock-claude/`.
+
+The adapter asks for structured output against a JSON schema derived from your
+program's output schema, and refuses anything that would make the measurement lie:
+
+- **no type coercion** — a model returning `"121.00"` for a `float` is an
+  `invalid_output`, because that is the true measurement;
+- **no fallback** to another model or to a looser output format;
+- **no injected defaults** — a parameter you did not set is not sent;
+- **no silently dropped parameters** — anything beyond `temperature` and `max_tokens`
+  is refused at setup, because `llm-client` would forward it where endpoints ignore it.
+
+A rate limit is retried rather than scored, since it says nothing about the system.
+Credentials come from the environment, never from benchmark YAML. Text and `image`
+inputs are supported; `audio` and `document` inputs, and artifact outputs, are refused
+at setup rather than failing once per example.
+
+## Compile once, run from the IR
+
+Valid YAML compiles deterministically into a canonical JSON IR. The engine consumes
+only the IR and never reinterprets source, which you can check:
+
+```bash
+benchy compile benchmark.yaml -o ir.json
+rm benchmark.yaml
+benchy run ir.json --adapter system.py:extractor   # identical result
+```
+
+## What it refuses
+
+There is no normalization layer and no repair. Compilation does not infer missing
+semantics or inject defaults — it accepts or it rejects, with a structured diagnostic:
+
+```json
+{"phase": "compile", "code": "missing_weight", "path": ["supplier", "tax_id"],
+ "message": "output leaf has no weight"}
+```
+
+Every output leaf needs exactly one explicit weight. Dataset rows and AI-system
+outputs are validated strictly: a missing field, an extra field or a wrong type is
+invalid. Duplicate YAML keys, anchors, aliases and merge keys are rejected, because
+one semantic concept should have one syntax.
+
+Three statuses, and the difference is load-bearing:
+
+| status | meaning | score | contributes |
+|---|---|---|---|
+| `valid` | a schema-valid output, whatever it scored | `s_i` | `s_i` |
+| `invalid_output` | returned something that is not a program output | `null` | `0` |
+| `execution_error` | never produced an output at all | `null` | `0` |
+
+A valid-but-completely-wrong answer scores 0 and is *not* the same as a failure.
+Failures keep `null` so the diagnosis survives, and contribute 0 so they cannot
+vanish from the average.
+
+Dataset errors are neither — they abort the run. A malformed row says nothing about
+the system under test, so scoring it would corrupt the measurement.
+
+## Layout
 
 ```
 benchy/
-├── .data/                    # Auto-discovered datasets (see docs/DATASET_SPEC.md)
-│   └── <dataset-name>/
-│       ├── data/test.parquet # Evaluation data
-│       ├── dataset_info.json # Metadata, labels, features
-│       ├── schema.json       # Extraction schema (optional)
-│       └── benchy.md         # Run commands
-├── configs/
-│   ├── config.yaml          # Global settings and task groups
-│   ├── models/              # Model configs (vLLM or cloud)
-│   ├── systems/             # Task-optimized system configs
-│   ├── providers/           # Provider defaults (vLLM, OpenAI, etc.)
-│   ├── templates/           # Fully documented config templates
-│   └── tests/               # Small configs for smoke tests
-├── src/
-│   ├── benchy_cli.py         # Benchy CLI entrypoint (`benchy ...`)
-│   ├── pipeline.py          # Main Prefect pipeline
-│   ├── interfaces/          # Provider interfaces
-│   ├── tasks/
-│   │   ├── common/          # Format handlers and shared utilities
-│   │   ├── spanish/         # Spanish language tasks
-│   │   ├── portuguese/      # Portuguese language tasks
-│   │   ├── structured_extraction/  # JSON extraction tasks
-│   │   ├── image_extraction/       # Vision-language tasks
-│   │   └── _template_handler/      # Task templates
-│   └── leaderboard/         # Results processing
-└── eval.py                  # Legacy CLI wrapper (deprecated)
+  errors.py      the one diagnostic shape
+  types.py       semantic types: schemas, validation, equality
+  ontology.py    /task/domain/language, and P ∈ P_T
+  compiler.py    YAML -> canonical JSON IR
+  data.py        the exam: streaming JSONL inside a workspace
+  score.py       field correctness -> instance score -> benchmark score
+  adapter.py     the runtime boundary
+  run.py         the engine loop
+  cli.py         compile / run
+  providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-### Model and System Configs
+780 lines of code, plus 198 in the optional provider adapter. There is exactly one
+representation of a schema anywhere in the system — the IR JSON node — so nothing
+marshals between an internal form and the IR, and nothing can drift.
 
-- **Models** live in `configs/models/` and include a provider block (`vllm`, `openai`, `anthropic`, `together`).
-- **Systems** live in `configs/systems/` and include `provider_type` plus a provider section (for custom APIs).
-- **Task groups** (like `latam_board`) are defined in `configs/config.yaml` and can be used inside `tasks`.
+## Scope
 
-### Capabilities and Compatibility
+Ontology 1.0 has three tasks: `extract`, `classify`, `translate`. Field correctness is
+exact match, and the instance aggregator is `weighted_mean`.
 
-Provider configs declare capabilities (multimodal, logprobs, schema, files, etc.).
-Model configs can add `metadata.supports_*` tags, which are mapped to `model_capabilities` and
-can only *restrict* provider capabilities. Tasks declare required capabilities in their task config.
-If a required capability is missing, the task is skipped with a clear log message.
+`transcribe` is deliberately absent. Exact match cannot rank transcription systems — a
+transcript wrong by one word scores the same as one that is entirely wrong — so
+declaring it fails compilation rather than producing scores that cannot be
+interpreted. `audio` remains a valid input type. Paper Appendix E describes the
+field-evaluator extension that would readmit it.
 
-## Results and Publishing
+Also outside 1.0: variable-length output collections, custom evaluators, other
+aggregators, adapter configuration in benchmark YAML, implicit weights. These are
+extension points, not undefined behaviour.
 
-After runs finish, process results for the leaderboard:
+## Documents
+
+| | |
+|---|---|
+| `paper/technical-paper-v10.3.md` | semantics, plus the Appendix A engineering contract |
+| `paper/benchy-engine-spec-v1.2.md` | normative conformance rules |
+| `paper/benchy-engine-agent-handoff-v1.2.md` | implementation architecture |
+| `VISION.md` | why benchy exists |
+| `docs/engine-v1/` | the rebuild's plan and build log |
+
+The paper, the spec, the handoff and the shipped registry are checked against each
+other by `tests/test_doc_agreement.py`.
+
+## Tests
 
 ```bash
-python ./src/leaderboard/process_all.py
+python -m pytest tests -q
 ```
 
-This generates per-model summaries and leaderboard tables under `outputs/publish/`.
+Without the `providers` extra, the provider tests skip and the engine suite still
+runs in full. Conformance cases C01–C33 from the build plan are named
+`test_cNN_*`, and `tests/test_conformance_matrix.py` fails if any loses coverage.
 
-## Documentation
-
-### Getting Started
-- `docs/tutorial-getting-started.md` - **Step-by-step: install → first evaluation result** (start here!)
-
-### For Users
-- `docs/evaluating_models.md` - Running benchmarks and understanding results
-- `docs/CLI_DATASET_USAGE.md` - Creating tasks from the CLI without code
-- `docs/reference-cli.md` - **Complete CLI reference for all commands and flags**
-- `docs/reference-config.md` - YAML config format reference
-- `docs/reference-tasks.md` - All available tasks and what they measure
-- `docs/reference-output-artifacts.md` - Output file schemas (`run_outcome.json`, etc.)
-
-### For Dataset Builders
-- `docs/DATASET_SPEC.md` - **Dataset specification for zero-code evaluation** (recommended read!)
-
-### For Contributors
-- `docs/contribute_tasks.md` - **Adding new tasks with the handler system** (recommended read!)
-- `docs/contributing_providers.md` - Adding new model providers
-- `src/tasks/_template_handler/README.md` - Complete task examples and patterns
-
-### Architecture & Internals
-- `docs/explanation-architecture.md` - **Why Benchy is designed the way it is** (design rationale)
-- `docs/architecture.md` - System design and component interaction
-- `docs/GENERATION_CONFIG.md` - Generation parameters and sampling
-- `docs/VLLM_VERSION_MANAGEMENT.md` - Managing vLLM versions
-
-### Quick References
-- `src/tasks/_template_handler/` - Copy-paste task templates
-- `src/tasks/common/` - Handler classes with extensive documentation
-- `configs/templates/` - Fully documented configuration examples
-
-## Contributing
-
-See `CONTRIBUTING.md` for workflow details and the docs above for task/provider guides.
-
-## Acknowledgments
-
-- [vLLM](https://github.com/vllm-project/vllm) for efficient model serving
-- [Prefect](https://www.prefect.io/) for workflow orchestration
-- [Surus](https://surus.lat/) for starting this project
-- LATAM community for benchmark development
+`.attic/` holds the previous implementation, preserved in git history.

@@ -1,9 +1,0 @@
-model:
-  name: "google/gemma-3n-E2B-it"
-
-vllm:
-  provider_config: "vllm_single_card"
-  overrides: {}
-
-tasks:
-  - "latam_board"

@@ -1,19 +1,23 @@
 # Contributing to Benchy
 
-Thanks for contributing to Benchy, the LATAM Leaderboard benchmarking suite. We welcome
-new tasks, provider integrations, and documentation improvements.
+Thanks for contributing. Benchy is a semantic language and execution engine for
+benchmarking AI programs.
 
 ## Project Goals
 
-- Evaluate AI systems, not just models (LLMs and task-specific endpoints).
-- Keep tasks and interfaces decoupled so each can evolve independently.
-- Make it easy to add LATAM-focused evaluations.
+- Evaluate AI-systems, not just models: a model, a model with a prompt, a composed
+  workflow and an agent are the same kind of thing from outside.
+- Make it easy to *create* the benchmark that represents a problem, not just to run
+  benchmarks that already exist.
+- Keep the engine small enough to hold in your head.
 
 ## Where to Start
 
-- Tasks: `docs/contribute_tasks.md`
-- Providers: `docs/contributing_providers.md`
-- Model/system evaluation: `docs/evaluating_models.md`
+- [`README.md`](./README.md) — what benchy is and how to run it
+- [`paper/technical-paper-v10.3.md`](./paper/technical-paper-v10.3.md) — the semantics
+- [`paper/benchy-engine-spec-v1.2.md`](./paper/benchy-engine-spec-v1.2.md) — normative rules
+- [`docs/engine-v1/PLAN.md`](./docs/engine-v1/PLAN.md) — design decisions, and the parts
+  deliberately *not* built. Read this before adding a module, class or abstraction.
 
 ## Development Setup
 

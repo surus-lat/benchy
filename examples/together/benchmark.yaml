@@ -1,0 +1,51 @@
+# The same benchmark as examples/invoices, pointed at a real AI-system instead of a
+# stand-in. The benchmark is unchanged; only `ai-system` differs. That is the whole
+# point of B = (P, S, D) being separate from the system taking it.
+#
+#   export TOGETHER_API_KEY=...
+#   benchy run examples/together/benchmark.yaml
+#
+# No --adapter: `type: model` resolves to the built-in provider adapter.
+version: "1.0"
+ontology_version: "1.0"
+
+benchmark:
+  task: extract
+  domain: finance
+  language: es
+
+program:
+  input:
+    text: string
+  output:
+    invoice_number: string
+    date: date
+    supplier:
+      name: string
+      tax_id: string
+    subtotal: float
+    total: float
+
+scoring:
+  # The total is what the business cares about; the tax id is recorded and
+  # validated but deliberately does not move the score.
+  weights:
+    invoice_number: 1
+    date: 1
+    supplier:
+      name: 1
+      tax_id: 0
+    subtotal: 1
+    total: 5
+  aggregator: weighted_mean
+
+data:
+  path: ./exam.jsonl
+
+ai-system:
+  type: model
+  provider: together
+  model: Qwen/Qwen3.8-2.4T-A95B
+  parameters:
+    temperature: 0
+    max_tokens: 2048
