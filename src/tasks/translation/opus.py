@@ -54,9 +54,10 @@ class Opus(TranslationHandler):
             self.language_pairs = self.config.get("language_pairs", self.language_pairs)
             self.dataset_name = self.config.get("dataset_name", self.dataset_name)
         
-        # Data directory
-        self.data_dir = Path(__file__).parent / ".data" / "opus"
-        self.cache_dir = Path(__file__).parent / "cache"
+        # Data directory — stored under repo-root/.data/translation/
+        _repo_root = Path(__file__).parent.parent.parent.parent
+        self.data_dir = _repo_root / ".data" / "translation" / "opus"
+        self.cache_dir = _repo_root / ".data" / "translation" / "cache"
     
     def load_dataset(self) -> List[Dict]:
         """Load OPUS translation dataset.

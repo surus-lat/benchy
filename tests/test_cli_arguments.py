@@ -7,6 +7,8 @@ import pytest
 from src.benchy_cli_eval import (
     _build_dataset_config_from_args,
     _build_adhoc_task_config,
+    _find_deprecated_tasks,
+    _reject_deprecated_tasks,
 )
 
 
@@ -238,3 +240,19 @@ def test_build_adhoc_task_config_raises_on_invalid():
     
     with pytest.raises(ValueError, match="Invalid task"):
         _build_adhoc_task_config("invalid_type", dataset_config)
+
+
+def test_find_deprecated_tasks_detects_group_and_subtask_refs():
+    deprecated = _find_deprecated_tasks([
+        "spanish",
+        "image_extraction",
+        "image_extraction.facturas",
+        "document_extraction.facturas_argentinas",
+    ])
+
+    assert deprecated == ["image_extraction"]
+
+
+def test_reject_deprecated_tasks_raises_system_exit():
+    with pytest.raises(SystemExit, match="image_extraction"):
+        _reject_deprecated_tasks(["image_extraction.facturas"], "CLI task overrides")
