@@ -70,7 +70,34 @@ def _run(args: argparse.Namespace) -> int:
     workspace = args.workspace or args.source.parent
     adapter = _load_adapter(args.adapter) if args.adapter else providers.for_system(ir, workspace)
     result = asyncio.run(run(ir, workspace, adapter))
+    _warn_if_degenerate(result)
     return _emit(result, args.output)
+
+
+def _warn_if_degenerate(result: dict) -> None:
+    """Say out loud when every example produced the same output.
+
+    An adapter that ignores its input — or reads the wrong input key — returns a constant
+    for every example and still reports 100% valid, because each output on its own
+    conforms to the schema. A constant predictor is not a measurement of the AI-system.
+
+    This is a warning and not a field in the report on purpose: the report's shape is a
+    pinned contract, and a machine reader must not have to learn a new key to keep working.
+    It goes to stderr; stdout stays the report alone.
+    """
+    results = result.get("results") or []
+    valid = [item for item in results if item.get("status") == "valid"]
+    predictions = {
+        json.dumps(item.get("prediction"), sort_keys=True, ensure_ascii=False)
+        for item in valid
+    }
+    if len(valid) > 1 and len(predictions) == 1 and len(valid) == len(results):
+        print(
+            "warning: degenerate_constant_output — every example produced the same "
+            "output: the adapter is not reading its input (or reads the wrong key), so "
+            "this run does not measure the AI-system",
+            file=sys.stderr,
+        )
 
 
 def _read(path: Path, phase: str = "compile") -> str:
