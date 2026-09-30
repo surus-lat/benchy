@@ -19,6 +19,16 @@ IR node shapes (paper A.9 / spec §17):
     {"type": "enum", "values": ["a", "b"]}                closed categorical
     {"type": "object", "fields": {"name": <node>, ...}}   nested structure
 """
+# Nota [fuente-en-code] — formas de declaracion en el YAML:
+#     Dos formas y ninguna mas:
+#         campo: string            -> primitiva (string,int,float,bool,date,time,
+#                                     datetime,image,audio,document)
+#         campo:                   -> categorico cerrado
+#           enum: ["a", "b"]
+#     Un objeto anidado se declara por indentacion (el IR es {"type":"object",
+#     "fields":{...}}). Cada HOJA de salida necesita exactamente un peso en
+#     `scoring.weights`; el compilador no inyecta defaults.
+
 
 from __future__ import annotations
 

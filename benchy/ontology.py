@@ -18,6 +18,13 @@ a version token and rejects anything path-shaped.
 Ontology 1.0 has three tasks. `transcribe` is absent because exact match cannot
 rank transcription systems; see `ontologies/1.0.yaml` and paper Appendix E.
 """
+# Nota [fuente-en-code] — dominios de la ontologia 1.0:
+#     Los dominios validos son CERRADOS y salen de `ontologies/1.0.yaml`:
+#         general | finance | healthcare | legal | retail
+#     Un `domain` fuera de esa lista falla la compilacion con `unknown_domain`
+#     (la lista del README son ejemplos, no el universo). Los tasks validos son
+#     `extract | classify | translate`; `transcribe` no existe a proposito.
+
 
 from __future__ import annotations
 

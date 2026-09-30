@@ -22,9 +22,11 @@ import importlib
 import importlib.util
 import json
 import sys
+from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 
-from benchy import providers
+from benchy import data, providers, score
 from benchy.compiler import compile_benchmark
 from benchy.errors import BenchyError
 from benchy.run import run
@@ -70,7 +72,122 @@ def _run(args: argparse.Namespace) -> int:
     workspace = args.workspace or args.source.parent
     adapter = _load_adapter(args.adapter) if args.adapter else providers.for_system(ir, workspace)
     result = asyncio.run(run(ir, workspace, adapter))
+    _warn_if_degenerate(result)
+    _warn_if_uninformative_field(result, ir, workspace)
     return _emit(result, args.output)
+
+
+def _warn_if_degenerate(result: dict) -> None:
+    """Say out loud when every example produced the same output.
+
+    An adapter that ignores its input — or reads the wrong input key — returns a constant
+    for every example and still reports 100% valid, because each output on its own
+    conforms to the schema. A constant predictor is not a measurement of the AI-system.
+
+    This is a warning and not a field in the report on purpose: the report's shape is a
+    pinned contract, and a machine reader must not have to learn a new key to keep working.
+    It goes to stderr; stdout stays the report alone.
+    """
+    results = result.get("results") or []
+    valid = [item for item in results if item.get("status") == "valid"]
+    predictions = {
+        json.dumps(item.get("prediction"), sort_keys=True, ensure_ascii=False)
+        for item in valid
+    }
+    if len(valid) > 1 and len(predictions) == 1 and len(valid) == len(results):
+        print(
+            "warning: degenerate_constant_output — every example produced the same "
+            "output: the adapter is not reading its input (or reads the wrong key), so "
+            "this run does not measure the AI-system",
+            file=sys.stderr,
+        )
+
+
+#: A field whose expected value has more distinct values than this gets its distribution
+#: summarized: the diagnostic is meant to be read, not to flood stderr.
+_SMALL_ALPHABET = 3
+
+
+def _seen(value: object) -> str:
+    """A value written the way the report writes it, so two equal values compare equal."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _distribution(counts: Counter, rows: int) -> str:
+    """`'yes' 30/39, 'no' 9/39`, largest first, with the tail summarized."""
+    shown = counts.most_common(4)
+    text = ", ".join(f"{value} {number}/{rows}" for value, number in shown)
+    remaining = len(counts) - len(shown)
+    return f"{text} (+{remaining} more values)" if remaining else text
+
+
+def _warn_if_uninformative_field(result: dict, ir: Mapping, workspace: Path | str) -> None:
+    """One field can be a non-measurement while the whole prediction object still varies.
+
+    The object-level check misses a field whose value never changes across examples: the
+    benchmark score is a mean over fields, so an uninformative 1.0 there reads as a perfect
+    field, and the reader cannot tell a field that measures the AI-system from a field that
+    measures the label distribution of the exam.
+
+    Per field, in this order, one line at most:
+
+    - the exam's own expected value is the same in every row: the field cannot discriminate,
+      so any predictor that emits that constant scores 1.0 on it;
+    - the prediction is the same in every valid example: a constant is not a measurement at
+      field level either;
+    - the field is perfect in every valid example over a small alphabet: the score has to be
+      read next to the trivial majority baseline, which is printed.
+
+    The exam is streamed a second time -- one row of memory, no adapter call. The
+    distributions are bounded by the report, which already holds every prediction. This is a
+    warning on stderr and never a key in the report, whose shape is a pinned contract.
+    """
+    results = result.get("results") or []
+    valid = [item for item in results if item.get("status") == "valid"]
+    if len(valid) < 2:
+        return
+    dimensions = [tuple(dimension["path"]) for dimension in ir["scoring"]["dimensions"]]
+    counts = {path: Counter() for path in dimensions}
+    rows = 0
+    for _, _, expected in data.examples(ir, workspace):
+        rows += 1
+        for path in dimensions:
+            counts[path][_seen(score.value_at(expected, path))] += 1
+    for path in dimensions:
+        name = ".".join(path)
+        distribution = _distribution(counts[path], rows)
+        predicted = {_seen(score.value_at(item["prediction"], path)) for item in valid}
+        if len(counts[path]) == 1:
+            print(
+                f"warning: degenerate_exam_field — every example's expected value for field "
+                f"{name} is {next(iter(counts[path]))} ({distribution}): the field cannot "
+                f"discriminate, so a constant predictor scores 1.0 on it",
+                file=sys.stderr,
+            )
+            continue
+        if len(predicted) == 1:
+            print(
+                f"warning: degenerate_constant_field — field {name} is {next(iter(predicted))} "
+                f"in every valid example ({len(valid)}/{len(results)}); the exam's expected "
+                f"value there: {distribution}. A constant prediction does not measure the field",
+                file=sys.stderr,
+            )
+            continue
+        scores = [
+            field["score"]
+            for item in valid
+            for field in (item.get("field_scores") or [])
+            if tuple(field["path"]) == path
+        ]
+        if (len(scores) == len(valid) and all(value == 1 for value in scores)
+                and len(counts[path]) <= _SMALL_ALPHABET):
+            majority = counts[path].most_common(1)[0][1] / rows
+            print(
+                f"warning: field_score_baseline — field {name} scores 1 in every valid example "
+                f"({len(valid)}/{len(results)}); the exam's expected value there: "
+                f"{distribution}, so a majority-only predictor scores {majority:.3f} on this field",
+                file=sys.stderr,
+            )
 
 
 def _read(path: Path, phase: str = "compile") -> str:
