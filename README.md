@@ -239,8 +239,14 @@ marshals between an internal form and the IR, and nothing can drift.
 
 ## Scope
 
-Ontology 1.0 has three tasks: `extract`, `classify`, `translate`. Field correctness is
+Ontology 1.0 has three tasks: `extract`, `classify`, `translate`, and five domains:
+`general`, `finance`, `healthcare`, `legal`, `retail`. Field correctness is
 exact match, and the instance aggregator is `weighted_mean`.
+
+Both lists are the registry in `benchy/ontologies/1.0.yaml`, and it is the only place
+they live: a benchmark naming a task or a domain outside it fails compilation. There is
+no implicit synonym — `health` is not `healthcare`, and a domain invented for one case
+is an error, not an extension.
 
 `transcribe` is deliberately absent. Exact match cannot rank transcription systems — a
 transcript wrong by one word scores the same as one that is entirely wrong — so
