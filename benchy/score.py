@@ -27,7 +27,7 @@ from collections.abc import Mapping, Sequence
 
 from benchy import types
 
-__all__ = ["score_example", "benchmark_score"]
+__all__ = ["score_example", "benchmark_score", "value_at"]
 
 
 def score_example(prediction: Mapping, expected: Mapping, ir: Mapping) -> tuple[list[dict], float]:
@@ -66,3 +66,12 @@ def _value_at(value: Mapping, path: Sequence[str]) -> object:
     for key in path:
         value = value[key]
     return value
+
+
+def value_at(document: Mapping, path: Sequence[str]) -> object:
+    """The value a declared scoring path points at, for scoring and for the diagnostics.
+
+    Public because the CLI's per-field diagnostics walk the exam's expected values the same
+    way scoring does; one walk for two callers is one walk that cannot drift.
+    """
+    return _value_at(document, path)
