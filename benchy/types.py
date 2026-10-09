@@ -18,6 +18,17 @@ IR node shapes (paper A.9 / spec §17):
     {"type": "string"}                                    primitive
     {"type": "enum", "values": ["a", "b"]}                closed categorical
     {"type": "object", "fields": {"name": <node>, ...}}   nested structure
+
+Any node may additionally carry *field metadata* — the optional inert keys
+`critical` (bool) and `derivation` ("copied" | "derived"):
+
+    {"type": "string", "critical": true, "derivation": "copied"}
+
+Metadata is validated at compile time and conserved verbatim in the IR, but no
+consumer reads it: `validate`, `leaves`, `equal` and the scoring dimensions walk
+`type`/`fields`/`values` only, so metadata can never move a score. It exists so
+the canonical declaration can carry the provenance annotations the producing
+pipelines already declare per field, without inventing a second channel.
 """
 
 from __future__ import annotations
@@ -45,6 +56,16 @@ PRIMITIVES: frozenset[str] = frozenset(
 
 #: Types whose runtime representation is a filesystem path (paper A.6, Appendix C).
 ARTIFACTS: frozenset[str] = frozenset({"image", "audio", "document"})
+
+#: Optional per-field metadata keys. Their *presence* in a schema mapping selects
+#: the declared-field form; their values are validated and then conserved, inert.
+METADATA_KEYS: frozenset[str] = frozenset({"critical", "derivation"})
+
+#: The closed `derivation` vocabulary: where the value must come from.
+DERIVATIONS: frozenset[str] = frozenset({"copied", "derived"})
+
+#: The structural forms of a declared field (exactly one per declaration).
+_STRUCTURAL_KEYS = ("type", "enum", "fields")
 
 # Canonical lexical forms (paper A.6). `fromisoformat` alone is too permissive in
 # 3.11+ (it accepts "20260913"), so each form is gated by its pattern first.
@@ -104,6 +125,13 @@ def compile_schema(node: object, *, path: tuple[str, ...] = ()) -> dict:
         return {"type": node}
 
     if isinstance(node, Mapping):
+        # A mapping carrying a metadata key is a declared field: exactly one
+        # structural form (`type` / `enum` / `fields`) plus the optional inert
+        # keys. The bare `{enum: [...]}` and plain object forms below are
+        # untouched, so every schema written before metadata existed compiles
+        # to the exact same IR.
+        if METADATA_KEYS & set(node):
+            return _compile_declared(node, path)
         # A mapping whose key set is exactly {"enum"} is the enum declaration;
         # any other mapping is an object schema (paper A.1).
         if set(node) == {"enum"}:
@@ -122,6 +150,73 @@ def compile_schema(node: object, *, path: tuple[str, ...] = ()) -> dict:
     if isinstance(node, (list, tuple)):
         raise BenchyError("compile", "invalid_schema", "lists are not valid schema nodes", list(path))
     raise BenchyError("compile", "invalid_schema", f"invalid schema node of type {type(node).__name__}", list(path))
+
+
+def _compile_declared(node: Mapping, path: tuple[str, ...]) -> dict:
+    """Compile a field declaration with metadata into its IR node.
+
+    The declaration carries exactly one structural form — `type` (a primitive
+    token), `enum` (a value list) or `fields` (a nested object) — plus the
+    optional metadata keys `critical` and `derivation`, which are validated and
+    conserved verbatim. Absent keys are never injected into the IR.
+    """
+    forms = [key for key in _STRUCTURAL_KEYS if key in node]
+    if len(forms) != 1:
+        raise BenchyError(
+            "compile", "invalid_schema",
+            "a field with metadata must declare exactly one of 'type', 'enum' or 'fields'",
+            list(path),
+        )
+    for extra in sorted(set(node) - set(forms) - METADATA_KEYS):
+        raise BenchyError(
+            "compile", "invalid_schema",
+            f"unknown key {extra!r} in a field declaration; "
+            f"expected {', '.join(forms + sorted(METADATA_KEYS))}",
+            list(path),
+        )
+    form = forms[0]
+    if form == "type":
+        token = node["type"]
+        if not isinstance(token, str) or token not in PRIMITIVES:
+            raise BenchyError(
+                "compile", "invalid_schema",
+                f"unknown semantic type {token!r}; expected one of {', '.join(sorted(PRIMITIVES))}",
+                list(path),
+            )
+        ir = {"type": token}
+    elif form == "enum":
+        ir = _compile_enum(node["enum"], path)
+    else:
+        fields = node["fields"]
+        if not isinstance(fields, Mapping) or not fields:
+            raise BenchyError(
+                "compile", "invalid_schema", "object schema must declare at least one field", list(path)
+            )
+        compiled: dict[str, dict] = {}
+        for name, child in fields.items():
+            if not isinstance(name, str) or not name:
+                raise BenchyError(
+                    "compile", "invalid_schema", f"field name must be a non-empty string, got {name!r}", list(path)
+                )
+            compiled[name] = compile_schema(child, path=path + (name,))
+        ir = {"type": "object", "fields": compiled}
+    if "critical" in node:
+        critical = node["critical"]
+        if not isinstance(critical, bool):
+            raise BenchyError(
+                "compile", "invalid_schema", f"critical must be a boolean, got {critical!r}", list(path)
+            )
+        ir["critical"] = critical
+    if "derivation" in node:
+        derivation = node["derivation"]
+        if derivation not in DERIVATIONS:
+            raise BenchyError(
+                "compile", "invalid_schema",
+                f"derivation must be one of {', '.join(sorted(DERIVATIONS))}, got {derivation!r}",
+                list(path),
+            )
+        ir["derivation"] = derivation
+    return ir
 
 
 def _compile_enum(values: object, path: tuple[str, ...]) -> dict:
