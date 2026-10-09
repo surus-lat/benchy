@@ -231,6 +231,8 @@ benchy/
   adapter.py     the runtime boundary
   run.py         the engine loop
   cli.py         compile / run
+  textnorm.py    vendored text-normalization reference (parity-tested, not engine-wired)
+  canonical.py   vendored canonical-JSON reference (parity-tested, not engine-wired)
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
