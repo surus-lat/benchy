@@ -227,13 +227,16 @@ benchy/
   compiler.py    YAML -> canonical JSON IR
   data.py        the exam: streaming JSONL inside a workspace
   score.py       field correctness -> instance score -> benchmark score
+  metrics.py     the closed per-field metric registry (field_metrics)
   adapter.py     the runtime boundary
   run.py         the engine loop
   cli.py         compile / run
+  textnorm.py    vendored text-normalization reference (parity-tested, not engine-wired)
+  canonical.py   vendored canonical-JSON reference (parity-tested, not engine-wired)
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-780 lines of code, plus 198 in the optional provider adapter. There is exactly one
+1101 lines of code, plus 198 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 
@@ -241,7 +244,11 @@ marshals between an internal form and the IR, and nothing can drift.
 
 Ontology 1.0 has three tasks: `extract`, `classify`, `translate`, and five domains:
 `general`, `finance`, `healthcare`, `legal`, `retail`. Field correctness is
-exact match, and the instance aggregator is `weighted_mean`.
+exact match by default — a benchmark may name a per-field metric from the
+closed registry in `metrics.py` (`scoring.field_metrics`) — and the instance
+aggregator is `weighted_mean`. Every run also reports each field against a
+trivial baseline computed from the exam itself (majority / mean / empty), so
+a field that does not beat doing nothing is reported as such.
 
 Both lists are the registry in `benchy/ontologies/1.0.yaml`, and it is the only place
 they live: a benchmark naming a task or a domain outside it fails compilation. There is

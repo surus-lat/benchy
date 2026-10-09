@@ -58,7 +58,7 @@ def test_invoices_example_scores_what_its_docstring_claims(capsys):
 
 
 CORE = ["__init__", "errors", "types", "ontology", "compiler", "data", "score",
-        "adapter", "run", "cli"]
+        "metrics", "adapter", "run", "cli"]
 
 
 def _code_lines(path):
