@@ -1291,6 +1291,32 @@ domains:
   healthcare: {}
   legal: {}
   retail: {}
+  anthropology: {}
+  archaeology: {}
+  sociology: {}
+  history: {}
+  linguistics: {}
+  literature: {}
+  philosophy: {}
+  political_science: {}
+  economics: {}
+  psychology: {}
+  education: {}
+  geography: {}
+  communication: {}
+  arts: {}
+  law: {}
+  biology: {}
+  chemistry: {}
+  physics: {}
+  mathematics: {}
+  computer_science: {}
+  earth_sciences: {}
+  environmental_science: {}
+  agriculture: {}
+  engineering: {}
+  medicine: {}
+  public_health: {}
 
 languages:
   es: {}
