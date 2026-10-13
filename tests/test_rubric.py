@@ -438,3 +438,18 @@ def test_a_declared_grader_prompt_replaces_the_default(bench, monkeypatch):
     (bench / "grader.md").write_text("Grade like a strict professor.")
     ir = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge", "prompt": "./grader.md"}))
     assert providers.for_grader(ir, bench).prompt == "Grade like a strict professor."
+
+
+def test_grader_setup_errors_point_at_scoring_grader(bench, monkeypatch):
+    pytest.importorskip("llm_client")
+    from benchy import providers
+
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    ir = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge", "prompt": "./missing.md"}))
+    with pytest.raises(BenchyError) as exc:
+        providers.for_grader(ir, bench)
+    assert exc.value.path == ["scoring", "grader", "prompt"]
+    ir = compile_benchmark(exam(grader={"type": "model", "provider": "nowhere", "model": "judge"}))
+    with pytest.raises(BenchyError) as exc:
+        providers.for_grader(ir, bench)
+    assert exc.value.path == ["scoring", "grader", "provider"]
