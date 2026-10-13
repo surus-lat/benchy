@@ -30,6 +30,16 @@ consumer reads it: `validate`, `leaves`, `equal` and the scoring dimensions walk
 the canonical declaration can carry the provenance annotations the producing
 pipelines already declare per field, without inventing a second channel.
 """
+# Nota [fuente-en-code] — formas de declaracion en el YAML:
+#     Dos formas y ninguna mas:
+#         campo: string            -> primitiva (string,int,float,bool,date,time,
+#                                     datetime,image,audio,document)
+#         campo:                   -> categorico cerrado
+#           enum: ["a", "b"]
+#     Un objeto anidado se declara por indentacion (el IR es {"type":"object",
+#     "fields":{...}}). Cada HOJA de salida necesita exactamente un peso en
+#     `scoring.weights`; el compilador no inyecta defaults.
+
 
 from __future__ import annotations
 
