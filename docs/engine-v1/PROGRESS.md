@@ -519,3 +519,41 @@ client-name fields, internal identifiers — sitting in a repo about to be merge
 Local run data was *not* deleted: `.data` (6.7G), `logs` (171M), `outputs` (18M),
 `.venv-vox` (1.6G) are untracked working data, so removing them was never mine to do.
 They are gitignored now instead.
+
+## 2026-10-09 00:00 UTC — field metrics + baselines (consolidation lane `scoring`)
+
+- **New `benchy/metrics.py`**: the closed per-field metric registry, text fold ported
+  verbatim from `program_pipeline/scoring.py`; `span_recall`/`set_f1` from
+  datapipeline's derived scoring. Metrics return floats in [0, 1].
+- **`scoring.field_metrics`** (optional) compiled and validated: `unknown_metric`
+  carries the field path; enum leaves reject non-enum-safe metrics
+  (`enum_unsafe_metric`); params checked against sealed bounds. A benchmark without
+  `field_metrics` compiles to the same IR as before — no metric keys anywhere — and
+  `examples/invoices` scores 0.8148148148148149 on both `main` and this lane.
+- **`run.py` reports `fields`**: per-field score / trivial baseline (majority, mean,
+  or empty — fitted on the exam) / signal / `counts_as_signal` at
+  `signal_epsilon` (default 0.01, sealed in (0, 0.10]).
+- Report-shape test updated for the new top-level `fields` key; README module list
+  and LOC counter updated (`metrics.py` joined the core); 31 new tests in
+  `tests/test_metrics.py`. Suite: 343 passed, 46 skipped.
+
+**Next:** datapipeline vendors the registry (`scoring_metrics.py`) and delegates its
+per-type metrics to it, numbers unchanged (pack synthetic before/after).
+
+## 2026-10-12 — rubric-graded question answering (branch `design/rubric-qa`)
+
+For university exams for AI-systems. Design and decisions: `docs/engine-v1/RUBRIC-QA.md`.
+
+- **Ontology 1.1** = 1.0 + `answer` (exactly one string output, any input). 1.0 untouched.
+- **`metric: rubric`**: an analytic rubric (named criteria, each with a weight and its own
+  2–11 contiguous levels), on at most one string leaf, graded by `scoring.grader`, an
+  AI-system bound through the same `invoke` protocol. Field score = weighted mean of
+  linearly rescaled criterion grades. Lives in `score.py`; `metrics.py` (vendored) untouched.
+- **`run.py`**: only valid outputs are graded; grader failure aborts (`grader_error`);
+  the baseline is the graded empty answer; the result records `grader.system` and
+  `grader.prompt_sha256`.
+- **Outside the core**: `providers.for_grader` + `GRADING_PROMPT`; `cli --grader`.
+- **Docs**: paper, spec and handoff describe 1.1, field metrics (fixing the drift from
+  the field-metrics work, which never reached the paper or spec) and the rubric.
+  `test_doc_agreement` follows the newest ontology and pins spec §6's metric list.
+- `examples/exam-qa` runs offline with a stand-in grader. Suite: 520 passed.

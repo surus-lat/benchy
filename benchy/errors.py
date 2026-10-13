@@ -22,12 +22,13 @@ there is no second place to edit when a code is added:
               unsupported_version unsupported_ontology_version unknown_task
               unknown_domain unknown_language task_program_mismatch
               invalid_schema missing_weight extra_weight invalid_weight
-              invalid_ai_system invalid_value
+              invalid_ai_system invalid_value invalid_rubric
     dataset   data_not_found invalid_dataset_record empty_dataset path_escape
               artifact_not_found missing_field extra_field wrong_type
               invalid_enum invalid_value
     runtime   adapter_not_bound adapter_error timeout invalid_ir
               missing_field extra_field wrong_type invalid_enum invalid_value
+              grader_not_bound grader_error
 
 `missing_key` and `path_escape` extend paper A.16, whose list is explicitly
 "representative": the first is the counterpart of `unknown_key` for a required key,

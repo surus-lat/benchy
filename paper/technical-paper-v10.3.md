@@ -379,7 +379,25 @@ $$
 
 > Field correctness \(c_{ij}\) is 1 when the predicted semantic value exactly equals the expected semantic value and 0 otherwise.
 
-Field correctness is currently produced by exact match. The evaluator is not exposed as a benchmark configuration option.
+Exact match is the default field metric. A benchmark may name another metric per output leaf in `scoring.field_metrics`, drawn from a closed registry — a benchmark chooses and parametrizes a metric, it never writes one. Each maps a predicted and expected value to \(c_{ij}\in[0,1]\), so partial credit is a score rather than a boolean dressed as one:
+
+```text
+exact  casefold_strip  token_set_f1  date_flexible  numeric_tolerance  span_recall  set_f1  rubric
+```
+
+`rubric` is the one *graded* metric, for answers that cannot be compared with a key and must be judged against criteria — an exam question answered in prose. A rubric is analytic: named criteria \(k\), each with a weight \(w_k\) and its own integer levels. A **grader**, itself an AI-system declared as `scoring.grader` and invoked through the same adapter protocol as the system under test (A.10), reads the question, the row's answer key, the answer and the rubric, and returns one grade \(g_k\) per criterion. Each grade maps linearly from its criterion's lowest level to its highest, and the criteria combine by weight:
+
+$$
+\boxed{
+c_{ij}=\frac{\sum_k w_k\,r_k}{\sum_k w_k}
+\qquad
+r_k=\frac{g_k-g_{k,\min}}{g_{k,\max}-g_{k,\min}}
+}
+$$
+
+> The rubric field score is the weighted mean of the criterion grades, each rescaled so its lowest level is 0 and its highest 1.
+
+A holistic rubric — one grade for the whole answer — is the one-criterion case. Because the grader is an AI-system, a human grader enters through the same seam as a model grader; a rubric score is therefore always *a score under a named grader*, and scores are comparable only under the same one.
 
 All field scores for example \(i\) form:
 
@@ -709,14 +727,14 @@ The current language deliberately does not expose:
 
 ```text
 variable-length output collections
-custom field evaluators
+field metrics outside the closed registry (§4)
 aggregators other than weighted_mean
 adapter configuration inside benchmark YAML
 implicit field weights
 anonymous root scalar inputs or outputs
 ```
 
-Because field correctness is fixed to exact match (A.7), Engine 1.0 cannot meaningfully score tasks whose outputs are judged by similarity rather than equality. Transcription is the clearest case: a transcript that differs from the reference by one word scores identically to one that is entirely wrong. `transcribe` is therefore not part of the ontology 1.0 task vocabulary, and a benchmark declaring it fails compilation under A.4 rather than producing scores that cannot be interpreted. Appendix E describes the field-evaluator extension that would admit it.
+Because no metric in the closed registry measures an error rate (§4, A.7), Engine 1.0 cannot meaningfully score tasks whose outputs are judged by similarity rather than equality. Transcription is the clearest case: a transcript that differs from the reference by one word scores identically to one that is entirely wrong. `transcribe` is therefore not part of the ontology 1.0 task vocabulary, and a benchmark declaring it fails compilation under A.4 rather than producing scores that cannot be interpreted. Appendix E describes the field-evaluator extension that would admit it.
 
 The `audio` semantic type is unaffected and remains a valid input type; only the `transcribe` task is withdrawn.
 
@@ -816,7 +834,7 @@ The shared ontology registry contains identifiers and descriptions only.
 
 Benchy implements the structural validators for the task vocabulary of the ontology version it supports.
 
-For ontology version `1.0`:
+For ontology version `1.1`:
 
 ```text
 extract
@@ -831,7 +849,13 @@ translate
   exactly one leaf output field
   that leaf field is string
   benchmark.language is {source, target}
+
+answer
+  exactly one leaf output field
+  that leaf field is string
 ```
+
+Ontology version `1.0` has the same validators without `answer`. Version `1.1` adds that one task and changes nothing else, so a benchmark moves from `1.0` to `1.1` without changing meaning.
 
 If an ontology task is not supported by the loaded Benchy specification, compilation fails rather than silently skipping task validation.
 
@@ -1198,6 +1222,29 @@ An execution error:
 }
 ```
 
+A rubric field's entry in `field_scores` also carries every criterion's grade and justification, and a run of a rubric benchmark records its grader:
+
+```json
+{
+  "path": ["answer"],
+  "score": 0.8125,
+  "weight": 1,
+  "criteria": {
+    "accuracy": {"grade": 4, "justification": "..."},
+    "clarity": {"grade": 1, "justification": "..."}
+  }
+}
+```
+
+```json
+"grader": {
+  "system": {"type": "model", "provider": "openai", "model": "..."},
+  "prompt_sha256": "..."
+}
+```
+
+`prompt_sha256` fingerprints the grader's effective instruction, or is `null` when its adapter cannot state one (a human grader, for instance). It is run metadata in the sense of A.10: it changes what a score means without changing the benchmark.
+
 ## A.15 Dataset failures
 
 Dataset failures are run-level benchmark errors rather than example scores.
@@ -1215,6 +1262,8 @@ empty dataset
 ```
 
 The run aborts and does not produce a benchmark score.
+
+Grader failures abort for the same reason. The grader is part of the measuring instrument, not the system being measured: a grader that raises, or returns a grade outside the schema or outside a criterion's levels, is reported as `grader_error` and aborts the run. Scoring it as the AI-system's zero would charge the examinee for the examiner's failure, and a fourth instance status would break A.12. Only `valid` outputs are graded; failed examples already contribute zero (A.13). A rubric benchmark run without a bound grader aborts before its first example (`grader_not_bound`), as a missing adapter does (A.11).
 
 ## A.16 Error model
 
@@ -1256,6 +1305,9 @@ invalid_value
 adapter_error
 timeout
 provider_error
+invalid_rubric
+grader_not_bound
+grader_error
 ```
 
 The exact message text is not part of benchmark semantics.
@@ -1275,7 +1327,7 @@ languages
 Example:
 
 ```yaml
-version: "1.0"
+version: "1.1"
 
 tasks:
   extract:
@@ -1284,6 +1336,8 @@ tasks:
     description: Assign one declared categorical label.
   translate:
     description: Transform text from a source language to a target language.
+  answer:
+    description: Answer a question in natural language.
 
 domains:
   general: {}
@@ -1291,6 +1345,32 @@ domains:
   healthcare: {}
   legal: {}
   retail: {}
+  anthropology: {}
+  archaeology: {}
+  sociology: {}
+  history: {}
+  linguistics: {}
+  literature: {}
+  philosophy: {}
+  political_science: {}
+  economics: {}
+  psychology: {}
+  education: {}
+  geography: {}
+  communication: {}
+  arts: {}
+  law: {}
+  biology: {}
+  chemistry: {}
+  physics: {}
+  mathematics: {}
+  computer_science: {}
+  earth_sciences: {}
+  environmental_science: {}
+  agriculture: {}
+  engineering: {}
+  medicine: {}
+  public_health: {}
 
 languages:
   es: {}
@@ -1384,7 +1464,9 @@ The central rule is:
 
 # Appendix E — Field evaluators (extension, not Engine 1.0)
 
-Engine 1.0 fixes field correctness to exact match (A.7). That is sufficient wherever a field is either the declared value or not — extraction and classification — and insufficient wherever the output is judged by similarity. Transcription is the motivating case, and the reason `transcribe` is absent from the ontology 1.0 task vocabulary.
+*Status:* the per-field slot this appendix describes now exists as `scoring.field_metrics` (§4), with a closed registry of deterministic metrics and one graded metric, `rubric`. The error-rate evaluators `wer` and `cer` described below are still not built, and `transcribe` stays out of the ontology until they are and the normalization question below is settled.
+
+As first written: Engine 1.0 fixes field correctness to exact match (A.7). That is sufficient wherever a field is either the declared value or not — extraction and classification — and insufficient wherever the output is judged by similarity. Transcription is the motivating case, and the reason `transcribe` is absent from the ontology 1.0 task vocabulary.
 
 The extension is a per-field evaluator declared in the scoring section, defaulting to `exact_match` so that every existing benchmark keeps its current meaning:
 

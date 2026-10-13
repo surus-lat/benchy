@@ -32,8 +32,9 @@ def test_example_compiles(benchmark, capsys):
 
 @pytest.mark.parametrize("benchmark", OFFLINE, ids=lambda p: p.parent.name)
 def test_example_runs(benchmark, capsys):
-    adapter = f"{benchmark.parent / 'system.py'}:extractor"
-    assert main(["run", str(benchmark), "--adapter", adapter]) == 0
+    system = benchmark.parent / "system.py"
+    grader = ["--grader", f"{system}:grader"] if "def grader(" in system.read_text() else []
+    assert main(["run", str(benchmark), "--adapter", f"{system}:extractor", *grader]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["summary"]["execution_errors"] == 0
     assert result["summary"]["invalid_outputs"] == 0
@@ -58,7 +59,7 @@ def test_invoices_example_scores_what_its_docstring_claims(capsys):
 
 
 CORE = ["__init__", "errors", "types", "ontology", "compiler", "data", "score",
-        "adapter", "run", "cli"]
+        "metrics", "adapter", "run", "cli"]
 
 
 def _code_lines(path):

@@ -73,4 +73,15 @@ your message, which is more useful than a fabricated answer.
 - **One adapter, one AI-system.** A run is `R = (B, AI)`. Falling back to a second model
   inside your adapter scores a mixture under one name.
 
-See `examples/invoices/system.py` for a complete, runnable one.
+## A grader is an adapter too
+
+A rubric benchmark's grader is bound the same way (`--grader MODULE:ATTR`). It receives
+`{input, reference, answer, rubric}` — the question as the system saw it, the answer key,
+the answer, the rubric as text — and returns
+`{<criterion>: {"grade": int, "justification": str}}` for every criterion. A grader that
+looks up a professor's grades is a valid one; it is how a model grader gets checked.
+Optionally set `prompt_sha256` on it so results record which instruction graded the run.
+Unlike an examinee's, a grader's failure aborts the run, so retry transient errors inside it.
+
+See `examples/invoices/system.py` for a complete, runnable one, and
+`examples/exam-qa/system.py` for a grader.

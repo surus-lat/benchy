@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from benchy import ontology, types
+from benchy import metrics, ontology, score, types
 from benchy.errors import BenchyError
 
 __all__ = ["parse", "compile_scoring", "compile_benchmark", "SPEC_VERSION", "ROOT_KEYS"]
@@ -31,6 +31,11 @@ SPEC_VERSION = "1.0"
 ROOT_KEYS = ("version", "ontology_version", "benchmark", "program", "scoring", "data", "ai-system")
 
 _MERGE_TAG = "tag:yaml.org,2002:merge"
+
+#: Default for the anti-trivial guard's signal epsilon (aligned with datapipeline's
+#: derived scoring). A benchmark may override it as `scoring.signal_epsilon`.
+SIGNAL_EPSILON_DEFAULT = 0.01
+SIGNAL_EPSILON_MAX = 0.10
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +134,20 @@ def compile_scoring(section: object, output_ir: Mapping) -> dict:
     mirror it exactly: one weight per leaf, none missing, none extra, and none on
     an intermediate object. Emitted in output-schema order — not weight-mapping
     order — so the IR and every `field_scores` array are deterministic.
+
+    `scoring.field_metrics` (optional) maps a dotted leaf path to
+    `{metric: <name>, params: {...}}` drawn from the closed registry in
+    `benchy.metrics`. A dimension without an entry carries no metric key at all and
+    scores with the canonical exact match — so a benchmark without `field_metrics`
+    compiles to the exact same IR as before field metrics existed.
+
+    `metric: rubric` is the one graded metric (see `_compile_rubric`), allowed on one
+    string field per benchmark; it requires `scoring.grader`, an AI-system
+    definition, and `scoring.grader` requires it.
     """
-    _require_keys(section, ("weights", "aggregator"), ["scoring"])
+    _require_keys(
+        section, ("weights", "aggregator"), ["scoring"], optional=("field_metrics", "signal_epsilon", "grader"),
+    )
     if section["aggregator"] != "weighted_mean":
         raise BenchyError(
             "compile", "invalid_value",
@@ -144,12 +161,161 @@ def compile_scoring(section: object, output_ir: Mapping) -> dict:
             "at least one scoring dimension must have positive weight",
             ["scoring", "weights"],
         )
-    return {
+    if "field_metrics" in section:
+        _apply_field_metrics(section["field_metrics"], dimensions, output_ir)
+    ir: dict[str, Any] = {
         "evaluator": "exact_match",
         "dimensions": dimensions,
         "instance_aggregator": "weighted_mean",
         "benchmark_aggregator": "mean",
     }
+    if "signal_epsilon" in section:
+        ir["signal_epsilon"] = _compile_signal_epsilon(section["signal_epsilon"])
+    rubrics = [".".join(d["path"]) for d in dimensions if d.get("metric") == score.RUBRIC]
+    if len(rubrics) > 1:
+        raise BenchyError(
+            "compile", "invalid_rubric",
+            f"one rubric field per benchmark (its grader has one output schema); got {', '.join(rubrics)}",
+            ["scoring", "field_metrics"],
+        )
+    graded = bool(rubrics)
+    if graded and "grader" not in section:
+        raise BenchyError("compile", "missing_key", "a rubric field needs a grader: declare scoring.grader", ["scoring", "grader"])
+    if "grader" in section:
+        if not graded:
+            raise BenchyError("compile", "invalid_value", "scoring.grader is declared but no field uses a rubric", ["scoring", "grader"])
+        ir["grader"] = _compile_ai_system(section["grader"], ("scoring", "grader"))
+    return ir
+
+
+def _compile_signal_epsilon(value: object) -> float:
+    """The anti-trivial guard's epsilon: small enough that beating a trivial
+    baseline by epsilon still means something (aligned with datapipeline)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise BenchyError(
+            "compile", "invalid_value",
+            f"signal_epsilon must be a number, got {value!r}",
+            ["scoring", "signal_epsilon"],
+        )
+    if not math.isfinite(value) or not (0.0 < float(value) <= SIGNAL_EPSILON_MAX):
+        raise BenchyError(
+            "compile", "invalid_value",
+            f"signal_epsilon must be in (0, {SIGNAL_EPSILON_MAX}], got {value!r}: "
+            "an epsilon that large lets any trivial baseline pass as signal",
+            ["scoring", "signal_epsilon"],
+        )
+    return float(value)
+
+
+def _apply_field_metrics(field_metrics: object, dimensions: list[dict], output_ir: Mapping) -> None:
+    """Validate `scoring.field_metrics` against the registry and stamp the dimensions.
+
+    Unknown metric -> `unknown_metric` carrying the field path; a non-enum-safe
+    metric over an enum leaf -> `enum_unsafe_metric` (relaxing a closed vocabulary
+    would dissolve it); unknown/out-of-range params are rejected the same way.
+    """
+    if not isinstance(field_metrics, Mapping):
+        raise BenchyError(
+            "compile", "invalid_value",
+            f"field_metrics must be a mapping of dotted field paths, got {type(field_metrics).__name__}",
+            ["scoring", "field_metrics"],
+        )
+    by_path = {tuple(d["path"]): d for d in dimensions}
+    for key in sorted(field_metrics, key=str):
+        path = ["scoring", "field_metrics", str(key)]
+        if not isinstance(key, str) or not key:
+            raise BenchyError("compile", "invalid_value", f"field_metrics key must be a dotted field path, got {key!r}", path)
+        dimension = by_path.get(tuple(key.split(".")))
+        if dimension is None:
+            raise BenchyError(
+                "compile", "unknown_field",
+                f"field_metrics key {key!r} is not an output leaf",
+                path,
+            )
+        spec = field_metrics[key]
+        _require_keys(spec, ("metric",), path, optional=("params",))
+        name = spec["metric"]
+        if name == score.RUBRIC:
+            _require_keys(spec, ("metric", "params"), path)
+            if types.at(output_ir, key.split("."))["type"] != "string":
+                raise BenchyError("compile", "invalid_rubric", f"a rubric grades a string field; {key!r} is not one", path)
+            dimension["metric"] = name
+            dimension["params"] = {"criteria": _compile_rubric(spec["params"], path)}
+            continue
+        if name not in metrics.METRICS:
+            raise BenchyError(
+                "compile", "unknown_metric",
+                f"unknown metric {name!r} for field {key!r}; the registry is closed: {', '.join(sorted(metrics.METRICS))}",
+                path,
+            )
+        node = types.at(output_ir, key.split("."))
+        if node["type"] == "enum" and name not in metrics.ENUM_SAFE:
+            raise BenchyError(
+                "compile", "enum_unsafe_metric",
+                f"metric {name!r} is not enum-safe: field {key!r} declares a closed vocabulary "
+                f"(enum-safe: {', '.join(sorted(metrics.ENUM_SAFE))})",
+                path,
+            )
+        params = spec.get("params", {})
+        if not isinstance(params, Mapping):
+            raise BenchyError("compile", "invalid_value", f"params for field {key!r} must be a mapping", path)
+        for param in sorted(params, key=str):
+            if param not in metrics.PARAM_SPEC[name]:
+                raise BenchyError(
+                    "compile", "unknown_param",
+                    f"metric {name!r} has no parameter {param!r} (allowed: {', '.join(sorted(metrics.PARAM_SPEC[name])) or '<none>'})",
+                    path,
+                )
+            value = params[param]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise BenchyError("compile", "invalid_value", f"param {param!r} must be a finite number, got {value!r}", path)
+            low, high = metrics.PARAM_SPEC[name][param]
+            if value < low or (high is not None and value > high):
+                raise BenchyError(
+                    "compile", "param_out_of_range",
+                    f"param {param!r} = {value} is outside [{low}, {high if high is not None else 'unbounded'}]",
+                    path,
+                )
+        dimension["metric"] = name
+        dimension["params"] = dict(params)
+
+
+def _compile_rubric(params: object, path: list[str]) -> list[dict]:
+    """An analytic rubric: named criteria, each with a weight and its own graded levels.
+
+    Levels are contiguous integers (1–5 and 0–4 are both fine), 2 to 11 of them, each
+    described; the IR keeps them as an ascending list because JSON keys are strings.
+    Criteria keep their source order, which is the order a grader reads them in.
+    """
+    _require_keys(params, ("criteria",), path)
+    criteria = params["criteria"]
+    if not isinstance(criteria, Mapping) or not criteria:
+        raise BenchyError("compile", "invalid_rubric", "rubric criteria must be a non-empty mapping of named criteria", path)
+    out = []
+    for name, criterion in criteria.items():
+        if not isinstance(name, str) or not name:
+            raise BenchyError("compile", "invalid_rubric", f"criterion names must be non-empty strings, got {name!r}", path)
+        _require_keys(criterion, ("weight", "levels"), path, optional=("description",))
+        weight, levels = criterion["weight"], criterion["levels"]
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not math.isfinite(weight) or weight < 0:
+            raise BenchyError("compile", "invalid_rubric", f"criterion {name!r}: weight must be a finite number >= 0", path)
+        if not isinstance(levels, Mapping) or not all(isinstance(g, int) and not isinstance(g, bool) for g in levels):
+            raise BenchyError("compile", "invalid_rubric", f"criterion {name!r}: levels must map integer grades to descriptions", path)
+        grades = sorted(levels)
+        if not 2 <= len(grades) <= 11 or grades != list(range(grades[0], grades[0] + len(grades))):
+            raise BenchyError("compile", "invalid_rubric", f"criterion {name!r}: levels must be 2 to 11 contiguous grades, got {grades}", path)
+        if not all(isinstance(levels[g], str) and levels[g].strip() for g in grades):
+            raise BenchyError("compile", "invalid_rubric", f"criterion {name!r}: every level needs a description", path)
+        description = criterion.get("description", "")
+        if not isinstance(description, str):
+            raise BenchyError("compile", "invalid_rubric", f"criterion {name!r}: description must be a string", path)
+        compiled = {"name": name, "weight": float(weight), "levels": [{"grade": g, "description": levels[g]} for g in grades]}
+        if description:
+            compiled["description"] = description
+        out.append(compiled)
+    if sum(c["weight"] for c in out) <= 0:
+        raise BenchyError("compile", "invalid_rubric", "at least one criterion must have positive weight", path)
+    return out
 
 
 def _dimensions(weights: object, node: Mapping, path: tuple[str, ...] = ()) -> list[dict]:
@@ -262,33 +428,35 @@ def _compile_data(section: object) -> dict:
     return {"path": path, "format": "jsonl"}
 
 
-def _compile_ai_system(section: object) -> dict:
+def _compile_ai_system(section: object, at: tuple[str, ...] = ("ai-system",)) -> dict:
     """The AI-system's *semantic definition* — what is being evaluated.
 
     How this environment invokes it (credentials, transport, SDK construction) is
-    runtime policy bound to an adapter, and deliberately absent here.
+    runtime policy bound to an adapter, and deliberately absent here. `at` is where
+    the definition sits: `ai-system`, or `scoring.grader` for a rubric's grader.
     """
+    path = list(at)
     if not isinstance(section, Mapping):
-        raise BenchyError("compile", "invalid_ai_system", "ai-system must be a mapping", ["ai-system"])
+        raise BenchyError("compile", "invalid_ai_system", f"{'.'.join(path)} must be a mapping", path)
     kind = section.get("type")
     if kind == "external":
-        _require_keys(section, ("type", "id"), ["ai-system"])
+        _require_keys(section, ("type", "id"), path)
         if not isinstance(section["id"], str) or not section["id"]:
-            raise BenchyError("compile", "invalid_ai_system", "ai-system.id must be a non-empty string", ["ai-system", "id"])
+            raise BenchyError("compile", "invalid_ai_system", f"{'.'.join(path)}.id must be a non-empty string", path + ["id"])
         return {"type": "external", "id": section["id"]}
     if kind == "model":
-        _require_keys(section, ("type", "provider", "model"), ["ai-system"], optional=("prompt", "parameters"))
+        _require_keys(section, ("type", "provider", "model"), path, optional=("prompt", "parameters"))
         for key in ("provider", "model"):
             if not isinstance(section[key], str) or not section[key]:
-                raise BenchyError("compile", "invalid_ai_system", f"ai-system.{key} must be a non-empty string", ["ai-system", key])
+                raise BenchyError("compile", "invalid_ai_system", f"{'.'.join(path)}.{key} must be a non-empty string", path + [key])
         if "prompt" in section and not isinstance(section["prompt"], str):
-            raise BenchyError("compile", "invalid_ai_system", "ai-system.prompt must be a path string", ["ai-system", "prompt"])
+            raise BenchyError("compile", "invalid_ai_system", f"{'.'.join(path)}.prompt must be a path string", path + ["prompt"])
         if "parameters" in section and not isinstance(section["parameters"], Mapping):
-            raise BenchyError("compile", "invalid_ai_system", "ai-system.parameters must be a mapping", ["ai-system", "parameters"])
+            raise BenchyError("compile", "invalid_ai_system", f"{'.'.join(path)}.parameters must be a mapping", path + ["parameters"])
         # Only what the author wrote: no hidden defaults are injected.
         return {k: (dict(v) if isinstance(v, Mapping) else v) for k, v in section.items()}
     raise BenchyError(
         "compile", "invalid_ai_system",
-        f"ai-system.type must be 'external' or 'model', got {kind!r}",
-        ["ai-system", "type"],
+        f"{'.'.join(path)}.type must be 'external' or 'model', got {kind!r}",
+        path + ["type"],
     )

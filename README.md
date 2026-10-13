@@ -176,6 +176,48 @@ Credentials come from the environment, never from benchmark YAML. Text and `imag
 inputs are supported; `audio` and `document` inputs, and artifact outputs, are refused
 at setup rather than failing once per example.
 
+## Exams graded by a rubric
+
+Some answers cannot be compared with a key: an exam question answered in prose has to
+be *judged*. Ontology 1.1 adds the `answer` task (one string output, any input), and
+`metric: rubric` grades a string field against an analytic rubric — named criteria,
+each with a weight and its own levels:
+
+```yaml
+ontology_version: "1.1"
+benchmark: {task: answer, domain: history, language: es}
+program:
+  input: {question: string}
+  output: {answer: string}
+scoring:
+  weights: {answer: 1}
+  aggregator: weighted_mean
+  field_metrics:
+    answer:
+      metric: rubric
+      params:
+        criteria:
+          accuracy: {weight: 3, levels: {1: "wrong", 2: "...", 3: "...", 4: "...", 5: "complete"}}
+          clarity:  {weight: 1, levels: {1: "confused", 2: "readable", 3: "clear"}}
+  grader: {type: model, provider: openai, model: gpt-5-mini}
+```
+
+Each row's `expected.answer` is that question's answer key. The **grader** is an
+AI-system like any other, bound through the same `invoke` boundary: given the question,
+the key, the answer and the rubric, it returns a grade and justification per criterion.
+Each grade is rescaled from its lowest level (0) to its highest (1) and the criteria
+combine by weight. A `model` grader uses the built-in provider adapter and a default
+grading prompt (`scoring.grader.prompt` replaces it); `--grader MODULE:ATTR` binds any
+other — including one that looks up a professor's grades, which is how you check a
+model grader against a human on a sample before trusting it.
+
+Only valid outputs are graded. A grader that fails aborts the run (`grader_error`)
+rather than scoring the examinee zero for the examiner's failure. Results keep every
+criterion's grade and justification, and record the grader with a fingerprint of its
+prompt — scores are comparable only under the same grader. The rubric field's
+baseline is the graded empty answer. `examples/exam-qa` runs offline with a stand-in
+grader.
+
 ## Compile once, run from the IR
 
 Valid YAML compiles deterministically into a canonical JSON IR. The engine consumes
@@ -227,20 +269,34 @@ benchy/
   compiler.py    YAML -> canonical JSON IR
   data.py        the exam: streaming JSONL inside a workspace
   score.py       field correctness -> instance score -> benchmark score
+  metrics.py     the closed per-field metric registry (field_metrics)
   adapter.py     the runtime boundary
   run.py         the engine loop
   cli.py         compile / run
+  textnorm.py    vendored text-normalization reference (parity-tested, not engine-wired)
+  canonical.py   vendored canonical-JSON reference (parity-tested, not engine-wired)
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-855 lines of code, plus 198 in the optional provider adapter. There is exactly one
+1314 lines of code, plus 219 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 
 ## Scope
 
-Ontology 1.0 has three tasks: `extract`, `classify`, `translate`. Field correctness is
-exact match, and the instance aggregator is `weighted_mean`.
+Ontology 1.1 has four tasks: `extract`, `classify`, `translate` and `answer` (1.0 is the
+same without `answer`), and the domains `general`, `finance`, `healthcare`, `legal`,
+`retail` plus 26 academic fields such as `history`, `biology` and `public_health`. Field correctness is
+exact match by default — a benchmark may name a per-field metric from the
+closed registry in `metrics.py` (`scoring.field_metrics`) — and the instance
+aggregator is `weighted_mean`. Every run also reports each field against a
+trivial baseline computed from the exam itself (majority / mean / empty), so
+a field that does not beat doing nothing is reported as such.
+
+Both lists are the registries in `benchy/ontologies/`, and it is the only place
+they live: a benchmark naming a task or a domain outside it fails compilation. There is
+no implicit synonym — `health` is not `healthcare`, and a domain invented for one case
+is an error, not an extension.
 
 `transcribe` is deliberately absent. Exact match cannot rank transcription systems — a
 transcript wrong by one word scores the same as one that is entirely wrong — so
@@ -248,7 +304,7 @@ declaring it fails compilation rather than producing scores that cannot be
 interpreted. `audio` remains a valid input type. Paper Appendix E describes the
 field-evaluator extension that would readmit it.
 
-Also outside 1.0: variable-length output collections, custom evaluators, other
+Also outside 1.0: variable-length output collections, metrics outside the closed registry, other
 aggregators, adapter configuration in benchmark YAML, implicit weights. These are
 extension points, not undefined behaviour.
 

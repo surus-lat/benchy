@@ -328,7 +328,7 @@ Use arrays, not dotted strings, in IR and errors.
 
 ## 5. Task validators
 
-For ontology 1.0:
+For ontology 1.1:
 
 ### extract
 
@@ -347,6 +347,16 @@ No task-specific structural rule.
 - benchmark language must be `{source, target}`;
 - source and target must both exist in ontology language registry.
 
+### answer
+
+- output leaf count = 1;
+- only output leaf is `string`;
+- any input.
+
+Ontology 1.0 is the same table without `answer`. `answer` is usually scored with
+`metric: rubric` (spec §6), but task and scoring stay orthogonal: the validator checks
+the program, never how it is graded.
+
 Compiler code may implement this directly:
 
 ```python
@@ -354,6 +364,7 @@ TASK_VALIDATORS_V1 = {
     "extract": validate_extract,
     "classify": validate_classify,
     "translate": validate_translate,
+    "answer": validate_answer,
 }
 ```
 

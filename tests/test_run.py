@@ -233,7 +233,7 @@ async def test_summary_counts_every_status(tmp_path):
 
 async def test_run_result_has_the_documented_shape(tmp_path):
     result = await execute(tmp_path, lambda _: dict(GOOD), GOOD)
-    assert set(result) == {"version", "benchmark_score", "summary", "results"}
+    assert set(result) == {"version", "benchmark_score", "fields", "summary", "results"}
     assert result["version"] == "1.0"
     assert set(result["results"][0]) == {
         "index", "status", "prediction", "field_scores", "score", "contribution", "error",
