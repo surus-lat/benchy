@@ -17,6 +17,7 @@ a version token and rejects anything path-shaped.
 
 Ontology 1.0 has three tasks. `transcribe` is absent because exact match cannot
 rank transcription systems; see `ontologies/1.0.yaml` and paper Appendix E.
+Ontology 1.1 is 1.0 plus `answer`, a natural-language answer to a question.
 """
 
 from __future__ import annotations
@@ -177,6 +178,11 @@ def _translate_program(input_ir: Mapping, output_ir: Mapping) -> None:
     _sole_output(output_ir, "string", "translate")
 
 
+def _answer_program(_input_ir: Mapping, output_ir: Mapping) -> None:
+    """Any input — a question may be text, a scanned page or a document."""
+    _sole_output(output_ir, "string", "answer")
+
+
 #: Task validators keyed by ontology version, then task: one pair per task, holding
 #: its language rule (checked with the classification) and its program rule (checked
 #: after the program compiles). Adding ontology 1.1 means adding a registry YAML and
@@ -188,3 +194,4 @@ _VALIDATORS: dict[str, dict[str, tuple]] = {
         "translate": (_source_target, _translate_program),
     },
 }
+_VALIDATORS["1.1"] = {**_VALIDATORS["1.0"], "answer": (_one_language, _answer_program)}

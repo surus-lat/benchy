@@ -23,7 +23,7 @@ Keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 
 - `version` MUST equal `"1.0"`.
 - `ontology_version` MUST equal a loaded supported ontology version.
-- Engine 1.0 supports ontology `"1.0"`.
+- Engine 1.0 supports ontology `"1.0"` and `"1.1"`. Ontology 1.1 is 1.0 plus the `answer` task; every other identifier is unchanged.
 - The benchmark MUST NOT need to provide an ontology filepath; runtime resolves the registry by version from its installed/configured registry store.
 
 ## 3. Benchmark classification
@@ -62,11 +62,14 @@ Keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 
 ## 5. Task validation
 
-Ontology 1.0 rules:
+Ontology 1.1 rules:
 
 - `extract`: no additional structural constraint.
 - `classify`: exactly one output leaf; it MUST be enum.
 - `translate`: at least one string input leaf; exactly one string output leaf; source/target language object required.
+- `answer`: exactly one output leaf; it MUST be string. Any input. Not in ontology 1.0.
+
+Ontology 1.0 has the same rules without `answer`.
 
 Unsupported tasks MUST fail compilation even if present in another registry version.
 
@@ -84,8 +87,41 @@ remains a valid input type. See paper Appendix E.
 - Missing weights MUST be rejected.
 - Every weight MUST be finite and `>= 0`.
 - Sum of all leaf weights MUST be `> 0`.
-- Field evaluator is fixed to `exact_match`.
+- A leaf without an entry in `scoring.field_metrics` MUST score with exact match (§12).
+- `scoring.field_metrics` MAY map a dotted output-leaf path to `{metric, params}`. The
+  metric MUST be one of this closed set; any other name MUST be rejected:
+  - `exact`
+  - `casefold_strip`
+  - `token_set_f1`
+  - `date_flexible`
+  - `numeric_tolerance` (`params.tolerance >= 0`)
+  - `span_recall`
+  - `set_f1`
+  - `rubric` (graded; see below)
+- An enum leaf MUST only use `exact` or `casefold_strip`.
+- Every metric MUST produce a field score in \([0,1]\).
 - Benchmark aggregator is fixed to `mean`.
+
+Rubric fields:
+
+- `rubric` MUST be declared on a string leaf, and on at most one leaf per benchmark.
+- `params` MUST contain exactly `criteria`: a non-empty mapping from criterion name to
+  `{weight, levels, description?}`.
+- `weight` MUST be finite and `>= 0`; the criterion weights MUST sum to `> 0`.
+- `levels` MUST map 2 to 11 contiguous integer grades to non-empty descriptions.
+- `scoring.grader` MUST be present when a rubric field exists, and MUST be rejected
+  otherwise. It is an AI-system definition with the same grammar as `ai-system`.
+- The grader is invoked through the adapter protocol (§11) with
+  `{input, reference, answer, rubric}` — the example input, the expected value of the
+  field, the validated prediction for it, and the rubric as text — and MUST return
+  `{<criterion>: {grade: int, justification: string}}` for every criterion, each grade
+  one of that criterion's levels.
+- The field score is \(\sum_k w_k r_k / \sum_k w_k\) with
+  \(r_k = (g_k - g_{k,\min}) / (g_{k,\max} - g_{k,\min})\).
+- Only `valid` examples are graded. A grader exception or an invalid grade MUST abort
+  the run with `grader_error`; it MUST NOT be scored as the AI-system's failure. A rubric
+  benchmark run without a bound grader MUST abort before the first example with
+  `grader_not_bound`.
 
 ## 7. Data
 
@@ -177,11 +213,13 @@ No hidden normalization.
 
 ## 13. Instance scoring
 
-For leaf \(j\) of example \(i\):
+For leaf \(j\) of example \(i\), under exact match:
 
 $$
 c_{ij}=\mathbf{1}[\hat y_{ij}=y_{ij}^*]
 $$
+
+and under any other declared metric (§6), the metric's value \(c_{ij}\in[0,1]\).
 
 Instance score:
 
@@ -233,6 +271,12 @@ contribution
 error
 ```
 
+A rubric field's entry in `field_scores` MUST also carry `criteria`: every criterion's
+`grade` and `justification` as the grader returned them. A run of a rubric benchmark
+MUST also contain `grader.system` (the compiled `scoring.grader`) and
+`grader.prompt_sha256` (the SHA-256 of the grader's effective prompt, or null when its
+adapter cannot state one).
+
 ## 17. JSON IR
 
 IR MUST contain:
@@ -247,6 +291,7 @@ scoring.evaluator = exact_match
 scoring.dimensions[]
 scoring.instance_aggregator = weighted_mean
 scoring.benchmark_aggregator = mean
+scoring.grader                      (only when a rubric field exists)
 data.path
 data.format = jsonl
 ai-system

@@ -1,0 +1,74 @@
+# A university exam for AI-systems: open questions graded against an analytic rubric.
+#
+# Each question's answer key lives in the exam (`expected.answer`); the rubric — the
+# same for every question — lives here. A grader reads the question, the key, the
+# answer and the rubric, and grades every criterion. Here it is a model:
+#
+#   export OPENAI_API_KEY=...
+#   benchy run examples/exam-qa/benchmark.yaml --adapter examples/exam-qa/system.py:extractor
+#
+# Offline, `system.py` also ships a stand-in grader, so the example runs anywhere:
+#
+#   benchy run examples/exam-qa/benchmark.yaml \
+#     --adapter examples/exam-qa/system.py:extractor --grader examples/exam-qa/system.py:grader
+#
+# The stand-in only checks the key's terms; it shows the contract, not good grading.
+# Check any grader against a professor on a sample before trusting its scores.
+version: "1.0"
+ontology_version: "1.1"
+
+benchmark:
+  task: answer
+  domain: history
+  language: es
+
+program:
+  input:
+    question: string
+  output:
+    answer: string
+
+scoring:
+  weights:
+    answer: 1
+  aggregator: weighted_mean
+  field_metrics:
+    answer:
+      metric: rubric
+      params:
+        criteria:
+          accuracy:
+            weight: 3
+            description: Hechos y causas correctos según la clave de respuesta.
+            levels:
+              1: Incorrecto o sin contenido relevante.
+              2: Menciona ideas relevantes con errores importantes.
+              3: Parcialmente correcto; faltan elementos clave.
+              4: Correcto con omisiones menores.
+              5: Completo y correcto.
+          argument:
+            weight: 2
+            description: Relaciona causas y consecuencias en lugar de enumerarlas.
+            levels:
+              1: Sin argumentación.
+              2: Enumera sin relacionar.
+              3: Relaciona algunas ideas.
+              4: Argumento claro con alguna laguna.
+              5: Argumento claro y completo.
+          clarity:
+            weight: 1
+            levels:
+              1: Confuso.
+              2: Comprensible con esfuerzo.
+              3: Claro.
+  grader:
+    type: model
+    provider: openai
+    model: gpt-5-mini
+
+data:
+  path: ./exam.jsonl
+
+ai-system:
+  type: external
+  id: student

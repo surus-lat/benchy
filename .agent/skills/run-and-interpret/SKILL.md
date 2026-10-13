@@ -52,6 +52,21 @@ row says nothing about the system.
 missed carried 5 of the 9 available. If that feels wrong, the weights are wrong, not the
 engine.
 
+## Reading a rubric-graded result
+
+A rubric field's `field_scores` entry carries every criterion's `grade` and
+`justification`. Read the justifications before the number: they are how you catch a
+grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
+
+- `fields[].baseline` is the grade the empty answer got. Above 0 means the grader gives
+  credit for nothing — fix the grader before reading any score.
+- `grader.system` and `grader.prompt_sha256` name what graded the run. Two runs are
+  comparable only when both match.
+- **`grader_error`** aborts the run: the grader raised or returned a grade outside the
+  schema or the levels. It is the instrument failing, never the system under test.
+- **`grader_not_bound`** — the benchmark has a rubric and no grader: pass `--grader`, or
+  declare a `model` grader and set its provider's key.
+
 ## Common failures and their real cause
 
 - **`wrong_type` on a number** — the model returned `"121.00"` as a string. benchy does

@@ -35,31 +35,39 @@ def latest(stem: str) -> Path:
     return candidates[-1]
 
 
+#: The newest ontology this engine ships: the documents describe it, and each older
+#: one is a subset of it (`tests/test_rubric.py` pins 1.1 = 1.0 + answer).
+LATEST = max(ontology._VALIDATORS, key=lambda v: tuple(int(n) for n in v.split(".")))
+
+
 def engine_tasks() -> set[str]:
-    return set(ontology.load("1.0")["tasks"])
+    return set(ontology.load(LATEST)["tasks"])
 
 
 def test_paper_appendix_b_registry_matches_the_shipped_registry():
     text = latest("technical-paper-v").read_text()
     appendix_b = text[text.index("# Appendix B"):]
+    assert f'version: "{LATEST}"' in appendix_b
     declared = set(re.findall(r"^  (\w+):\n    description:", appendix_b, re.M))
     assert declared == engine_tasks()
 
 
 def test_paper_a4_validators_match_the_shipped_registry():
     text = latest("technical-paper-v").read_text()
-    block = text[text.index("For ontology version `1.0`:"):text.index("If an ontology task is not supported")]
+    block = text[text.index(f"For ontology version `{LATEST}`:"):text.index("If an ontology task is not supported")]
     assert set(re.findall(r"^(\w+)$", block, re.M)) == engine_tasks()
 
 
 def test_spec_task_rules_match_the_shipped_registry():
     text = latest("benchy-engine-spec-v").read_text()
     section = text[text.index("## 5. Task validation"):text.index("## 6. Scoring")]
+    assert f"Ontology {LATEST} rules:" in section
     assert set(re.findall(r"^- `(\w+)`:", section, re.M)) == engine_tasks()
 
 
 def test_handoff_validator_table_matches_the_shipped_registry():
     text = latest("benchy-engine-agent-handoff-v").read_text()
+    assert f"For ontology {LATEST}:" in text
     assert set(re.findall(r'^    "(\w+)": validate_', text, re.M)) == engine_tasks()
 
 
@@ -117,3 +125,21 @@ def test_each_provider_names_a_credential_the_docs_mention():
     readme = (PAPER.parent / "README.md").read_text()
     for name, (_endpoint, credential) in providers._ENDPOINTS.items():
         assert credential in readme, f"{name}'s credential {credential} is undocumented"
+
+
+# ---------------------------------------------------------------------------
+# field metrics: the shipped vocabulary is the documented one
+# ---------------------------------------------------------------------------
+
+def test_spec_scoring_names_every_field_metric_the_engine_accepts():
+    """`field_metrics` shipped while the spec still said exact match was the only one.
+
+    The closed registry plus the graded `rubric` is what a benchmark may name, so that
+    is what spec §6 must list — no more, no less.
+    """
+    from benchy import metrics, score
+
+    text = latest("benchy-engine-spec-v").read_text()
+    section = text[text.index("## 6. Scoring"):text.index("## 7. Data")]
+    listed = set(re.findall(r"^  - `(\w+)`", section, re.M))
+    assert listed == set(metrics.METRICS) | {score.RUBRIC}

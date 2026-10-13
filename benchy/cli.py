@@ -12,6 +12,10 @@ and never wrong.
 It may be omitted when `ai-system.type` is `model`, in which case the runtime selects
 a built-in provider adapter (A.11). An `external` AI-system always needs one, because
 only the runtime knows what that identifier means.
+
+`--grader module:attr` binds a rubric's grader the same way, and may likewise be
+omitted when `scoring.grader.type` is `model`. A grader can be anything adapter-shaped,
+including one that looks up a professor's grades.
 """
 
 from __future__ import annotations
@@ -46,6 +50,10 @@ def main(argv: list[str] | None = None) -> int:
         "--adapter", metavar="MODULE:ATTR",
         help="the AI-system's adapter; optional when ai-system.type is 'model'",
     )
+    run_verb.add_argument(
+        "--grader", metavar="MODULE:ATTR",
+        help="the rubric grader's adapter; optional when scoring.grader.type is 'model'",
+    )
     run_verb.add_argument("-w", "--workspace", type=Path, help="benchmark workspace root (default: source directory)")
     run_verb.add_argument("-o", "--output", type=Path, help="write the result here instead of stdout")
 
@@ -69,8 +77,21 @@ def _run(args: argparse.Namespace) -> int:
     )
     workspace = args.workspace or args.source.parent
     adapter = _load_adapter(args.adapter) if args.adapter else providers.for_system(ir, workspace)
-    result = asyncio.run(run(ir, workspace, adapter))
+    result = asyncio.run(run(ir, workspace, adapter, grader=_grader(args.grader, ir, workspace)))
     return _emit(result, args.output)
+
+
+def _grader(spec: str | None, ir: dict, workspace: Path) -> object:
+    """The bound grader: named explicitly, else a built-in provider for a model grader.
+
+    None when the benchmark has no grader, or an external one nobody bound; the engine
+    reports the second as `grader_not_bound` before evaluating anything.
+    """
+    if spec:
+        return _load_adapter(spec)
+    if ir["scoring"].get("grader", {}).get("type") == "model":
+        return providers.for_grader(ir, workspace)
+    return None
 
 
 def _read(path: Path, phase: str = "compile") -> str:
