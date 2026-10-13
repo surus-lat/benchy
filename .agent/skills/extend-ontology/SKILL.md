@@ -47,9 +47,12 @@ paper Appendix E first — the field-evaluator extension is the honest fix, not 
 
 ## A new ontology version
 
-Adding `1.1` means a new registry YAML and a new `_VALIDATORS["1.1"]` entry. The compiler
-does not change — that separation is the point, so a benchmark pinning
-`ontology_version: "1.0"` keeps its exact meaning forever.
+A new version is a new registry YAML and a new `_VALIDATORS` entry. The compiler does
+not change — that separation is the point, so a benchmark pinning
+`ontology_version: "1.0"` keeps its exact meaning forever. `1.1` is the worked example:
+`ontologies/1.1.yaml` is 1.0 plus `answer`, and `_VALIDATORS["1.1"]` is 1.0's table plus
+one entry. The documents describe the newest version; `tests/test_doc_agreement.py`
+reads which one that is from `_VALIDATORS`.
 
 ## Do not
 

@@ -1,283 +1,167 @@
-# Rubric-graded question answering — design
+# Rubric-graded question answering
 
-Status: **proposed**, not built. Branch `design/rubric-qa`, 2026-10-12.
+Status: **built**, branch `design/rubric-qa`, 2026-10-12.
 
-Driver: the Benchy agent will be used by universities to write exams *for* AI-systems.
-The main exam shape is question answering, where each answer is graded against a
-5-point rubric. Engine 1.0 cannot express that today:
+Driver: the Benchy agent will be used by universities to write exams *for*
+AI-systems. The main exam shape is open questions whose answers are graded against a
+rubric. Engine 1.0 could not express that: the ontology had no question-answering task,
+every field metric was a deterministic function of `(predicted, expected)`, and the core
+may not call a model (it imports stdlib + PyYAML only).
 
-- the ontology has no question-answering task (`extract`, `classify`, `translate`);
-- every metric in `benchy/metrics.py` is a deterministic function of
-  `(predicted, expected)`, and none can read an answer against criteria;
-- the core may not call a model (it imports stdlib + PyYAML only).
+## Decisions
 
-This document adds both pieces under the three rules in `CLAUDE.md` — cleanest
-expression of the paper, fewest parts, fewest lines — and names every part it
-rejects.
+| Question | Decision |
+|---|---|
+| Task name | `answer`, which names the operation, like `extract` and `translate` |
+| Ontology | a new version **1.1** = 1.0 + `answer`; 1.0 is untouched |
+| Rubric shape | **analytic**: named criteria, each with a weight and its own levels. Holistic is the one-criterion case |
+| Who grades | an AI-system declared as `scoring.grader`, so a model or a human through the same seam. By default a model, checked against a professor on a sample |
+| Grader identity in results | yes: `grader.system` and `grader.prompt_sha256` |
 
 ## The idea in one paragraph
 
 A rubric grader is **an AI-system**, so it goes through the one interface the engine
-already has, `invoke(dict) -> dict` (A.10). The engine fixes the grader's *program*
-(what goes in and what comes out), validates what comes back like any other output, and
-turns the grade into a field score $c_{ij} \in [0,1]$. That is the slot Appendix E reserved
-for field evaluators. The model, prompt and credentials live outside the core, exactly
-as they do for the system under test (A.11). The core gains no provider code, no new
-module and no new status.
+already has, `invoke(dict) -> dict` (A.10). The engine fixes the grader's *program*,
+validates what comes back like any other output, and turns the criterion grades into a
+field score $c_{ij} \in [0,1]$. That is the slot Appendix E reserved for field
+evaluators. The model, prompt and credentials live outside the core, as they do for the
+system under test (A.11). The core gains no provider code, no new module and no new
+status.
 
-## 1. Task: `answer`
-
-New ontology task, added to registry `1.0` additively. #38 set the precedent with
-domains, and a new task cannot change the meaning of an existing benchmark, because
-none of them can declare it.
+## Authoring
 
 ```yaml
-tasks:
-  answer:
-    description: Answer a question in natural language.
-```
-
-A.4 structural validator:
-
-```text
-answer
-  exactly one leaf output field
-  that leaf field is string
-```
-
-The input is left free on purpose: a question may be a string, a PDF, an image, or a
-question plus a context document. `benchmark.language` is one registered language, as
-with `extract` and `classify`.
-
-Task and scoring stay orthogonal: `answer` does not require a rubric. A short-answer exam
-can score `answer` with `exact` or `token_set_f1`. A rubric can score any string leaf
-of any task. Validation checks that a program is an instance of the task
-($P \in P_T$), not how it is graded.
-
-## 2. Authoring
-
-```yaml
-version: "1.0"
-ontology_version: "1.0"
-
-benchmark:
-  task: answer
-  domain: history
-  language: es
-
+ontology_version: "1.1"
+benchmark: {task: answer, domain: history, language: es}
 program:
-  input:
-    question: string
-  output:
-    answer: string
-
+  input: {question: string}
+  output: {answer: string}
 scoring:
-  weights:
-    answer: 1
+  weights: {answer: 1}
   aggregator: weighted_mean
   field_metrics:
     answer:
       metric: rubric
       params:
-        levels:
-          1: "Incorrect or missing; no relevant content."
-          2: "Mentions relevant ideas but with major errors."
-          3: "Partially correct; key elements missing."
-          4: "Correct with minor omissions or imprecision."
-          5: "Complete, correct and well argued."
-  grader:
-    type: model
-    provider: openai
-    model: gpt-5
-    prompt: ./grader.md        # optional; providers.py ships a default
-    parameters:
-      temperature: 0
-
-data:
-  path: ./exam.jsonl
-
-ai-system:
-  type: model
-  provider: together
-  model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+        criteria:
+          accuracy:
+            weight: 3
+            description: Facts and causes correct against the answer key.
+            levels: {1: "...", 2: "...", 3: "...", 4: "...", 5: "..."}
+          clarity:
+            weight: 1
+            levels: {1: "...", 2: "...", 3: "..."}
+  grader: {type: model, provider: openai, model: gpt-5-mini}   # or external
 ```
-
-```json
-{"input": {"question": "¿Por qué cayó la República de Weimar?"},
- "expected": {"answer": "Clave: crisis de 1929; artículo 48; ... Para 5/5 debe relacionar al menos tres causas."}}
-```
-
-**Where each part of the rubric lives:**
 
 | What | Where | Why there |
 |---|---|---|
-| Level descriptors (what 1…5 mean) | `field_metrics.<leaf>.params.levels`, sealed into the IR | Same for every question; part of what the score *means* |
-| Per-question key points or criteria | the row's `expected` value for that leaf | Differs per question; the expected side is already the per-question answer key |
+| Criteria, weights, level descriptors | `field_metrics.<leaf>.params.criteria`, sealed into the IR | The same for every question, and part of what the score *means* |
+| Per-question key points | the row's `expected` value for that leaf | Differs per question. The expected side already is the per-question answer key, so **A.5 is unchanged** |
 | Who grades | `scoring.grader`, the same grammar as `ai-system` | Declared in the benchmark, bound at runtime (A.11) |
 
-This needs **no change to A.5**: a row is still exactly `input` and `expected`.
+Compile rules (`invalid_rubric` unless noted):
 
-**Compile rules (new, all `phase: compile`):**
+- `rubric` only on a `string` leaf, and **at most one rubric field per benchmark**. A
+  model grader has one output schema, and the use case grades one answer per question.
+- `params` is exactly `{criteria}`. Each criterion is `{weight, levels, description?}`
+  (`missing_key`/`unknown_key` otherwise). The weights are finite, `>= 0`, and sum to
+  `> 0`. `levels` are 2–11 contiguous integers, each described. In the IR, criteria
+  keep source order and levels become ascending `[{grade, description}]` lists.
+- `scoring.grader` is required when a rubric exists (`missing_key`) and rejected
+  otherwise (`invalid_value`). It compiles with `_compile_ai_system`, whose errors now
+  point at `scoring.grader.*`.
+- A benchmark without a rubric compiles to byte-identical IR as before.
 
-- `levels` is a mapping from contiguous integers to non-empty strings, with 2–11
-  levels. Authors choose 1–5 or 0–4. The IR stores it as an ascending list
-  `[{"grade": 1, "description": "..."}, ...]`, because IR keys are JSON strings.
-- `rubric` is allowed only on a `string` leaf. It is not in `ENUM_SAFE`.
-- `scoring.grader` is **required** if any dimension uses `rubric`, and **rejected**
-  otherwise. That follows the strict-keys rule: no inert configuration.
-- `scoring.grader` compiles with the existing `_compile_ai_system`, which gains a `path`
-  argument so its errors point at `scoring.grader.*` instead of the hardcoded `ai-system.*`.
+## The grader contract
 
-## 3. The grader contract, fixed by the engine
-
-The engine builds the grader's program from the IR. It is a pure function, and its
-result is an ordinary IR program node (the one representation):
+`score.grader_program(ir)` is an ordinary IR program:
 
 ```text
-input:
-  input:      <the benchmark's program.input node>   # the question exactly as the examinee saw it
-  reference:  string                                 # the row's expected value for this leaf
-  answer:     string                                 # the examinee's validated answer
-  rubric:     string                                 # the levels rendered "1: …\n2: …"
-output:
-  grade:          int
-  justification:  string
+input:   input (the program's input node) · reference · answer · rubric (text)
+output:  {<criterion>: {grade: int, justification: string}}   for every criterion
 ```
 
-The grader's output is checked with `types.validate`, like any program output, plus one
-range check: `grade` must be one of the declared levels. The field score is linear:
+The reply is checked with `types.validate`, and every grade must be one of its
+criterion's levels. Then:
 
 $$
-c_{ij} = \frac{g_{ij} - g_{\min}}{g_{\max} - g_{\min}}
+c_{ij}=\frac{\sum_k w_k r_k}{\sum_k w_k}\qquad r_k=\frac{g_k-g_{k,\min}}{g_{k,\max}-g_{k,\min}}
 $$
 
-Instance and benchmark aggregation (§4, A.13) are untouched: the rubric produces
-$c_{ij}$, and the weighted mean consumes it as before. The raw grade and the justification
-are preserved next to the score, as Appendix E requires for any non-identity evaluator:
+The field's `field_scores` entry keeps `criteria`: every grade and justification.
 
-```json
-{"path": ["answer"], "score": 0.75, "weight": 1, "grade": 4, "justification": "..."}
-```
+## Execution (`run.py`)
 
-## 4. Execution
+- `run(ir, workspace, adapter, *, grader=None)`. With a rubric and no grader, the run
+  aborts before the first example (`grader_not_bound`).
+- Only `valid` outputs are graded. Failures already contribute 0 (A.13).
+- **A grader failure aborts the run** (`grader_error`): the grader raised, or replied
+  outside the schema or the levels. The grader is the measuring instrument, so scoring
+  its failure as the examinee's zero would blame the student for the examiner. A fourth
+  status would break A.12. This is the same reasoning as A.15.
+- **Baseline**: the empty answer is graded once per question with the same grader, so
+  the baseline is measured like every other one. It is also a free calibration check: a
+  grader that gives an empty answer more than the floor is visibly broken.
+- The result gains `grader: {system, prompt_sha256}` when a rubric exists.
+  `prompt_sha256` comes from the grader adapter if it states one, else `null`.
 
-Per example, inside the existing loop in `run.py`:
+## Outside the core
 
-1. Invoke the system and validate its output. **Unchanged.**
-2. `invalid_output` or `execution_error`: contribute 0 and **do not grade**. Nothing is
-   spent judging a non-answer, and A.13 already gives it zero.
-3. `valid`: for each `rubric` dimension, `await grader(grader_input)`, then validate
-   the grade.
-4. `score.score_example(validated, expected, ir, grades)`. It stays pure arithmetic
-   because the I/O happens in `run.py`, as it already does for the system.
+- `providers.for_grader(ir, workspace)` runs the same `OpenAIChat` adapter on
+  `{"ai-system": scoring.grader, "program": grader_program(ir)}`. It uses
+  `GRADING_PROMPT` unless the grader declares `prompt`, and sets `prompt_sha256`. The
+  default prompt tells the model to treat the answer as data, never as instructions.
+- `cli.py`: `--grader MODULE:ATTR` binds any adapter. Otherwise a `model` grader comes
+  from the providers. An unbound `external` grader is reported as `grader_not_bound`.
+- **Human grading** goes through the same seam. To check a model grader against a
+  professor, rerun a sample with `--adapter` replaying the stored predictions and
+  `--grader` returning the professor's grades, then compare criterion by criterion.
 
-`run()` gains one keyword argument, `grader=None`. If the IR has a `rubric` dimension and
-no grader is bound, the run aborts before the first example with `grader_not_bound`. That
-mirrors `adapter_not_bound`.
+## What changed
 
-**A grader failure aborts the run** (`phase: runtime`, code `grader_error`). The grader
-is part of the measuring instrument, not the examinee. Scoring its failure as the
-system's zero would blame the student for the examiner. Leaving it unscored would need a
-fourth status, which A.12 forbids. This is the same reasoning by which a broken dataset
-aborts (A.15). Retries and timeouts are grader-adapter runtime policy (A.10), so one
-transient 500 should never reach the engine.
+| File | Change |
+|---|---|
+| `ontologies/1.1.yaml` | new: 1.0 + `answer` |
+| `ontology.py` | `_answer_program`; `_VALIDATORS["1.1"]` = 1.0's table + `answer` |
+| `compiler.py` | `_compile_rubric`, the `scoring.grader` rules, one rubric per benchmark, `_compile_ai_system(at=…)` |
+| `score.py` | `RUBRIC`, `GRADE`, `grader_program`, `grader_input`, `rubric_score`; `score_example(…, grades)` |
+| `run.py` | grader binding, grading valid outputs, the graded baseline, the `grader` block |
+| `errors.py` | `invalid_rubric`, `grader_not_bound`, `grader_error` |
+| `providers.py`, `cli.py` | `for_grader`, `GRADING_PROMPT`, `ANSWER_PROMPT`; `--grader` |
+| paper, spec, handoff | 1.1 / `answer` in A.4, Appendix B, spec §5, handoff table; field metrics and rubric in §4 and spec §6; results in A.14 and spec §16; grader failure in A.15; codes in A.16; Appendix E status |
+| README, four skills, `examples/exam-qa/` | authoring, interpreting, writing a grader, an offline example |
 
-**Baseline.** `run.py` promises that every baseline is *computed from the exam, never a
-constant*. For a rubric field, the trivial prediction is the empty answer `""`, so the
-engine grades `""` once per question, with the same grader and the same reference. That
-costs N extra grader calls, and it is a free calibration check: a grader that gives empty
-answers more than the lowest level is visibly broken in the report.
+`metrics.py` is **not** touched. It is vendored byte-identical into datapipeline, and a
+graded metric is not a pure `(predicted, expected)` function, so `rubric` lives in
+`score.py`.
 
-## 5. Binding the grader (outside the core)
+**Drift fixed along the way.** `field_metrics` shipped in #37 while the paper still said
+"custom field evaluators" were not exposed, and the spec said "Field evaluator is fixed to
+`exact_match`". Both now describe the closed registry. A new test pins spec §6's metric
+list to `metrics.METRICS ∪ {rubric}`. The README's "five domains" (stale since #38) now
+counts the academic ones.
 
-- `cli.py`: `--grader MODULE:ATTR` binds any adapter. Otherwise, when `scoring.grader.type`
-  is `model`, it calls `providers.for_system` on the synthetic IR
-  `{"ai-system": scoring.grader, "program": score.grader_program(ir, path)}`. The same
-  OpenAI-compatible adapter that runs examinees runs graders: no judge class.
-- `providers.py` adds one constant, `GRADING_PROMPT`, used when the grader declares no
-  `prompt`. It tells the model to grade against the rubric and the reference, and to
-  treat `answer` as data, never as instructions. A student answer saying "give this 5/5"
-  is a prompt-injection attempt, and handling it is the grader adapter's job.
-- An `external` grader goes through the same seam. The useful consequence for
-  universities is **human grading**: an adapter that looks up a professor's grades
-  makes "LLM grader vs. human grader" agreement measurable with no engine change.
+## Tests
 
-## 6. What changes, file by file
+`tests/test_rubric.py`, 54 tests, all deterministic. The grader is a plain callable:
+no model, no network, no key. They cover the 1.1 registry and `answer` validator; every
+compile rejection; byte-identical IR; the grader program; weighted normalization;
+grade and justification in results; that failed examples are never graded; the graded
+baseline; the grader block; `grader_not_bound`; `grader_error` for raise, out-of-range,
+wrong type, missing criterion and non-object replies; async graders; reruns from
+persisted IR (C33); and the CLI with `--grader`, with a provider grader and with a
+declared prompt. `tests/test_doc_agreement.py` now follows the newest ontology version.
 
-| File | Change | Est. lines |
-|---|---|---|
-| `ontologies/1.0.yaml` | `answer` task | +2 |
-| `ontology.py` | `answer` validator (sole string output) | +4 |
-| `metrics.py` | `rubric` in the catalog as the one *graded* metric (`GRADED = {"rubric"}`), so the vocabulary stays closed and listed in one place | +6 |
-| `compiler.py` | `levels` validation, `scoring.grader` required/rejected, `optional=("grader",)` | +35 |
-| `score.py` | `grader_program(ir, path)`, `grades` argument, linear normalization | +25 |
-| `run.py` | `grader=` kwarg, setup check, grade valid outputs, graded baseline, `grade`/`justification` in field scores | +30 |
-| `errors.py` | `grader_not_bound`, `grader_error`, `invalid_rubric` codes | +3 |
-| `cli.py` | `--grader`, provider fallback | +8 |
-| `providers.py` | `GRADING_PROMPT` | +10 |
-
-About 120 lines. The core still imports nothing but stdlib, PyYAML and itself, and
-`tests/test_acceptance.py` keeps pinning that.
-
-**Documents that must agree** (`tests/test_doc_agreement.py` fails otherwise):
-
-- paper: A.4 validator, Appendix B registry, §4 and A.7 (graded field metric),
-  A.14 (`grade`, `justification`), A.15 (grader failure aborts), Appendix E
-  (partly realised);
-- spec: §5 task rules, §6 scoring, §16 result schema;
-- handoff: validator table;
-- registry, `README.md`, and the skills `author-benchmark`, `run-and-interpret`
-  (scores are comparable only under the same grader) and `write-adapter`
-  (grader adapters).
-
-**Pre-existing drift to fix along the way.** `scoring.field_metrics` shipped in #37, but
-the paper (§10 "custom field evaluators" is not exposed) and the spec (§6 "Field
-evaluator is fixed to `exact_match`") still describe Engine 1.0 without it. The rubric
-cannot be documented on top of a contract that denies field metrics exist, so that
-paragraph is rewritten first. A test should pin it: every metric name in
-`metrics.catalog()` appears in the spec's §6.
-
-## 7. Tests
-
-All of them are deterministic: the grader in tests is a plain callable, so there is no
-model, no network and no key.
-
-- `answer` compiles; `answer` with two output leaves or a non-string leaf → `task_program_mismatch`.
-- Rubric: non-contiguous levels, one level, empty descriptor, rubric on `int` or `enum`,
-  grader present without rubric, rubric without grader → each its own compile error.
-- Same YAML → byte-identical IR, levels included (C01 discipline).
-- A run with a fake grader: grade 4 on 1–5 → field score 0.75; `grade` and
-  `justification` appear in `field_scores`.
-- `invalid_output` and `execution_error` examples are **never** passed to the grader
-  (the fake grader counts its calls).
-- Grader raises / returns `{"grade": 6}` / returns a string → run aborts `grader_error`.
-- Rubric IR, no grader bound → `grader_not_bound` before the first example.
-- Baseline: the grader sees `answer == ""` once per question.
-- Persisted-IR rerun (C33) still holds with a rubric dimension.
-- Doc agreement: `answer` in all four documents.
-
-Then, per `CLAUDE.md`: install into a fresh venv and run an example benchmark
-(`examples/exam-qa/`) from a fresh clone.
-
-## 8. Parts deliberately not built
+## Parts deliberately not built
 
 | Rejected | Why |
 |---|---|
-| A judge module or `Judge` class | The grader is an AI-system; `adapter.invoker` already normalizes anything adapter-shaped. |
-| An LLM call inside `metrics.py` | Breaks the closed, pure `(pred, expected) -> float` registry and the core's dependency rule. |
-| A third row key (`grading`, `rubric`) | Changes A.5. The expected value already is the per-question answer key. |
-| A fourth status (`ungraded`) | A.12 has three statuses on purpose; an instrument failure aborts instead. |
-| One grader per field | One per benchmark until an exam needs two. The IR shape leaves room. |
-| Ensembles, majority votes, self-consistency | A grader adapter can do that behind `invoke`; the engine sees one grade. |
-| Partial credit inside a level (4.5) | `grade` is an int; finer resolution means declaring more levels. |
-| Resume after a grader abort | Runtime concern; not before a real run needs it. |
-
-## Open questions
-
-1. **Ontology `1.0` additive vs `1.1`.** This proposes additive, following #38. A `1.1` is
-   cleaner if anyone already pins "1.0 means exactly three tasks".
-2. **Task name.** `answer` reads as the operation, like `extract` and `translate`. The
-   alternative `qa` names a benchmark genre rather than a task.
-3. **Grader identity in results.** The grader is in the IR, so it is reproducible. A
-   cross-run leaderboard would also need the grader's *prompt hash* recorded as run
-   metadata (A.10 "non-secret effective runtime settings").
+| A judge module or `Judge` class | The grader is an AI-system; `adapter.invoker` already normalizes anything adapter-shaped |
+| An LLM call or `rubric` entry in `metrics.py` | Breaks the closed, pure `(pred, expected) -> float` registry, its vendored twin, and the core's dependency rule |
+| A third row key (`grading`, `rubric`) | Changes A.5; the expected value already is the per-question key |
+| A fourth status (`ungraded`) | A.12 has three on purpose; an instrument failure aborts instead |
+| Several rubric fields / several graders | One graded answer per question is the use case; the IR shape leaves room |
+| Ensembles, votes, self-consistency | A grader adapter can do that behind `invoke`; the engine sees one grade per criterion |
+| Built-in human-vs-model agreement statistics | Two result files compare criterion by criterion; build the report when a real calibration needs it |
+| Resume after a grader abort | Runtime concern; not before a real run needs it |

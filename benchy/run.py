@@ -26,6 +26,14 @@ the mean for numbers, the empty string for text and temporals), the signal
 `score >= baseline + epsilon` (default 0.01, sealed by the compiler in (0, 0.10]).
 A field that does not beat doing nothing is reported as such — everything published
 here is computed from the exam, nothing is a constant.
+
+Rubric fields are graded by a second AI-system, the grader, bound through the same
+`invoke` protocol as the system under test. Only valid outputs are graded: a failure
+already contributes 0 (A.13). The grader also grades the empty answer to every
+question, which is the rubric field's trivial baseline — measured, like the others.
+The grader is part of the measuring instrument, not the examinee, so a grader that
+fails or returns an invalid grade aborts the run (`grader_error`) instead of scoring
+the examinee zero: the same reasoning by which a broken dataset aborts (A.15).
 """
 
 from __future__ import annotations
@@ -44,13 +52,21 @@ __all__ = ["run"]
 _IR_KEYS = ("version", "ontology_version", "benchmark", "program", "scoring", "data", "ai-system")
 
 
-async def run(ir: Mapping, workspace: Path | str, adapter: object) -> dict:
-    """Evaluate the AI-system behind `adapter` against the benchmark in `ir`."""
+async def run(ir: Mapping, workspace: Path | str, adapter: object, *, grader: object = None) -> dict:
+    """Evaluate the AI-system behind `adapter` against the benchmark in `ir`.
+
+    `grader` is the AI-system that grades rubric fields; required exactly when the
+    IR has one.
+    """
     _check_ir(ir)
     invoke = _adapter.invoker(adapter)
     root = Path(workspace).resolve()
     output_schema = ir["program"]["output"]
     dimensions = ir["scoring"]["dimensions"]
+    rubrics = [d for d in dimensions if d.get("metric") == score.RUBRIC]
+    if rubrics and grader is None:
+        raise BenchyError("runtime", "grader_not_bound", "this benchmark has rubric fields and no grader is bound", ["scoring", "grader"])
+    grade = _grading(ir, grader) if rubrics else None
 
     def resolve_output(reference: str, field: tuple[str, ...]) -> str:
         # An adapter's artifact output must be a local file inside the run's
@@ -63,11 +79,15 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object) -> dict:
     # denominator discipline as the benchmark score).
     expected_by_field: dict[tuple, list] = {tuple(d["path"]): [] for d in dimensions}
     contrib_by_field: dict[tuple, list] = {tuple(d["path"]): [] for d in dimensions}
+    baseline_by_field: dict[tuple, list] = {tuple(d["path"]): [] for d in rubrics}
 
     results: list[dict] = []
     for index, inputs, expected in data.examples(ir, root):
         for dimension in dimensions:
             expected_by_field[tuple(dimension["path"])].append(score.value_at(expected, dimension["path"]))
+        for dimension in rubrics:
+            empty = await grade(dimension, inputs, expected, "")
+            baseline_by_field[tuple(dimension["path"])].append(score.rubric_score(empty, dimension["params"]["criteria"]))
         try:
             prediction = await invoke(inputs)
         except Exception as exc:  # noqa: BLE001 - any failure to produce an output
@@ -82,7 +102,10 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object) -> dict:
                 contrib_by_field[tuple(dimension["path"])].append(0.0)
             results.append(_failed(index, "invalid_output", prediction, exc.to_dict()))
             continue
-        field_scores, instance = score.score_example(validated, expected, ir)
+        grades = {
+            tuple(d["path"]): await grade(d, inputs, expected, score.value_at(validated, d["path"])) for d in rubrics
+        }
+        field_scores, instance = score.score_example(validated, expected, ir, grades)
         for field in field_scores:
             contrib_by_field[tuple(field["path"])].append(field["score"])
         results.append({
@@ -95,10 +118,10 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object) -> dict:
             "error": None,
         })
 
-    return {
+    report = {
         "version": ir["version"],
         "benchmark_score": score.benchmark_score([r["contribution"] for r in results]),
-        "fields": _field_report(ir, expected_by_field, contrib_by_field),
+        "fields": _field_report(ir, expected_by_field, contrib_by_field, baseline_by_field),
         "summary": {
             "examples": len(results),
             "valid": sum(r["status"] == "valid" for r in results),
@@ -107,12 +130,46 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object) -> dict:
         },
         "results": results,
     }
+    if rubrics:
+        # Scores are comparable only under the same grader: record which one, and the
+        # fingerprint of its prompt when its adapter can state one (A.10 run metadata).
+        report["grader"] = {"system": ir["scoring"]["grader"], "prompt_sha256": getattr(grader, "prompt_sha256", None)}
+    return report
+
+
+def _grading(ir: Mapping, grader: object):
+    """One awaitable that grades one answer on one rubric field, or aborts the run."""
+    invoke = _adapter.invoker(grader)
+    program = score.grader_program(ir)
+
+    async def grade(dimension: Mapping, inputs: Mapping, expected: Mapping, answer: object) -> dict:
+        path, criteria = dimension["path"], dimension["params"]["criteria"]
+        asked = score.grader_input(inputs, score.value_at(expected, path), answer, criteria)
+        try:
+            reply = await invoke(asked)
+        except Exception as exc:  # noqa: BLE001 - any grader failure is an instrument failure
+            raise BenchyError("runtime", "grader_error", f"the grader failed: {type(exc).__name__}: {exc}", path) from None
+        try:
+            graded = types.validate(reply, program["output"], phase="runtime")
+        except BenchyError as exc:
+            raise BenchyError("runtime", "grader_error", f"the grader returned an invalid grade: {exc}", path) from None
+        for criterion in criteria:
+            given = graded[criterion["name"]]["grade"]
+            if given not in [level["grade"] for level in criterion["levels"]]:
+                raise BenchyError(
+                    "runtime", "grader_error",
+                    f"the grader gave {criterion['name']!r} grade {given}, which is not one of its levels", path,
+                )
+        return graded
+
+    return grade
 
 
 def _field_report(
     ir: Mapping,
     expected_by_field: Mapping[tuple, list],
     contrib_by_field: Mapping[tuple, list],
+    baseline_by_field: Mapping[tuple, list],
 ) -> list[dict]:
     """Per-field score vs. the trivial baseline computed from the exam itself.
 
@@ -130,7 +187,10 @@ def _field_report(
         name = dimension.get("metric", "exact")
         values = expected_by_field[path]
         field_score = sum(contrib_by_field[path]) / len(contrib_by_field[path])
-        baseline = _baseline_score(name, dimension.get("params"), node, values)
+        if path in baseline_by_field:
+            baseline = sum(baseline_by_field[path]) / len(baseline_by_field[path])
+        else:
+            baseline = _baseline_score(name, dimension.get("params"), node, values)
         fields.append({
             "path": dimension["path"],
             "metric": name,

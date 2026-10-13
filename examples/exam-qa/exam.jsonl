@@ -1,0 +1,3 @@
+{"input": {"question": "¿Por qué cayó la República de Weimar?"}, "expected": {"answer": "Crisis económica de 1929 y desempleo; uso del artículo 48 y gobiernos por decreto; polarización política y ascenso del nazismo; debilidad de las coaliciones."}}
+{"input": {"question": "¿Qué consecuencias tuvo la Revolución Industrial en las ciudades europeas?"}, "expected": {"answer": "Urbanización acelerada; hacinamiento y malas condiciones sanitarias; surgimiento de la clase obrera; nuevas leyes de salud pública."}}
+{"input": {"question": "¿Por qué fracasó la Sociedad de las Naciones en mantener la paz?"}, "expected": {"answer": "Ausencia de Estados Unidos; falta de fuerza militar propia; sanciones ineficaces; salida de Alemania, Japón e Italia."}}

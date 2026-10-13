@@ -1,0 +1,66 @@
+# Shared SURUS task-oriented AI ontology — /<task>/<domain>/<language>/
+#
+# Registry version 1.1: version 1.0 plus the `answer` task, for exams whose answers
+# are written in natural language and graded — typically against a rubric
+# (`metric: rubric` in scoring.field_metrics). Every 1.0 task, domain and language is
+# carried over unchanged, so moving a benchmark from 1.0 to 1.1 changes nothing else.
+#
+# Identifiers and descriptions only: the structural rules that decide whether a
+# program is a valid instance of a task are Benchy code (see benchy/ontology.py),
+# deliberately not a constraint DSL (paper Appendix B).
+#
+# `transcribe` remains absent; see the 1.0 registry and paper Appendix E.
+version: "1.1"
+
+tasks:
+  extract:
+    description: Extract named information from an input.
+
+  classify:
+    description: Assign one declared categorical label.
+
+  translate:
+    description: Transform text from a source language to a target language.
+
+  answer:
+    description: Answer a question in natural language.
+
+domains:
+  general: {}
+  finance: {}
+  healthcare: {}
+  legal: {}
+  retail: {}
+  # Academic fields (added for university benchmarks; additive, so existing
+  # 1.0 benchmarks keep their exact meaning).
+  anthropology: {}
+  archaeology: {}
+  sociology: {}
+  history: {}
+  linguistics: {}
+  literature: {}
+  philosophy: {}
+  political_science: {}
+  economics: {}
+  psychology: {}
+  education: {}
+  geography: {}
+  communication: {}
+  arts: {}
+  law: {}
+  biology: {}
+  chemistry: {}
+  physics: {}
+  mathematics: {}
+  computer_science: {}
+  earth_sciences: {}
+  environmental_science: {}
+  agriculture: {}
+  engineering: {}
+  medicine: {}
+  public_health: {}
+
+languages:
+  es: {}
+  pt: {}
+  en: {}
