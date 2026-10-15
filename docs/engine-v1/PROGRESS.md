@@ -621,6 +621,13 @@ Together, 8 concurrent calls to Llama-3.3-70B got 10 503s in 18.
   and no-deployment errors fail at once. They are read from the body, because status
   cannot tell them apart: OpenAI's spent quota is a 429, Together's missing deployment a
   503. Callers that do not opt in keep today's retries, minus three bugs.
+  An independent review of #7 (CodeRabbit was rate-limited) found and fixed:
+  - a float overflow after 1024 retries;
+  - a `Retry-After: 0` that disabled back-off (it now only lengthens a wait);
+  - TLS and unknown-host connection errors that were waited out (they now fail at once);
+  - a flaky test.
+
+  Merged and pinned.
 - `providers.RETRY_SPAN` = 1800 s on every call, examinee and grader alike.
 - An environment installed before the pin keeps an `llm_client` whose `call` would reject
   the argument on every request. That is now a setup error that says to reinstall.

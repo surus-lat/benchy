@@ -80,7 +80,7 @@ The single behaviour change: delivering `extra_body` to the model. No impact tod
       request shape and fail every example.
 - [x] Converse merged (#5, 2026-09-18). benchy pins an `llm-client` commit that has it,
       so the `needs_converse` tests run. The named setup error remains for an older install.
-- [ ] [#7](https://github.com/surus-lat/llm-client/pull/7) `retry_span` — see §8.
+- [x] [#7](https://github.com/surus-lat/llm-client/pull/7) `retry_span`, merged 2026-10-15 and pinned — see §8.
 - [ ] After merging: widen benchy's accepted parameters beyond `temperature` /
       `max_tokens` for chat-completions endpoints.
 
@@ -372,6 +372,10 @@ answered. The shipped mitigation:
   pass@k. An out-of-range grade is checked in `run.py` against the levels, so re-asking
   for it would need the levels in the provider; leave it out.
 - (c) inspect's "unscored": rejected; see D2.
+
+Seen live after the fix: Qwen3.5-9B as grader still hit its limit at `max_tokens: 8000`
+(90 s, at T=0) on an empty answer. Some reasoning models do not finish on some inputs,
+whatever the budget, and the right fix there is a different grader, not more tokens.
 
 **Proposed.** (b), only if real runs still abort on grader content with `max_tokens`
 already generous. Note the trap: at T=0 the same request often fails identically
