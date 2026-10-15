@@ -106,7 +106,15 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
 - **A grader failure aborts the run** (`grader_error`): the grader raised, or replied
   outside the schema or the levels. The grader is the measuring instrument, so scoring
   its failure as the examinee's zero would blame the student for the examiner. A fourth
-  status would break A.12. This is the same reasoning as A.15.
+  status would break A.12. This is the same reasoning as A.15. Before a provider grader
+  fails, `llm_client` waits out a provider that is not taking requests for
+  `providers.RETRY_SPAN` (30 min, plus up to two request timeouts), so an outage costs
+  time, not the run. With `BENCHY_CACHE` set, an abort on a grader call that never
+  answered (a truncation, an outage, an interrupt) is resumable: the rerun replays every
+  answer already given and asks only the rest. Raising the grader's `max_tokens` changes
+  only the grader's requests, so it regrades without asking the examinee again. A grader
+  reply that came back invalid is kept like any answer and replays into the same
+  `grader_error`; changing the grader's prompt, model or parameters asks again.
 - **Baseline**: the empty answer is graded once per question with the same grader, so
   the baseline is measured like every other one. It is also a free calibration check: a
   grader that gives an empty answer more than the floor is visibly broken.

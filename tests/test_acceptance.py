@@ -225,3 +225,10 @@ def test_the_cli_shows_what_the_transport_says_and_leaves_no_handler_behind(benc
     assert json.loads(captured.out)["summary"]["examples"] == 2
     assert logging.getLogger("llm_client").handlers == before
 
+
+def test_the_cli_claims_no_replay_when_nothing_is_cached(bench, monkeypatch, capsys):
+    """BENCHY_CACHE serves the built-in provider adapters; an explicit adapter is never cached."""
+    monkeypatch.setenv("BENCHY_CACHE", str(bench / "cache"))
+    assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'system.py'}:extractor") == 0
+    assert "replayed" not in capsys.readouterr().err
+

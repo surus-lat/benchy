@@ -606,3 +606,49 @@ evaluation frameworks, and an adversarial review.
   of tokens reasoning about an empty answer.
 - **`llm-client` was unpinned**: every install took whatever its `main` was. Pinned to a
   commit.
+
+## 2026-10-15 — wait out a provider instead of losing the run (branch `fix/outwait-provider-outages`)
+
+`llm_client` retried a 429 three times and a timeout once, and never a 5xx. One 503 cost
+a rubric run (a grader failure aborts it) or an example (an examinee's scores 0). Live on
+Together, 8 concurrent calls to Llama-3.3-70B got 10 503s in 18.
+
+- surus-lat/llm-client#7 adds an opt-in `retry_span`. A provider that did not take the
+  request (connection refused, 408, 429, 502, 503, 529) is retried with waits doubling
+  from 2 s to 5 min, until the span ends. One that took it and failed (timeout, 500, 504,
+  524) is retried once: it may have generated and billed an answer, and thirty minutes of
+  retries would make a two-minute timeout a thirty-minute one (A.10). Quota, spend-cap
+  and no-deployment errors fail at once. They are read from the body, because status
+  cannot tell them apart: OpenAI's spent quota is a 429, Together's missing deployment a
+  503. Callers that do not opt in keep today's retries, minus three bugs.
+  An independent review of #7 (CodeRabbit was rate-limited) found and fixed:
+  - a float overflow after 1024 retries;
+  - a `Retry-After: 0` that disabled back-off (it now only lengthens a wait);
+  - TLS and unknown-host connection errors that were waited out (they now fail at once);
+  - a flaky test.
+
+  Merged and pinned.
+- `providers.RETRY_SPAN` = 1800 s on every call, examinee and grader alike.
+- An environment installed before the pin keeps an `llm_client` whose `call` would reject
+  the argument on every request. That is now a setup error that says to reinstall.
+- **Resume after an abort: `BENCHY_CACHE=<dir>`.** `OpenAIChat` keeps every answer it got,
+  keyed by the exact request (base URL, model, messages, temperature, max_tokens,
+  response format). A rerun replays them and asks only the rest. It keeps answers,
+  never failures, so a rerun asks again exactly what failed. Raising the grader's
+  `max_tokens` after a truncation changes only grader requests. An answer is written
+  atomically, so an interrupt leaves no half answer. It is off unless set, and the CLI
+  says when it is on: a replay is the same reading, not a new sample. It lives outside
+  the core, in the provider adapter; custom adapters are not cached.
+- **Review of the cache before merge** (CodeRabbit was rate-limited; an independent
+  reviewer reproduced each case):
+  - A failing cache was scored as the system failing. A read error or a damaged entry is
+    now a miss. An answer that cannot be kept is still returned, with a warning. An
+    unwritable `BENCHY_CACHE` is a setup error, not a traceback. Each writer uses a temp
+    file of its own, so runs sharing a directory never collide. Answers are stored
+    ASCII-escaped, so a lone surrogate replays.
+  - The CLI note now counts real replays and is printed after a successful run, so a
+    failed run's stderr stays the error JSON.
+  - A conftest fixture clears `BENCHY_CACHE` and `BENCHY_TIMEOUT`, so a developer's shell
+    cannot change the suite.
+  - The docs no longer promise that every grader abort resumes. An invalid grade that
+    came back is kept and replays.

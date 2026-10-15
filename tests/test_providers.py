@@ -345,7 +345,7 @@ async def test_a_rejected_request_is_not_retried_without_the_schema(workspace):
         failing.close()
 
 
-async def test_a_transient_rate_limit_is_retried_rather_than_scored(workspace):
+async def test_a_transient_rate_limit_is_retried_rather_than_scored(workspace, waits):
     """A 429 says nothing about the system under test, so it must not count against it."""
     limited = Provider(script=[(429, {"error": {"message": "slow down"}}, {"Retry-After": "0"})])
     try:
@@ -394,14 +394,187 @@ async def test_a_non_json_reply_becomes_an_invalid_output_retaining_the_text(wor
     assert result["results"][0]["prediction"] == "I'm afraid I can't do that."
 
 
-async def test_a_server_failure_becomes_an_execution_error(workspace):
-    failing = Provider(script=[(500, {"error": {"message": "boom"}}, {})])
+@pytest.fixture
+def waits(monkeypatch):
+    """llm_client's retry waits, recorded instead of slept."""
+    from llm_client import client
+
+    seen = []
+
+    async def sleep(seconds):
+        seen.append(seconds)
+
+    monkeypatch.setattr(client, "_sleep", sleep)
+    return seen
+
+
+async def test_a_server_failure_becomes_an_execution_error(workspace, waits):
+    """A 500 means the provider took the request and failed on it: one retry, then it
+    counts against the system, as any failure to produce an output does (A.12)."""
+    failing = Provider(script=[(500, {"error": {"message": "boom"}}, {})] * 2)
     try:
         result = await execute(compile_benchmark(TEXT), workspace, failing)
         assert result["results"][0]["status"] == "execution_error"
         assert result["results"][0]["error"]["code"] == "adapter_error"
+        assert len(failing.requests) == 2
     finally:
         failing.close()
+
+
+async def test_an_overloaded_provider_is_waited_out_rather_than_scored(workspace, waits):
+    """Seen live on Together: 503 "Service unavailable" under load. Nothing was generated,
+    so the system has not answered yet; waiting costs time, scoring it 0 costs the run."""
+    overloaded = Provider(script=[(503, {"error": {"type": "service_unavailable"}}, {})] * 4)
+    try:
+        result = await execute(compile_benchmark(TEXT), workspace, overloaded)
+        assert result["results"][0]["status"] == "valid"
+        assert len(overloaded.requests) == 5
+        assert waits == sorted(waits) and len(waits) == 4
+    finally:
+        overloaded.close()
+
+
+async def test_a_spent_quota_fails_at_once_rather_than_waiting_it_out(workspace, waits):
+    """OpenAI's no-credit reply is a 429, like a rate limit; only its body tells them apart."""
+    quota = {"error": {"message": "You have no credits remaining", "type": "insufficient_quota",
+                       "code": "credit_balance_exhausted"}}
+    spent = Provider(script=[(429, quota, {})] * 2)
+    try:
+        result = await execute(compile_benchmark(TEXT), workspace, spent)
+        assert result["results"][0]["status"] == "execution_error"
+        assert "credit_balance_exhausted" in result["results"][0]["error"]["message"]
+        assert (len(spent.requests), waits) == (1, [])
+    finally:
+        spent.close()
+
+
+# ---------------------------------------------------------------------------
+# BENCHY_CACHE: a rerun replays what was already answered
+# ---------------------------------------------------------------------------
+
+def cached(ir, workspace, provider, cache):
+    return providers.for_system(ir, workspace, env={"OPENAI_BASE_URL": provider.base_url,
+                                                    "OPENAI_API_KEY": "test-key", "BENCHY_CACHE": str(cache)})
+
+
+async def test_a_rerun_with_the_cache_replays_instead_of_asking_again(workspace, provider, tmp_path):
+    ir = compile_benchmark(TEXT)
+    first = await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    second = await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    assert len(provider.requests) == 1
+    assert second == first
+    assert adapter_for(ir, workspace, provider).cache is None  # off unless asked for
+
+
+async def test_the_cache_keeps_answers_never_failures(workspace, tmp_path):
+    """So a rerun asks again exactly what failed: how a run resumes after it aborted."""
+    rows = [{"input": {"text": t}, "expected": {"supplier": "ACME", "total": 121.0}} for t in ("a", "b")]
+    (workspace / "exam.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    flaky = Provider(script=[reply(GOOD), (400, {"error": {"message": "bad"}}, {})])
+    try:
+        ir = compile_benchmark(TEXT)
+        first = await run(ir, workspace, cached(ir, workspace, flaky, tmp_path / "cache"))
+        assert [r["status"] for r in first["results"]] == ["valid", "execution_error"]
+        second = await run(ir, workspace, cached(ir, workspace, flaky, tmp_path / "cache"))
+        assert [r["status"] for r in second["results"]] == ["valid", "valid"]
+        assert len(flaky.requests) == 3  # the rerun asked only for the example that failed
+    finally:
+        flaky.close()
+
+
+async def test_a_changed_request_is_asked_again(workspace, provider, tmp_path):
+    ir = compile_benchmark(TEXT)
+    await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    roomier = cached(ir, workspace, provider, tmp_path / "cache")
+    roomier.max_tokens = 4096
+    await run(ir, workspace, roomier)
+    assert len(provider.requests) == 2
+
+
+def test_the_cli_says_how_many_answers_it_replayed(workspace, provider, monkeypatch, capsys):
+    """A replay is the same reading, not a new one; a forgotten BENCHY_CACHE must not hide."""
+    from benchy.cli import main
+
+    monkeypatch.setenv("OPENAI_BASE_URL", provider.base_url)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("BENCHY_CACHE", str(workspace / "cache"))
+    (workspace / "benchmark.yaml").write_text(TEXT)
+    assert main(["run", str(workspace / "benchmark.yaml")]) == 0
+    assert "replayed" not in capsys.readouterr().err
+    assert main(["run", str(workspace / "benchmark.yaml")]) == 0
+    assert "note: 1 answers were replayed from BENCHY_CACHE" in capsys.readouterr().err
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.parametrize("make", ["a_file", "unwritable"])
+def test_a_cache_that_cannot_be_written_is_a_setup_error(workspace, provider, make):
+    """Not one execution_error per example after each answer has been paid for."""
+    import os
+
+    cache = workspace / "cache"
+    if make == "a_file":
+        cache.write_text("not a directory")
+    else:
+        cache.mkdir()
+        os.chmod(cache, 0o500)
+    try:
+        with pytest.raises(BenchyError) as exc:
+            cached(compile_benchmark(TEXT), workspace, provider, cache)
+        assert exc.value.code == "adapter_not_bound"
+        assert "BENCHY_CACHE" in exc.value.message
+    finally:
+        if cache.is_dir():
+            os.chmod(cache, 0o700)
+
+
+async def test_a_damaged_cache_entry_is_asked_again_not_scored(workspace, provider, tmp_path):
+    ir = compile_benchmark(TEXT)
+    await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    (entry,) = (tmp_path / "cache").glob("*.json")
+    entry.write_text("")  # what a crash before the data reached the disk can leave
+    result = await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    assert result["results"][0]["status"] == "valid"
+    assert len(provider.requests) == 2
+    assert json.loads(entry.read_text()) == json.loads(GOOD)  # and the entry is whole again
+
+
+async def test_an_answer_that_cannot_be_kept_is_still_the_answer(workspace, provider, tmp_path, monkeypatch):
+    ir = compile_benchmark(TEXT)
+    adapter = cached(ir, workspace, provider, tmp_path / "cache")
+
+    def full(*_, **__):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(providers.tempfile, "NamedTemporaryFile", full)
+    with pytest.warns(UserWarning, match="ask it again"):
+        result = await run(ir, workspace, adapter)
+    assert result["results"][0]["status"] == "valid"
+
+
+async def test_an_answer_with_a_lone_surrogate_replays_as_it_was(workspace, tmp_path):
+    """Valid JSON a model can emit; it is not valid UTF-8, so it must be stored escaped."""
+    odd = Provider(content='{"supplier": "AC\\ud800ME", "total": 121.0}')
+    try:
+        ir = compile_benchmark(TEXT)
+        first = await run(ir, workspace, cached(ir, workspace, odd, tmp_path / "cache"))
+        second = await run(ir, workspace, cached(ir, workspace, odd, tmp_path / "cache"))
+        assert first["results"][0]["status"] == "valid"
+        assert second == first and len(odd.requests) == 1
+    finally:
+        odd.close()
+
+
+def test_an_llm_client_that_cannot_wait_out_an_outage_is_a_setup_error(tmp_path, monkeypatch):
+    """A venv installed before the pin keeps its old llm_client: every call would raise."""
+    import llm_client
+
+    async def call(*, messages, base_url, api_key, model_name, **_):
+        raise AssertionError("never called")
+
+    monkeypatch.setattr(llm_client, "call", call)
+    error = setup_error(compile_benchmark(TEXT), tmp_path, {"OPENAI_API_KEY": "k"})
+    assert error.code == "adapter_not_bound"
+    assert "llm-client#7" in error.message
 
 
 @pytest.mark.parametrize(

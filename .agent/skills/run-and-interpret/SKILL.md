@@ -71,7 +71,8 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
   grader without a `system` saying who it is.
 - **`provider_error` "hit its token limit"** on a grader — a reasoning model spent its
   budget thinking. Raise `max_tokens` in `scoring.grader.parameters` and rerun: the
-  aborted run wrote no result.
+  aborted run wrote no result. Under `BENCHY_CACHE` the rerun asks the examinee nothing
+  it already answered.
 - The `degenerate_exam_field` and `field_score_baseline` warnings never fire on a rubric
   field: its baseline is the graded empty answer in `fields[]`, not a majority.
 
@@ -83,6 +84,16 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
 - **Everything `invalid_output` with truncated JSON** — the token budget ran out.
   Raise `max_tokens` in `ai-system.parameters`.
 - **`adapter_not_bound`** — for `type: model`, a missing credential or a provider with no
-  built-in adapter. The message names the environment variable.
+  built-in adapter. The message names the environment variable. Or an `llm_client`
+  installed before benchy pinned it: reinstall the `providers` extra.
+- **`llm_client WARNING: ... retry in Ns` on stderr** — the provider is rate-limiting,
+  overloaded or down, and the run is waiting it out (about 30 minutes a call) instead of
+  scoring it. The result is written only at the end, so interrupting loses the run,
+  unless it runs with `BENCHY_CACHE=<dir>`: then a rerun replays every answer already
+  given and asks only the rest. The same goes for a `grader_error` on a call that never
+  answered (truncation, outage). A grader that *replied* with an invalid grade replays
+  into the same error: change its prompt, model or parameters to regrade.
+- **`execution_error` with `credit_balance_exhausted` / `insufficient_quota`** — the
+  account is out of credit. That is never retried, so the run fails fast: top up and rerun.
 - **A suspiciously round 0.0** — check whether the model supports structured outputs at
   all. Some deployments ignore `response_format` and answer in prose.

@@ -88,10 +88,20 @@ def _run(args: argparse.Namespace) -> int:
     )
     workspace = args.workspace or args.source.parent
     adapter = _load_adapter(args.adapter) if args.adapter else providers.for_system(ir, workspace)
-    result = asyncio.run(run(ir, workspace, adapter, grader=_grader(args.grader, ir, workspace)))
+    grader = _grader(args.grader, ir, workspace)
+    result = asyncio.run(run(ir, workspace, adapter, grader=grader))
+    _note_replays(adapter, grader)
     _warn_if_degenerate(result)
     _warn_if_uninformative_field(result, ir, workspace)
     return _emit(result, args.output)
+
+
+def _note_replays(*bound: object) -> None:
+    """A replayed answer is the same reading, not a new one: say so, or a forgotten
+    BENCHY_CACHE makes every rerun silently identical to the last."""
+    replayed = sum(getattr(system, "replayed", 0) for system in bound)
+    if replayed:
+        print(f"note: {replayed} answers were replayed from BENCHY_CACHE, not asked again", file=sys.stderr)
 
 
 def _warn_if_degenerate(result: dict) -> None:

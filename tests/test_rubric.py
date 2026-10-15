@@ -536,7 +536,6 @@ def test_a_declared_grader_prompt_replaces_the_default(bench, monkeypatch):
 @pytest.mark.parametrize("reply", [{"content": '{"accuracy":', "finish_reason": "length"}, {"content": ""}])
 async def test_a_starved_grader_is_told_to_raise_its_own_max_tokens(bench, reply):
     """A reasoning grader that runs out of tokens is fixed in scoring.grader, not ai-system."""
-    pytest.importorskip("llm_client")
     from benchy import providers
 
     async def call(**_):
@@ -549,6 +548,43 @@ async def test_a_starved_grader_is_told_to_raise_its_own_max_tokens(bench, reply
     with pytest.raises(BenchyError) as exc:
         await grader.invoke(score.grader_input({"question": "q0"}, "key0", "", dimension["params"]["criteria"]))
     assert "max_tokens in scoring.grader.parameters" in exc.value.message
+
+
+async def test_a_run_aborted_by_its_grader_resumes_from_the_cache(bench):
+    """The grader failed on its third call. The rerun replays the two it had answered and
+    asks only the rest: an abort costs the calls it lost, not the whole run."""
+    from benchy import providers
+
+    asked = []
+
+    def grading_call(fail_at=None):
+        async def call(*, messages, **_):
+            asked.append(messages)
+            if len(asked) == fail_at:
+                raise RuntimeError("the grader's provider went away")
+            answered = any(part["text"] == "answer: good" for part in messages[1]["content"])
+            accuracy, clarity = (4, 1) if answered else (1, 0)
+            return {"content": json.dumps({"accuracy": {"justification": "j", "grade": accuracy},
+                                           "clarity": {"justification": "j", "grade": clarity}}),
+                    "finish_reason": "stop"}
+        return call
+
+    ir = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge"}))
+    grading = {"ai-system": ir["scoring"]["grader"], "program": score.grader_program(ir)}
+    env = {"OPENAI_API_KEY": "k", "BENCHY_CACHE": str(bench / "cache")}
+
+    def grader(call):
+        adapter = providers.OpenAIChat(grading, bench, env, call, None, providers.GRADING_PROMPT, ("scoring", "grader"))
+        adapter.system = ir["scoring"]["grader"]
+        return adapter
+
+    with pytest.raises(BenchyError) as exc:
+        await run(ir, bench, lambda _: {"answer": "good"}, grader=grader(grading_call(fail_at=3)))
+    assert exc.value.code == "grader_error"
+    asked.clear()
+    result = await run(ir, bench, lambda _: {"answer": "good"}, grader=grader(grading_call()))
+    assert len(asked) == 2  # four grader calls in all: two replayed, two asked
+    assert result["benchmark_score"] == 0.8125
 
 
 def test_grader_setup_errors_point_at_scoring_grader(bench, monkeypatch):

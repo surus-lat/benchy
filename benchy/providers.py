@@ -45,10 +45,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import logging
 import mimetypes
 import os
+import tempfile
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -69,6 +72,14 @@ _ENDPOINTS = {
 
 #: The parameters `llm_client` delivers correctly on every endpoint profile.
 _FORWARDED = ("temperature", "max_tokens")
+
+#: How long one call waits out a provider that is not taking requests -- rate-limited,
+#: overloaded, unavailable -- before it fails: 30 minutes, the waits doubling from 2 s to
+#: 5 min (llm_client's `retry_span`), plus up to two request timeouts at its edges. A benchmark run can afford to wait, and cannot undo
+#: the alternative: a grader failure aborts the run, and an examinee's scores its example
+#: 0 for an outage. A provider that took the request and then failed or timed out gets one
+#: retry, so a timeout stays a timeout (A.10).
+RETRY_SPAN = 1800.0
 
 #: Formats the model must produce, since JSON schema has no type for them (paper A.6).
 _FORMATS = {
@@ -149,6 +160,15 @@ def for_system(
             "model providers need the providers extra: pip install 'benchy[providers]'",
             [*at, "provider"],
         ) from None
+    if "retry_span" not in inspect.signature(call).parameters:
+        # An environment installed before the pin keeps its old llm_client, whose `call`
+        # would reject the argument on every request: one execution_error per example.
+        raise BenchyError(
+            "runtime", "adapter_not_bound",
+            "the installed llm_client cannot wait out a provider outage (it predates "
+            "surus-lat/llm-client#7); reinstall: pip install --force-reinstall 'benchy[providers]'",
+            [*at, "provider"],
+        )
     return OpenAIChat(ir, Path(workspace), os.environ if env is None else env, call, ProviderProfile, default_prompt, at)
 
 
@@ -219,17 +239,60 @@ class OpenAIChat:
         }
         _reject_unsupported(ir)
         self.prompt = _prompt(system, workspace, default_prompt, at)
+        # BENCHY_CACHE names a directory that keeps every answer this adapter got, so a
+        # rerun after an abort replays what was already asked instead of paying for it again.
+        self.cache = Path(env["BENCHY_CACHE"]) if env.get("BENCHY_CACHE") else None
+        self.replayed = 0
+        if self.cache:
+            try:  # found unusable now, not once per example
+                self.cache.mkdir(parents=True, exist_ok=True)
+                tempfile.TemporaryFile(dir=self.cache).close()
+            except OSError as exc:
+                raise BenchyError(
+                    "runtime", "adapter_not_bound", f"BENCHY_CACHE={self.cache} is not a writable directory: {exc}",
+                ) from None
 
     async def invoke(self, input_object: dict) -> object:
+        messages = [
+            {"role": "system", "content": self.prompt},
+            {"role": "user", "content": self._content(input_object)},
+        ]
+        if self.cache is None:
+            return await self._ask(messages)
+        # Keyed by everything that decides the answer, so a changed prompt, input, model or
+        # max_tokens asks again. Only answers are kept: a call that raised is asked again,
+        # which is what lets a rerun get past a grader that ran out of tokens.
+        request = {"base_url": self.base_url, "model": self.model, "messages": messages, "temperature": self.temperature,
+                   "max_tokens": self.max_tokens, "response_format": self.response_format}
+        path = self.cache / f"{hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()}.json"
+        try:
+            output = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # absent or damaged: ask, and the answer replaces it
+            output = await self._ask(messages)
+            self._keep(path, output)
+            return output
+        self.replayed += 1
+        return output
+
+    def _keep(self, path: Path, output: object) -> None:
+        """Store an answer under its request. The cache is never why a call fails: the
+        answer is returned whether or not it could be kept."""
+        try:
+            # A writer of its own, so two runs sharing a directory never rename each other's
+            # file; the rename is atomic, so an interrupted write leaves no half answer.
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.cache, suffix=".partial", delete=False) as partial:
+                json.dump(output, partial)
+            os.replace(partial.name, path)
+        except OSError as exc:
+            warnings.warn(f"BENCHY_CACHE could not keep an answer, so a rerun will ask it again: {exc}", stacklevel=2)
+
+    async def _ask(self, messages: list[dict]) -> object:
         # Only sent when set: an llm_client without the parameter still works for every
         # provider that needs no explicit profile.
         routing = {"profile": self.profile} if self.profile is not None else {}
         try:
             reply = await self.call(
-                messages=[
-                    {"role": "system", "content": self.prompt},
-                    {"role": "user", "content": self._content(input_object)},
-                ],
+                messages=messages,
                 base_url=self.base_url,
                 api_key=self.api_key,
                 model_name=self.model,
@@ -237,6 +300,7 @@ class OpenAIChat:
                 max_tokens=self.max_tokens,
                 response_format=self.response_format,
                 timeout=self.timeout,
+                retry_span=RETRY_SPAN,
                 operation="benchy",
                 **routing,
             )

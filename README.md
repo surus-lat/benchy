@@ -171,7 +171,19 @@ program's output schema, and refuses anything that would make the measurement li
 - **no silently dropped parameters** — anything beyond `temperature` and `max_tokens`
   is refused at setup, because `llm-client` would forward it where endpoints ignore it.
 
-A rate limit is retried rather than scored, since it says nothing about the system.
+A provider that is not taking requests — rate-limited, overloaded, down — is waited
+out for about 30 minutes a call rather than scored, since it says nothing about the
+system; one that took the request and then failed is retried once. A spent quota fails
+at once.
+
+Set `BENCHY_CACHE=<dir>` and every answer a built-in provider gets is kept there, keyed
+by the exact request. A rerun replays what was already answered and asks only the rest,
+so a run that aborted on a call that never answered — a grader out of tokens, an outage
+past the wait, a Ctrl-C — resumes instead of starting over. What came back is kept even
+when it is wrong: an examinee's malformed answer is what it said, and a grader's invalid
+grade replays into the same `grader_error`, so regrade by changing the grader's prompt,
+model or parameters. A changed request is asked again. Leave it unset to sample afresh;
+`benchy run` says how many answers it replayed.
 Credentials come from the environment, never from benchmark YAML. Text and `image`
 inputs are supported; `audio` and `document` inputs, and artifact outputs, are refused
 at setup rather than failing once per example.
@@ -278,7 +290,7 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-1332 lines of code, plus 221 in the optional provider adapter. There is exactly one
+1338 lines of code, plus 265 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 

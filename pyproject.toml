@@ -33,7 +33,7 @@ benchy = "benchy.cli:main"
 # Pinned to a commit: llm-client publishes no releases, and an unpinned URL installs
 # whatever its main branch is that day.
 providers = [
-    "llm-client @ git+https://github.com/surus-lat/llm-client.git@d00cdbbbb63d831687942a279af9760207a51695",
+    "llm-client @ git+https://github.com/surus-lat/llm-client.git@5e991aaaf697817262f2cd2cbaa66ba3319bca6e",
 ]
 dev = [
     "pytest>=8.0.0",
