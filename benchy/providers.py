@@ -50,6 +50,8 @@ import json
 import logging
 import mimetypes
 import os
+import tempfile
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -73,7 +75,7 @@ _FORWARDED = ("temperature", "max_tokens")
 
 #: How long one call waits out a provider that is not taking requests -- rate-limited,
 #: overloaded, unavailable -- before it fails: 30 minutes, the waits doubling from 2 s to
-#: 5 min (llm_client's `retry_span`). A benchmark run can afford to wait, and cannot undo
+#: 5 min (llm_client's `retry_span`), plus up to two request timeouts at its edges. A benchmark run can afford to wait, and cannot undo
 #: the alternative: a grader failure aborts the run, and an examinee's scores its example
 #: 0 for an outage. A provider that took the request and then failed or timed out gets one
 #: retry, so a timeout stays a timeout (A.10).
@@ -240,8 +242,15 @@ class OpenAIChat:
         # BENCHY_CACHE names a directory that keeps every answer this adapter got, so a
         # rerun after an abort replays what was already asked instead of paying for it again.
         self.cache = Path(env["BENCHY_CACHE"]) if env.get("BENCHY_CACHE") else None
+        self.replayed = 0
         if self.cache:
-            self.cache.mkdir(parents=True, exist_ok=True)
+            try:  # found unusable now, not once per example
+                self.cache.mkdir(parents=True, exist_ok=True)
+                tempfile.TemporaryFile(dir=self.cache).close()
+            except OSError as exc:
+                raise BenchyError(
+                    "runtime", "adapter_not_bound", f"BENCHY_CACHE={self.cache} is not a writable directory: {exc}",
+                ) from None
 
     async def invoke(self, input_object: dict) -> object:
         messages = [
@@ -256,13 +265,26 @@ class OpenAIChat:
         request = {"base_url": self.base_url, "model": self.model, "messages": messages, "temperature": self.temperature,
                    "max_tokens": self.max_tokens, "response_format": self.response_format}
         path = self.cache / f"{hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()}.json"
-        if path.is_file():
-            return json.loads(path.read_text(encoding="utf-8"))
-        output = await self._ask(messages)
-        partial = path.with_suffix(".partial")
-        partial.write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
-        partial.replace(path)  # an interrupted write leaves no half answer behind
+        try:
+            output = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # absent or damaged: ask, and the answer replaces it
+            output = await self._ask(messages)
+            self._keep(path, output)
+            return output
+        self.replayed += 1
         return output
+
+    def _keep(self, path: Path, output: object) -> None:
+        """Store an answer under its request. The cache is never why a call fails: the
+        answer is returned whether or not it could be kept."""
+        try:
+            # A writer of its own, so two runs sharing a directory never rename each other's
+            # file; the rename is atomic, so an interrupted write leaves no half answer.
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.cache, suffix=".partial", delete=False) as partial:
+                json.dump(output, partial)
+            os.replace(partial.name, path)
+        except OSError as exc:
+            warnings.warn(f"BENCHY_CACHE could not keep an answer, so a rerun will ask it again: {exc}", stacklevel=2)
 
     async def _ask(self, messages: list[dict]) -> object:
         # Only sent when set: an llm_client without the parameter still works for every

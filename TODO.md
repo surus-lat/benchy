@@ -334,7 +334,8 @@ in dataset order. Do not add concurrency without it.
 
 **Problem.** `retry_span` is per call. A failure that *looks* transient but is permanent
 mid-run, say a deployment removed that answers with a plain 503, makes **every
-remaining examinee call** wait the full 30 minutes before its `execution_error`. That
+remaining examinee call** wait the full span (about 30 minutes) before its
+`execution_error`. That
 is N × 30 min for an unattended run. A grader is bounded, because its first exhausted
 span aborts the run. The common permanent cases (quota, spend cap,
 `endpoint_unavailable`, 4xx) are already classified and fail at once, so only an
@@ -474,13 +475,24 @@ caller idle for up to ~13 minutes after recovery.
 
 - **`BENCHY_CACHE` caches only the built-in provider adapters.** A custom `--adapter` or
   `--grader` must cache itself.
-- **A grader reply that is valid JSON but out of range is cached,** so the rerun
-  reproduces the same `grader_error`. Delete that entry (the file is named by the
-  request hash) or change the grader.
+- **A grader reply that came back invalid is cached like any answer:** prose, a missing
+  criterion, or an out-of-range grade. The rerun replays it into the same `grader_error`.
+  Only a grader call that *raised* (truncation, outage, interrupt) is asked again. To
+  regrade, change the grader's prompt, model or parameters, any of which changes its
+  cache keys, or clear the directory. No entry name is printed.
+  The fix, if it matters, is role-aware: keep a grader reply only once `run.py` has
+  accepted it. The examinee must keep invalid answers, or a resume becomes pass@k.
 - **An examinee call that raises (a truncation, say) is not cached,** so a resumed run
   asks it again: that one row gets a second chance. The alternative, caching a raised
   reply, would make a grader truncation unrecoverable on resume. Split the policy by
   role if this ever matters.
+- **408 is treated by llm_client as "the provider did not take the request".** That is
+  true of a direct provider. A proxy (LiteLLM, as far as is known) may return 408 for an
+  upstream generation that timed out, and behind `OPENAI_BASE_URL` that would be waited
+  out for the whole span. Unverified; move 408 to the served set if it is seen.
+- **A wait is "about" 30 minutes:** the span, plus up to one request timeout before the
+  first failure and one after the deadline. That is ~34 min at the default
+  `BENCHY_TIMEOUT`.
 - **`PERMANENT_ERROR_CODES` in llm_client is a list that will rot** as providers add
   codes. `error.type == insufficient_quota` is the stable OpenAI signal.
 - **The repos vendoring llm_client are unaffected until they re-vendor.** That is five

@@ -639,3 +639,16 @@ Together, 8 concurrent calls to Llama-3.3-70B got 10 503s in 18.
   atomically, so an interrupt leaves no half answer. It is off unless set, and the CLI
   says when it is on: a replay is the same reading, not a new sample. It lives outside
   the core, in the provider adapter; custom adapters are not cached.
+- **Review of the cache before merge** (CodeRabbit was rate-limited; an independent
+  reviewer reproduced each case):
+  - A failing cache was scored as the system failing. A read error or a damaged entry is
+    now a miss. An answer that cannot be kept is still returned, with a warning. An
+    unwritable `BENCHY_CACHE` is a setup error, not a traceback. Each writer uses a temp
+    file of its own, so runs sharing a directory never collide. Answers are stored
+    ASCII-escaped, so a lone surrogate replays.
+  - The CLI note now counts real replays and is printed after a successful run, so a
+    failed run's stderr stays the error JSON.
+  - A conftest fixture clears `BENCHY_CACHE` and `BENCHY_TIMEOUT`, so a developer's shell
+    cannot change the suite.
+  - The docs no longer promise that every grader abort resumes. An invalid grade that
+    came back is kept and replays.

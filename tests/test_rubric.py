@@ -536,7 +536,6 @@ def test_a_declared_grader_prompt_replaces_the_default(bench, monkeypatch):
 @pytest.mark.parametrize("reply", [{"content": '{"accuracy":', "finish_reason": "length"}, {"content": ""}])
 async def test_a_starved_grader_is_told_to_raise_its_own_max_tokens(bench, reply):
     """A reasoning grader that runs out of tokens is fixed in scoring.grader, not ai-system."""
-    pytest.importorskip("llm_client")
     from benchy import providers
 
     async def call(**_):
@@ -554,7 +553,6 @@ async def test_a_starved_grader_is_told_to_raise_its_own_max_tokens(bench, reply
 async def test_a_run_aborted_by_its_grader_resumes_from_the_cache(bench):
     """The grader failed on its third call. The rerun replays the two it had answered and
     asks only the rest: an abort costs the calls it lost, not the whole run."""
-    pytest.importorskip("llm_client")
     from benchy import providers
 
     asked = []

@@ -87,10 +87,12 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
   built-in adapter. The message names the environment variable. Or an `llm_client`
   installed before benchy pinned it: reinstall the `providers` extra.
 - **`llm_client WARNING: ... retry in Ns` on stderr** — the provider is rate-limiting,
-  overloaded or down, and the run is waiting it out (up to 30 minutes a call) instead of
+  overloaded or down, and the run is waiting it out (about 30 minutes a call) instead of
   scoring it. The result is written only at the end, so interrupting loses the run,
   unless it runs with `BENCHY_CACHE=<dir>`: then a rerun replays every answer already
-  given and asks only the rest. The same goes for a run that aborted on `grader_error`.
+  given and asks only the rest. The same goes for a `grader_error` on a call that never
+  answered (truncation, outage). A grader that *replied* with an invalid grade replays
+  into the same error: change its prompt, model or parameters to regrade.
 - **`execution_error` with `credit_balance_exhausted` / `insufficient_quota`** — the
   account is out of credit. That is never retried, so the run fails fast: top up and rerun.
 - **A suspiciously round 0.0** — check whether the model supports structured outputs at

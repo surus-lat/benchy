@@ -62,3 +62,11 @@ def edit(**changes) -> str:
 @pytest.fixture
 def canonical() -> str:
     return CANONICAL
+
+
+@pytest.fixture(autouse=True)
+def _no_runtime_policy_from_the_shell(monkeypatch):
+    """A developer's BENCHY_CACHE or BENCHY_TIMEOUT must not change what a test sees."""
+    for name in ("BENCHY_CACHE", "BENCHY_TIMEOUT"):
+        monkeypatch.delenv(name, raising=False)
+

@@ -226,9 +226,9 @@ def test_the_cli_shows_what_the_transport_says_and_leaves_no_handler_behind(benc
     assert logging.getLogger("llm_client").handlers == before
 
 
-def test_the_cli_says_when_answers_are_replayed_from_a_cache(bench, monkeypatch, capsys):
-    """A forgotten BENCHY_CACHE would make every rerun silently identical."""
+def test_the_cli_claims_no_replay_when_nothing_is_cached(bench, monkeypatch, capsys):
+    """BENCHY_CACHE serves the built-in provider adapters; an explicit adapter is never cached."""
     monkeypatch.setenv("BENCHY_CACHE", str(bench / "cache"))
     assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'system.py'}:extractor") == 0
-    assert "BENCHY_CACHE" in capsys.readouterr().err
+    assert "replayed" not in capsys.readouterr().err
 

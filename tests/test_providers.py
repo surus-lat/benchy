@@ -345,7 +345,7 @@ async def test_a_rejected_request_is_not_retried_without_the_schema(workspace):
         failing.close()
 
 
-async def test_a_transient_rate_limit_is_retried_rather_than_scored(workspace):
+async def test_a_transient_rate_limit_is_retried_rather_than_scored(workspace, waits):
     """A 429 says nothing about the system under test, so it must not count against it."""
     limited = Provider(script=[(429, {"error": {"message": "slow down"}}, {"Retry-After": "0"})])
     try:
@@ -489,6 +489,79 @@ async def test_a_changed_request_is_asked_again(workspace, provider, tmp_path):
     roomier.max_tokens = 4096
     await run(ir, workspace, roomier)
     assert len(provider.requests) == 2
+
+
+def test_the_cli_says_how_many_answers_it_replayed(workspace, provider, monkeypatch, capsys):
+    """A replay is the same reading, not a new one; a forgotten BENCHY_CACHE must not hide."""
+    from benchy.cli import main
+
+    monkeypatch.setenv("OPENAI_BASE_URL", provider.base_url)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("BENCHY_CACHE", str(workspace / "cache"))
+    (workspace / "benchmark.yaml").write_text(TEXT)
+    assert main(["run", str(workspace / "benchmark.yaml")]) == 0
+    assert "replayed" not in capsys.readouterr().err
+    assert main(["run", str(workspace / "benchmark.yaml")]) == 0
+    assert "note: 1 answers were replayed from BENCHY_CACHE" in capsys.readouterr().err
+    assert len(provider.requests) == 1
+
+
+@pytest.mark.parametrize("make", ["a_file", "unwritable"])
+def test_a_cache_that_cannot_be_written_is_a_setup_error(workspace, provider, make):
+    """Not one execution_error per example after each answer has been paid for."""
+    import os
+
+    cache = workspace / "cache"
+    if make == "a_file":
+        cache.write_text("not a directory")
+    else:
+        cache.mkdir()
+        os.chmod(cache, 0o500)
+    try:
+        with pytest.raises(BenchyError) as exc:
+            cached(compile_benchmark(TEXT), workspace, provider, cache)
+        assert exc.value.code == "adapter_not_bound"
+        assert "BENCHY_CACHE" in exc.value.message
+    finally:
+        if cache.is_dir():
+            os.chmod(cache, 0o700)
+
+
+async def test_a_damaged_cache_entry_is_asked_again_not_scored(workspace, provider, tmp_path):
+    ir = compile_benchmark(TEXT)
+    await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    (entry,) = (tmp_path / "cache").glob("*.json")
+    entry.write_text("")  # what a crash before the data reached the disk can leave
+    result = await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    assert result["results"][0]["status"] == "valid"
+    assert len(provider.requests) == 2
+    assert json.loads(entry.read_text()) == json.loads(GOOD)  # and the entry is whole again
+
+
+async def test_an_answer_that_cannot_be_kept_is_still_the_answer(workspace, provider, tmp_path, monkeypatch):
+    ir = compile_benchmark(TEXT)
+    adapter = cached(ir, workspace, provider, tmp_path / "cache")
+
+    def full(*_, **__):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(providers.tempfile, "NamedTemporaryFile", full)
+    with pytest.warns(UserWarning, match="ask it again"):
+        result = await run(ir, workspace, adapter)
+    assert result["results"][0]["status"] == "valid"
+
+
+async def test_an_answer_with_a_lone_surrogate_replays_as_it_was(workspace, tmp_path):
+    """Valid JSON a model can emit; it is not valid UTF-8, so it must be stored escaped."""
+    odd = Provider(content='{"supplier": "AC\\ud800ME", "total": 121.0}')
+    try:
+        ir = compile_benchmark(TEXT)
+        first = await run(ir, workspace, cached(ir, workspace, odd, tmp_path / "cache"))
+        second = await run(ir, workspace, cached(ir, workspace, odd, tmp_path / "cache"))
+        assert first["results"][0]["status"] == "valid"
+        assert second == first and len(odd.requests) == 1
+    finally:
+        odd.close()
 
 
 def test_an_llm_client_that_cannot_wait_out_an_outage_is_a_setup_error(tmp_path, monkeypatch):

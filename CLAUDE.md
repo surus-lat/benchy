@@ -37,7 +37,7 @@ vocabulary in one, change it in all four or that test will tell you.
 ## Working here
 
 ```bash
-python -m pytest tests -q          # the gate, ~330 tests, ~12s
+python -m pytest tests -q          # the gate, ~565 tests, ~20s
 python -m ruff check benchy tests
 ```
 
