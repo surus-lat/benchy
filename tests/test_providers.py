@@ -394,14 +394,71 @@ async def test_a_non_json_reply_becomes_an_invalid_output_retaining_the_text(wor
     assert result["results"][0]["prediction"] == "I'm afraid I can't do that."
 
 
-async def test_a_server_failure_becomes_an_execution_error(workspace):
-    failing = Provider(script=[(500, {"error": {"message": "boom"}}, {})])
+@pytest.fixture
+def waits(monkeypatch):
+    """llm_client's retry waits, recorded instead of slept."""
+    from llm_client import client
+
+    seen = []
+
+    async def sleep(seconds):
+        seen.append(seconds)
+
+    monkeypatch.setattr(client, "_sleep", sleep)
+    return seen
+
+
+async def test_a_server_failure_becomes_an_execution_error(workspace, waits):
+    """A 500 means the provider took the request and failed on it: one retry, then it
+    counts against the system, as any failure to produce an output does (A.12)."""
+    failing = Provider(script=[(500, {"error": {"message": "boom"}}, {})] * 2)
     try:
         result = await execute(compile_benchmark(TEXT), workspace, failing)
         assert result["results"][0]["status"] == "execution_error"
         assert result["results"][0]["error"]["code"] == "adapter_error"
+        assert len(failing.requests) == 2
     finally:
         failing.close()
+
+
+async def test_an_overloaded_provider_is_waited_out_rather_than_scored(workspace, waits):
+    """Seen live on Together: 503 "Service unavailable" under load. Nothing was generated,
+    so the system has not answered yet; waiting costs time, scoring it 0 costs the run."""
+    overloaded = Provider(script=[(503, {"error": {"type": "service_unavailable"}}, {})] * 4)
+    try:
+        result = await execute(compile_benchmark(TEXT), workspace, overloaded)
+        assert result["results"][0]["status"] == "valid"
+        assert len(overloaded.requests) == 5
+        assert waits == sorted(waits) and len(waits) == 4
+    finally:
+        overloaded.close()
+
+
+async def test_a_spent_quota_fails_at_once_rather_than_waiting_it_out(workspace, waits):
+    """OpenAI's no-credit reply is a 429, like a rate limit; only its body tells them apart."""
+    quota = {"error": {"message": "You have no credits remaining", "type": "insufficient_quota",
+                       "code": "credit_balance_exhausted"}}
+    spent = Provider(script=[(429, quota, {})] * 2)
+    try:
+        result = await execute(compile_benchmark(TEXT), workspace, spent)
+        assert result["results"][0]["status"] == "execution_error"
+        assert "credit_balance_exhausted" in result["results"][0]["error"]["message"]
+        assert (len(spent.requests), waits) == (1, [])
+    finally:
+        spent.close()
+
+
+def test_an_llm_client_that_cannot_wait_out_an_outage_is_a_setup_error(tmp_path, monkeypatch):
+    """A venv installed before the pin keeps its old llm_client: every call would raise."""
+    import llm_client
+
+    async def call(*, messages, base_url, api_key, model_name, **_):
+        raise AssertionError("never called")
+
+    monkeypatch.setattr(llm_client, "call", call)
+    error = setup_error(compile_benchmark(TEXT), tmp_path, {"OPENAI_API_KEY": "k"})
+    assert error.code == "adapter_not_bound"
+    assert "llm-client#7" in error.message
 
 
 @pytest.mark.parametrize(

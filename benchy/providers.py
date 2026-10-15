@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import logging
 import mimetypes
@@ -69,6 +70,14 @@ _ENDPOINTS = {
 
 #: The parameters `llm_client` delivers correctly on every endpoint profile.
 _FORWARDED = ("temperature", "max_tokens")
+
+#: How long one call waits out a provider that is not taking requests -- rate-limited,
+#: overloaded, unavailable -- before it fails: 30 minutes, the waits doubling from 2 s to
+#: 5 min (llm_client's `retry_span`). A benchmark run can afford to wait, and cannot undo
+#: the alternative: a grader failure aborts the run, and an examinee's scores its example
+#: 0 for an outage. A provider that took the request and then failed or timed out gets one
+#: retry, so a timeout stays a timeout (A.10).
+RETRY_SPAN = 1800.0
 
 #: Formats the model must produce, since JSON schema has no type for them (paper A.6).
 _FORMATS = {
@@ -149,6 +158,15 @@ def for_system(
             "model providers need the providers extra: pip install 'benchy[providers]'",
             [*at, "provider"],
         ) from None
+    if "retry_span" not in inspect.signature(call).parameters:
+        # An environment installed before the pin keeps its old llm_client, whose `call`
+        # would reject the argument on every request: one execution_error per example.
+        raise BenchyError(
+            "runtime", "adapter_not_bound",
+            "the installed llm_client cannot wait out a provider outage (it predates "
+            "surus-lat/llm-client#7); reinstall: pip install --force-reinstall 'benchy[providers]'",
+            [*at, "provider"],
+        )
     return OpenAIChat(ir, Path(workspace), os.environ if env is None else env, call, ProviderProfile, default_prompt, at)
 
 
@@ -237,6 +255,7 @@ class OpenAIChat:
                 max_tokens=self.max_tokens,
                 response_format=self.response_format,
                 timeout=self.timeout,
+                retry_span=RETRY_SPAN,
                 operation="benchy",
                 **routing,
             )

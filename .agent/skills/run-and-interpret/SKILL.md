@@ -83,6 +83,12 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
 - **Everything `invalid_output` with truncated JSON** — the token budget ran out.
   Raise `max_tokens` in `ai-system.parameters`.
 - **`adapter_not_bound`** — for `type: model`, a missing credential or a provider with no
-  built-in adapter. The message names the environment variable.
+  built-in adapter. The message names the environment variable. Or an `llm_client`
+  installed before benchy pinned it: reinstall the `providers` extra.
+- **`llm_client WARNING: ... retry in Ns` on stderr** — the provider is rate-limiting,
+  overloaded or down, and the run is waiting it out (up to 30 minutes a call) instead of
+  scoring it. Interrupting loses the run, which writes its result only at the end.
+- **`execution_error` with `credit_balance_exhausted` / `insufficient_quota`** — the
+  account is out of credit. That is never retried, so the run fails fast: top up and rerun.
 - **A suspiciously round 0.0** — check whether the model supports structured outputs at
   all. Some deployments ignore `response_format` and answer in prose.

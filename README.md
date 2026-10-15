@@ -171,7 +171,9 @@ program's output schema, and refuses anything that would make the measurement li
 - **no silently dropped parameters** — anything beyond `temperature` and `max_tokens`
   is refused at setup, because `llm-client` would forward it where endpoints ignore it.
 
-A rate limit is retried rather than scored, since it says nothing about the system.
+A provider that is not taking requests — rate-limited, overloaded, down — is waited
+out for up to 30 minutes rather than scored, since it says nothing about the system; one
+that took the request and then failed is retried once. A spent quota fails at once.
 Credentials come from the environment, never from benchmark YAML. Text and `image`
 inputs are supported; `audio` and `document` inputs, and artifact outputs, are refused
 at setup rather than failing once per example.
