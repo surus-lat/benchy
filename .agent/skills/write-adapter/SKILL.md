@@ -93,7 +93,7 @@ professor.system = {"type": "external", "id": "prof-garcia"}
 
 Unlike an examinee's, a grader's failure aborts the run, so retry transient errors inside
 yours. The built-in model adapters already wait out a provider that is not taking requests
-for about 30 minutes.
+for about 10 minutes.
 
 See `examples/invoices/system.py` for a complete, runnable one, and
 `examples/exam-qa/system.py` for a grader.

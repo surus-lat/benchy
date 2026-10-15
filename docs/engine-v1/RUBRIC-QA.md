@@ -108,7 +108,7 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
   its failure as the examinee's zero would blame the student for the examiner. A fourth
   status would break A.12. This is the same reasoning as A.15. Before a provider grader
   fails, `llm_client` waits out a provider that is not taking requests for
-  `providers.RETRY_SPAN` (30 min, plus up to two request timeouts), so an outage costs
+  `providers.RETRY_SPAN` (10 min, plus up to two request timeouts), so an outage costs
   time, not the run. With `BENCHY_CACHE` set, an abort on a grader call that never
   answered (a truncation, an outage, an interrupt) is resumable: the rerun replays every
   answer already given and asks only the rest. Raising the grader's `max_tokens` changes

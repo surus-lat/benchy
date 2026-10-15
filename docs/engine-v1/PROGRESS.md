@@ -652,3 +652,12 @@ Together, 8 concurrent calls to Llama-3.3-70B got 10 503s in 18.
     cannot change the suite.
   - The docs no longer promise that every grader abort resumes. An invalid grade that
     came back is kept and replays.
+
+## 2026-10-15 — the provider wait is 10 minutes, not 30 (branch `fix/retry-span-ten-minutes`)
+
+The owner lowered `providers.RETRY_SPAN` from 1800 s to 600 s. Waits still double from 2 s.
+They reach 256 s after about 8.5 minutes, and the deadline cuts the next one, so a call
+makes 9–10 retries. The worst case per call is ~14 min at the default `BENCHY_TIMEOUT`
+(the span plus two request timeouts). An unclassified permanent failure in the middle of
+a run now costs each remaining examinee call 10 minutes instead of 30. llm_client is
+unchanged: the span is the caller's choice.
