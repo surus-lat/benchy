@@ -27,6 +27,7 @@ import importlib
 import importlib.util
 import json
 import logging
+import os
 import sys
 from collections import Counter
 from collections.abc import Mapping
@@ -87,6 +88,11 @@ def _run(args: argparse.Namespace) -> int:
         else compile_benchmark(_read(args.source))
     )
     workspace = args.workspace or args.source.parent
+    if os.environ.get("BENCHY_CACHE"):
+        # A replayed answer is the same reading, not a new one: say so, or a forgotten
+        # variable makes every rerun silently identical.
+        print(f"note: BENCHY_CACHE={os.environ['BENCHY_CACHE']}: provider calls already answered there are "
+              f"replayed, not asked again", file=sys.stderr)
     adapter = _load_adapter(args.adapter) if args.adapter else providers.for_system(ir, workspace)
     result = asyncio.run(run(ir, workspace, adapter, grader=_grader(args.grader, ir, workspace)))
     _warn_if_degenerate(result)

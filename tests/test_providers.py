@@ -448,6 +448,49 @@ async def test_a_spent_quota_fails_at_once_rather_than_waiting_it_out(workspace,
         spent.close()
 
 
+# ---------------------------------------------------------------------------
+# BENCHY_CACHE: a rerun replays what was already answered
+# ---------------------------------------------------------------------------
+
+def cached(ir, workspace, provider, cache):
+    return providers.for_system(ir, workspace, env={"OPENAI_BASE_URL": provider.base_url,
+                                                    "OPENAI_API_KEY": "test-key", "BENCHY_CACHE": str(cache)})
+
+
+async def test_a_rerun_with_the_cache_replays_instead_of_asking_again(workspace, provider, tmp_path):
+    ir = compile_benchmark(TEXT)
+    first = await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    second = await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    assert len(provider.requests) == 1
+    assert second == first
+    assert adapter_for(ir, workspace, provider).cache is None  # off unless asked for
+
+
+async def test_the_cache_keeps_answers_never_failures(workspace, tmp_path):
+    """So a rerun asks again exactly what failed: how a run resumes after it aborted."""
+    rows = [{"input": {"text": t}, "expected": {"supplier": "ACME", "total": 121.0}} for t in ("a", "b")]
+    (workspace / "exam.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    flaky = Provider(script=[reply(GOOD), (400, {"error": {"message": "bad"}}, {})])
+    try:
+        ir = compile_benchmark(TEXT)
+        first = await run(ir, workspace, cached(ir, workspace, flaky, tmp_path / "cache"))
+        assert [r["status"] for r in first["results"]] == ["valid", "execution_error"]
+        second = await run(ir, workspace, cached(ir, workspace, flaky, tmp_path / "cache"))
+        assert [r["status"] for r in second["results"]] == ["valid", "valid"]
+        assert len(flaky.requests) == 3  # the rerun asked only for the example that failed
+    finally:
+        flaky.close()
+
+
+async def test_a_changed_request_is_asked_again(workspace, provider, tmp_path):
+    ir = compile_benchmark(TEXT)
+    await run(ir, workspace, cached(ir, workspace, provider, tmp_path / "cache"))
+    roomier = cached(ir, workspace, provider, tmp_path / "cache")
+    roomier.max_tokens = 4096
+    await run(ir, workspace, roomier)
+    assert len(provider.requests) == 2
+
+
 def test_an_llm_client_that_cannot_wait_out_an_outage_is_a_setup_error(tmp_path, monkeypatch):
     """A venv installed before the pin keeps its old llm_client: every call would raise."""
     import llm_client

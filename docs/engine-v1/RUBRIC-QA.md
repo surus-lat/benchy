@@ -108,7 +108,11 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
   its failure as the examinee's zero would blame the student for the examiner. A fourth
   status would break A.12. This is the same reasoning as A.15. Before a provider grader
   fails, `llm_client` waits out a provider that is not taking requests for up to
-  `providers.RETRY_SPAN` (30 min), so an outage costs time, not the run.
+  `providers.RETRY_SPAN` (30 min), so an outage costs time, not the run. With
+  `BENCHY_CACHE` set, what does abort is resumable: the rerun replays every answer the
+  examinee and the grader already gave and asks only the rest. Raising the grader's
+  `max_tokens` after a truncation changes only the grader's requests, so it regrades
+  without asking the examinee again.
 - **Baseline**: the empty answer is graded once per question with the same grader, so
   the baseline is measured like every other one. It is also a free calibration check: a
   grader that gives an empty answer more than the floor is visibly broken.

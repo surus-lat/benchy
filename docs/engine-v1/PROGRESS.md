@@ -624,3 +624,11 @@ Together, 8 concurrent calls to Llama-3.3-70B got 10 503s in 18.
 - `providers.RETRY_SPAN` = 1800 s on every call, examinee and grader alike.
 - An environment installed before the pin keeps an `llm_client` whose `call` would reject
   the argument on every request. That is now a setup error that says to reinstall.
+- **Resume after an abort: `BENCHY_CACHE=<dir>`.** `OpenAIChat` keeps every answer it got,
+  keyed by the exact request (base URL, model, messages, temperature, max_tokens,
+  response format). A rerun replays them and asks only the rest. It keeps answers,
+  never failures, so a rerun asks again exactly what failed. Raising the grader's
+  `max_tokens` after a truncation changes only grader requests. An answer is written
+  atomically, so an interrupt leaves no half answer. It is off unless set, and the CLI
+  says when it is on: a replay is the same reading, not a new sample. It lives outside
+  the core, in the provider adapter; custom adapters are not cached.

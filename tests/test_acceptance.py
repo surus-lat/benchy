@@ -225,3 +225,10 @@ def test_the_cli_shows_what_the_transport_says_and_leaves_no_handler_behind(benc
     assert json.loads(captured.out)["summary"]["examples"] == 2
     assert logging.getLogger("llm_client").handlers == before
 
+
+def test_the_cli_says_when_answers_are_replayed_from_a_cache(bench, monkeypatch, capsys):
+    """A forgotten BENCHY_CACHE would make every rerun silently identical."""
+    monkeypatch.setenv("BENCHY_CACHE", str(bench / "cache"))
+    assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'system.py'}:extractor") == 0
+    assert "BENCHY_CACHE" in capsys.readouterr().err
+

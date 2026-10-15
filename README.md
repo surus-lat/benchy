@@ -174,6 +174,12 @@ program's output schema, and refuses anything that would make the measurement li
 A provider that is not taking requests — rate-limited, overloaded, down — is waited
 out for up to 30 minutes rather than scored, since it says nothing about the system; one
 that took the request and then failed is retried once. A spent quota fails at once.
+
+Set `BENCHY_CACHE=<dir>` and every answer a built-in provider gets is kept there, keyed
+by the exact request. A rerun replays what was already answered and asks only the rest,
+so a run that aborted — a grader that ran out of tokens, an outage past 30 minutes, a
+Ctrl-C — resumes instead of starting over. Failures are never kept, and a changed
+prompt, input, model or parameter asks again. Leave it unset to sample afresh.
 Credentials come from the environment, never from benchmark YAML. Text and `image`
 inputs are supported; `audio` and `document` inputs, and artifact outputs, are refused
 at setup rather than failing once per example.
@@ -280,7 +286,7 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-1332 lines of code, plus 221 in the optional provider adapter. There is exactly one
+1336 lines of code, plus 248 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 

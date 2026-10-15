@@ -237,17 +237,40 @@ class OpenAIChat:
         }
         _reject_unsupported(ir)
         self.prompt = _prompt(system, workspace, default_prompt, at)
+        # BENCHY_CACHE names a directory that keeps every answer this adapter got, so a
+        # rerun after an abort replays what was already asked instead of paying for it again.
+        self.cache = Path(env["BENCHY_CACHE"]) if env.get("BENCHY_CACHE") else None
+        if self.cache:
+            self.cache.mkdir(parents=True, exist_ok=True)
 
     async def invoke(self, input_object: dict) -> object:
+        messages = [
+            {"role": "system", "content": self.prompt},
+            {"role": "user", "content": self._content(input_object)},
+        ]
+        if self.cache is None:
+            return await self._ask(messages)
+        # Keyed by everything that decides the answer, so a changed prompt, input, model or
+        # max_tokens asks again. Only answers are kept: a call that raised is asked again,
+        # which is what lets a rerun get past a grader that ran out of tokens.
+        request = {"base_url": self.base_url, "model": self.model, "messages": messages, "temperature": self.temperature,
+                   "max_tokens": self.max_tokens, "response_format": self.response_format}
+        path = self.cache / f"{hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()}.json"
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+        output = await self._ask(messages)
+        partial = path.with_suffix(".partial")
+        partial.write_text(json.dumps(output, ensure_ascii=False), encoding="utf-8")
+        partial.replace(path)  # an interrupted write leaves no half answer behind
+        return output
+
+    async def _ask(self, messages: list[dict]) -> object:
         # Only sent when set: an llm_client without the parameter still works for every
         # provider that needs no explicit profile.
         routing = {"profile": self.profile} if self.profile is not None else {}
         try:
             reply = await self.call(
-                messages=[
-                    {"role": "system", "content": self.prompt},
-                    {"role": "user", "content": self._content(input_object)},
-                ],
+                messages=messages,
                 base_url=self.base_url,
                 api_key=self.api_key,
                 model_name=self.model,
