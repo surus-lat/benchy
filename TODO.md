@@ -334,9 +334,9 @@ in dataset order. Do not add concurrency without it.
 
 **Problem.** `retry_span` is per call. A failure that *looks* transient but is permanent
 mid-run, say a deployment removed that answers with a plain 503, makes **every
-remaining examinee call** wait the full span (about 30 minutes) before its
+remaining examinee call** wait the full span (about 10 minutes) before its
 `execution_error`. That
-is N × 30 min for an unattended run. A grader is bounded, because its first exhausted
+is N × 10 min for an unattended run. A grader is bounded, because its first exhausted
 span aborts the run. The common permanent cases (quota, spend cap,
 `endpoint_unavailable`, 4xx) are already classified and fail at once, so only an
 unclassified one triggers this.
@@ -430,12 +430,13 @@ four things here:
 Abort, plus waiting out outages, plus `BENCHY_CACHE` to resume, keeps every invariant
 and survives long runs.
 
-#### D3. Only "the provider did not take the request" is waited out for 30 minutes
+#### D3. Only "the provider did not take the request" is waited out for the whole span
 
 The long wait covers a refused connection, 408, 429, 502, 503 and 529. A timeout, 500,
 504 or 524 means the provider took the request and may have generated and billed an
-answer. Thirty minutes of retries would buy about ten billed generations of one row.
-It would also turn a 2-minute timeout into a 30-minute one, while A.10 says a runtime
+answer. Ten minutes of retries would buy about four billed generations of one row (ten,
+at the original 30 minutes). It would also turn a 2-minute timeout into a 10-minute one,
+while A.10 says a runtime
 timeout becomes an `execution_error`. Those get one retry. Quota, spend-cap and
 no-deployment errors are read from the error body and fail at once.
 
@@ -457,7 +458,7 @@ unstated.
 #### D6. One parameter and one constant, not a policy object
 
 llm_client takes `retry_span: float | None`. benchy passes `providers.RETRY_SPAN`
-(1800 s, the owner's number). There is no `RetryPolicy` dataclass, no environment knob
+(600 s, the owner's number: first 30 minutes, lowered to 10 on 2026-10-15). There is no `RetryPolicy` dataclass, no environment knob
 for the span, and no shared deadline across llm_client's provider/format fallback
 layers. Benchy uses neither layer, and a shared deadline would starve a failover
 provider.
@@ -466,8 +467,10 @@ provider.
 
 Waits double from 2 s and are drawn from the upper half of each ceiling, so each one is
 longer than the last until the cap. The 5-minute cap means a provider that comes back is
-noticed within 5 minutes. Without it, the last waits of a 30-minute span leave the
-caller idle for up to ~13 minutes after recovery.
+noticed within 5 minutes. At the 10-minute span the cap hardly binds: the ceilings
+reach 256 s after about 8.5 minutes, and the deadline cuts the next wait. That makes
+9–10 retries a call. The cap matters if the span is raised again. At 30 minutes,
+uncapped waits would have left the caller idle for up to ~13 minutes after recovery.
 
 ---
 
@@ -490,8 +493,8 @@ caller idle for up to ~13 minutes after recovery.
   true of a direct provider. A proxy (LiteLLM, as far as is known) may return 408 for an
   upstream generation that timed out, and behind `OPENAI_BASE_URL` that would be waited
   out for the whole span. Unverified; move 408 to the served set if it is seen.
-- **A wait is "about" 30 minutes:** the span, plus up to one request timeout before the
-  first failure and one after the deadline. That is ~34 min at the default
+- **A wait is "about" 10 minutes:** the span, plus up to one request timeout before the
+  first failure and one after the deadline. That is ~14 min at the default
   `BENCHY_TIMEOUT`.
 - **`PERMANENT_ERROR_CODES` in llm_client is a list that will rot** as providers add
   codes. `error.type == insufficient_quota` is the stable OpenAI signal.

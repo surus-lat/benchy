@@ -172,7 +172,7 @@ program's output schema, and refuses anything that would make the measurement li
   is refused at setup, because `llm-client` would forward it where endpoints ignore it.
 
 A provider that is not taking requests — rate-limited, overloaded, down — is waited
-out for about 30 minutes a call rather than scored, since it says nothing about the
+out for about 10 minutes a call rather than scored, since it says nothing about the
 system; one that took the request and then failed is retried once. A spent quota fails
 at once.
 

@@ -136,3 +136,16 @@ def test_every_file_an_example_needs_is_committed(benchmark):
         assert path.is_file(), f"{path} is missing"
         ignored = subprocess.run(["git", "check-ignore", str(path)], capture_output=True, cwd=EXAMPLES.parent)
         assert ignored.returncode != 0, f"{path} is gitignored and would not survive a clone"
+
+
+def test_the_docs_quote_the_provider_wait_the_code_uses():
+    """The wait was lowered from 30 minutes to 10; prose that kept the old number would
+    tell a user a stalled call is hung, or a hung one is still waiting."""
+    from benchy import providers
+
+    root = EXAMPLES.parent
+    if not (root / "README.md").is_file():
+        pytest.skip("README.md is not distributed")
+    quoted = f"about {providers.RETRY_SPAN / 60:.0f} minutes"
+    for doc in ("README.md", ".agent/skills/run-and-interpret/SKILL.md", ".agent/skills/write-adapter/SKILL.md"):
+        assert quoted in " ".join((root / doc).read_text().split()), doc

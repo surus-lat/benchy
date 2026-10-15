@@ -87,7 +87,7 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
   built-in adapter. The message names the environment variable. Or an `llm_client`
   installed before benchy pinned it: reinstall the `providers` extra.
 - **`llm_client WARNING: ... retry in Ns` on stderr** — the provider is rate-limiting,
-  overloaded or down, and the run is waiting it out (about 30 minutes a call) instead of
+  overloaded or down, and the run is waiting it out (about 10 minutes a call) instead of
   scoring it. The result is written only at the end, so interrupting loses the run,
   unless it runs with `BENCHY_CACHE=<dir>`: then a rerun replays every answer already
   given and asks only the rest. The same goes for a `grader_error` on a call that never

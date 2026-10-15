@@ -74,12 +74,12 @@ _ENDPOINTS = {
 _FORWARDED = ("temperature", "max_tokens")
 
 #: How long one call waits out a provider that is not taking requests -- rate-limited,
-#: overloaded, unavailable -- before it fails: 30 minutes, the waits doubling from 2 s to
-#: 5 min (llm_client's `retry_span`), plus up to two request timeouts at its edges. A benchmark run can afford to wait, and cannot undo
+#: overloaded, unavailable -- before it fails: 10 minutes, the waits doubling from 2 s to
+#: about 4 min (llm_client's `retry_span`), plus up to two request timeouts at its edges. A benchmark run can afford to wait, and cannot undo
 #: the alternative: a grader failure aborts the run, and an examinee's scores its example
 #: 0 for an outage. A provider that took the request and then failed or timed out gets one
 #: retry, so a timeout stays a timeout (A.10).
-RETRY_SPAN = 1800.0
+RETRY_SPAN = 600.0
 
 #: Formats the model must produce, since JSON schema has no type for them (paper A.6).
 _FORMATS = {
