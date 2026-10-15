@@ -335,12 +335,15 @@ async def test_the_result_records_the_grader_and_its_prompt_fingerprint(tmp_path
 MODEL_GRADED = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge"}))
 
 
-async def test_a_grader_bound_in_place_of_a_model_grader_must_say_which_it_is(tmp_path):
-    """Otherwise the result would record the model's name over another grader's grades."""
+@pytest.mark.parametrize("system", ["unset", None, {}])
+async def test_a_grader_bound_in_place_of_a_model_grader_must_say_which_it_is(tmp_path, system):
+    """Otherwise the result would record the model's name, or no name, over its grades."""
     def student(_):
         raise AssertionError("no example may run")
 
     grader = Grader()
+    if system != "unset":
+        grader.system = system
     with pytest.raises(BenchyError) as exc:
         await execute(tmp_path, student, grader, ir=MODEL_GRADED)
     assert (exc.value.code, exc.value.path) == ("grader_not_bound", ["scoring", "grader"])

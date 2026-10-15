@@ -593,7 +593,8 @@ evaluation frameworks, and an adversarial review.
   calibration rerun was filed under the model. Now it is what the bound grader states
   (`system`), else the declaration. A grader bound in place of a `model` declaration
   that states nothing aborts before the first example (`grader_not_bound`): recording
-  `null` instead was rejected, because two unnamed graders would compare as equal.
+  `null` instead was rejected, because two unnamed graders would compare as equal; an
+  empty `system` (`None`, `{}`) counts as unstated (CodeRabbit on #41).
   `for_grader` states its declaration; the example's stand-in calls itself
   `keyword-stand-in`. Spec §16's MUST and paper A.14 say so, pinned by a test.
 - **`llm_client`'s warnings never reached the terminal.** `providers.py` installs a

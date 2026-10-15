@@ -278,7 +278,7 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-1331 lines of code, plus 221 in the optional provider adapter. There is exactly one
+1332 lines of code, plus 221 in the optional provider adapter. There is exactly one
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 
