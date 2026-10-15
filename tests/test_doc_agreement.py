@@ -143,3 +143,11 @@ def test_spec_scoring_names_every_field_metric_the_engine_accepts():
     section = text[text.index("## 6. Scoring"):text.index("## 7. Data")]
     listed = set(re.findall(r"^  - `(\w+)`", section, re.M))
     assert listed == set(metrics.METRICS) | {score.RUBRIC}
+
+
+def test_the_paper_and_spec_say_whose_name_grader_system_records():
+    """It once was the declaration even when another grader graded. run.py records what
+    the bound grader states, and refuses a model grader's stand-in that states nothing."""
+    rule = "unless the bound grader states its own `system`"
+    for stem in ("technical-paper-v", "benchy-engine-spec-v"):
+        assert rule in " ".join(latest(stem).read_text().split()), stem

@@ -60,13 +60,18 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
 
 - `fields[].baseline` is the grade the empty answer got. Above 0 means the grader gives
   credit for nothing — fix the grader before reading any score.
-- `grader.system` and `grader.prompt_sha256` name what graded the run. Two runs are
+- `grader.system` and `grader.prompt_sha256` name what graded the run: the declared
+  grader, or the one bound in its place, which states its own name. Two runs are
   comparable only when both match.
 - **`grader_error`** aborts the run: the grader raised or returned a grade outside the
   schema or the levels. It is the instrument failing, never the system under test.
 - **`grader_not_bound`** — the benchmark has a rubric and no grader: pass `--grader`, or
   declare a `model` grader and set its provider's key. Also raised when the `--grader`
-  you passed cannot be loaded; the message says why.
+  you passed cannot be loaded (the message says why), or replaces a declared `model`
+  grader without a `system` saying who it is.
+- **`provider_error` "hit its token limit"** on a grader — a reasoning model spent its
+  budget thinking. Raise `max_tokens` in `scoring.grader.parameters` and rerun: the
+  aborted run wrote no result.
 - The `degenerate_exam_field` and `field_score_baseline` warnings never fire on a rubric
   field: its baseline is the graded empty answer in `fields[]`, not a majority.
 

@@ -106,10 +106,12 @@ def for_grader(ir: Mapping, workspace: Path | str, env: Mapping[str, str] | None
 
     The grader is an ordinary model AI-system whose program the engine fixes
     (`score.grader_program`); the same adapter that runs examinees runs it. It states
-    `prompt_sha256` so the result can record which instruction graded the run.
+    its `system` (the declaration it implements) and `prompt_sha256`, so the result can
+    record which grader and which instruction graded the run.
     """
     grading = {"ai-system": ir["scoring"]["grader"], "program": score.grader_program(ir)}
     adapter = for_system(grading, workspace, env, GRADING_PROMPT, at=("scoring", "grader"))
+    adapter.system = ir["scoring"]["grader"]
     adapter.prompt_sha256 = hashlib.sha256(adapter.prompt.encode("utf-8")).hexdigest()
     return adapter
 
@@ -183,13 +185,14 @@ class OpenAIChat:
         if dropped:
             raise BenchyError(
                 "runtime", "adapter_not_bound",
-                f"ai-system.parameters {', '.join(dropped)} would not reach the model: llm_client "
+                f"{'.'.join(at)}.parameters {', '.join(dropped)} would not reach the model: llm_client "
                 f"sends only {' and '.join(_FORWARDED)} as request parameters, and anything else as "
                 f"a nested extra_body that chat-completions endpoints silently ignore",
                 [*at, "parameters"],
             )
 
         self.call = call
+        self.parameters_at = ".".join([*at, "parameters"])
         # Bedrock serves Anthropic models only through Converse. Stated, not inferred:
         # a BEDROCK_BASE_URL pointing at a gateway would defeat a hostname heuristic.
         self.profile = None
@@ -252,15 +255,15 @@ class OpenAIChat:
         if reply.get("finish_reason") == "length":
             raise BenchyError(
                 "runtime", "provider_error",
-                "the model hit its token limit before completing the output; raise max_tokens in "
-                "ai-system.parameters (reasoning models spend the budget on reasoning first)",
+                f"the model hit its token limit before completing the output; raise max_tokens in "
+                f"{self.parameters_at} (reasoning models spend the budget on reasoning first)",
             )
         text = reply["content"]
         if not text:
             raise BenchyError(
                 "runtime", "provider_error",
-                "the model returned no content; if it is a reasoning model, raise max_tokens in "
-                "ai-system.parameters, since reasoning tokens are spent before the answer is written",
+                f"the model returned no content; if it is a reasoning model, raise max_tokens in "
+                f"{self.parameters_at}, since reasoning tokens are spent before the answer is written",
             )
         try:
             return json.loads(text)

@@ -206,3 +206,22 @@ def test_an_adapter_file_whose_imports_fail_is_a_setup_error_not_a_traceback(ben
     error = json.loads(capsys.readouterr().err)
     assert error["code"] == "adapter_not_bound"
     assert "a_dependency_this_environment_lacks" in error["message"]
+
+
+def test_the_cli_shows_what_the_transport_says_and_leaves_no_handler_behind(bench, capsys):
+    """A run waiting on a provider retry must say so on stderr; stdout stays the report."""
+    import logging
+
+    before = list(logging.getLogger("llm_client").handlers)
+    (bench / "chatty.py").write_text(ADAPTER + (
+        "\nimport logging as _logging\n\n"
+        "def chatty(input_object):\n"
+        "    _logging.getLogger('llm_client.client').warning('HTTP 503, retry 1 in 2.0s')\n"
+        "    return extractor(input_object)\n"
+    ))
+    assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'chatty.py'}:chatty") == 0
+    captured = capsys.readouterr()
+    assert captured.err.count("HTTP 503, retry 1 in 2.0s") == 2  # once per example
+    assert json.loads(captured.out)["summary"]["examples"] == 2
+    assert logging.getLogger("llm_client").handlers == before
+

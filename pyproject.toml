@@ -30,8 +30,10 @@ benchy = "benchy.cli:main"
 [project.optional-dependencies]
 # Needed only for `ai-system.type: model`. Private repository: installing needs GitHub
 # access to surus-lat. External adapters and the whole engine run without it.
+# Pinned to a commit: llm-client publishes no releases, and an unpinned URL installs
+# whatever its main branch is that day.
 providers = [
-    "llm-client @ git+https://github.com/surus-lat/llm-client.git",
+    "llm-client @ git+https://github.com/surus-lat/llm-client.git@d00cdbbbb63d831687942a279af9760207a51695",
 ]
 dev = [
     "pytest>=8.0.0",

@@ -332,6 +332,31 @@ async def test_the_result_records_the_grader_and_its_prompt_fingerprint(tmp_path
     assert result["grader"]["prompt_sha256"] == "abc"
 
 
+MODEL_GRADED = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge"}))
+
+
+@pytest.mark.parametrize("system", ["unset", None, {}])
+async def test_a_grader_bound_in_place_of_a_model_grader_must_say_which_it_is(tmp_path, system):
+    """Otherwise the result would record the model's name, or no name, over its grades."""
+    def student(_):
+        raise AssertionError("no example may run")
+
+    grader = Grader()
+    if system != "unset":
+        grader.system = system
+    with pytest.raises(BenchyError) as exc:
+        await execute(tmp_path, student, grader, ir=MODEL_GRADED)
+    assert (exc.value.code, exc.value.path) == ("grader_not_bound", ["scoring", "grader"])
+    assert grader.calls == []
+
+
+async def test_the_result_records_the_grader_that_graded_not_the_one_declared(tmp_path):
+    grader = Grader()
+    grader.system = {"type": "external", "id": "prof-garcia"}
+    result = await execute(tmp_path, lambda _: {"answer": "good"}, grader, ir=MODEL_GRADED)
+    assert result["grader"]["system"] == {"type": "external", "id": "prof-garcia"}
+
+
 async def test_a_result_without_a_rubric_has_no_grader_block(tmp_path):
     ir = compile_benchmark(edit(
         program={"input": {"text": "string"}, "output": {"total": "float"}},
@@ -435,6 +460,18 @@ def test_cli_external_grader_without_the_flag_is_a_setup_error(bench, capsys):
     assert json.loads(capsys.readouterr().err)["code"] == "grader_not_bound"
 
 
+def test_cli_a_grader_flag_over_a_model_grader_must_name_the_grader(bench, capsys):
+    """The calibration recipe: a professor regrades a model-graded exam, under their own name."""
+    (bench / "benchmark.yaml").write_text(exam(grader={"type": "model", "provider": "openai", "model": "judge"}))
+    people = bench / "people.py"
+    args = ["run", str(bench / "benchmark.yaml"), "--adapter", f"{people}:student", "--grader", f"{people}:professor"]
+    assert main(args) == 1
+    assert json.loads(capsys.readouterr().err)["code"] == "grader_not_bound"
+    people.write_text(ADAPTERS + 'professor.system = {"type": "external", "id": "prof-garcia"}\n')
+    assert main(args) == 0
+    assert json.loads(capsys.readouterr().out)["grader"]["system"] == {"type": "external", "id": "prof-garcia"}
+
+
 @pytest.mark.parametrize("spec", ["people.py", "missing.py:professor", "people.py:nobody", "broken.py:professor"])
 def test_cli_a_grader_that_cannot_be_loaded_is_reported_as_the_grader(bench, capsys, spec):
     """Not as `--adapter`, which loaded fine, and never as a traceback."""
@@ -479,6 +516,7 @@ def test_cli_model_grader_comes_from_the_providers_with_the_grading_prompt(bench
     ir = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge"}))
     grader = providers.for_grader(ir, bench)
     assert grader.prompt == providers.GRADING_PROMPT
+    assert grader.system == ir["scoring"]["grader"]
     assert grader.prompt_sha256 == __import__("hashlib").sha256(providers.GRADING_PROMPT.encode()).hexdigest()
     criteria = grader.response_format["json_schema"]["schema"]["properties"]
     assert set(criteria) == {"accuracy", "clarity"}
@@ -493,6 +531,24 @@ def test_a_declared_grader_prompt_replaces_the_default(bench, monkeypatch):
     (bench / "grader.md").write_text("Grade like a strict professor.")
     ir = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge", "prompt": "./grader.md"}))
     assert providers.for_grader(ir, bench).prompt == "Grade like a strict professor."
+
+
+@pytest.mark.parametrize("reply", [{"content": '{"accuracy":', "finish_reason": "length"}, {"content": ""}])
+async def test_a_starved_grader_is_told_to_raise_its_own_max_tokens(bench, reply):
+    """A reasoning grader that runs out of tokens is fixed in scoring.grader, not ai-system."""
+    pytest.importorskip("llm_client")
+    from benchy import providers
+
+    async def call(**_):
+        return reply
+
+    ir = compile_benchmark(exam(grader={"type": "model", "provider": "openai", "model": "judge"}))
+    grading = {"ai-system": ir["scoring"]["grader"], "program": score.grader_program(ir)}
+    grader = providers.OpenAIChat(grading, bench, {"OPENAI_API_KEY": "k"}, call, None, providers.GRADING_PROMPT, ("scoring", "grader"))
+    (dimension,) = ir["scoring"]["dimensions"]
+    with pytest.raises(BenchyError) as exc:
+        await grader.invoke(score.grader_input({"question": "q0"}, "key0", "", dimension["params"]["criteria"]))
+    assert "max_tokens in scoring.grader.parameters" in exc.value.message
 
 
 def test_grader_setup_errors_point_at_scoring_grader(bench, monkeypatch):

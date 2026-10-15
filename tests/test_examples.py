@@ -40,6 +40,15 @@ def test_example_runs(benchmark, capsys):
     assert result["summary"]["invalid_outputs"] == 0
 
 
+def test_exam_qa_records_its_stand_in_grader_not_the_declared_model(capsys):
+    """The offline grader replaces the model grader the benchmark declares, and says so."""
+    system = EXAMPLES / "exam-qa" / "system.py"
+    benchmark = EXAMPLES / "exam-qa" / "benchmark.yaml"
+    assert main(["run", str(benchmark), "--adapter", f"{system}:extractor", "--grader", f"{system}:grader"]) == 0
+    grader = json.loads(capsys.readouterr().out)["grader"]
+    assert grader == {"system": {"type": "external", "id": "keyword-stand-in"}, "prompt_sha256": None}
+
+
 def test_there_is_at_least_one_example():
     assert BENCHMARKS
 

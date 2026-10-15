@@ -83,6 +83,14 @@ is a model, ask for the justification first: it then reasons before it picks a l
 instead of justifying a number it already gave. A grader that looks up a professor's
 grades is a valid one; it is how a model grader gets checked.
 Optionally set `prompt_sha256` on it so results record which instruction graded the run.
+If the benchmark declares a `model` grader and yours replaces it, say who yours is, or the
+run refuses to start (`grader_not_bound`) rather than file your grades under the model's
+name:
+
+```python
+professor.system = {"type": "external", "id": "prof-garcia"}
+```
+
 Unlike an examinee's, a grader's failure aborts the run, so retry transient errors inside it.
 
 See `examples/invoices/system.py` for a complete, runnable one, and

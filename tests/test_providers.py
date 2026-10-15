@@ -31,9 +31,9 @@ pytestmark = pytest.mark.skipif(
 
 
 def _has_converse() -> bool:
-    """Bedrock Converse support lives in llm_client; it is unmerged as of writing.
+    """Bedrock Converse support lives in llm_client (surus-lat/llm-client#5).
 
-    See surus-lat/llm-client#5. These tests activate the moment it lands.
+    The pinned llm_client has it; an older install does not, and these tests skip there.
     """
     try:
         from llm_client import profiles
