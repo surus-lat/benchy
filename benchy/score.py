@@ -49,8 +49,10 @@ __all__ = [
 #: pure `(predicted, expected) -> float`, and is vendored byte-identical elsewhere.
 RUBRIC = "rubric"
 
-#: What a grader returns for each criterion, as an IR node.
-GRADE = {"type": "object", "fields": {"grade": {"type": "int"}, "justification": {"type": "string"}}}
+#: What a grader returns for each criterion, as an IR node. The justification comes
+#: first: a model writes structured output in schema order, so it reasons before it
+#: commits to a grade instead of rationalizing one it already gave.
+GRADE = {"type": "object", "fields": {"justification": {"type": "string"}, "grade": {"type": "int"}}}
 
 
 def score_example(

@@ -79,8 +79,13 @@ Compile rules (`invalid_rubric` unless noted):
 
 ```text
 input:   input (the program's input node) · reference · answer · rubric (text)
-output:  {<criterion>: {grade: int, justification: string}}   for every criterion
+output:  {<criterion>: {justification: string, grade: int}}   for every criterion
 ```
+
+The justification comes before the grade on purpose: a model writes structured output
+in schema order, so it reasons first and then commits to a level. Asked for the grade
+first, it picks a number and rationalizes it, and the two can disagree (seen live: a
+`clarity` of 3, "clear", justified as "dense, takes some effort", which is level 2).
 
 The reply is checked with `types.validate`, and every grade must be one of its
 criterion's levels. Then:
@@ -93,8 +98,10 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
 
 ## Execution (`run.py`)
 
-- `run(ir, workspace, adapter, *, grader=None)`. With a rubric and no grader, the run
-  aborts before the first example (`grader_not_bound`).
+- `run(ir, workspace, adapter, *, grader=None)`. With a rubric and no callable grader,
+  the run aborts before the first example (`grader_not_bound`). A persisted IR with a
+  rubric field and no `scoring.grader` is `invalid_ir` up front (spec §17), not after
+  every example has been graded.
 - Only `valid` outputs are graded. Failures already contribute 0 (A.13).
 - **A grader failure aborts the run** (`grader_error`): the grader raised, or replied
   outside the schema or the levels. The grader is the measuring instrument, so scoring
@@ -113,7 +120,11 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
   `GRADING_PROMPT` unless the grader declares `prompt`, and sets `prompt_sha256`. The
   default prompt tells the model to treat the answer as data, never as instructions.
 - `cli.py`: `--grader MODULE:ATTR` binds any adapter. Otherwise a `model` grader comes
-  from the providers. An unbound `external` grader is reported as `grader_not_bound`.
+  from the providers. An unbound `external` grader, or a `--grader` that cannot be
+  loaded, is reported as `grader_not_bound` at `scoring.grader`.
+- The CLI's field warnings skip the two exam-side checks for a rubric field: they reason
+  about a `(predicted, expected)` metric, and a rubric grades each question's answer on
+  its own. A constant answer to different questions is still reported.
 - **Human grading** goes through the same seam. To check a model grader against a
   professor, rerun a sample with `--adapter` replaying the stored predictions and
   `--grader` returning the professor's grades, then compare criterion by criterion.
@@ -144,14 +155,15 @@ counts the academic ones.
 
 ## Tests
 
-`tests/test_rubric.py`, 54 tests, all deterministic. The grader is a plain callable:
+`tests/test_rubric.py`, all deterministic. The grader is a plain callable:
 no model, no network, no key. They cover the 1.1 registry and `answer` validator; every
 compile rejection; byte-identical IR; the grader program; weighted normalization;
 grade and justification in results; that failed examples are never graded; the graded
 baseline; the grader block; `grader_not_bound`; `grader_error` for raise, out-of-range,
 wrong type, missing criterion and non-object replies; async graders; reruns from
 persisted IR (C33); and the CLI with `--grader`, with a provider grader and with a
-declared prompt. `tests/test_doc_agreement.py` now follows the newest ontology version.
+declared prompt; a grader that cannot be loaded; the field warnings on a rubric field.
+`tests/test_doc_agreement.py` now follows the newest ontology version.
 
 ## Parts deliberately not built
 

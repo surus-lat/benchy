@@ -114,7 +114,7 @@ Rubric fields:
 - The grader is invoked through the adapter protocol (§11) with
   `{input, reference, answer, rubric}` — the example input, the expected value of the
   field, the validated prediction for it, and the rubric as text — and MUST return
-  `{<criterion>: {grade: int, justification: string}}` for every criterion, each grade
+  `{<criterion>: {justification: string, grade: int}}` for every criterion, each grade
   one of that criterion's levels.
 - The field score is \(\sum_k w_k r_k / \sum_k w_k\) with
   \(r_k = (g_k - g_{k,\min}) / (g_{k,\max} - g_{k,\min})\).

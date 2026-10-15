@@ -78,8 +78,10 @@ your message, which is more useful than a fabricated answer.
 A rubric benchmark's grader is bound the same way (`--grader MODULE:ATTR`). It receives
 `{input, reference, answer, rubric}` — the question as the system saw it, the answer key,
 the answer, the rubric as text — and returns
-`{<criterion>: {"grade": int, "justification": str}}` for every criterion. A grader that
-looks up a professor's grades is a valid one; it is how a model grader gets checked.
+`{<criterion>: {"justification": str, "grade": int}}` for every criterion. If your grader
+is a model, ask for the justification first: it then reasons before it picks a level,
+instead of justifying a number it already gave. A grader that looks up a professor's
+grades is a valid one; it is how a model grader gets checked.
 Optionally set `prompt_sha256` on it so results record which instruction graded the run.
 Unlike an examinee's, a grader's failure aborts the run, so retry transient errors inside it.
 

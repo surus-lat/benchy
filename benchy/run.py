@@ -64,8 +64,8 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object, *, grader: ob
     output_schema = ir["program"]["output"]
     dimensions = ir["scoring"]["dimensions"]
     rubrics = [d for d in dimensions if d.get("metric") == score.RUBRIC]
-    if rubrics and grader is None:
-        raise BenchyError("runtime", "grader_not_bound", "this benchmark has rubric fields and no grader is bound", ["scoring", "grader"])
+    if rubrics and not callable(getattr(grader, "invoke", grader)):
+        raise BenchyError("runtime", "grader_not_bound", "this benchmark has rubric fields and no callable grader is bound", ["scoring", "grader"])
     grade = _grading(ir, grader) if rubrics else None
 
     def resolve_output(reference: str, field: tuple[str, ...]) -> str:
@@ -264,3 +264,6 @@ def _check_ir(ir: Mapping) -> None:
     for key in ("dimensions", "evaluator", "instance_aggregator", "benchmark_aggregator"):
         if key not in ir["scoring"]:
             raise BenchyError("runtime", "invalid_ir", f"IR scoring is missing {key!r}", ["scoring"])
+    # Checked here, not when the report is written: by then every example is graded.
+    if any(d.get("metric") == score.RUBRIC for d in ir["scoring"]["dimensions"]) and "grader" not in ir["scoring"]:
+        raise BenchyError("runtime", "invalid_ir", "IR scoring has a rubric field and no 'grader'", ["scoring"])

@@ -198,3 +198,11 @@ def test_the_cli_works_for_external_adapters_without_the_providers_extra(bench, 
     monkeypatch.setitem(sys.modules, "llm_client", None)
     assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'system.py'}:extractor") == 0
     assert json.loads(capsys.readouterr().out)["summary"]["examples"] == 2
+
+
+def test_an_adapter_file_whose_imports_fail_is_a_setup_error_not_a_traceback(bench, capsys):
+    (bench / "broken.py").write_text("import a_dependency_this_environment_lacks\n")
+    assert cli("run", bench / "benchmark.yaml", "--adapter", f"{bench / 'broken.py'}:extractor") == 1
+    error = json.loads(capsys.readouterr().err)
+    assert error["code"] == "adapter_not_bound"
+    assert "a_dependency_this_environment_lacks" in error["message"]

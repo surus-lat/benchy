@@ -1230,8 +1230,8 @@ A rubric field's entry in `field_scores` also carries every criterion's grade an
   "score": 0.8125,
   "weight": 1,
   "criteria": {
-    "accuracy": {"grade": 4, "justification": "..."},
-    "clarity": {"grade": 1, "justification": "..."}
+    "accuracy": {"justification": "...", "grade": 4},
+    "clarity": {"justification": "...", "grade": 1}
   }
 }
 ```
