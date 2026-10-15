@@ -578,3 +578,6 @@ Live: Together, DeepSeek-V4.1-Flash answering `examples/exam-qa`, Llama-3.3-70B 
   ("clear") justified as "dense, takes some effort", which is level 2. `score.GRADE` now
   asks for the justification first; the prompt, and so `prompt_sha256`, is unchanged.
 - The `ontology.py` note listing domains and tasks was stale since #38 and #39.
+- From CodeRabbit on #40: an adapter or grader *file* that exists but imports a missing
+  dependency escaped `benchy run` as a traceback (the dotted-module path already caught
+  it). `_load_adapter` now reports it as a setup error for both flags.

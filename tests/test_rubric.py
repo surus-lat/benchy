@@ -435,9 +435,10 @@ def test_cli_external_grader_without_the_flag_is_a_setup_error(bench, capsys):
     assert json.loads(capsys.readouterr().err)["code"] == "grader_not_bound"
 
 
-@pytest.mark.parametrize("spec", ["people.py", "missing.py:professor", "people.py:nobody"])
+@pytest.mark.parametrize("spec", ["people.py", "missing.py:professor", "people.py:nobody", "broken.py:professor"])
 def test_cli_a_grader_that_cannot_be_loaded_is_reported_as_the_grader(bench, capsys, spec):
-    """Not as `--adapter`, which loaded fine."""
+    """Not as `--adapter`, which loaded fine, and never as a traceback."""
+    (bench / "broken.py").write_text("import a_dependency_this_environment_lacks\n")
     argv = ["run", str(bench / "benchmark.yaml"), "--adapter", f"{bench / 'people.py'}:student", "--grader", str(bench / spec)]
     assert main(argv) == 1
     error = json.loads(capsys.readouterr().err)

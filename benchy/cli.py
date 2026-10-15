@@ -245,17 +245,18 @@ def _load_adapter(spec: str, flag: str = "--adapter") -> object:
     if not separator or not module_name or not attribute:
         raise BenchyError("runtime", "adapter_not_bound", f"{flag} must be MODULE:ATTR, got {spec!r}")
     source = Path(module_name)
-    if source.suffix == ".py":
-        if not source.is_file():
-            raise BenchyError("runtime", "adapter_not_bound", f"no such adapter module: {source}")
-        spec_obj = importlib.util.spec_from_file_location(source.stem, source)
-        module = importlib.util.module_from_spec(spec_obj)
-        spec_obj.loader.exec_module(module)
-    else:
-        try:
+    if source.suffix == ".py" and not source.is_file():
+        raise BenchyError("runtime", "adapter_not_bound", f"no such adapter module: {source}")
+    try:
+        if source.suffix == ".py":
+            spec_obj = importlib.util.spec_from_file_location(source.stem, source)
+            module = importlib.util.module_from_spec(spec_obj)
+            spec_obj.loader.exec_module(module)
+        else:
             module = importlib.import_module(module_name)
-        except ImportError as exc:
-            raise BenchyError("runtime", "adapter_not_bound", f"cannot import {module_name!r}: {exc}") from None
+    except ImportError as exc:
+        # A file that exists can still import a dependency this environment lacks.
+        raise BenchyError("runtime", "adapter_not_bound", f"cannot import {module_name!r}: {exc}") from None
     if not hasattr(module, attribute):
         raise BenchyError("runtime", "adapter_not_bound", f"{module_name!r} has no attribute {attribute!r}")
     return getattr(module, attribute)
