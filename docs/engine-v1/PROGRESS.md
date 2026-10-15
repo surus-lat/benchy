@@ -581,3 +581,27 @@ Live: Together, DeepSeek-V4.1-Flash answering `examples/exam-qa`, Llama-3.3-70B 
 - From CodeRabbit on #40: an adapter or grader *file* that exists but imports a missing
   dependency escaped `benchy run` as a traceback (the dotted-module path already caught
   it). `_load_adapter` now reports it as a setup error for both flags.
+
+## 2026-10-15 — grader identity and the diagnostics a long run needs (branch `fix/grader-identity-diagnostics`)
+
+Follows an analysis of the two open points left by #40 (grader identity; one grader
+failure aborting the whole run), with live probes on Together, a survey of nine
+evaluation frameworks, and an adversarial review.
+
+- **`grader.system` recorded the declared grader even when another one graded.** The
+  offline example reported `gpt-5-mini` for a keyword matcher, and a professor's
+  calibration rerun was filed under the model. Now it is what the bound grader states
+  (`system`), else the declaration. A grader bound in place of a `model` declaration
+  that states nothing aborts before the first example (`grader_not_bound`): recording
+  `null` instead was rejected, because two unnamed graders would compare as equal.
+  `for_grader` states its declaration; the example's stand-in calls itself
+  `keyword-stand-in`. Spec §16's MUST and paper A.14 say so, pinned by a test.
+- **`llm_client`'s warnings never reached the terminal.** `providers.py` installs a
+  `NullHandler` (a library does not print), and the CLI configured nothing, so a retry
+  would wait in silence. `benchy` now shows them on stderr for the length of a command.
+- **A starved grader was told to fix `ai-system.parameters`.** The token-limit and
+  dropped-parameter messages now name the declaration they came from
+  (`scoring.grader.parameters` for the grader). Seen live: Qwen3.5-9B as grader ran out
+  of tokens reasoning about an empty answer.
+- **`llm-client` was unpinned**: every install took whatever its `main` was. Pinned to a
+  commit.

@@ -4,6 +4,9 @@
 vaguely. `grader` is a deliberately crude stand-in for the model grader the benchmark
 declares: it grades accuracy by how many of the key's terms the answer uses. Real
 grading needs a model or a professor; this shows the contract, not the judgment.
+
+Because it replaces the declared model grader, it says who it is (`grader.system`), and
+the result records it under that name rather than the model's.
 """
 
 import re
@@ -38,3 +41,6 @@ def grader(graded):
         "argument": {"grade": argument, "justification": why},
         "clarity": {"grade": clarity, "justification": "answered" if graded["answer"] else "no answer"},
     }
+
+
+grader.system = {"type": "external", "id": "keyword-stand-in"}

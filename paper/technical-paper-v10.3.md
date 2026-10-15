@@ -1245,6 +1245,8 @@ A rubric field's entry in `field_scores` also carries every criterion's grade an
 
 `prompt_sha256` fingerprints the grader's effective instruction, or is `null` when its adapter cannot state one (a human grader, for instance). It is run metadata in the sense of A.10: it changes what a score means without changing the benchmark.
 
+`system` is the grader that graded: the declared `scoring.grader`, unless the bound grader states its own `system`. A grader bound in place of a `model` declaration is another grader, so it must state one, or the run aborts before its first example with `grader_not_bound` instead of recording the model's name over another grader's grades. A professor who regrades a model-graded exam is therefore recorded under their own name.
+
 ## A.15 Dataset failures
 
 Dataset failures are run-level benchmark errors rather than example scores.

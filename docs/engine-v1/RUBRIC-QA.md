@@ -110,8 +110,12 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
 - **Baseline**: the empty answer is graded once per question with the same grader, so
   the baseline is measured like every other one. It is also a free calibration check: a
   grader that gives an empty answer more than the floor is visibly broken.
-- The result gains `grader: {system, prompt_sha256}` when a rubric exists.
-  `prompt_sha256` comes from the grader adapter if it states one, else `null`.
+- The result gains `grader: {system, prompt_sha256}` when a rubric exists. Both come
+  from the bound grader when it states them; `system` otherwise falls back to the
+  declaration, and `prompt_sha256` to `null`. A grader bound in place of a `model`
+  declaration must state its `system`, or the run aborts before the first example
+  (`grader_not_bound`): it is another grader, and the result must not file its grades
+  under the model's name. `for_grader` states the declaration it implements.
 
 ## Outside the core
 
@@ -127,7 +131,9 @@ The field's `field_scores` entry keeps `criteria`: every grade and justification
   its own. A constant answer to different questions is still reported.
 - **Human grading** goes through the same seam. To check a model grader against a
   professor, rerun a sample with `--adapter` replaying the stored predictions and
-  `--grader` returning the professor's grades, then compare criterion by criterion.
+  `--grader` returning the professor's grades, then compare criterion by criterion. The
+  professor's grader states who it is (`system = {"type": "external", "id": ...}`), so
+  the two results name two graders.
 
 ## What changed
 

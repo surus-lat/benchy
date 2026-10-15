@@ -66,6 +66,11 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object, *, grader: ob
     rubrics = [d for d in dimensions if d.get("metric") == score.RUBRIC]
     if rubrics and not callable(getattr(grader, "invoke", grader)):
         raise BenchyError("runtime", "grader_not_bound", "this benchmark has rubric fields and no callable grader is bound", ["scoring", "grader"])
+    if rubrics and ir["scoring"]["grader"]["type"] == "model" and not hasattr(grader, "system"):
+        # A model declaration names exactly one grader. Anything bound in its place is
+        # another one, and must say which before the result records it under a name.
+        message = "scoring.grader is a model and the bound grader is not it: give it a `system` naming it"
+        raise BenchyError("runtime", "grader_not_bound", message, ["scoring", "grader"])
     grade = _grading(ir, grader) if rubrics else None
 
     def resolve_output(reference: str, field: tuple[str, ...]) -> str:
@@ -131,9 +136,10 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object, *, grader: ob
         "results": results,
     }
     if rubrics:
-        # Scores are comparable only under the same grader: record which one, and the
-        # fingerprint of its prompt when its adapter can state one (A.10 run metadata).
-        report["grader"] = {"system": ir["scoring"]["grader"], "prompt_sha256": getattr(grader, "prompt_sha256", None)}
+        # Scores are comparable only under the same grader: record the one that graded
+        # (the declaration, unless the bound grader states another) and the fingerprint
+        # of its prompt when its adapter can state one (A.10 run metadata).
+        report["grader"] = {"system": getattr(grader, "system", ir["scoring"]["grader"]), "prompt_sha256": getattr(grader, "prompt_sha256", None)}
     return report
 
 

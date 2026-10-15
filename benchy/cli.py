@@ -15,7 +15,8 @@ only the runtime knows what that identifier means.
 
 `--grader module:attr` binds a rubric's grader the same way, and may likewise be
 omitted when `scoring.grader.type` is `model`. A grader can be anything adapter-shaped,
-including one that looks up a professor's grades.
+including one that looks up a professor's grades; one that replaces a declared model
+grader states its `system`, so the result names the grader that graded.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import asyncio
 import importlib
 import importlib.util
 import json
+import logging
 import sys
 from collections import Counter
 from collections.abc import Mapping
@@ -60,11 +62,18 @@ def main(argv: list[str] | None = None) -> int:
     run_verb.add_argument("-o", "--output", type=Path, help="write the result here instead of stdout")
 
     args = parser.parse_args(argv)
+    # The transport says when it is waiting to retry a provider; a run that waits in
+    # silence looks hung. providers.py leaves the choice to the host, and this is the host.
+    transport = logging.StreamHandler(sys.stderr)
+    transport.setFormatter(logging.Formatter("llm_client %(levelname)s: %(message)s"))
+    logging.getLogger("llm_client").addHandler(transport)
     try:
         return _compile(args) if args.verb == "compile" else _run(args)
     except BenchyError as exc:
         print(json.dumps(exc.to_dict(), indent=2), file=sys.stderr)
         return 1
+    finally:
+        logging.getLogger("llm_client").removeHandler(transport)
 
 
 def _compile(args: argparse.Namespace) -> int:

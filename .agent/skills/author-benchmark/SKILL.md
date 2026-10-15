@@ -93,7 +93,11 @@ scoring:
   grader. Before trusting a model grader, have a professor grade a sample of the *same*
   answers: rerun that sample with `--adapter` replaying the stored predictions from the
   model-graded result and `--grader` returning the professor's grades, then compare the
-  two results criterion by criterion.
+  two results criterion by criterion. The professor's grader states its `system`, so
+  the second result is filed under the professor, not the model.
+- **A reasoning model as grader needs room to think.** It spends tokens reasoning
+  before it writes the grades, and one that runs out aborts the run. Give it
+  `parameters: {max_tokens: ...}` in `scoring.grader` generously.
 - **One rubric field per benchmark.**
 
 See `examples/exam-qa/`.

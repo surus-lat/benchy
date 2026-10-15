@@ -273,9 +273,11 @@ error
 
 A rubric field's entry in `field_scores` MUST also carry `criteria`: every criterion's
 `grade` and `justification` as the grader returned them. A run of a rubric benchmark
-MUST also contain `grader.system` (the compiled `scoring.grader`) and
-`grader.prompt_sha256` (the SHA-256 of the grader's effective prompt, or null when its
-adapter cannot state one).
+MUST also contain `grader.system` (the grader that graded: the compiled `scoring.grader`,
+unless the bound grader states its own `system`) and `grader.prompt_sha256` (the SHA-256
+of the grader's effective prompt, or null when its adapter cannot state one). A grader
+bound in place of a `model` declaration MUST state its `system`; otherwise the runtime
+MUST abort with `grader_not_bound` before evaluating any example.
 
 ## 17. JSON IR
 
