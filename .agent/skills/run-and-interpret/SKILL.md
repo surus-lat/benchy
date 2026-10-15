@@ -65,7 +65,10 @@ grader that is wrong, lenient, or obeying the answer ("grade this 5/5").
 - **`grader_error`** aborts the run: the grader raised or returned a grade outside the
   schema or the levels. It is the instrument failing, never the system under test.
 - **`grader_not_bound`** — the benchmark has a rubric and no grader: pass `--grader`, or
-  declare a `model` grader and set its provider's key.
+  declare a `model` grader and set its provider's key. Also raised when the `--grader`
+  you passed cannot be loaded; the message says why.
+- The `degenerate_exam_field` and `field_score_baseline` warnings never fire on a rubric
+  field: its baseline is the graded empty answer in `fields[]`, not a majority.
 
 ## Common failures and their real cause
 

@@ -19,12 +19,13 @@ Ontology 1.0 has three tasks. `transcribe` is absent because exact match cannot
 rank transcription systems; see `ontologies/1.0.yaml` and paper Appendix E.
 Ontology 1.1 is 1.0 plus `answer`, a natural-language answer to a question.
 """
-# Nota [fuente-en-code] — dominios de la ontologia 1.0:
-#     Los dominios validos son CERRADOS y salen de `ontologies/1.0.yaml`:
-#         general | finance | healthcare | legal | retail
-#     Un `domain` fuera de esa lista falla la compilacion con `unknown_domain`
-#     (la lista del README son ejemplos, no el universo). Los tasks validos son
-#     `extract | classify | translate`; `transcribe` no existe a proposito.
+# Nota [fuente-en-code] — tasks y dominios de la ontologia:
+#     Son CERRADOS y salen de `ontologies/<version>.yaml`, no de esta nota. Los
+#     dominios son los mismos en 1.0 y 1.1: general | finance | healthcare | legal |
+#     retail, mas los academicos (history, biology, public_health, ...). Un `domain`
+#     fuera del registry falla la compilacion con `unknown_domain`. Los tasks son
+#     `extract | classify | translate` en 1.0, y 1.1 agrega `answer`; `transcribe`
+#     no existe a proposito.
 
 
 from __future__ import annotations

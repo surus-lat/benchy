@@ -557,3 +557,24 @@ For university exams for AI-systems. Design and decisions: `docs/engine-v1/RUBRI
   the field-metrics work, which never reached the paper or spec) and the rubric.
   `test_doc_agreement` follows the newest ontology and pins spec §6's metric list.
 - `examples/exam-qa` runs offline with a stand-in grader. Suite: 520 passed.
+
+## 2026-10-14 — review of rubric QA after merge (branch `fix/rubric-qa-review`)
+
+A second pass over #39 on `main`, which by then also carried #34's field warnings.
+Live: Together, DeepSeek-V4.1-Flash answering `examples/exam-qa`, Llama-3.3-70B grading.
+
+- **CLI warnings lied about a rubric field.** `degenerate_exam_field` ("a constant
+  predictor scores 1.0") fired on an exam whose answer keys are all empty, and
+  `field_score_baseline` ("a majority-only predictor scores 0.333") fired on the shipped
+  3-question example, both next to a measured baseline of 0.0. Both reason about a
+  `(predicted, expected)` metric; a rubric field now gets only the constant-answer check.
+- **A persisted IR with a rubric and no `scoring.grader`** graded every example, then
+  died with a bare `KeyError` writing the report. `_check_ir` now rejects it up front
+  (`invalid_ir`), as spec §17 already required.
+- **`--grader` errors named `--adapter`.** A malformed or missing `--grader`, or a
+  non-callable grader, was `adapter_not_bound` with no path. Now `grader_not_bound` at
+  `scoring.grader`.
+- **The grader wrote its grade before its justification.** Seen live: `clarity` 3
+  ("clear") justified as "dense, takes some effort", which is level 2. `score.GRADE` now
+  asks for the justification first; the prompt, and so `prompt_sha256`, is unchanged.
+- The `ontology.py` note listing domains and tasks was stale since #38 and #39.

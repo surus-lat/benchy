@@ -146,6 +146,11 @@ def _warn_if_uninformative_field(result: dict, ir: Mapping, workspace: Path | st
     - the field is perfect in every valid example over a small alphabet: the score has to be
       read next to the trivial majority baseline, which is printed.
 
+    A rubric field gets only the second check. Its score is a grade for the answer to *this*
+    question, not a function of `(predicted, expected)`, so a constant answer key does not
+    hand a constant predictor 1.0, and its baseline is the graded empty answer the report
+    already carries, not a majority.
+
     The exam is streamed a second time -- one row of memory, no adapter call. The
     distributions are bounded by the report, which already holds every prediction. This is a
     warning on stderr and never a key in the report, whose shape is a pinned contract.
@@ -155,6 +160,7 @@ def _warn_if_uninformative_field(result: dict, ir: Mapping, workspace: Path | st
     if len(valid) < 2:
         return
     dimensions = [tuple(dimension["path"]) for dimension in ir["scoring"]["dimensions"]]
+    graded = {tuple(d["path"]) for d in ir["scoring"]["dimensions"] if d.get("metric") == score.RUBRIC}
     counts = {path: Counter() for path in dimensions}
     rows = 0
     for _, _, expected in data.examples(ir, workspace):
@@ -165,7 +171,7 @@ def _warn_if_uninformative_field(result: dict, ir: Mapping, workspace: Path | st
         name = ".".join(path)
         distribution = _distribution(counts[path], rows)
         predicted = {_seen(score.value_at(item["prediction"], path)) for item in valid}
-        if len(counts[path]) == 1:
+        if len(counts[path]) == 1 and path not in graded:
             print(
                 f"warning: degenerate_exam_field — every example's expected value for field "
                 f"{name} is {next(iter(counts[path]))} ({distribution}): the field cannot "
@@ -180,6 +186,8 @@ def _warn_if_uninformative_field(result: dict, ir: Mapping, workspace: Path | st
                 f"value there: {distribution}. A constant prediction does not measure the field",
                 file=sys.stderr,
             )
+            continue
+        if path in graded:
             continue
         scores = [
             field["score"]
@@ -202,10 +210,14 @@ def _grader(spec: str | None, ir: dict, workspace: Path) -> object:
     """The bound grader: named explicitly, else a built-in provider for a model grader.
 
     None when the benchmark has no grader, or an external one nobody bound; the engine
-    reports the second as `grader_not_bound` before evaluating anything.
+    reports the second as `grader_not_bound` before evaluating anything. A `--grader` that
+    cannot be loaded is not bound either, and is reported where the grader is declared.
     """
     if spec:
-        return _load_adapter(spec)
+        try:
+            return _load_adapter(spec, "--grader")
+        except BenchyError as exc:
+            raise BenchyError("runtime", "grader_not_bound", exc.message, ["scoring", "grader"]) from None
     if ir["scoring"].get("grader", {}).get("type") == "model":
         return providers.for_grader(ir, workspace)
     return None
@@ -227,11 +239,11 @@ def _emit(document: dict, output: Path | None) -> int:
     return 0
 
 
-def _load_adapter(spec: str) -> object:
+def _load_adapter(spec: str, flag: str = "--adapter") -> object:
     """Import `module:attr`, where `module` is a dotted name or a .py file path."""
     module_name, separator, attribute = spec.rpartition(":")
     if not separator or not module_name or not attribute:
-        raise BenchyError("runtime", "adapter_not_bound", f"--adapter must be MODULE:ATTR, got {spec!r}")
+        raise BenchyError("runtime", "adapter_not_bound", f"{flag} must be MODULE:ATTR, got {spec!r}")
     source = Path(module_name)
     if source.suffix == ".py":
         if not source.is_file():

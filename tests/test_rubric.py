@@ -15,7 +15,7 @@ import pytest
 from conftest import edit
 
 from benchy import ontology, score
-from benchy.cli import main
+from benchy.cli import _warn_if_uninformative_field, main
 from benchy.compiler import compile_benchmark
 from benchy.errors import BenchyError
 from benchy.run import run
@@ -254,6 +254,11 @@ def test_the_grader_program_is_an_ordinary_ir_program_with_one_grade_per_criteri
     assert program["output"] == {"type": "object", "fields": {"accuracy": score.GRADE, "clarity": score.GRADE}}
 
 
+def test_the_grader_justifies_before_it_grades():
+    """A model writes structured output in schema order; graded first, it rationalizes the number."""
+    assert list(score.GRADE["fields"]) == ["justification", "grade"]
+
+
 def test_each_criterion_maps_linearly_and_the_criteria_combine_by_weight():
     criteria = IR["scoring"]["dimensions"][0]["params"]["criteria"]
 
@@ -338,12 +343,24 @@ async def test_a_result_without_a_rubric_has_no_grader_block(tmp_path):
     assert "grader" not in result
 
 
-async def test_a_rubric_run_without_a_grader_aborts_before_any_example(tmp_path):
+@pytest.mark.parametrize("grader", [None, "not a callable"])
+async def test_a_rubric_run_without_a_grader_aborts_before_any_example(tmp_path, grader):
     calls = []
     with pytest.raises(BenchyError) as exc:
-        await execute(tmp_path, lambda i: calls.append(i) or {"answer": "good"}, None)
+        await execute(tmp_path, lambda i: calls.append(i) or {"answer": "good"}, grader)
     assert (exc.value.code, exc.value.path) == ("grader_not_bound", ["scoring", "grader"])
     assert calls == []
+
+
+async def test_a_persisted_rubric_ir_without_its_grader_is_rejected_before_any_call(tmp_path):
+    """Spec §17. Unchecked, every example was graded and the run then failed writing the report."""
+    persisted = json.loads(json.dumps(IR))
+    del persisted["scoring"]["grader"]
+    grader = Grader()
+    with pytest.raises(BenchyError) as exc:
+        await execute(tmp_path, lambda _: {"answer": "good"}, grader, ir=persisted)
+    assert exc.value.code == "invalid_ir"
+    assert grader.calls == []
 
 
 @pytest.mark.parametrize("reply", [
@@ -418,6 +435,41 @@ def test_cli_external_grader_without_the_flag_is_a_setup_error(bench, capsys):
     assert json.loads(capsys.readouterr().err)["code"] == "grader_not_bound"
 
 
+@pytest.mark.parametrize("spec", ["people.py", "missing.py:professor", "people.py:nobody"])
+def test_cli_a_grader_that_cannot_be_loaded_is_reported_as_the_grader(bench, capsys, spec):
+    """Not as `--adapter`, which loaded fine."""
+    argv = ["run", str(bench / "benchmark.yaml"), "--adapter", f"{bench / 'people.py'}:student", "--grader", str(bench / spec)]
+    assert main(argv) == 1
+    error = json.loads(capsys.readouterr().err)
+    assert (error["code"], error["path"]) == ("grader_not_bound", ["scoring", "grader"])
+    assert "--adapter" not in error["message"]
+
+
+def perfect(graded):
+    grades = (5, 1) if graded["answer"] else (1, 0)
+    return {"accuracy": {"grade": grades[0], "justification": "ok"}, "clarity": {"grade": grades[1], "justification": "ok"}}
+
+
+@pytest.mark.parametrize("keys", [["", "", ""], ["key0", "key1", "key2"]])
+async def test_cli_warnings_that_reason_about_a_key_metric_skip_a_rubric_field(tmp_path, capsys, keys):
+    """One shared key hands no constant predictor 1.0, and a rubric's baseline is the graded empty answer.
+
+    Both warnings said otherwise: "a constant predictor scores 1.0", "a majority-only
+    predictor scores 0.333", next to a measured baseline of 0.
+    """
+    rows = [{"input": {"question": f"q{i}"}, "expected": {"answer": key}} for i, key in enumerate(keys)]
+    result = await execute(tmp_path, lambda inputs: {"answer": f"about {inputs['question']}"}, perfect, rows=rows)
+    assert (result["fields"][0]["score"], result["fields"][0]["baseline"]) == (1.0, 0.0)
+    _warn_if_uninformative_field(result, IR, tmp_path)
+    assert capsys.readouterr().err == ""
+
+
+async def test_cli_a_constant_answer_to_different_questions_is_still_reported(tmp_path, capsys):
+    result = await execute(tmp_path, lambda _: {"answer": "good"}, perfect)
+    _warn_if_uninformative_field(result, IR, tmp_path)
+    assert "degenerate_constant_field" in capsys.readouterr().err
+
+
 def test_cli_model_grader_comes_from_the_providers_with_the_grading_prompt(bench, monkeypatch):
     pytest.importorskip("llm_client")
     from benchy import providers
@@ -427,7 +479,9 @@ def test_cli_model_grader_comes_from_the_providers_with_the_grading_prompt(bench
     grader = providers.for_grader(ir, bench)
     assert grader.prompt == providers.GRADING_PROMPT
     assert grader.prompt_sha256 == __import__("hashlib").sha256(providers.GRADING_PROMPT.encode()).hexdigest()
-    assert set(grader.response_format["json_schema"]["schema"]["properties"]) == {"accuracy", "clarity"}
+    criteria = grader.response_format["json_schema"]["schema"]["properties"]
+    assert set(criteria) == {"accuracy", "clarity"}
+    assert list(criteria["accuracy"]["properties"]) == ["justification", "grade"]
 
 
 def test_a_declared_grader_prompt_replaces_the_default(bench, monkeypatch):
