@@ -16,6 +16,7 @@ isn't one. The whole of the execution semantics fits in `run.py`.
 | `VISION.md` | why benchy exists |
 | `docs/engine-v1/PLAN.md` | the rebuild's design decisions and what was deliberately not built |
 | `docs/engine-v1/PROGRESS.md` | append-only build log |
+| `TODO.md` | what is not done; §8 holds the grader and long-run analysis and the decisions not to reopen |
 
 The paper, the spec, the handoff and the shipped ontology registry are checked
 against each other by `tests/test_doc_agreement.py`. If you change the task
