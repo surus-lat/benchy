@@ -29,6 +29,14 @@ consumer reads it: `validate`, `leaves`, `equal` and the scoring dimensions walk
 `type`/`fields`/`values` only, so metadata can never move a score. It exists so
 the canonical declaration can carry the provenance annotations the producing
 pipelines already declare per field, without inventing a second channel.
+
+**Optional input fields.** A field name may carry one `?` suffix — `options?` —
+which compiles to the field's IR node plus `"optional": true`. A row may then omit
+the field (`validate` skips it instead of failing `missing_field`); a row that
+carries it is validated exactly as before, and an undeclared field still fails
+`extra_field`. The compiler restricts the marker to `program.input` (see
+`compiler._compile_program`): every output field is a scoring dimension on every
+row, so an optional output would leave a dimension without a value.
 """
 # Nota [fuente-en-code] — formas de declaracion en el YAML:
 #     Dos formas y ninguna mas:
@@ -39,6 +47,9 @@ pipelines already declare per field, without inventing a second channel.
 #     Un objeto anidado se declara por indentacion (el IR es {"type":"object",
 #     "fields":{...}}). Cada HOJA de salida necesita exactamente un peso en
 #     `scoring.weights`; el compilador no inyecta defaults.
+#     Un nombre con sufijo `?` (campo?: string) declara un campo OPCIONAL: la
+#     fila puede omitirlo. Solo vale en program.input — cada campo de salida
+#     es una dimension de scoring en todas las filas.
 
 
 from __future__ import annotations
@@ -118,6 +129,24 @@ _PARSE: dict[str, Callable[[str], object]] = {
 # compile: parsed YAML node -> IR node
 # ---------------------------------------------------------------------------
 
+def _split_optional(name: str, path: tuple[str, ...]) -> tuple[str, bool]:
+    """One trailing `?` marks an optional field (`options?` -> `options`, optional).
+
+    A schema written before the marker existed has no `?` in any field name, so it
+    compiles to the exact same IR as before.
+    """
+    if not name.endswith("?"):
+        return name, False
+    bare = name[:-1]
+    if not bare or bare.endswith("?"):
+        raise BenchyError(
+            "compile", "invalid_schema",
+            f"field name must be a non-empty string with at most one '?', got {name!r}",
+            list(path),
+        )
+    return bare, True
+
+
 def compile_schema(node: object, *, path: tuple[str, ...] = ()) -> dict:
     """Compile one parsed YAML schema node into its IR node.
 
@@ -152,7 +181,15 @@ def compile_schema(node: object, *, path: tuple[str, ...] = ()) -> dict:
         for name, child in node.items():
             if not isinstance(name, str) or not name:
                 raise BenchyError("compile", "invalid_schema", f"field name must be a non-empty string, got {name!r}", list(path))
-            fields[name] = compile_schema(child, path=path + (name,))
+            bare, optional = _split_optional(name, path)
+            if bare in fields:
+                raise BenchyError(
+                    "compile", "invalid_schema",
+                    f"field {bare!r} is declared twice (with and without '?')", list(path),
+                )
+            fields[bare] = compile_schema(child, path=path + (bare,))
+            if optional:
+                fields[bare]["optional"] = True
         return {"type": "object", "fields": fields}
 
     if node is None:
@@ -208,7 +245,15 @@ def _compile_declared(node: Mapping, path: tuple[str, ...]) -> dict:
                 raise BenchyError(
                     "compile", "invalid_schema", f"field name must be a non-empty string, got {name!r}", list(path)
                 )
-            compiled[name] = compile_schema(child, path=path + (name,))
+            bare, optional = _split_optional(name, path)
+            if bare in compiled:
+                raise BenchyError(
+                    "compile", "invalid_schema",
+                    f"field {bare!r} is declared twice (with and without '?')", list(path),
+                )
+            compiled[bare] = compile_schema(child, path=path + (bare,))
+            if optional:
+                compiled[bare]["optional"] = True
         ir = {"type": "object", "fields": compiled}
     if "critical" in node:
         critical = node["critical"]
@@ -299,6 +344,8 @@ def validate(
         out = {}
         for name, child in node["fields"].items():
             if name not in value:
+                if child.get("optional"):
+                    continue  # an optional field the row simply does not carry
                 raise BenchyError(phase, "missing_field", "required field is missing", list(path + (name,)))
             out[name] = validate(value[name], child, phase=phase, path=path + (name,), resolve=resolve)
         for extra in sorted(set(value) - set(node["fields"])):
@@ -374,7 +421,16 @@ def equal(a: object, b: object, node: Mapping) -> bool:
     """
     t = node["type"]
     if t == "object":
-        return all(equal(a[k], b[k], child) for k, child in node["fields"].items())
+        for key, child in node["fields"].items():
+            if key not in a or key not in b:
+                # An optional field only one value carries makes them different;
+                # absent from both, it is part of neither.
+                if key in a or key in b:
+                    return False
+                continue
+            if not equal(a[key], b[key], child):
+                return False
+        return True
     if t in _PARSE:
         return _PARSE[t](a) == _PARSE[t](b)
     if t in ARTIFACTS:

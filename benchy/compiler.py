@@ -127,7 +127,7 @@ def _require_keys(
 # scoring (spec §6)
 # ---------------------------------------------------------------------------
 
-def compile_scoring(section: object, output_ir: Mapping) -> dict:
+def compile_scoring(section: object, output_ir: Mapping, *, input_ir: Mapping | None = None) -> dict:
     """Compile `scoring` into fully explicit IR dimensions.
 
     The output schema's leaves are the scoring dimensions, so the weight tree must
@@ -144,6 +144,11 @@ def compile_scoring(section: object, output_ir: Mapping) -> dict:
     `metric: rubric` is the one graded metric (see `_compile_rubric`), allowed on one
     string field per benchmark; it requires `scoring.grader`, an AI-system
     definition, and `scoring.grader` requires it.
+
+    A field-metric entry may additionally carry `route: {<optional input field>:
+    <metric>}`: a row whose input carries that field scores by the routed metric
+    (e.g. casefold_strip), every other row by the field's own metric (e.g. rubric).
+    That is how one exam mixes multiple-choice rows with open-answer rows.
     """
     _require_keys(
         section, ("weights", "aggregator"), ["scoring"], optional=("field_metrics", "signal_epsilon", "grader"),
@@ -162,7 +167,7 @@ def compile_scoring(section: object, output_ir: Mapping) -> dict:
             ["scoring", "weights"],
         )
     if "field_metrics" in section:
-        _apply_field_metrics(section["field_metrics"], dimensions, output_ir)
+        _apply_field_metrics(section["field_metrics"], dimensions, output_ir, input_ir)
     ir: dict[str, Any] = {
         "evaluator": "exact_match",
         "dimensions": dimensions,
@@ -207,7 +212,9 @@ def _compile_signal_epsilon(value: object) -> float:
     return float(value)
 
 
-def _apply_field_metrics(field_metrics: object, dimensions: list[dict], output_ir: Mapping) -> None:
+def _apply_field_metrics(
+    field_metrics: object, dimensions: list[dict], output_ir: Mapping, input_ir: Mapping | None = None,
+) -> None:
     """Validate `scoring.field_metrics` against the registry and stamp the dimensions.
 
     Unknown metric -> `unknown_metric` carrying the field path; a non-enum-safe
@@ -233,14 +240,16 @@ def _apply_field_metrics(field_metrics: object, dimensions: list[dict], output_i
                 path,
             )
         spec = field_metrics[key]
-        _require_keys(spec, ("metric",), path, optional=("params",))
+        _require_keys(spec, ("metric",), path, optional=("params", "route"))
         name = spec["metric"]
         if name == score.RUBRIC:
-            _require_keys(spec, ("metric", "params"), path)
+            _require_keys(spec, ("metric", "params"), path, optional=("route",))
             if types.at(output_ir, key.split("."))["type"] != "string":
                 raise BenchyError("compile", "invalid_rubric", f"a rubric grades a string field; {key!r} is not one", path)
             dimension["metric"] = name
             dimension["params"] = {"criteria": _compile_rubric(spec["params"], path)}
+            if "route" in spec:
+                dimension["route"] = _compile_route(spec["route"], key, output_ir, input_ir, path)
             continue
         if name not in metrics.METRICS:
             raise BenchyError(
@@ -278,6 +287,58 @@ def _apply_field_metrics(field_metrics: object, dimensions: list[dict], output_i
                 )
         dimension["metric"] = name
         dimension["params"] = dict(params)
+        if "route" in spec:
+            dimension["route"] = _compile_route(spec["route"], key, output_ir, input_ir, path)
+
+
+def _compile_route(
+    route: object, field_key: str, output_ir: Mapping, input_ir: Mapping | None, path: list[str],
+) -> list[dict]:
+    """Per-row metric routing: `route: {options: casefold_strip}` scores a row by the
+    named metric when its input carries the (optional) field, by the field's own
+    metric when it does not. Compiled to an ordered list so resolution is the first
+    hit in sorted-field order, deterministic across compiles.
+    """
+    if not isinstance(route, Mapping) or not route:
+        raise BenchyError(
+            "compile", "invalid_value",
+            f"route for field {field_key!r} must map optional input fields to metrics", path,
+        )
+    if input_ir is None:
+        raise BenchyError("compile", "invalid_value", "a route needs the input schema to resolve against", path)
+    input_fields = input_ir.get("fields", {})
+    node = types.at(output_ir, field_key.split("."))
+    out = []
+    for name in sorted(route, key=str):
+        if not isinstance(name, str) or not name or name not in input_fields:
+            raise BenchyError("compile", "unknown_field", f"route key {name!r} is not an input field", path)
+        if not input_fields[name].get("optional"):
+            raise BenchyError(
+                "compile", "invalid_value",
+                f"routing needs an optional input field: {name!r} is required on every row", path,
+            )
+        metric = route[name]
+        if metric == score.RUBRIC:
+            raise BenchyError(
+                "compile", "invalid_rubric",
+                "a route cannot point at the rubric: the rubric is the field's own metric", path,
+            )
+        if not isinstance(metric, str) or metric not in metrics.METRICS:
+            raise BenchyError(
+                "compile", "unknown_metric",
+                f"unknown metric {metric!r} in the route for field {field_key!r}; "
+                f"the registry is closed: {', '.join(sorted(metrics.METRICS))}",
+                path,
+            )
+        if node["type"] == "enum" and metric not in metrics.ENUM_SAFE:
+            raise BenchyError(
+                "compile", "enum_unsafe_metric",
+                f"metric {metric!r} is not enum-safe: field {field_key!r} declares a closed vocabulary "
+                f"(enum-safe: {', '.join(sorted(metrics.ENUM_SAFE))})",
+                path,
+            )
+        out.append({"field": name, "metric": metric})
+    return out
 
 
 def _compile_rubric(params: object, path: list[str]) -> list[dict]:
@@ -379,7 +440,7 @@ def compile_benchmark(text: str, *, ontology_store: Any = None) -> dict:
     ontology.check_classification(benchmark, registry)                              # 5
     program = _compile_program(doc["program"])                                      # 6
     ontology.check_program(benchmark, program["input"], program["output"], registry) # 7
-    scoring = compile_scoring(doc["scoring"], program["output"])                     # 8, 9
+    scoring = compile_scoring(doc["scoring"], program["output"], input_ir=program["input"])  # 8, 9
     data = _compile_data(doc["data"])                                               # 10
     system = _compile_ai_system(doc["ai-system"])                                    # 11
     return {                                                                        # 12
@@ -405,7 +466,22 @@ def _compile_classification(section: object) -> dict:
 
 def _compile_program(section: object) -> dict:
     _require_keys(section, ("input", "output"), ["program"])
-    return {side: _compile_side(section[side], side) for side in ("input", "output")}
+    program = {side: _compile_side(section[side], side) for side in ("input", "output")}
+    _require_total_output(program["output"], ("program", "output"))
+    return program
+
+
+def _require_total_output(node: Mapping, path: tuple[str, ...]) -> None:
+    """Every output field is a scoring dimension on every row: `?` belongs to program.input."""
+    if node.get("optional"):
+        raise BenchyError(
+            "compile", "invalid_schema",
+            "optional fields belong to program.input: every output field is scored on every row",
+            list(path),
+        )
+    if node["type"] == "object":
+        for name, child in node["fields"].items():
+            _require_total_output(child, path + (name,))
 
 
 def _compile_side(node: object, side: str) -> dict:
