@@ -41,7 +41,7 @@ from collections.abc import Mapping, Sequence
 from benchy import metrics, types
 
 __all__ = [
-    "score_example", "benchmark_score", "value_at",
+    "score_example", "benchmark_score", "value_at", "dimension_metric",
     "RUBRIC", "GRADE", "grader_program", "grader_input", "rubric_score",
 ]
 
@@ -57,11 +57,16 @@ GRADE = {"type": "object", "fields": {"justification": {"type": "string"}, "grad
 
 def score_example(
     prediction: Mapping, expected: Mapping, ir: Mapping, grades: Mapping | None = None,
+    *, inputs: Mapping | None = None,
 ) -> tuple[list[dict], float]:
     """Return `(field_scores, instance_score)` for one valid prediction.
 
     `grades` maps a rubric dimension's path (as a tuple) to its grader's validated
     output, one `GRADE` per criterion; those are kept beside the field score.
+
+    `inputs` is the row's validated input: a dimension with a `route` resolves its
+    metric per row from it — a row carrying the routed input field scores by the
+    routed metric, so no rubric grade is asked for it.
 
     Dimensions are walked in IR order, which is output-schema order, so
     `field_scores` is deterministic across runs and machines. A dimension without a
@@ -72,7 +77,7 @@ def score_example(
     output_schema = ir["program"]["output"]
     field_scores = []
     for dimension in ir["scoring"]["dimensions"]:
-        name = dimension.get("metric", "exact")
+        name, params = dimension_metric(dimension, inputs)
         if name == RUBRIC:
             graded = grades[tuple(dimension["path"])]
             value = rubric_score(graded, dimension["params"]["criteria"])
@@ -83,11 +88,26 @@ def score_example(
         if name == "exact":
             value = 1.0 if types.equal(predicted, expected_value, types.at(output_schema, dimension["path"])) else 0.0
         else:
-            value = metrics.score(name, predicted, expected_value, dimension.get("params"))
+            value = metrics.score(name, predicted, expected_value, params)
         field_scores.append({"path": dimension["path"], "score": value, "weight": dimension["weight"]})
     # The compiler guarantees Σw > 0 (spec §6), so this cannot divide by zero.
     total = sum(f["weight"] for f in field_scores)
     return field_scores, sum(f["weight"] * f["score"] for f in field_scores) / total
+
+
+def dimension_metric(dimension: Mapping, inputs: Mapping | None = None) -> tuple[str, Mapping | None]:
+    """The metric one row scores under on this dimension.
+
+    The routed metric when the row's input carries the routed field (first hit in
+    the dimension's compiled route order), else the dimension's own metric —
+    `exact` when it declares none. `inputs=None` always yields the dimension's own,
+    which is how callers that predate routing see every dimension.
+    """
+    if inputs is not None:
+        for entry in dimension.get("route", []):
+            if entry["field"] in inputs:
+                return entry["metric"], entry.get("params")
+    return dimension.get("metric", "exact"), dimension.get("params")
 
 
 def benchmark_score(contributions: Sequence[float]) -> float:

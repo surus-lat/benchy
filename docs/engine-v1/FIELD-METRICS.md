@@ -31,6 +31,39 @@ scoring:
   exact match, so a benchmark without `field_metrics` compiles to the exact same IR
   as before — and scores identically (verified against `examples/invoices`).
 
+## Per-row routing: mixed exams (2026-11-08)
+
+One benchmark may mix question kinds — some rows open-answer (judged against the
+rubric), some multiple-choice (scored by exact match). Two mechanisms, both
+backward-compatible:
+
+- **Optional input fields.** `program.input` may declare a field with one `?`
+  suffix — `options?: {a: string, b: string, c: string, d: string}`. The IR node
+  carries `"optional": true`; a row that omits the field validates (it is skipped,
+  not stored), a row that carries it is validated exactly as before, and an
+  undeclared field still fails `extra_field`. The marker is rejected in
+  `program.output`: every output field is a scoring dimension on every row.
+- **`route` on a field-metric entry.** A `scoring.field_metrics` entry may carry
+  `route: {<optional input field>: <metric>}`:
+
+```yaml
+field_metrics:
+  answer:
+    metric: rubric
+    params: {criteria: {...}}
+    route: {options: casefold_strip}   # rows carrying `options` score by exact match
+```
+
+  A row whose input carries the routed field scores by the routed metric (drawn
+  from the closed registry — never `rubric`); every other row scores by the
+  field's own metric. Rows routed off the rubric are never sent to the grader,
+  and their baseline is the trivial prediction under the row's own metric instead
+  of the graded empty answer. Routing requires the input field to be **optional**:
+  a required field is present on every row, so routing on it would decide nothing.
+
+A benchmark without `?` or `route` compiles to byte-identical IR and scores
+exactly as before.
+
 ## Aggregation does not change
 
 `benchy/score.py` keeps the paper's aggregation: weighted mean per instance, mean of

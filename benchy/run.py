@@ -85,15 +85,24 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object, *, grader: ob
     # denominator discipline as the benchmark score).
     expected_by_field: dict[tuple, list] = {tuple(d["path"]): [] for d in dimensions}
     contrib_by_field: dict[tuple, list] = {tuple(d["path"]): [] for d in dimensions}
-    baseline_by_field: dict[tuple, list] = {tuple(d["path"]): [] for d in rubrics}
+    # Rubric and routed dimensions get their baseline per row: a row routed off the
+    # rubric is never graded, so its baseline is the trivial prediction scored under
+    # the row's own metric rather than the graded empty answer.
+    baselined = {tuple(d["path"]): d for d in dimensions if d.get("metric") == score.RUBRIC or "route" in d}
+    baseline_by_field: dict[tuple, list] = {path: [] for path in baselined}
 
     results: list[dict] = []
     for index, inputs, expected in data.examples(ir, root):
         for dimension in dimensions:
             expected_by_field[tuple(dimension["path"])].append(score.value_at(expected, dimension["path"]))
-        for dimension in rubrics:
-            empty = await grade(dimension, inputs, expected, "")
-            baseline_by_field[tuple(dimension["path"])].append(score.rubric_score(empty, dimension["params"]["criteria"]))
+        for path, dimension in baselined.items():
+            name, params = score.dimension_metric(dimension, inputs)
+            if name == score.RUBRIC:
+                empty = await grade(dimension, inputs, expected, "")
+                baseline_by_field[path].append(score.rubric_score(empty, dimension["params"]["criteria"]))
+            else:
+                node = types.at(output_schema, dimension["path"])
+                baseline_by_field[path].append(_baseline_score(name, params, node, [score.value_at(expected, dimension["path"])]))
         try:
             prediction = await invoke(inputs)
         except Exception as exc:  # noqa: BLE001 - any failure to produce an output
@@ -108,10 +117,13 @@ async def run(ir: Mapping, workspace: Path | str, adapter: object, *, grader: ob
                 contrib_by_field[tuple(dimension["path"])].append(0.0)
             results.append(_failed(index, "invalid_output", prediction, exc.to_dict()))
             continue
-        grades = {
-            tuple(d["path"]): await grade(d, inputs, expected, score.value_at(validated, d["path"])) for d in rubrics
-        }
-        field_scores, instance = score.score_example(validated, expected, ir, grades)
+        # A row routed off a rubric dimension is not graded: it scores by its routed
+        # metric, so the grader is never asked about it.
+        grades = {}
+        for d in rubrics:
+            if score.dimension_metric(d, inputs)[0] == score.RUBRIC:
+                grades[tuple(d["path"])] = await grade(d, inputs, expected, score.value_at(validated, d["path"]))
+        field_scores, instance = score.score_example(validated, expected, ir, grades, inputs=inputs)
         for field in field_scores:
             contrib_by_field[tuple(field["path"])].append(field["score"])
         results.append({
