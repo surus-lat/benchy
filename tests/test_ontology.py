@@ -168,3 +168,80 @@ def test_translate_accepts_extra_non_string_input_fields():
         "translate", domain="general", language={"source": "es", "target": "en"},
         inp={"text": "string", "page": "int"}, out={"translation": "string"},
     )
+
+
+# ---------------------------------------------------------------------------
+# audit (spec §5) — >=2 flat output leaves, each enum or bool (ontology 1.2)
+# ---------------------------------------------------------------------------
+
+def registry12():
+    return ontology.load("1.2")
+
+
+def check12(task, domain="healthcare", language="es", *, inp=None, out=None):
+    benchmark = {"task": task, "domain": domain, "language": language}
+    input_ir = compile_schema(inp or {"record": "string"})
+    output_ir = compile_schema(out or {"value": "string"})
+    ontology.check_classification(benchmark, registry12())
+    ontology.check_program(benchmark, input_ir, output_ir, registry12())
+
+
+def fails12(**kw) -> BenchyError:
+    with pytest.raises(BenchyError) as exc:
+        check12(**kw)
+    return exc.value
+
+
+def test_registry_1_2_loads_and_is_1_1_plus_audit():
+    r = registry12()
+    assert r["version"] == "1.2"
+    assert set(r["tasks"]) == {"extract", "classify", "translate", "answer", "audit"}
+    assert r["domains"] == registry()["domains"] or set(r["domains"]) >= set(registry()["domains"])
+    assert set(r["languages"]) == set(registry()["languages"])
+
+
+def test_audit_is_not_a_task_in_ontology_1_0():
+    assert fails(task="audit").code == "unknown_task"
+
+
+def test_audit_with_two_flat_enum_leaves_is_valid():
+    out = {
+        "decision": {"enum": ["accept", "reject"]},
+        "motivo": {"enum": ["no_aplica", "FaltaDiag"]},
+    }
+    check12("audit", out=out)
+
+
+def test_audit_accepts_bool_leaves_and_more_than_two():
+    out = {
+        "firma_ok": "bool",
+        "fecha_ok": "bool",
+        "motivo": {"enum": ["no_aplica", "DocIlegible"]},
+    }
+    check12("audit", out=out)
+
+
+def test_audit_with_one_enum_leaf_is_classify_not_audit():
+    out = {"decision": {"enum": ["accept", "reject"]}}
+    assert fails12(task="audit", out=out).code == "task_program_mismatch"
+
+
+def test_audit_rejects_a_non_categorical_leaf():
+    out = {
+        "decision": {"enum": ["accept", "reject"]},
+        "reasoning": "string",
+    }
+    assert fails12(task="audit", out=out).code == "task_program_mismatch"
+
+
+def test_audit_rejects_nested_output_leaves():
+    out = {"veredicto": {"decision": {"enum": ["accept", "reject"]},
+                          "motivo": {"enum": ["no_aplica", "FaltaDiag"]}}}
+    assert fails12(task="audit", out=out).code == "task_program_mismatch"
+
+
+def test_audit_accepts_any_input_schema():
+    check12(
+        "audit", inp={"page": "image", "record": "string"},
+        out={"ok": "bool", "motivo": {"enum": ["no_aplica", "DocIlegible"]}},
+    )

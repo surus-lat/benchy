@@ -328,7 +328,7 @@ Use arrays, not dotted strings, in IR and errors.
 
 ## 5. Task validators
 
-For ontology 1.1:
+For ontology 1.2:
 
 ### extract
 
@@ -353,7 +353,14 @@ No task-specific structural rule.
 - only output leaf is `string`;
 - any input.
 
-Ontology 1.0 is the same table without `answer`. `answer` is usually scored with
+### audit
+
+- output leaf count >= 2 (a one-leaf enum verdict is `classify`);
+- every output leaf is flat (depth one — a nested structure is `extract` with enum leaves);
+- every output leaf is enum or bool (a verdict slot is categorical).
+
+Ontology 1.1 is the same table without `audit`; ontology 1.0 without `audit` and
+`answer`. `answer` is usually scored with
 `metric: rubric` (spec §6), but task and scoring stay orthogonal: the validator checks
 the program, never how it is graded.
 
@@ -365,6 +372,7 @@ TASK_VALIDATORS_V1 = {
     "classify": validate_classify,
     "translate": validate_translate,
     "answer": validate_answer,
+    "audit": validate_audit,
 }
 ```
 

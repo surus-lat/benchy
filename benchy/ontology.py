@@ -18,14 +18,15 @@ a version token and rejects anything path-shaped.
 Ontology 1.0 has three tasks. `transcribe` is absent because exact match cannot
 rank transcription systems; see `ontologies/1.0.yaml` and paper Appendix E.
 Ontology 1.1 is 1.0 plus `answer`, a natural-language answer to a question.
+Ontology 1.2 is 1.1 plus `audit`, a categorical verdict of parallel slots.
 """
 # Nota [fuente-en-code] — tasks y dominios de la ontologia:
 #     Son CERRADOS y salen de `ontologies/<version>.yaml`, no de esta nota. Los
 #     dominios son los mismos en 1.0 y 1.1: general | finance | healthcare | legal |
 #     retail, mas los academicos (history, biology, public_health, ...). Un `domain`
 #     fuera del registry falla la compilacion con `unknown_domain`. Los tasks son
-#     `extract | classify | translate` en 1.0, y 1.1 agrega `answer`; `transcribe`
-#     no existe a proposito.
+#     `extract | classify | translate` en 1.0, 1.1 agrega `answer` y 1.2 agrega
+#     `audit`; `transcribe` no existe a proposito.
 
 
 from __future__ import annotations
@@ -191,6 +192,28 @@ def _answer_program(_input_ir: Mapping, output_ir: Mapping) -> None:
     _sole_output(output_ir, "string", "answer")
 
 
+def _audit_program(_input_ir: Mapping, output_ir: Mapping) -> None:
+    """A verdict of parallel categorical slots: >=2 flat leaves, each enum or bool.
+
+    Two leaves minimum keeps `audit` disjoint from `classify` (a one-leaf enum
+    verdict is a classification). Flat keeps the slots parallel — a nested
+    structure is an extraction with enum leaves, which `extract` already
+    expresses. Enum or bool because a verdict slot is categorical: a free-text
+    leaf would be scored by exact match it cannot survive, the same defect that
+    keeps `transcribe` out of the registry (paper Appendix E).
+    """
+    paths = types.leaves(output_ir)
+    kinds = [(path, types.at(output_ir, path)["type"]) for path in paths]
+    if len(kinds) < 2 or any(len(path) != 1 for path, _ in kinds) or any(
+        kind not in ("enum", "bool") for _, kind in kinds
+    ):
+        raise BenchyError(
+            "compile", "task_program_mismatch",
+            f"audit requires at least two flat output leaves, each enum or bool, got {kinds}",
+            ["program", "output"],
+        )
+
+
 #: Task validators keyed by ontology version, then task: one pair per task, holding
 #: its language rule (checked with the classification) and its program rule (checked
 #: after the program compiles). Adding ontology 1.1 means adding a registry YAML and
@@ -203,3 +226,4 @@ _VALIDATORS: dict[str, dict[str, tuple]] = {
     },
 }
 _VALIDATORS["1.1"] = {**_VALIDATORS["1.0"], "answer": (_one_language, _answer_program)}
+_VALIDATORS["1.2"] = {**_VALIDATORS["1.1"], "audit": (_one_language, _audit_program)}
