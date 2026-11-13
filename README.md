@@ -290,14 +290,19 @@ benchy/
   providers.py   an OpenAI-compatible adapter — outside the core, see below
 ```
 
-1449 lines of code, plus 265 in the optional provider adapter. There is exactly one
+<<<<<<< HEAD
+1461 lines of code, plus 265 in the optional provider adapter. There is exactly one
+=======
+1350 lines of code, plus 265 in the optional provider adapter. There is exactly one
+>>>>>>> f052df9 (ontology 1.2: audit task (registry + validator + docs + tests))
 representation of a schema anywhere in the system — the IR JSON node — so nothing
 marshals between an internal form and the IR, and nothing can drift.
 
 ## Scope
 
-Ontology 1.1 has four tasks: `extract`, `classify`, `translate` and `answer` (1.0 is the
-same without `answer`), and the domains `general`, `finance`, `healthcare`, `legal`,
+Ontology 1.2 has five tasks: `extract`, `classify`, `translate`, `answer` and `audit`
+(1.1 is the same without `audit`, 1.0 without `audit` and `answer`), and the domains
+`general`, `finance`, `healthcare`, `legal`,
 `retail` plus 26 academic fields such as `history`, `biology` and `public_health`. Field correctness is
 exact match by default — a benchmark may name a per-field metric from the
 closed registry in `metrics.py` (`scoring.field_metrics`) — and the instance

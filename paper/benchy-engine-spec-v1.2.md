@@ -62,14 +62,15 @@ Keywords **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 
 ## 5. Task validation
 
-Ontology 1.1 rules:
+Ontology 1.2 rules:
 
 - `extract`: no additional structural constraint.
 - `classify`: exactly one output leaf; it MUST be enum.
 - `translate`: at least one string input leaf; exactly one string output leaf; source/target language object required.
 - `answer`: exactly one output leaf; it MUST be string. Any input. Not in ontology 1.0.
+- `audit`: at least two output leaves; every output leaf MUST be flat (depth one); every output leaf MUST be enum or bool. Not in ontology 1.0 or 1.1.
 
-Ontology 1.0 has the same rules without `answer`.
+Ontology 1.1 has the same rules without `audit`; ontology 1.0 without `audit` and `answer`.
 
 Unsupported tasks MUST fail compilation even if present in another registry version.
 
