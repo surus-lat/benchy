@@ -21,25 +21,34 @@ const Index = () => {
           </p>
         </section>
 
-        {/* Agent first */}
+        {/* Install */}
         <section className="px-6 py-24">
           <div className="mx-auto max-w-4xl">
-            <span className="section-label mb-4 block">Agent first</span>
-            <h2 className="mb-4 text-3xl font-light text-foreground">
-              Paste this into your agent
-            </h2>
-            <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              Copy this line into Claude, Codex, or any coding agent — it installs the engine and helps you write the benchmark that represents your problem.
-            </p>
+            <span className="section-label mb-4 block">Install</span>
             <CodeBlock
               code={`Install benchy from https://github.com/surus-lat/benchy (pip install -e .; requires Python 3.12+). Then help me write a benchmark YAML for my AI system and run it.`}
               language="prompt"
-              title="to your agent"
+              title="copy, paste into your agent"
               wrap
             />
-            <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
-              Ships with agent skills — <span className="font-mono text-sm">author-benchmark</span>, <span className="font-mono text-sm">run-and-interpret</span>, <span className="font-mono text-sm">write-adapter</span> — so your agent already knows the language.
-            </p>
+          </div>
+        </section>
+
+        {/* Paper */}
+        <section className="bg-muted/10 px-6 py-24">
+          <div className="mx-auto max-w-4xl text-center">
+            <span className="section-label mb-4 block">The paper</span>
+            <h2 className="mb-4 text-3xl font-light text-foreground">
+              Towards a universal language for task-oriented AI benchmarks
+            </h2>
+            <a
+              href="https://arxiv.org/abs/2609.30550"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-sm tracking-widest font-medium text-muted-foreground/70 transition-colors hover:text-primary"
+            >
+              arXiv:2609.30550 →
+            </a>
           </div>
         </section>
 
@@ -242,27 +251,6 @@ benchy run ir.json --adapter system.py:extractor`}
               Architecture
             </h2>
             <ArchitectureDiagrams />
-          </div>
-        </section>
-
-        {/* Paper */}
-        <section className="px-6 py-24">
-          <div className="mx-auto max-w-4xl text-center">
-            <span className="section-label mb-4 block">The paper</span>
-            <h2 className="mb-4 text-3xl font-light text-foreground">
-              Towards a universal language for task-oriented AI benchmarks
-            </h2>
-            <p className="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              The object model, the ontology, scoring and failure semantics, and the compilation architecture.
-            </p>
-            <a
-              href="https://arxiv.org/abs/2609.30550"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-sm tracking-widest font-medium text-muted-foreground/70 transition-colors hover:text-primary"
-            >
-              arXiv:2609.30550 →
-            </a>
           </div>
         </section>
 
