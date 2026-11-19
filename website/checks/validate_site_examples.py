@@ -60,6 +60,10 @@ def main():
     if not INDEX.exists():
         print(f"ERROR: {INDEX} not found")
         return 1
+    import shutil
+    if not shutil.which("benchy"):
+        print("ERROR: `benchy` CLI not on PATH. Install the engine first: pip install -e <engine repo>")
+        return 1
 
     blocks = extract_blocks()
     print(f"extracted {len(blocks)} code blocks from {INDEX}")
