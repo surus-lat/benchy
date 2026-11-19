@@ -29,7 +29,7 @@ const Index = () => {
               Paste this into your agent
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              You don't need to learn a new tool. Copy this line into Claude, Codex, or any coding agent — it will install the engine and help you write the benchmark that represents your problem.
+              Copy this line into Claude, Codex, or any coding agent — it installs the engine and helps you write the benchmark that represents your problem.
             </p>
             <CodeBlock
               code={`Install benchy from https://github.com/surus-lat/benchy (pip install -e .; requires Python 3.12+). Then help me write a benchmark YAML for my AI system and run it.`}
@@ -37,6 +37,9 @@ const Index = () => {
               title="to your agent"
               wrap
             />
+            <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground">
+              Ships with agent skills — <span className="font-mono text-sm">author-benchmark</span>, <span className="font-mono text-sm">run-and-interpret</span>, <span className="font-mono text-sm">write-adapter</span> — so your agent already knows the language.
+            </p>
           </div>
         </section>
 
@@ -48,7 +51,7 @@ const Index = () => {
               One YAML defines a benchmark
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              A benchmark is completely specified by a program, a scoring function, and a dataset — B = (P, S, D) — and it is separate from the AI-system taking it. A run binds the two: R = (B, AI). One file says what the program is, what "good" means, and where the exam lives.
+              A benchmark is a program, a scoring function, and a dataset — B = (P, S, D). A run binds it to a system: R = (B, AI).
             </p>
             <CodeBlock
               code={`version: "1.0"
@@ -102,7 +105,7 @@ ai-system:
               A typed contract: P : X → Y
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              Programs use fixed schemas of named input and output fields. The leaf output fields are the scoring dimensions: fixed output schema, fixed scoring dimensions, fixed field weights.
+              Fixed input/output schemas. The leaf output fields are the scoring dimensions.
             </p>
             <CodeBlock
               code={`program:
@@ -130,7 +133,7 @@ ai-system:
               What "good" means, in numbers
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              Every output leaf needs exactly one explicit weight. A field can be validated and reported without moving the score — and the biggest weight sits on what the business actually cares about. Every run also reports each field against a trivial baseline computed from the exam itself, so a field that does not beat doing nothing is reported as such.
+              Every output leaf gets one explicit weight. The biggest weight sits on what the business cares about — and every field is reported against a trivial baseline, so a field that beats doing nothing shows it.
             </p>
             <CodeBlock
               code={`scoring:
@@ -157,7 +160,7 @@ ai-system:
               Any system, one contract
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              A single model, a model with an optimized prompt, a composed workflow, a tool-using agent — all the same thing from outside. The engine knows exactly one runtime contract: a named-field input object in, a named-field output object out. Everything about how your system runs lives on your side of that line.
+              A model, an optimized prompt, a workflow, a tool-using agent — all the same from outside: named fields in, named fields out.
             </p>
             <CodeBlock
               code={`# your own code, bound at the command line
@@ -185,7 +188,7 @@ ai-system:
               Compile once, run from the IR
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              Valid YAML compiles deterministically into a canonical JSON IR, and the engine consumes only the IR — it never reinterprets source. The same benchmark runs against an offline stand-in, Together, Claude on Bedrock, or a picture of the invoice: only <span className="font-mono text-base">ai-system</span> differs.
+              YAML compiles to a canonical JSON IR; the engine consumes only the IR. Same benchmark, any provider — only <span className="font-mono text-base">ai-system</span> differs.
             </p>
             <CodeBlock
               code={`# run straight from the YAML
@@ -220,7 +223,7 @@ benchy run ir.json --adapter system.py:extractor`}
               It accepts, or it rejects
             </h2>
             <p className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              There is no normalization layer and no repair: compilation does not infer missing semantics or inject defaults. Duplicate keys, anchors, aliases and merge keys are rejected — one semantic concept, one syntax. A failure keeps <span className="font-mono text-base">null</span> so the diagnosis survives, and contributes 0 so it cannot vanish from the average.
+              No normalization, no repair, no inferred defaults — one semantic concept, one syntax. A failure keeps <span className="font-mono text-base">null</span> so the diagnosis survives, and counts 0.
             </p>
             <CodeBlock
               code={`{"phase": "compile", "code": "missing_weight", "path": ["supplier", "tax_id"],
@@ -250,7 +253,7 @@ benchy run ir.json --adapter system.py:extractor`}
               Towards a universal language for task-oriented AI benchmarks
             </h2>
             <p className="mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              The semantic object model, the ontology and the task-to-program validation rule, the scoring and failure semantics, and the compilation and execution architecture.
+              The object model, the ontology, scoring and failure semantics, and the compilation architecture.
             </p>
             <a
               href="https://arxiv.org/abs/2609.30550"
