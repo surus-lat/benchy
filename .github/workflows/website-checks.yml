@@ -1,0 +1,41 @@
+# CI: keep the website honest about the engine.
+# Runs the site's own examples against the real benchy CLI whenever
+# the engine OR the website changes. If the site shows something the
+# engine can no longer do, this fails.
+name: website-examples
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "benchy/**"
+      - "pyproject.toml"
+      - "website/**"
+      - ".github/workflows/website-checks.yml"
+  pull_request:
+    paths:
+      - "benchy/**"
+      - "pyproject.toml"
+      - "website/**"
+
+jobs:
+  validate-site-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install benchy
+        run: pip install -e .
+
+      - name: Validate website examples against the engine
+        run: python website/checks/validate_site_examples.py website .
+
+      - name: Build website
+        working-directory: website
+        run: |
+          npm ci
+          npm run build
