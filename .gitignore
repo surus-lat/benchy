@@ -92,3 +92,6 @@ test.py
 /logs/
 /.venv-vox/
 /benchy.egg-info/
+
+# website needs its lockfile + configs committed (root .gitignore has *.json)
+!website/**/*.json
