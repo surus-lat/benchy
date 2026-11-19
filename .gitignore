@@ -92,3 +92,9 @@ test.py
 /logs/
 /.venv-vox/
 /benchy.egg-info/
+
+# website needs its lockfile + configs committed (root .gitignore has *.json)
+!website/**/*.json
+
+# website uses src/lib/ (shadcn convention); root lib/ is for engine build output
+!website/src/lib/

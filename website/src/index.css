@@ -1,0 +1,138 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+
+/* Benchy - Poetry-inspired documentation design system */
+
+@layer base {
+  :root {
+    --background: 40 20% 98%;
+    --foreground: 220 15% 20%;
+
+    --card: 40 15% 96%;
+    --card-foreground: 220 15% 20%;
+
+    --popover: 40 20% 98%;
+    --popover-foreground: 220 15% 20%;
+
+    /* Teal accent - Poetry-inspired */
+    --primary: 172 66% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 10% 94%;
+    --secondary-foreground: 220 15% 20%;
+
+    --muted: 40 10% 92%;
+    --muted-foreground: 220 8% 50%;
+
+    --accent: 172 66% 40%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 10% 88%;
+    --input: 40 10% 88%;
+    --ring: 172 66% 40%;
+
+    --radius: 0.5rem;
+
+    /* Terminal-style code blocks */
+    --code-bg: 225 20% 12%;
+    --code-foreground: 220 14% 90%;
+    --code-header: 225 20% 16%;
+
+    /* Font families */
+    --font-sans: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  }
+
+  .dark {
+    --background: 225 20% 8%;
+    --foreground: 220 14% 92%;
+
+    --card: 225 20% 11%;
+    --card-foreground: 220 14% 92%;
+
+    --popover: 225 20% 8%;
+    --popover-foreground: 220 14% 92%;
+
+    --primary: 172 60% 50%;
+    --primary-foreground: 225 20% 8%;
+
+    --secondary: 225 18% 15%;
+    --secondary-foreground: 220 14% 92%;
+
+    --muted: 225 18% 15%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 172 60% 50%;
+    --accent-foreground: 225 20% 8%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 225 18% 18%;
+    --input: 225 18% 18%;
+    --ring: 172 60% 50%;
+
+    --code-bg: 225 22% 6%;
+    --code-foreground: 220 14% 88%;
+    --code-header: 225 22% 10%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    letter-spacing: -0.01em;
+  }
+
+  code,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  .section-label {
+    @apply text-xs font-medium uppercase tracking-widest text-muted-foreground;
+    letter-spacing: 0.15em;
+  }
+
+  .dot-pattern {
+    background-image: radial-gradient(circle, hsl(var(--foreground) / 0.15) 1px, transparent 1.5px);
+    background-size: 18px 18px;
+  }
+
+  .dark .dot-pattern {
+    background-image: radial-gradient(circle, hsl(var(--foreground) / 0.12) 1px, transparent 1.5px);
+    background-size: 18px 18px;
+  }
+}
