@@ -834,7 +834,7 @@ The shared ontology registry contains identifiers and descriptions only.
 
 Benchy implements the structural validators for the task vocabulary of the ontology version it supports.
 
-For ontology version `1.1`:
+For ontology version `1.2`:
 
 ```text
 extract
@@ -853,9 +853,14 @@ translate
 answer
   exactly one leaf output field
   that leaf field is string
+
+audit
+  at least two leaf output fields
+  every leaf output field is flat (depth one)
+  every leaf output field is enum or bool
 ```
 
-Ontology version `1.0` has the same validators without `answer`. Version `1.1` adds that one task and changes nothing else, so a benchmark moves from `1.0` to `1.1` without changing meaning.
+Ontology version `1.1` has the same validators without `audit`; version `1.0` without `audit` and `answer`. Each version adds one task and changes nothing else, so a benchmark moves from `1.0` to `1.1` to `1.2` without changing meaning.
 
 If an ontology task is not supported by the loaded Benchy specification, compilation fails rather than silently skipping task validation.
 
@@ -1329,7 +1334,7 @@ languages
 Example:
 
 ```yaml
-version: "1.1"
+version: "1.2"
 
 tasks:
   extract:
@@ -1340,6 +1345,8 @@ tasks:
     description: Transform text from a source language to a target language.
   answer:
     description: Answer a question in natural language.
+  audit:
+    description: Audit a record against a policy and emit a verdict of parallel categorical fields.
 
 domains:
   general: {}
